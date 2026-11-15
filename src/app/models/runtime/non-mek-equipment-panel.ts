@@ -35,8 +35,11 @@ import {
 import { isMagnetClawEquipment } from '../battle-armor-equipment.model';
 import {
     disposableWeaponAttack,
+    isAntiPersonnelWeaponMount,
+    isDisposableWeaponMount,
     platoonAttack,
     platoonAttackLabel,
+    trooperWeaponAttack,
     type PlatoonAttackFacts,
 } from '../rules/conventional-infantry-combat-rules';
 import { INFERNO_LABEL, platoonInfernoMissiles } from '../rules/inferno-rules';
@@ -131,15 +134,13 @@ export function projectNonMekEquipmentPanel(
     // A swarming unit attacks only the unit it clings to, with its swarm damage (TW p. 220).
     const hpgBlocksWeaponFire = swarming !== null
         || mobileHpgBlocksWeaponAttacks(nonMekMobileHpgFacts(index, state, projection));
-    // A platoon fires its weapons as one attack: the primary weapon's row carries it, and the disposable weapon
-    // has its own row. The secondary weapon has no attack of its own.
+    // A platoon fires its weapons as one attack: the primary weapon's row carries it, and a disposable weapon has its
+    // own row. The secondary weapon has no attack of its own.
     const platoon = platoonAttackRows(entity, index, query);
     const projectedComponents = Object.freeze([...index.components.values()]
         .filter(component => component.mount.platoonWeapon !== 'secondary')
         .map(component => {
-            const attack = component.mount.platoonWeapon === undefined
-                ? undefined
-                : platoon.get(component.mount.platoonWeapon);
+            const attack = platoon.get(component.id);
             const row = projectComponent(
                 entity,
                 index,
@@ -304,22 +305,40 @@ function projectAntiMekAttacks(
     return Object.freeze(rows.filter((candidate): candidate is MekPhysicalAttackRow => candidate !== null));
 }
 
-/** The platoon's attack and disposable weapon attack with the troopers it has now, by platoon weapon role. */
+/**
+ * The attacks resolved by troopers, with the troopers fighting now, by component: a platoon's attack on its primary
+ * weapon, a platoon's or battle armor squad's disposable weapon, and battle armor's anti-personnel weapons.
+ */
 function platoonAttackRows(
     entity: BaseEntity,
     index: NonMekRuntimeIndex,
     query: NonMekUnitQueryPort,
-): ReadonlyMap<string, Readonly<{ facts: PlatoonAttackFacts; label: string }>> {
-    const rows = new Map<string, Readonly<{ facts: PlatoonAttackFacts; label: string }>>();
-    if (!isInfantryEntity(entity)) return rows;
-    const troopLocation = [...index.locations.values()].find(location => location.code === 'Infantry');
-    const troopers = troopLocation === undefined ? 0 : query.remainingInternal(troopLocation.id, 'committed');
-    if (entity.primaryWeapon() !== null) {
-        rows.set('primary', Object.freeze({ facts: platoonAttack(entity, troopers), label: platoonAttackLabel(entity) }));
-    }
-    const disposable = disposableWeaponAttack(entity, troopers);
-    if (disposable !== null) {
-        rows.set('disposable', Object.freeze({ facts: disposable, label: entity.disposableWeapon()!.name }));
+): ReadonlyMap<ComponentId, Readonly<{ facts: PlatoonAttackFacts; label: string }>> {
+    const rows = new Map<ComponentId, Readonly<{ facts: PlatoonAttackFacts; label: string }>>();
+    if (!isInfantryFamilyEntity(entity)) return rows;
+    const troopers = activeTroopers(entity, index, query);
+    for (const component of index.components.values()) {
+        const mount = component.mount;
+        const equipment = mount.equipment;
+        if (isInfantryEntity(entity) && mount.platoonWeapon === 'primary' && entity.primaryWeapon() !== null) {
+            rows.set(component.id, Object.freeze({
+                facts: platoonAttack(entity, troopers), label: platoonAttackLabel(entity),
+            }));
+        } else if (!(equipment instanceof WeaponEquipment) || !equipment.isInfantryWeapon()) {
+            continue;
+        } else if (isDisposableWeaponMount(entity, mount)) {
+            rows.set(component.id, Object.freeze({
+                facts: disposableWeaponAttack(equipment, troopers), label: equipment.name,
+            }));
+        } else if (isAntiPersonnelWeaponMount(entity, mount)) {
+            // A weapon mounted on one trooper is fired by that trooper alone.
+            const trooper = [...index.locations.values()].find(location => location.code === mount.location);
+            const carrying = mount.location === 'Squad' ? troopers
+                : trooper !== undefined && query.remainingInternal(trooper.id, 'committed') > 0 ? 1 : 0;
+            rows.set(component.id, Object.freeze({
+                facts: trooperWeaponAttack(equipment, carrying), label: mount.displayName(),
+            }));
+        }
     }
     return rows;
 }

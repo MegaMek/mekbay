@@ -4,10 +4,13 @@
 import { asUnitUuid } from '../../services/unit-catalog/unit-catalog.types';
 import { inventoryTargetRangeSelection } from '../../utils/inventory-target-number.util';
 import { CORE_2026_RULESET, TOTAL_WARFARE_RULESET } from '../cbt-ruleset.model';
+import type { BaseEntity } from '../entity/base-entity';
 import { asComponentId } from '../entity/entity-identifiers';
-import { TestInfantryEntity } from '../entity/testing/test-entities';
+import { TestBattleArmorEntity, TestInfantryEntity } from '../entity/testing/test-entities';
 import { createTestEquipmentRegistry } from '../entity/testing/test-equipment-registry';
-import { WeaponEquipment, type InfantryWeaponEquipment } from '../equipment.model';
+import { addTestEquipment } from '../entity/testing/test-mounted-equipment';
+import type { EntityMountedEquipment } from '../entity/types';
+import { WeaponEquipment, type AmmoType, type InfantryWeaponEquipment } from '../equipment.model';
 import type { EquipmentFlag } from '../equipment-flags.type';
 import { platoonAttack } from '../rules/conventional-infantry-combat-rules';
 import { gameRulesFor, TW_GAME_RULES, type CBTGameRules } from '../rules/game-rules';
@@ -23,10 +26,16 @@ import { createNonMekRuntimeForTest } from './testing/unit-runtime-owner-fixture
 
 const UUID = asUnitUuid('019f6767-0dcb-7bb8-992f-aef08202f5e9');
 
-function infantryWeapon(id: string, damage: number, range: number, flags: EquipmentFlag[] = []): InfantryWeaponEquipment {
+function infantryWeapon(
+    id: string,
+    damage: number,
+    range: number,
+    flags: EquipmentFlag[] = [],
+    ammoType: AmmoType = 'INFANTRY',
+): InfantryWeaponEquipment {
     const weapon = new WeaponEquipment({
         id, name: id, type: 'weapon', flags: ['F_INFANTRY', ...flags],
-        weapon: { ammoType: 'INFANTRY' }, infantry: { damage, range },
+        weapon: { ammoType }, infantry: { damage, range },
     });
     if (!weapon.isInfantryWeapon()) throw new Error(`${id} is not an infantry weapon`);
     return weapon;
@@ -34,7 +43,8 @@ function infantryWeapon(id: string, damage: number, range: number, flags: Equipm
 
 describe('conventional platoon attacks', () => {
     const srm = infantryWeapon('InfantryStandardSRM', 1.14, 2, ['F_SRM']);
-    const law = infantryWeapon('Rocket Launcher (LAW)', 0.53, 2, ['F_INF_DISPOSABLE']);
+    // Disposable weapons carry no ammunition in the equipment data.
+    const law = infantryWeapon('Rocket Launcher (LAW)', 0.53, 2, ['F_INF_DISPOSABLE'], 'NA');
     const baseline: InstanceBaselineRef = Object.freeze({
         entity: UUID,
         ruleset: CORE_2026_RULESET,
@@ -50,17 +60,11 @@ describe('conventional platoon attacks', () => {
         })]),
     });
 
-    function platoon(inferno: boolean) {
-        const entity = new TestInfantryEntity(createTestEquipmentRegistry({ [srm.id]: srm, [law.id]: law }));
+    /** A unit's runtime with its weapons found by `mountFor`, selected against Target A and fired. */
+    function attacker<T extends BaseEntity>(entity: T, mountFor: (role: string) => EntityMountedEquipment | undefined) {
         entity.uuid.set(UUID);
-        entity.squadSize.set(7);
-        entity.squadCount.set(4);
-        entity.setPlatoonWeapon('primary', srm);
-        entity.setPlatoonWeapon('disposable', law);
-        entity.infernoSrmsDeclared.set(inferno);
         const runtime = createNonMekRuntimeForTest('unit:platoon-attack', baseline, entity, CORE_2026_RULESET);
-        const mountId = (role: string) =>
-            asComponentId(entity.equipment().find(mount => mount.platoonWeapon === role)!.mountId);
+        const mountId = (role: string) => asComponentId(mountFor(role)!.mountId);
         const panel = () => projectNonMekEquipmentPanel(entity, runtime.getIndex(), CORE_2026_RULESET,
             runtime.snapshot(), runtime.query(), registry, {});
         const select = (role: string) => runtime.dispatchAttackerTargeting({
@@ -73,7 +77,19 @@ describe('conventional platoon attacks', () => {
         }, registry, false).accepted;
         const fire = () => runtime.dispatchSelectedWeaponFire(
             { type: 'fire-selected-weapons' }, registry, false, false);
-        return { entity, runtime, mountId, panel, select, fire };
+        const selectable = (role: string) => panel().components
+            .find(row => row.componentId === mountId(role))!.weapon?.selectable;
+        return { entity, runtime, mountId, panel, select, fire, selectable };
+    }
+
+    function platoon(inferno: boolean) {
+        const entity = new TestInfantryEntity(createTestEquipmentRegistry({ [srm.id]: srm, [law.id]: law }));
+        entity.squadSize.set(7);
+        entity.squadCount.set(4);
+        entity.setPlatoonWeapon('primary', srm);
+        entity.setPlatoonWeapon('disposable', law);
+        entity.infernoSrmsDeclared.set(inferno);
+        return attacker(entity, role => entity.equipment().find(mount => mount.platoonWeapon === role));
     }
 
     it('shows the platoon attack on the primary weapon row and the disposable weapon on its own row', () => {
@@ -104,6 +120,107 @@ describe('conventional platoon attacks', () => {
         expect(single.select('disposable')).toBeTrue();
         single.fire();
         expect(single.runtime.query().componentStatus(single.mountId('disposable'), 'committed')).toBe('destroyed');
+    });
+
+    it('fires the platoon attack or the disposable weapon in a turn, not one after the other', () => {
+        const primaryFirst = platoon(false);
+        expect(primaryFirst.select('primary')).toBeTrue();
+        primaryFirst.fire();
+        expect(primaryFirst.runtime.snapshot().turn.firedWeapons).toEqual([primaryFirst.mountId('primary')]);
+        expect(primaryFirst.selectable('disposable')).toBeFalse();
+        primaryFirst.select('disposable');
+        const before = primaryFirst.runtime.snapshot().stateRevision;
+        primaryFirst.fire();
+        expect(primaryFirst.runtime.snapshot().stateRevision).toBe(before);
+        expect(primaryFirst.runtime.query().componentStatus(primaryFirst.mountId('disposable'), 'committed'))
+            .toBe('available');
+
+        const disposableFirst = platoon(false);
+        expect(disposableFirst.select('disposable')).toBeTrue();
+        disposableFirst.fire();
+        expect(disposableFirst.selectable('primary')).toBeFalse();
+
+        // Spent and still selected, the disposable weapon leaves the next turn's platoon attack free.
+        expect(disposableFirst.runtime.dispatch({ type: 'end-turn', policy: 'automatic' }).accepted).toBeTrue();
+        expect(disposableFirst.selectable('primary')).toBeTrue();
+    });
+
+    it('greys out the weapons the selected ones rule out', () => {
+        const test = platoon(false);
+        expect(test.select('primary')).toBeTrue();
+        expect(test.selectable('disposable')).toBeFalse();
+        expect(test.selectable('primary')).toBeTrue();
+    });
+
+    it('keeps the disposable weapon for when the platoon is out of the water (TO:AuE p. 153)', () => {
+        const test = platoon(false);
+        expect(test.runtime.dispatch({ type: 'set-cover', cover: 'underwater-depth-1' }).accepted).toBeTrue();
+        expect(test.selectable('disposable')).toBeFalse();
+        expect(test.selectable('primary')).toBeTrue();
+        test.select('disposable');
+        test.fire();
+        expect(test.runtime.query().componentStatus(test.mountId('disposable'), 'committed')).toBe('available');
+        expect(test.runtime.dispatch({ type: 'set-cover', cover: null }).accepted).toBeTrue();
+        expect(test.selectable('disposable')).toBeTrue();
+    });
+
+    it("fires battle armor's anti-personnel weapons as infantry, one a turn (TW p. 218)", () => {
+        const rifle = infantryWeapon('InfantryAssaultRifle', 0.57, 1);
+        const pistol = infantryWeapon('Laser Pistol', 0.2, 1);
+        const entity = new TestBattleArmorEntity(createTestEquipmentRegistry({ [rifle.id]: rifle, [pistol.id]: pistol }));
+        entity.trooperCount.set(4);
+        const mounts = new Map([
+            ['rifle', addTestEquipment(entity, rifle, { location: 'Squad' })],
+            ['pistol', addTestEquipment(entity, pistol, { location: 'Trooper 1' })],
+        ]);
+        const test = attacker(entity, role => mounts.get(role));
+        const row = (role: string) => test.panel().components.find(candidate => candidate.componentId === test.mountId(role))!;
+
+        // The Cluster Hits Table is rolled on the suits carrying it: 0.57 x 4 suits = 2; the pistol on one suit only.
+        expect(row('rifle').weapon?.platoon?.troopers).toBe(4);
+        expect(row('rifle').weapon?.damageText).toBe('2');
+        expect(row('pistol').weapon?.platoon?.troopers).toBe(1);
+        // Both selected, neither fires.
+        expect(test.select('rifle')).toBeTrue();
+        expect(test.selectable('pistol')).toBeFalse();
+        test.select('pistol');
+        test.fire();
+        expect(test.runtime.snapshot().turn.firedWeapons ?? []).toEqual([]);
+        // The troopers carry the rifle's ammunition: it fires without a bin, and then the pistol can't this turn.
+        expect(test.runtime.dispatchAttackerTargeting({
+            type: 'edit-attacker-targeting',
+            edit: { kind: 'set-component-selection', componentId: test.mountId('pistol'), selection: null },
+        }, registry, false).accepted).toBeTrue();
+        test.fire();
+        expect(test.runtime.snapshot().turn.firedWeapons).toEqual([test.mountId('rifle')]);
+        expect(test.selectable('pistol')).toBeFalse();
+    });
+
+    it('keeps a disposable weapon that not every battle armor suit carries from firing', () => {
+        const entity = new TestBattleArmorEntity(createTestEquipmentRegistry({ [law.id]: law }));
+        entity.trooperCount.set(4);
+        const mount = addTestEquipment(entity, law, { location: 'Trooper 1' });
+        expect(attacker(entity, () => mount).selectable('law')).toBeFalse();
+    });
+
+    it("fires a battle armor squad's disposable weapon once, instead of its other weapons", () => {
+        const rifle = infantryWeapon('Auto-Rifle', 0.52, 1);
+        const entity = new TestBattleArmorEntity(createTestEquipmentRegistry({ [rifle.id]: rifle, [law.id]: law }));
+        entity.trooperCount.set(4);
+        const mounts = new Map([
+            ['rifle', addTestEquipment(entity, rifle, { location: 'Squad' })],
+            ['disposable', addTestEquipment(entity, law, { location: 'Squad' })],
+        ]);
+        const test = attacker(entity, role => mounts.get(role));
+
+        // 3 x 0.53 for each of the 4 suits: 6.
+        const row = test.panel().components.find(candidate => candidate.componentId === test.mountId('disposable'))!;
+        expect(row.weapon?.platoon?.troopers).toBe(4);
+        expect(row.weapon?.damageText).toBe('6');
+        expect(test.select('disposable')).toBeTrue();
+        test.fire();
+        expect(test.runtime.query().componentStatus(test.mountId('disposable'), 'committed')).toBe('destroyed');
+        expect(test.selectable('rifle')).toBeFalse();
     });
 
     it('reads the range modifier hex by hex', () => {

@@ -35,7 +35,7 @@ import type { EntityType } from '../entity/types';
 import { BV_MOVEMENT_CALCULATION,STANDARD_MOVEMENT_CALCULATION,type MovementCalculationOptions } from '../entity/types';
 import { isAeroEntity,isInfantryEntity,isInfantryFamilyEntity,isProtoMekEntity,isVehicleEntity } from '../entity/utils/entity-type-guards';
 import { heatOrDamageComponentModes } from '../flamer-mode.model';
-import { platoonHeatOrDamageWeapon } from '../rules/conventional-infantry-combat-rules';
+import { isDisposableWeaponMount, platoonHeatOrDamageWeapon } from '../rules/conventional-infantry-combat-rules';
 import type { EquipmentStatus } from '../equipment-status.model';
 import { AmmoEquipment,WeaponEquipment,type Equipment } from '../equipment.model';
 import type { MotiveModes } from '../motiveModes.model';
@@ -821,10 +821,9 @@ export function reduceNonMekSelectedWeaponFire(binding: NonMekRuntimeBinding, st
     if (selected.length === 0 || selected.length > MAX_ATTACKER_TARGETING_COMPONENTS) {
         return unchanged();
     }
-    // The disposable weapon attack is made instead of the platoon's standard attack (TO:AuE p. 116); the secondary
-    // weapon fires only as part of the platoon attack.
-    const platoonRoles = new Set(selected.map(([weaponId]) => binding.index.components.get(weaponId)?.mount.platoonWeapon));
-    if (platoonRoles.has('secondary') || (platoonRoles.has('primary') && platoonRoles.has('disposable'))) {
+    // The secondary weapon fires only as part of the platoon attack. Weapons that can't fire together, such as a
+    // disposable weapon and the platoon attack, are blocked by the infantry rules below.
+    if (selected.some(([weaponId]) => binding.index.components.get(weaponId)?.mount.platoonWeapon === 'secondary')) {
         return unchanged();
     }
     if (!c3Available && selected.some(([, component]) => component.selection?.kind === 'target'
@@ -888,8 +887,9 @@ export function reduceNonMekSelectedWeaponFire(binding: NonMekRuntimeBinding, st
         if (!isHeatValue(heat)) {
             return unchanged();
         }
-        // A platoon's weapons carry their own ammunition; no bin feeds them.
-        if (weapon.ammoType === 'NA' || component.mount.platoonWeapon !== undefined) {
+        // Infantry and battle armor carry their infantry weapons' ammunition; no bin feeds them (TW p. 218). A support
+        // vehicle's infantry weapons do draw on bins.
+        if (weapon.ammoType === 'NA' || (infantry !== null && weapon.isInfantryWeapon())) {
             if (targeting.ammo !== undefined) return unchanged();
             continue;
         }
@@ -930,8 +930,10 @@ export function reduceNonMekSelectedWeaponFire(binding: NonMekRuntimeBinding, st
         return unchanged();
     }
     // A disposable weapon is used once per scenario (TO:AuE p. 116): once fired it is gone.
-    const disposableIds = selected.flatMap(([weaponId]) =>
-        binding.index.components.get(weaponId)?.mount.platoonWeapon === 'disposable' ? [weaponId] : []);
+    const disposableIds = selected.flatMap(([weaponId]) => {
+        const mount = binding.index.components.get(weaponId)?.mount;
+        return mount !== undefined && isDisposableWeaponMount(binding.entity, mount) ? [weaponId] : [];
+    });
     const fired = withAmmoShotsSpent(state, ammoSpends);
     const next = freezeNonMekUnitState({
         ...(disposableIds.length === 0 ? fired : withComponentStatuses(fired, disposableIds, 'destroyed') ?? fired),

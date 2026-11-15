@@ -10,6 +10,9 @@ import type { MotiveModes } from '../motiveModes.model';
 import { type CBTRuntimeEquipment } from '../runtime/cbt-unit-runtime';
 import type { NonMekRuntimeIndex } from '../runtime/non-mek-runtime-index';
 import type { NonMekUnitRuntimeState } from '../runtime/non-mek-unit-instance';
+import { isBattleArmorEntity } from '../entity/utils/entity-type-guards';
+import { isUnitWaterDepth } from '../unit-cover.model';
+import { isAntiPersonnelWeaponMount, isDisposableWeaponMount } from './conventional-infantry-combat-rules';
 
 export interface InfantryRuntimeRulesProjection {
     readonly destroyed: boolean;
@@ -37,8 +40,51 @@ export function projectInfantryRuntimeRules(
     return Object.freeze({
         destroyed: state.explicitlyDestroyed || allTroopLocationsDestroyed(index, state),
         movementMinimums: INFANTRY_MOVEMENT_MINIMUMS,
-        fireBlockedComponentIds: new ImmutableSet(uncrewedFieldGuns(entity, index, state)),
+        fireBlockedComponentIds: new ImmutableSet([
+            ...uncrewedFieldGuns(entity, index, state),
+            ...infantryAttackBlocks(entity, index, state),
+        ]),
     });
+}
+
+/**
+ * Weapons ruled out by the others this turn's attack uses, those fired this turn and those selected to fire, so the
+ * player can neither select nor fire them together:
+ * - A disposable weapon attack is made instead of the unit's standard attack (TO:AuE p. 116): a disposable weapon
+ *   rules out every other weapon, and any other weapon rules it out. SCUBA troops may not employ disposable weapons
+ *   underwater (TO:AuE p. 153), and a battle armor squad only when every suit carries the same one.
+ * - Battle armor makes one anti-personnel weapon attack a turn (TW p. 218).
+ */
+function infantryAttackBlocks(
+    entity: InfantryBaseEntity,
+    index: NonMekRuntimeIndex,
+    state: NonMekUnitRuntimeState,
+): ComponentId[] {
+    const weapons = [...index.components.values()].filter(component =>
+        component.mount.equipment instanceof WeaponEquipment && !component.mount.isPhysicalWeapon());
+    const disposable = (component: CBTRuntimeEquipment) => isDisposableWeaponMount(entity, component.mount);
+    const antiPersonnel = (component: CBTRuntimeEquipment) => isAntiPersonnelWeaponMount(entity, component.mount);
+    const fired = new Set(state.turn.firedWeapons ?? []);
+    const used = weapons.filter(component => fired.has(component.id)
+        || (state.attackerTargeting.components.get(component.id)?.selection !== undefined
+            && canStillFire(index, state, component)));
+    const usedBesides = (component: CBTRuntimeEquipment, kind: (other: CBTRuntimeEquipment) => boolean) =>
+        used.some(other => other.id !== component.id && kind(other));
+    const underwater = entity instanceof InfantryEntity && isUnitWaterDepth(state.turn.cover);
+    return weapons
+        .filter(component => disposable(component)
+            ? underwater || usedBesides(component, () => true)
+            : usedBesides(component, disposable)
+                || (antiPersonnel(component) && usedBesides(component, antiPersonnel))
+                || (isBattleArmorEntity(entity) && component.mount.equipment?.hasFlag('F_INF_DISPOSABLE') === true))
+        .map(component => component.id);
+}
+
+/** A selected weapon not yet spent or destroyed, whose trooper, when one carries it alone, still fights. */
+function canStillFire(index: NonMekRuntimeIndex, state: NonMekUnitRuntimeState, component: CBTRuntimeEquipment): boolean {
+    if (state.components.get(component.id)?.statusOverride === 'destroyed') return false;
+    const location = [...index.locations.values()].find(candidate => candidate.code === component.mount.location);
+    return location === undefined || (state.locations.get(location.id)?.internalDamage ?? 0) < location.internalPoints;
 }
 
 function allTroopLocationsDestroyed(

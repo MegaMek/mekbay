@@ -41,6 +41,8 @@ import {
 
 export const MAX_CONVENTIONAL_INFANTRY_STRENGTH = 30;
 const MAX_PRIMARY_DAMAGE_PER_TROOPER = 0.6;
+/** A disposable weapon attack deals three times the weapon's damage per trooper (TO:AuE p. 116). */
+export const DISPOSABLE_DAMAGE_MULTIPLIER = 3;
 
 export class InfantryEntity extends InfantryBaseEntity {
   override componentLocationOrder(): readonly string[] {
@@ -274,7 +276,7 @@ export class InfantryEntity extends InfantryBaseEntity {
    */
   platoonWeaponDamagePerTrooper(role: PlatoonWeaponRole): number {
     if (role === 'secondary') return this.secondaryWeapon()?.infantry.damage ?? 0;
-    if (role === 'disposable') return 3 * (this.disposableWeapon()?.infantry.damage ?? 0);
+    if (role === 'disposable') return DISPOSABLE_DAMAGE_MULTIPLIER * (this.disposableWeapon()?.infantry.damage ?? 0);
     return Math.min(MAX_PRIMARY_DAMAGE_PER_TROOPER, this.primaryWeapon()?.infantry.damage ?? 0);
   }
 

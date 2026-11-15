@@ -18,7 +18,7 @@ BOOBY_TRAP_DETONATED_MODE,
 import type { EquipmentPanelComponent,EquipmentPanelSnapshot,MekPhysicalAttackRow } from '../../models/runtime/equipment-panel';
 import type { OptionsService } from '../../services/options.service';
 import type { ToastService } from '../../services/toast.service';
-import { EquipmentDialogRuntimeController } from './equipment-dialog-runtime.controller';
+import { EquipmentDialogRuntimeController, type AttackResolutionPort } from './equipment-dialog-runtime.controller';
 import { createUnitEditContextFixture } from '../../models/runtime/testing/unit-edit-context-fixture';
 
 function snapshot(displayName: string): EquipmentPanelSnapshot {
@@ -825,6 +825,52 @@ describe('EquipmentDialogRuntimeController', () => {
             'Prototype Medium Pulse Laser: +6 heat (1D6 roll: 6)',
             'info',
         );
+        controller.dispose();
+    });
+
+    it('resolves only the attacks a fire records, not one the rules refuse', async () => {
+        const equipment = new WeaponEquipment({ id: 'MediumLaser', name: 'Medium Laser', type: 'weapon' });
+        const panel = {
+            ...snapshot('Refused fire fixture'),
+            components: [{
+                componentId: 'mount:medium-laser' as ComponentId,
+                label: equipment.name,
+                equipment,
+                status: 'available',
+                weapon: { selectable: true, selection: { kind: 'selected' } },
+            } as unknown as EquipmentPanelComponent],
+        } as EquipmentPanelSnapshot;
+        const fire = jasmine.createSpy('fireSelectedWeapons').and.resolveTo({
+            accepted: true, changed: false, prototypeHeat: [],
+        });
+        const resolveFired = jasmine.createSpy('resolveFired').and.resolveTo();
+        const member = {
+            kind: 'cbt',
+            id: 'tank-1',
+            force: {
+                changed: new Subject<void>(),
+                sessionChanged: new Subject<void>(),
+                getEquipmentPanelSnapshot: () => panel,
+                getEquipmentInteractions: () => [],
+                getWeaponAttackContext: () => ({}),
+                fireSelectedWeapons: fire,
+            },
+            entity: new TestTankEntity(),
+        } as unknown as CBTForceMember;
+        const controller = new EquipmentDialogRuntimeController(
+            member,
+            { cbtAutomationMode: () => 'no', options: () => ({ realPhases: false }) } as unknown as OptionsService,
+            jasmine.createSpyObj<ToastService>('ToastService', ['showToast']),
+            undefined,
+            { resolveFired, resolvesAttacks: () => true, inPhysicalPhase: () => false } as unknown as AttackResolutionPort,
+        );
+
+        await controller.fire();
+        expect(resolveFired).not.toHaveBeenCalled();
+
+        fire.and.resolveTo({ accepted: true, changed: true, prototypeHeat: [] });
+        await controller.fire();
+        expect(resolveFired).toHaveBeenCalledTimes(1);
         controller.dispose();
     });
 

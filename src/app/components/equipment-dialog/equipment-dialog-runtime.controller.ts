@@ -434,7 +434,8 @@ export class EquipmentDialogRuntimeController {
                 ...(phaseAttacks === undefined ? {} : { attacks: phaseAttacks }),
                 ...(prototypeHeatRolls.length === 0 ? {} : { prototypeHeatRolls }),
             });
-            fired = result.accepted;
+            // Only what the unit recorded is resolved: a fire the rules refuse changes nothing.
+            fired = result.accepted && result.changed;
             if (!result.accepted) this.rejectCommand();
             else this.reportPrototypeHeat(current, result.prototypeHeat ?? Object.freeze([]));
         } finally {

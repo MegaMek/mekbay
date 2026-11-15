@@ -1,8 +1,11 @@
 // Copyright (C) 2026 The MegaMek Team
 // SPDX-License-Identifier: GPL-3.0-or-later
 
-import type { InfantryEntity } from '../entity/entities/infantry/infantry-entity';
-import type { InfantryWeaponEquipment } from '../equipment.model';
+import type { BaseEntity } from '../entity/base-entity';
+import { DISPOSABLE_DAMAGE_MULTIPLIER, type InfantryEntity } from '../entity/entities/infantry/infantry-entity';
+import type { EntityMountedEquipment } from '../entity/types';
+import { isBattleArmorEntity } from '../entity/utils/entity-type-guards';
+import { WeaponEquipment, type InfantryWeaponEquipment } from '../equipment.model';
 import { isHeatOrDamageWeapon } from '../flamer-mode.model';
 
 /** The conventional-infantry weapon reference used by the existing CBT sheet.
@@ -64,9 +67,9 @@ export function projectConventionalInfantryCombat(
 }
 
 /**
- * A conventional platoon's attack as play resolves it: the Cluster Hits Table is rolled on the troopers able to fire,
- * and the damage those troopers deal is read from the same per-trooper damage the sheet prints (MegaMek
- * InfantryWeaponHandler).
+ * An attack resolved by troopers, as play resolves a conventional platoon's, a disposable weapon's and battle armor's
+ * anti-personnel weapons': the Cluster Hits Table is rolled on the troopers able to fire, and the damage those
+ * troopers deal is read from their per-trooper damage (MegaMek InfantryWeaponHandler).
  */
 export interface PlatoonAttackFacts {
     /** Troopers firing: the Cluster Hits Table column. */
@@ -116,21 +119,54 @@ function platoonWeapons(entity: InfantryEntity): readonly InfantryWeaponEquipmen
 }
 
 /**
- * The once-per-scenario disposable weapon attack, made instead of the platoon's standard attack: three times the
- * weapon's damage per trooper hitting, at the weapon's own ranges (TO:AuE p. 116; MegaMek
- * InfantryDisposableWeaponHandler).
+ * A one-shot disposable weapon (TO:AuE p. 116): a platoon's, or one every suit of a battle armor squad carries. All
+ * troopers must carry the same one, so a battle armor weapon mounted on single troopers doesn't count.
  */
-export function disposableWeaponAttack(entity: InfantryEntity, troopers: number): PlatoonAttackFacts | null {
-    const weapon = entity.disposableWeapon();
-    if (weapon === null) return null;
-    const damagePerTrooper = entity.platoonWeaponDamagePerTrooper('disposable');
+export function isDisposableWeaponMount(entity: BaseEntity, mount: EntityMountedEquipment): boolean {
+    if (mount.platoonWeapon !== undefined) return mount.platoonWeapon === 'disposable';
+    return isBattleArmorEntity(entity) && mount.location === 'Squad'
+        && mount.equipment instanceof WeaponEquipment && mount.equipment.isInfantryWeapon()
+        && mount.equipment.hasFlag('F_INF_DISPOSABLE');
+}
+
+/**
+ * A battle armor squad's anti-personnel weapon: an infantry weapon its suits carry, fired as conventional infantry fire
+ * theirs (TW p. 218). One-shot disposable weapons have rules of their own.
+ */
+export function isAntiPersonnelWeaponMount(entity: BaseEntity, mount: EntityMountedEquipment): boolean {
+    return isBattleArmorEntity(entity) && mount.equipment instanceof WeaponEquipment
+        && mount.equipment.isInfantryWeapon() && !mount.equipment.hasFlag('F_INF_DISPOSABLE');
+}
+
+/**
+ * The once-per-scenario disposable weapon attack, made instead of the unit's standard attack: three times the
+ * weapon's damage per trooper hitting, as damage only (TO:AuE p. 116; MegaMek InfantryDisposableWeaponHandler).
+ */
+export function disposableWeaponAttack(weapon: InfantryWeaponEquipment, troopers: number): PlatoonAttackFacts {
+    return Object.freeze({
+        ...trooperWeaponAttack(weapon, troopers, DISPOSABLE_DAMAGE_MULTIPLIER * weapon.infantry.damage),
+        heatOrDamageWeapon: null,
+    });
+}
+
+/**
+ * An infantry weapon its troopers fire as one attack: the Cluster Hits Table is rolled on the troopers, each one hitting
+ * deals `damagePerTrooper`, at the weapon's own infantry ranges (TW pp. 217-218, with the weapon's own damage and
+ * ranges, the option TW p. 218 gives battle armor; MegaMek InfantryWeaponHandler). A flame weapon may deal heat in
+ * place of damage.
+ */
+export function trooperWeaponAttack(
+    weapon: InfantryWeaponEquipment,
+    troopers: number,
+    damagePerTrooper = weapon.infantry.damage,
+): PlatoonAttackFacts {
     const firing = Math.max(0, troopers);
     return Object.freeze({
         troopers: firing,
         damageByTroopers: Object.freeze(Array.from({ length: firing + 1 }, (_, hit) => Math.round(damagePerTrooper * hit))),
         rangeModifiers: infantryRangeModifiers(weapon, null, false, false),
         inferno: false,
-        heatOrDamageWeapon: null,
+        heatOrDamageWeapon: isHeatOrDamageWeapon(weapon) ? weapon : null,
     });
 }
 
