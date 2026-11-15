@@ -63,8 +63,10 @@ import {
 vehicleHasChargeAttack,
 type VehicleRuntimeRulesProjection,
 } from '../rules/vehicle-runtime-rules';
+import { isUnitWaterDepth } from '../unit-cover.model';
 import { attackerActionSelection } from './attacker-targeting-state';
 import { mobileHpgBlocksWeaponAttacks } from './component-mobile-hpg';
+import { halvedUnderwater } from './mek-physical-attack-v2';
 import type { TargetRegistrySnapshot } from './encounter-runtime';
 import {
 EquipmentPanelAmmoLoadout,
@@ -841,14 +843,15 @@ function projectProtoMekFrenzy(
         firingHeat: 0,
         // Non-'Mek physical attacks read the standard table, which water cover always meets.
         meetsWaterCover: true,
-        effect: Object.freeze({
+        // A ProtoMek is underwater from Depth 1; only a standing 'Mech needs Depth 2 (TW p. 56).
+        effect: halvedUnderwater(Object.freeze({
             kind: 'damage' as const,
             damage: action.damage.value,
             maximumDamage: action.damage.value,
             baseDamage: action.damage.value,
             weakened: false,
             boosted: false,
-        }),
+        }), isUnitWaterDepth(state.turn.cover)),
         ...(selection === undefined ? {} : { selection }),
     });
 }

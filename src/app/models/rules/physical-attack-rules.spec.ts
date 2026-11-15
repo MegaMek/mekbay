@@ -137,16 +137,18 @@ describe('physical attack rules', () => {
     });
 
     it('costs the attacker 1 per 10 target tons for a charge and 1 per 5 own tons on the kick table for a DFA', () => {
-        const facts = { attackerTons: 55, targetTons: 85, attackDamage: 6 };
+        const facts = { attackerTons: 55, targetTons: 85, attackDamage: 6, attackerSubmerged: false };
         expect(physicalSelfDamage('charge', true, { ...facts, attackerTons: 50 }))
             .toEqual({ damage: 9, table: 'standard', groupSize: 5 });
+        // Charging underwater halves it, rounding down (Core p. 77; BMM p. 35).
+        expect(physicalSelfDamage('charge', true, { ...facts, attackerSubmerged: true })?.damage).toBe(4);
         expect(physicalSelfDamage('death-from-above', true, facts)).toEqual({ damage: 11, table: 'kick', groupSize: 5 });
         expect(physicalSelfDamage('punch', true, facts)).toBeNull();
         expect(physicalSelfDamage('charge', false, facts)).toBeNull();
     });
 
     it("deals a missed brush off's punch to the 'Mech itself as one hit on the punch table (TW p. 222)", () => {
-        const facts = { attackerTons: 55, targetTons: 1, attackDamage: 6 };
+        const facts = { attackerTons: 55, targetTons: 1, attackDamage: 6, attackerSubmerged: false };
         expect(physicalSelfDamage('brush-off', false, facts)).toEqual({ damage: 6, table: 'punch', groupSize: 6 });
         expect(physicalSelfDamage('brush-off', true, facts)).toBeNull();
     });

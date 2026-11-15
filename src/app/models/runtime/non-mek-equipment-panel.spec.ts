@@ -747,6 +747,13 @@ describe('Entity equipment panel projection', () => {
             }),
         })]);
 
+        // A ProtoMek in Depth 1 water is underwater, so its frenzy deals half, rounding down.
+        expect(runtime.dispatch({ type: 'set-cover', cover: 'underwater-depth-1' }).accepted).toBeTrue();
+        expect(snapshot().physicalAttacks[0]?.effect).toEqual(jasmine.objectContaining({
+            damage: 1, maximumDamage: 1, weakened: true,
+        }));
+        expect(runtime.dispatch({ type: 'set-cover', cover: null }).accepted).toBeTrue();
+
         const crewId = [...runtime.getIndex().crewPositions.keys()][0]!;
         runtime.dispatch({
             type: 'set-crew-state',

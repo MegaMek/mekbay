@@ -19,6 +19,8 @@ import { CBTForce } from '../models/cbt-force.model';
 import { WeaponEquipment } from '../models/equipment.model';
 import { gameRulesFor } from '../models/rules/game-rules';
 import { isCBTMekForceMember, type CBTForceMember } from '../models/force-member.model';
+import { hasMekRuntime } from '../models/cbt-unit-snapshot';
+import { mekUnitWaterState } from '../models/runtime/mek-targeting-rules';
 import { PHYSICAL_DAMAGE, type DamageSource } from '../models/rules/armor-damage-rules';
 import {
     hitTableDice,
@@ -474,8 +476,11 @@ export class AttackResolutionService {
         outcomes: readonly PhysicalAttackOutcome[],
         attackId: string,
     ): Promise<void> {
-        const ruleset = member.force.getUnitSnapshot(member.id)?.ruleset;
-        if (!ruleset || outcomes.length === 0) return;
+        const snapshot = member.force.getUnitSnapshot(member.id);
+        if (!snapshot || outcomes.length === 0) return;
+        const ruleset = snapshot.ruleset;
+        // A submerged 'Mech charges underwater, so the damage it takes is halved as well.
+        const attackerSubmerged = hasMekRuntime(snapshot) && mekUnitWaterState(snapshot.entity, snapshot.query).submerged;
         const target = this.options.options().trackPhaseAndTurn ? 'pending' : 'committed';
         const notes: string[] = [];
         const settled = await member.force.runAsOneUndoStep(async () => {
@@ -499,6 +504,7 @@ export class AttackResolutionService {
             for (const outcome of outcomes) {
                 const self = physicalSelfDamage(outcome.kind, outcome.hit, {
                     attackerTons: member.entity.tonnage(), targetTons: outcome.targetTons ?? 0, attackDamage: outcome.damage,
+                    attackerSubmerged,
                 });
                 if (!self) continue;
                 if (outcome.kind === 'charge' && outcome.targetTons === null) {

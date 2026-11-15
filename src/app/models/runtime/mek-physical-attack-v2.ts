@@ -29,6 +29,7 @@ import { VIBROBLADE_ON_MODE } from '../vibroblade-mode.model';
 import type { AttackerActionSelection, AttackerActionTarget } from './attacker-targeting-state';
 import type { MekMovementModeV2 } from './mek-movement-psr-v2';
 import { calculateChargeDamage } from '../rules/charge-damage';
+import { underwaterPhysicalDamage } from '../rules/physical-attack-rules';
 import {
     mountedEquipmentForComponent,
     type MekRuntimeIndex,
@@ -354,18 +355,14 @@ function legsOnly(profile: MekMechanicsProfile, locationIds: readonly LocationId
         profile.limbs.some(limb => limb.kind === 'leg' && limb.locationId === locationId));
 }
 
-/**
- * A physical attack made underwater deals half its damage, rounding down (TW p. 144; Core pp. 77, 127), and still at
- * least 1 point (Core p. 88).
- */
-function halvedUnderwater(effect: MekPhysicalAttackEffectV2, underwater: boolean): MekPhysicalAttackEffectV2 {
+/** A physical attack made underwater deals `underwaterPhysicalDamage`. */
+export function halvedUnderwater(effect: MekPhysicalAttackEffectV2, underwater: boolean): MekPhysicalAttackEffectV2 {
     if (!underwater || effect.kind !== 'damage' || effect.displayFormula !== undefined) return effect;
-    const half = (value: number) => Math.max(1, Math.floor(value / 2));
     return Object.freeze({
         ...effect,
-        damage: half(effect.damage),
-        maximumDamage: half(effect.maximumDamage),
-        baseDamage: half(effect.baseDamage),
+        damage: underwaterPhysicalDamage(effect.damage),
+        maximumDamage: underwaterPhysicalDamage(effect.maximumDamage),
+        baseDamage: underwaterPhysicalDamage(effect.baseDamage),
         weakened: true,
     });
 }

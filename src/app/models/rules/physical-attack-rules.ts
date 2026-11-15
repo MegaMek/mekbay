@@ -116,6 +116,14 @@ export function physicalAttackMeetsWaterCover(
 }
 
 /**
+ * Physical attack damage underwater: halved, rounding down (Core pp. 77, 127; BMM pp. 35, 65), and still at least
+ * 1 point (Core p. 88).
+ */
+export function underwaterPhysicalDamage(damage: number): number {
+    return Math.max(1, Math.floor(damage / 2));
+}
+
+/**
  * Charges and DFAs strike in 5-point groupings, as does a thrash against battle armor (TW pp. 148-151); every other
  * physical attack strikes as one. Against conventional infantry an attack strikes as one, its troopers eliminated
  * from its whole damage (`physicalAttackTroopersHit`, TW p. 217).
@@ -233,18 +241,25 @@ export function comparativePilotingModifier(attackerPiloting: number, targetPilo
  * What a physical attack costs the attacker, all from the front: a successful charge 1 point per 10 tons of the
  * target on its standard table, a successful DFA 1 point per 5 of its own tons on the kick table, both in 5-point
  * groupings (TW pp.148-150; Core pp.78-80); a failed brush off the punch it meant for the infantry, on the punch
- * table (TW p. 222).
+ * table (TW p. 222). A submerged charger takes its charge damage underwater, halved like the attack itself.
  */
 export function physicalSelfDamage(
     kind: PhysicalAttackKind,
     hit: boolean,
-    facts: Readonly<{ attackerTons: number; targetTons: number; attackDamage: number }>,
+    facts: Readonly<{ attackerTons: number; targetTons: number; attackDamage: number; attackerSubmerged: boolean }>,
 ): Readonly<{ damage: number; table: HitTable; groupSize: number }> | null {
     if (kind === 'brush-off' && !hit) {
         return Object.freeze({ damage: facts.attackDamage, table: 'punch', groupSize: Math.max(1, facts.attackDamage) });
     }
     if (!hit) return null;
-    if (kind === 'charge') return Object.freeze({ damage: Math.ceil(facts.targetTons / 10), table: 'standard', groupSize: 5 });
+    if (kind === 'charge') {
+        const damage = Math.ceil(facts.targetTons / 10);
+        return Object.freeze({
+            damage: facts.attackerSubmerged ? underwaterPhysicalDamage(damage) : damage,
+            table: 'standard',
+            groupSize: 5,
+        });
+    }
     if (kind === 'death-from-above') {
         return Object.freeze({ damage: Math.ceil(facts.attackerTons / 5), table: 'kick', groupSize: 5 });
     }
