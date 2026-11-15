@@ -67,21 +67,21 @@ export function buildMekIntrinsicActions(
       if (claw) continue;
 
       const reduce = (value: number) => mekPunchDamage(value, facts.lowerArmActuators[side]);
-      const baseDamage = mekPunchBaseDamage(facts.tonnage, isLam);
+      const baseDamage = mekPunchBaseDamage(facts.tonnage);
       const armAes = hasActuatorEnhancementSystemAt(facts.equipment, location);
       const hitModifier = (facts.handActuators[side] ? 0 : 1)
         + (facts.lowerArmActuators[side] ? 0 : 2)
         - (armAes ? 1 : 0);
       attacks.push(action(
         `punch:${location}`, 'punch', 'Punch', [location],
-        fixedDamage(reduce(baseDamage), tsm, undefined, reduce(baseDamage * 2)), hitModifier,
+        fixedDamage(reduce(baseDamage), tsm, reduce(baseDamage * 2)), hitModifier,
       ));
       // A swarmed 'Mech may pull the infantry off with an arm that mounts no physical weapon, with the punch's
       // modifiers and damage (TW p. 221).
       if (!facts.equipment.some(item => item.location === location && isPhysicalWeaponFlags(item.flags))) {
         attacks.push(action(
           `brush-off:${location}`, 'brush-off', 'Brush Off', [location],
-          fixedDamage(reduce(baseDamage), tsm, undefined, reduce(baseDamage * 2)), hitModifier,
+          fixedDamage(reduce(baseDamage), tsm, reduce(baseDamage * 2)), hitModifier,
         ));
       }
     }
@@ -91,7 +91,7 @@ export function buildMekIntrinsicActions(
   const kickDamage = kickDamageWith(talons);
   attacks.push(action(
     'kick', 'kick', talons ? 'Kick [Talons]' : 'Kick', [],
-    fixedDamage(kickDamage, tsm, isLam ? Math.ceil(kickDamage / 2) : undefined),
+    fixedDamage(kickDamage, tsm),
     legAes ? -1 : 0,
   ));
   // A quad can kick into its rear arc instead; its talon bonus needs talons on both rear legs (TW p. 147; Core p. 81).
@@ -169,9 +169,9 @@ function hasActuatorEnhancementSystemAt(
 }
 
 
-/** A punch does 1 point per 10 tons (or fraction); a LAM's half that (TW p. 145). */
-export function mekPunchBaseDamage(tonnage: number, lam: boolean): number {
-  return Math.ceil(tonnage / 10) / (lam ? 2 : 1);
+/** A punch does 1 point per 10 tons (or fraction) (TW p. 145). */
+export function mekPunchBaseDamage(tonnage: number): number {
+  return Math.ceil(tonnage / 10);
 }
 
 /**
@@ -179,27 +179,18 @@ export function mekPunchBaseDamage(tonnage: number, lam: boolean): number {
  * it like a destroyed one, rounding down to at least 1 (TW p. 145; Core pp. 81, 88).
  */
 export function mekPunchDamage(base: number, lowerArmActuator: boolean): number {
-  return lowerArmActuator ? Math.ceil(base) : Math.max(1, Math.floor(base / 2));
+  return lowerArmActuator ? base : Math.max(1, Math.floor(base / 2));
 }
 
 function fixedDamage(
   damage: number,
   tsm: boolean,
-  alternateDamage?: number,
   boostedDamage = damage * 2,
 ): IntrinsicWeaponDamage {
-  const alternative = alternateDamage === undefined
-    ? undefined
-    : Object.freeze({
-      kind: 'fixed' as const,
-      value: alternateDamage,
-      ...(tsm ? { boostedValue: alternateDamage * 2 } : {}),
-    });
   return Object.freeze({
     kind: 'fixed',
     value: damage,
     ...(tsm ? { boostedValue: boostedDamage } : {}),
-    ...(alternative ? { alternatives: Object.freeze({ airmek: alternative }) } : {}),
   });
 }
 

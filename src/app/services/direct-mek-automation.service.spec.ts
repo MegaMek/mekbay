@@ -33,6 +33,7 @@ import { OptionsService } from './options.service';
 import { DialogsService } from './dialogs.service';
 import { SwarmService } from './swarm.service';
 import type { CBTForceMember } from '../models/force-member.model';
+import { attackDamagePreview } from '../models/runtime/attack-hit-location';
 
 describe('DirectMekAutomationService', () => {
     let resolveAutomation: jasmine.Spy;
@@ -143,6 +144,37 @@ describe('DirectMekAutomationService', () => {
         // Pending damage leaves the committed sheet as it was until the phase ends.
         expect(query().remainingArmor(front('LT'), 'committed')).toBe(torsoArmor);
         expect(query().crewState(pilotId).wounds).toBe(1);
+    });
+
+    it("takes 3 off a rifle hit while the struck armor lasts, as the attack's preview shows in order", async () => {
+        const rifle = { kind: 'weapon' as const, types: ['DB' as const], rifle: true as const };
+        const struck = { kind: 'mek' as const, label: 'Left Torso', location: 'LT', rear: false, throughArmorCritical: false };
+        const hit = (damage: number, source: typeof laser | typeof rifle) =>
+            ({ location: 'LT', rear: false, damage, arc: 'front' as const, throughArmorCritical: false, source });
+        spyOn(Math, 'random').and.returnValue(0);
+        const attack = async (ruleset: 'core-2026' | 'total-warfare', stripArmor: boolean) => {
+            const harness = createHarness(ruleset);
+            const query = () => harness.fixture.instance.query();
+            const location = [...harness.fixture.index.locations.values()].find(row => row.code === 'LT')!;
+            const face = location.armorFaceIds.find(faceId => harness.fixture.index.armorFaces.get(faceId)!.face === 'front')!;
+            const armor = query().remainingArmor(face, 'preview');
+            const internal = query().remainingInternal(location.id, 'preview');
+            // A laser strips the torso's armor first; the rifle hit then strikes its bare structure.
+            const hits = [...stripArmor ? [hit(armor, laser)] : [], hit(5, rifle)];
+            const member = { id: harness.instanceId, force: harness.force, entity: harness.fixture.entity } as unknown as CBTForceMember;
+            const deal = attackDamagePreview(member, ruleset);
+            const previewed = hits.map(group => deal(struck, group.damage, group.source)).at(-1);
+            expect(await service.applyWeaponHits(harness.force, harness.instanceId, hits, 'pending', harness.dispatch))
+                .toBeTrue();
+            const dealt = stripArmor ? internal - query().remainingInternal(location.id, 'preview')
+                : armor - query().remainingArmor(face, 'preview');
+            return [previewed, dealt];
+        };
+        // Against armor the 5-point hit deals 2; Total Warfare never reduces damage to internal structure (TO:AuE
+        // p. 150), Core reduces every rifle hit on a 'Mech (p. 190).
+        expect(await attack('total-warfare', false)).toEqual([2, 2]);
+        expect(await attack('total-warfare', true)).toEqual([5, 5]);
+        expect(await attack('core-2026', true)).toEqual([2, 2]);
     });
 
     describe('weapon head hits and consciousness', () => {

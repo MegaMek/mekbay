@@ -116,11 +116,12 @@ export function physicalAttackMeetsWaterCover(
 }
 
 /**
- * Physical attack damage underwater: halved, rounding down (Core pp. 77, 127; BMM pp. 35, 65), and still at least
- * 1 point (Core p. 88).
+ * Physical attack damage underwater: halved, rounding down (Core pp. 77, 127; BMM pp. 35, 65). Core keeps every attack
+ * at 1 point or more (p. 88); Total Warfare has no such minimum.
  */
-export function underwaterPhysicalDamage(damage: number): number {
-    return Math.max(1, Math.floor(damage / 2));
+export function underwaterPhysicalDamage(ruleset: CBTRuleset, damage: number): number {
+    const half = Math.floor(damage / 2);
+    return ruleset === 'core-2026' ? Math.max(1, half) : half;
 }
 
 /**
@@ -244,6 +245,7 @@ export function comparativePilotingModifier(attackerPiloting: number, targetPilo
  * table (TW p. 222). A submerged charger takes its charge damage underwater, halved like the attack itself.
  */
 export function physicalSelfDamage(
+    ruleset: CBTRuleset,
     kind: PhysicalAttackKind,
     hit: boolean,
     facts: Readonly<{ attackerTons: number; targetTons: number; attackDamage: number; attackerSubmerged: boolean }>,
@@ -255,7 +257,7 @@ export function physicalSelfDamage(
     if (kind === 'charge') {
         const damage = Math.ceil(facts.targetTons / 10);
         return Object.freeze({
-            damage: facts.attackerSubmerged ? underwaterPhysicalDamage(damage) : damage,
+            damage: facts.attackerSubmerged ? underwaterPhysicalDamage(ruleset, damage) : damage,
             table: 'standard',
             groupSize: 5,
         });

@@ -6,11 +6,14 @@ import { ChangeDetectionStrategy, Component, computed, inject } from '@angular/c
 
 import type { CBTForceMember } from '../../models/force-member.model';
 import { toHitSucceeds } from '../../models/rules/weapon-attack-resolution';
+import { attackDamageSource } from '../../models/rules/armor-damage-rules';
 import { infernoEffect, infernoEffectText } from '../../models/rules/inferno-rules';
 import {
+    attackDamagePreview,
     infernoMissilesThisTurn,
     readAttackHeat,
     readInfernoMissiles,
+    type AttackHitLocation,
 } from '../../models/runtime/attack-hit-location';
 import type { AttackEvent } from '../../services/game-events.service';
 import { OptionsService } from '../../services/options.service';
@@ -49,23 +52,33 @@ export class IncomingAttackDialogComponent {
     /** With critical automation off, critical and motive effects are rolled on the sheet. */
     protected readonly manualCriticals = inject(OptionsService).cbtAutomationMode('criticalHitChanceCheck') === 'no';
 
-    protected readonly weapons = computed<readonly AttackReportWeapon[]>(() => this.data.event.weapons.map(weapon => ({
-        name: weapon.name,
-        targetNumber: weapon.targetNumber,
-        // Infantry shaken off, or struck by a hit on the unit it swarms, takes its damage without a to-hit roll.
-        ...(physicalAttackAlwaysHits(weapon.physical)
-            || ((weapon.swarmRelease || weapon.swarmStrike) && weapon.physical === undefined)
-            ? { automaticHit: true as const } : {}),
-        toHit: weapon.toHit,
-        hit: toHitSucceeds(weapon.toHit, weapon.targetNumber),
-        cluster: weapon.cluster ?? null,
-        inferno: weapon.inferno === true,
-        ...(weapon.noHitLocation ? { noHitLocation: true } : {}),
-        ...(weapon.aim ? { aim: attackReportAim(weapon.aim) } : {}),
-        groups: weapon.groups.map(group => attackReportGroup(this.data.member, weapon.arc ?? this.data.event.arc,
-            group.damage, group.location, group.aux, weapon.partialCover === true, weapon.table, weapon.physical,
-            weapon.aim, weapon.critical === true)),
-    })));
+    protected readonly weapons = computed<readonly AttackReportWeapon[]>(() => {
+        // Hits are previewed in the order this unit takes them; inferno missiles and swarm strikes deal none here.
+        const ruleset = this.data.member.force.getUnitSnapshot(this.data.member.id)?.ruleset;
+        const deal = ruleset ? attackDamagePreview(this.data.member, ruleset) : null;
+        return this.data.event.weapons.map(weapon => {
+            const source = attackDamageSource(weapon);
+            const preview = deal && !weapon.inferno && !weapon.swarmStrike
+                ? (location: AttackHitLocation | null, damage: number) => deal(location, damage, source) : undefined;
+            return {
+                name: weapon.name,
+                targetNumber: weapon.targetNumber,
+                // Infantry shaken off, or struck by a hit on the unit it swarms, takes its damage without a to-hit roll.
+                ...(physicalAttackAlwaysHits(weapon.physical)
+                    || ((weapon.swarmRelease || weapon.swarmStrike) && weapon.physical === undefined)
+                    ? { automaticHit: true as const } : {}),
+                toHit: weapon.toHit,
+                hit: toHitSucceeds(weapon.toHit, weapon.targetNumber),
+                cluster: weapon.cluster ?? null,
+                inferno: weapon.inferno === true,
+                ...(weapon.noHitLocation ? { noHitLocation: true } : {}),
+                ...(weapon.aim ? { aim: attackReportAim(weapon.aim) } : {}),
+                groups: weapon.groups.map(group => attackReportGroup(this.data.member, weapon.arc ?? this.data.event.arc,
+                    group.damage, group.location, group.aux, weapon.partialCover === true, weapon.table, weapon.physical,
+                    weapon.aim, weapon.critical === true, preview)),
+            };
+        });
+    });
     /** Damage per struck location, in the order first struck. */
     protected readonly summary = computed(() => {
         const totals = new Map<string, number>();

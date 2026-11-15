@@ -1,6 +1,7 @@
 // Copyright (C) 2026 The MegaMek Team
 // SPDX-License-Identifier: GPL-3.0-or-later
 
+import type { CBTRuleset } from '../cbt-ruleset.model';
 import type { ComponentId, LocationId } from '../entity/entity-identifiers';
 import type { UnitWaterState } from '../unit-cover.model';
 import { groupAvailable, type MekLimbProfile, type MekMechanicsProfile } from './mek-mechanics-profile';
@@ -46,6 +47,8 @@ export interface MekPhysicalAttackRuntimeFactsV2 extends MekShieldRuntimeFactsV2
     readonly movementDistance: number;
     /** Where the water stands on the 'Mek: its legs in Depth 1 standing, all of it when submerged. */
     readonly water: UnitWaterState;
+    /** A LAM flying in AirMech mode, which used AirMech MP this turn. */
+    readonly airborneAirMek: boolean;
     componentAvailable(componentId: ComponentId): boolean;
     componentMode(componentId: ComponentId): string | undefined;
     criticalSlotDestroyedTurn(
@@ -159,6 +162,7 @@ export function projectMekPhysicalAttacksV2(
             const constructionBase = shield?.maximumAbsorption ?? baseDamage;
             const actuatorEffects = isHandClawFlags(equipment.flags)
                 ? (value: number) => halveForUnavailableActuators(
+                    profile.rulesFlavor,
                     value,
                     profile.limbs.filter(limb => group.locationIds.includes(limb.locationId)),
                     facts,
@@ -173,7 +177,7 @@ export function projectMekPhysicalAttacksV2(
                         weakened: false,
                     })
                     : Object.freeze({ kind: 'none' })
-                : halvedUnderwater(damageEffect(
+                : halvedForAirMek(halvedUnderwater(profile.rulesFlavor, damageEffect(
                     baseDamage,
                     constructionBase,
                     standardTsmInstalled && !ignoreMyomer,
@@ -181,7 +185,7 @@ export function projectMekPhysicalAttacksV2(
                     tsmActive && !ignoreMyomer,
                     vibroblade !== null && !vibrobladeActive ? vibroblade.activeDamage : undefined,
                     actuatorEffects,
-                ), attacksUnderwater(facts, legsOnly(profile, group.locationIds)));
+                ), attacksUnderwater(facts, legsOnly(profile, group.locationIds))), facts.airborneAirMek);
             const locationCodes = group.locationIds.map(locationId =>
                 requireLocation(index, locationId).code);
             attacks.push(Object.freeze({
@@ -205,7 +209,7 @@ export function projectMekPhysicalAttacksV2(
             const kickingLegCode = action.kind !== 'kick' || kickingLeg === null
                 ? undefined : index.locations.get(kickingLeg.locationId)?.code;
             // A death from above starts above the water, so only a submerged 'Mech could make one and it cannot.
-            const effect = halvedUnderwater(intrinsicEffect(
+            const effect = halvedForAirMek(halvedUnderwater(profile.rulesFlavor, intrinsicEffect(
                 action,
                 profile,
                 index,
@@ -216,7 +220,8 @@ export function projectMekPhysicalAttacksV2(
                 shields,
                 kickingLeg,
             ), action.kind !== 'death-from-above'
-                && attacksUnderwater(facts, isMekKick(action.kind) || legsOnly(profile, locationIds)));
+                && attacksUnderwater(facts, isMekKick(action.kind) || legsOnly(profile, locationIds))),
+            facts.airborneAirMek && (isMekKick(action.kind) || action.kind === 'punch' || action.kind === 'brush-off'));
             attacks.push(Object.freeze({
                 target: Object.freeze({ kind: 'intrinsic' as const, actionId: action.id }),
                 label: kickingLegCode !== undefined
@@ -275,7 +280,7 @@ function intrinsicEffect(
         limbs = profile.limbs.filter(limb => locationCode(index, limb.locationId) === location);
         lowerArmActuator = limbs.some(limb => limb.actuators.some(actuator => actuator.kind === 'lower-arm'));
         // The sheet prints the punch with a missing actuator already halved; play halves it after TSM instead.
-        baseDamage = mekPunchBaseDamage(profile.declaredMassTons, profile.form === 'lam');
+        baseDamage = mekPunchBaseDamage(profile.declaredMassTons);
         if (profile.rulesFlavor === 'core-2026') {
             baseDamage += shields.find(shield =>
                 shield.locationCode === location && shield.operational)?.bashBonus ?? 0;
@@ -292,7 +297,7 @@ function intrinsicEffect(
         supportsTsm && tsmActive,
         undefined,
         value => halveForUnavailableActuators(
-            punch ? mekPunchDamage(value, lowerArmActuator) : value, limbs, facts),
+            profile.rulesFlavor, punch ? mekPunchDamage(value, lowerArmActuator) : value, limbs, facts),
     );
 }
 
@@ -356,14 +361,28 @@ function legsOnly(profile: MekMechanicsProfile, locationIds: readonly LocationId
 }
 
 /** A physical attack made underwater deals `underwaterPhysicalDamage`. */
-export function halvedUnderwater(effect: MekPhysicalAttackEffectV2, underwater: boolean): MekPhysicalAttackEffectV2 {
-    if (!underwater || effect.kind !== 'damage' || effect.displayFormula !== undefined) return effect;
+export function halvedUnderwater(
+    ruleset: CBTRuleset,
+    effect: MekPhysicalAttackEffectV2,
+    underwater: boolean,
+): MekPhysicalAttackEffectV2 {
+    return underwater ? halvedEffect(effect, damage => underwaterPhysicalDamage(ruleset, damage)) : effect;
+}
+
+/** A flying AirMech's kicks, punches and melee weapon attacks deal half damage, rounding up (IO:AE p. 106). */
+function halvedForAirMek(effect: MekPhysicalAttackEffectV2, airborneAirMek: boolean): MekPhysicalAttackEffectV2 {
+    return airborneAirMek ? halvedEffect(effect, value => Math.ceil(value / 2)) : effect;
+}
+
+function halvedEffect(effect: MekPhysicalAttackEffectV2, halve: (damage: number) => number): MekPhysicalAttackEffectV2 {
+    if (effect.kind !== 'damage' || effect.displayFormula !== undefined) return effect;
     return Object.freeze({
         ...effect,
-        damage: underwaterPhysicalDamage(effect.damage),
-        maximumDamage: underwaterPhysicalDamage(effect.maximumDamage),
-        baseDamage: underwaterPhysicalDamage(effect.baseDamage),
+        damage: halve(effect.damage),
+        maximumDamage: halve(effect.maximumDamage),
+        baseDamage: halve(effect.baseDamage),
         weakened: true,
+        ...(effect.alternateDamage === undefined ? {} : { alternateDamage: halve(effect.alternateDamage) }),
     });
 }
 
@@ -381,7 +400,12 @@ function groupStructurallyAvailable(
         && group.locationIds.every(locationId => !facts.locationDestroyed(locationId));
 }
 
+/**
+ * Each destroyed arm or leg actuator halves the damage, rounding down. An arm's attack keeps at least 1 point (TW
+ * p. 145; BMM p. 40), as does every attack under Core (p. 88); a Total Warfare kick can fall to 0 (BMM p. 49).
+ */
 function halveForUnavailableActuators(
+    ruleset: CBTRuleset,
     value: number,
     limbs: readonly MekMechanicsProfile['limbs'][number][],
     facts: MekPhysicalAttackRuntimeFactsV2,
@@ -394,7 +418,8 @@ function halveForUnavailableActuators(
         || actuator.kind === 'lower-leg'));
     for (const actuator of relevant) {
         if (groupAvailable(actuator, facts)) continue;
-        damage = Math.max(1, Math.floor(damage / 2));
+        const minimum = ruleset === 'core-2026' || actuator.kind === 'upper-arm' || actuator.kind === 'lower-arm' ? 1 : 0;
+        damage = Math.max(minimum, Math.floor(damage / 2));
     }
     return damage;
 }

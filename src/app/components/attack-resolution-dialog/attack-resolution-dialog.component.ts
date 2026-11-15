@@ -17,7 +17,10 @@ import {
     type TwoDice,
     type WeaponAttackProfile,
 } from '../../models/rules/weapon-attack-resolution';
-import { readAttackHeat } from '../../models/runtime/attack-hit-location';
+import { attackDamagePreview, readAttackHeat } from '../../models/runtime/attack-hit-location';
+import { attackDamageSource } from '../../models/rules/armor-damage-rules';
+import type { CBTRuleset } from '../../models/cbt-ruleset.model';
+import type { TnTargetUnitType } from '../../models/target-number-calculator.model';
 import { roll2D6, rollD6 } from '../../models/runtime/mek-automation-rules';
 import type { AttackWeaponReport } from '../../services/game-events.service';
 import type { MekHitArc } from '../../utils/record-sheet-reference-table';
@@ -41,6 +44,10 @@ export interface AttackResolutionTarget {
     readonly defender: CBTForceMember | null;
     /** Where hits are sent: the owner of a linked OPFOR unit. */
     readonly delivery: Readonly<{ toForce: string; toUnit: string }> | null;
+    /** The attacker's ruleset, which reads the damage each hit deals where it strikes. */
+    readonly ruleset: CBTRuleset;
+    /** The target's declared type, when its unit is not open here. */
+    readonly unitType?: TnTargetUnitType;
     readonly profiles: readonly WeaponAttackProfile[];
 }
 
@@ -105,7 +112,9 @@ export class AttackResolutionDialogComponent {
     private readonly rolls = signal(this.data.targets.map(target => target.profiles.map(rollWeapon)));
 
     protected readonly targets = computed(() => this.data.targets.map((target, t) => {
-        const weapons = target.profiles.map((profile, w) => reportWeapon(target, profile, this.rolls()[t][w]));
+        // Hits are previewed in the order the struck unit takes them.
+        const deal = attackDamagePreview(target.defender, target.ruleset, target.unitType);
+        const weapons = target.profiles.map((profile, w) => reportWeapon(target, profile, this.rolls()[t][w], deal));
         return {
             target,
             weapons,
@@ -240,7 +249,13 @@ function diceForTotal(total: number): TwoDice {
     return Object.freeze([Math.ceil(total / 2), Math.floor(total / 2)] as const);
 }
 
-function reportWeapon(target: AttackResolutionTarget, profile: WeaponAttackProfile, rolls: WeaponRolls): AttackReportWeapon {
+function reportWeapon(
+    target: AttackResolutionTarget,
+    profile: WeaponAttackProfile,
+    rolls: WeaponRolls,
+    deal: ReturnType<typeof attackDamagePreview>,
+): AttackReportWeapon {
+    const source = attackDamageSource(profile);
     const cluster = needsClusterRoll(profile);
     const outcome = resolveWeaponAttack(profile, rolls.toHit, rolls.cluster, rolls.clusterModifier, rolls.heat);
     const heat = profile.heatWeapon;
@@ -268,9 +283,11 @@ function reportWeapon(target: AttackResolutionTarget, profile: WeaponAttackProfi
             }) }
             : {}),
         ...(aim ? { aim: attackReportAim(aim) } : {}),
+        // Inferno missiles deal no damage of their own: the struck unit decides their effect.
         groups: Object.freeze(outcome.groups.map((damage, index) => attackReportGroup(target.defender,
             rolls.side ?? profile.arc ?? target.arc, damage, rolls.locations[index].dice, rolls.locations[index].aux,
-            profile.partialCover, profile.table, profile.physical, aim, profile.critical === true))),
+            profile.partialCover, profile.table, profile.physical, aim, profile.critical === true,
+            profile.inferno ? undefined : (location, dealt) => deal(location, dealt, source)))),
     });
 }
 
@@ -286,6 +303,7 @@ function deliveredWeapon(profile: WeaponAttackProfile, rolls: WeaponRolls): Atta
         ...(profile.table === 'standard' ? {} : { table: profile.table }),
         ...(profile.physical === undefined ? {} : { physical: profile.physical }),
         ...(profile.critical ? { critical: true as const } : {}),
+        ...(profile.rifle ? { rifle: true as const } : {}),
         // A brush off that hits knocks the swarming infantry off (TW p. 222).
         ...(profile.physical === 'brush-off' && outcome.hit ? { swarmRelease: true as const } : {}),
         ...((rolls.side ?? profile.arc) === undefined ? {} : { arc: rolls.side ?? profile.arc }),

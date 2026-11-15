@@ -80,15 +80,13 @@ describe('Mek intrinsic actions', () => {
     expect(actions.filter(action => action.kind === 'punch')).toHaveSize(2);
   });
 
-  it('keeps prototype TSM inert and exposes LAM alternate damage explicitly', () => {
+  it('keeps prototype TSM inert on a LAM', () => {
     const actions = buildMekIntrinsicActions(facts({
       config: 'LAM',
       equipment: [fact('CT', 'F_TSM', 'F_PROTOTYPE')],
     }));
 
-    expect(actions.find(action => action.kind === 'kick')?.damage).toEqual({
-      kind: 'fixed', value: 11, alternatives: { airmek: { kind: 'fixed', value: 6 } },
-    });
+    expect(actions.find(action => action.kind === 'kick')?.damage).toEqual({ kind: 'fixed', value: 11 });
     expect(intrinsicActionBaseDamageText(actions.find(action => action.kind === 'airmek-ram')!))
       .toBe('11/hex');
   });

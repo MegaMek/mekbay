@@ -20,14 +20,14 @@ import type { BaseEntity } from '../models/entity/base-entity';
 import type { AeroEntity } from '../models/entity/entities/aero/aero-entity';
 import type { CrewPositionId, LocationId } from '../models/entity/entity-identifiers';
 import { isAeroEntity, isProtoMekEntity, isVehicleEntity } from '../models/entity/utils/entity-type-guards';
-import { resolveArmorDamage, type DamageSource } from '../models/rules/armor-damage-rules';
+import { resolveArmorDamage, rifleHitDamage, type DamageSource } from '../models/rules/armor-damage-rules';
 import {
     infernoEffect,
     infernoEffectCountsTurn,
     infernoMissilesStruck,
     type InfernoMissile,
 } from '../models/rules/inferno-rules';
-import { infernoMissilesThisTurn } from '../models/runtime/attack-hit-location';
+import { infernoMissilesThisTurn, struckArmorFace } from '../models/runtime/attack-hit-location';
 import type { NonMekHitArc, NonMekHitEffect } from '../models/runtime/non-mek-hit-location';
 import type { AeroCriticalType } from '../models/rules/aero-critical-rules';
 import type { WeaponEquipment } from '../models/equipment.model';
@@ -292,18 +292,27 @@ export class DirectNonMekAutomationService {
         const perspective = target === 'pending' ? 'preview' : 'committed';
         const structureDamaged: LocationId[] = [];
         let structuralIntegrityDamage = 0;
-        // TW p.197: a weapon striking a VTOL's rotors deals 1 point per 10 (or fraction) of its damage value.
-        let damage = group.source.kind === 'weapon'
-            && this.nonMekSnapshot(force, instanceId)?.index.locations.get(group.locationId)?.code === 'Rotor'
-            ? Math.ceil(group.damage / 10)
+        const struck = this.nonMekSnapshot(force, instanceId);
+        const struckLocation = struck?.index.locations.get(group.locationId);
+        const struckFace = struck && struckLocation ? struckArmorFace(struck.index, struckLocation.id, false) : undefined;
+        // A rifle hit loses 3 points against the armor where it strikes (`rifleHitDamage`).
+        const weaponDamage = struck && struckLocation && group.source.kind === 'weapon' && group.source.rifle
+            ? rifleHitDamage(struck.ruleset, group.damage, {
+                entity: struck.entity,
+                location: struckLocation.code,
+                armor: struckFace ? struck.query.remainingArmor(struckFace.id, perspective) : 0,
+            })
             : group.damage;
+        // TW p.197: a weapon striking a VTOL's rotors deals 1 point per 10 (or fraction) of its damage value.
+        let damage = group.source.kind === 'weapon' && struckLocation?.code === 'Rotor'
+            ? Math.ceil(weaponDamage / 10)
+            : weaponDamage;
         let locationId: LocationId | null = group.locationId;
         while (locationId !== null && damage > 0) {
             const snapshot = this.nonMekSnapshot(force, instanceId);
             const location: CBTRuntimeLocation | undefined = snapshot?.index.locations.get(locationId);
             if (!snapshot || !location) return null;
-            const face = location.armorFaceIds.map(faceId => snapshot.index.armorFaces.get(faceId))
-                .find(candidate => candidate?.face === 'front') ?? snapshot.index.armorFaces.get(location.armorFaceIds[0]!);
+            const face = struckArmorFace(snapshot.index, location.id, false);
             if (face) {
                 const armor = resolveArmorDamage(snapshot.ruleset, damage, snapshot.query.remainingArmor(face.id, perspective),
                     snapshot.entity.armorAt(location.code)?.type ?? null, group.source);

@@ -60,7 +60,7 @@ MekPendingFallConsequencesV2,
 import type { MekUnitRuntimeState } from '../models/runtime/runtime-state';
 import type { MekHitArcV2,MekUnitQueryPort } from '../models/runtime/unit-instance';
 import { mekHitLocationTable } from '../utils/record-sheet-reference-table';
-import { FALL_DAMAGE, resolveArmorDamage, type DamageSource } from '../models/rules/armor-damage-rules';
+import { FALL_DAMAGE, resolveArmorDamage, rifleHitDamage, type DamageSource } from '../models/rules/armor-damage-rules';
 import { infernoEffect, type InfernoMissile } from '../models/rules/inferno-rules';
 import { uuidv4 } from '../utils/uuid.util';
 import type { SwarmShakeOffCause } from '../models/rules/anti-mek-attack-rules';
@@ -2020,6 +2020,10 @@ export class DirectMekAutomationService {
             .find(candidate => candidate?.face === (initialRear ? 'rear' : 'front'));
         const initialArmor = initialFace ? initial.query.remainingArmor(initialFace.id, perspective) : 0;
         const initialArmorType = initialLocation?.armor.type ?? null;
+        // A rifle hit loses 3 points against the armor where it strikes (`rifleHitDamage`).
+        if (group.source.kind === 'weapon' && group.source.rifle) {
+            damage = rifleHitDamage(initial.ruleset, damage, { entity: initial.entity, location: sourceCode, armor: initialArmor });
+        }
         const visited = new Set<string>();
         while (code && (damage > 0 || sharedCompositePip) && !visited.has(code)) {
             visited.add(code);

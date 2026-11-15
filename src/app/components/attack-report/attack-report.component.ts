@@ -10,7 +10,7 @@ import type { CBTForceMember } from '../../models/force-member.model';
 import { INFERNO_LABEL } from '../../models/rules/inferno-rules';
 import type { HitTable } from '../../models/rules/physical-attack-rules';
 import type { HitLocationDice, TwoDice } from '../../models/rules/weapon-attack-resolution';
-import { readAttackHitLocation } from '../../models/runtime/attack-hit-location';
+import { readAttackHitLocation, type AttackHitLocation } from '../../models/runtime/attack-hit-location';
 import { aimedShotStrikes, type AimedShotRoll } from '../../models/rules/aimed-shot-rules';
 import { getMekLocationLabel } from '../../models/entity/types/mek';
 import type { MekHitArc } from '../../utils/record-sheet-reference-table';
@@ -72,8 +72,9 @@ export const ATTACK_ARC_LABELS: Readonly<Record<MekHitArc, string>> = Object.fre
 });
 
 /**
- * One damage group as reported, read on the struck unit's own table when that unit is open here. A physical attack
- * on conventional infantry reports the troopers it eliminates (`physicalAttackTroopersHit`).
+ * One damage group as reported, read on the struck unit's own table when that unit is open here, dealing what `deal`
+ * says it deals where it strikes (`attackDamagePreview`). A physical attack on conventional infantry reports the
+ * troopers it eliminates (`physicalAttackTroopersHit`).
  */
 export function attackReportGroup(
     defender: CBTForceMember | null,
@@ -86,14 +87,16 @@ export function attackReportGroup(
     physical?: PhysicalAttackKind,
     aim?: AimedShotRoll,
     critical = false,
+    deal: (location: AttackHitLocation | null, damage: number) => number = (_, damage) => damage,
 ): AttackReportGroup {
     const read = defender ? readAttackHitLocation(defender, arc, location, aux, partialCover, table, aim) : null;
+    const dealt = deal(read, damage);
     const infantry = defender !== null && physical !== undefined && isInfantryEntity(defender.entity)
         ? defender.entity : null;
     return Object.freeze({
         ...(infantry && physical
-            ? { damage: physicalAttackTroopersHit(physical, damage, infantry.isMechanized()), troopers: true as const }
-            : { damage }),
+            ? { damage: physicalAttackTroopersHit(physical, dealt, infantry.isMechanized()), troopers: true as const }
+            : { damage: dealt }),
         location,
         // Without the struck unit here, an aimed shot that strikes still names its location.
         label: read?.label ?? (!defender && aim && aimedShotStrikes(aim.roll) ? attackReportAim(aim).label : null),

@@ -17,6 +17,7 @@ import {
     physicalSelfDamage,
     physicalStrike,
 } from './physical-attack-rules';
+import type { CBTRuleset } from '../cbt-ruleset.model';
 import { damageGroups, physicalAttackProfile, resolveWeaponAttack } from './weapon-attack-resolution';
 import { physicalAttackMeetsPartialCover, physicalAttackTargetNumber } from '../runtime/equipment-panel';
 
@@ -138,19 +139,23 @@ describe('physical attack rules', () => {
 
     it('costs the attacker 1 per 10 target tons for a charge and 1 per 5 own tons on the kick table for a DFA', () => {
         const facts = { attackerTons: 55, targetTons: 85, attackDamage: 6, attackerSubmerged: false };
-        expect(physicalSelfDamage('charge', true, { ...facts, attackerTons: 50 }))
+        expect(physicalSelfDamage('total-warfare', 'charge', true, { ...facts, attackerTons: 50 }))
             .toEqual({ damage: 9, table: 'standard', groupSize: 5 });
-        // Charging underwater halves it, rounding down (Core p. 77; BMM p. 35).
-        expect(physicalSelfDamage('charge', true, { ...facts, attackerSubmerged: true })?.damage).toBe(4);
-        expect(physicalSelfDamage('death-from-above', true, facts)).toEqual({ damage: 11, table: 'kick', groupSize: 5 });
-        expect(physicalSelfDamage('punch', true, facts)).toBeNull();
-        expect(physicalSelfDamage('charge', false, facts)).toBeNull();
+        // Charging underwater halves it, rounding down (Core p. 77; BMM p. 35): to 0 under Total Warfare, never below 1
+        // under Core (p. 88).
+        const submerged = (ruleset: CBTRuleset, targetTons: number) =>
+            physicalSelfDamage(ruleset, 'charge', true, { ...facts, targetTons, attackerSubmerged: true })?.damage;
+        expect([submerged('total-warfare', 85), submerged('total-warfare', 10), submerged('core-2026', 10)])
+            .toEqual([4, 0, 1]);
+        expect(physicalSelfDamage('total-warfare', 'death-from-above', true, facts)).toEqual({ damage: 11, table: 'kick', groupSize: 5 });
+        expect(physicalSelfDamage('total-warfare', 'punch', true, facts)).toBeNull();
+        expect(physicalSelfDamage('total-warfare', 'charge', false, facts)).toBeNull();
     });
 
     it("deals a missed brush off's punch to the 'Mech itself as one hit on the punch table (TW p. 222)", () => {
         const facts = { attackerTons: 55, targetTons: 1, attackDamage: 6, attackerSubmerged: false };
-        expect(physicalSelfDamage('brush-off', false, facts)).toEqual({ damage: 6, table: 'punch', groupSize: 6 });
-        expect(physicalSelfDamage('brush-off', true, facts)).toBeNull();
+        expect(physicalSelfDamage('total-warfare', 'brush-off', false, facts)).toEqual({ damage: 6, table: 'punch', groupSize: 6 });
+        expect(physicalSelfDamage('total-warfare', 'brush-off', true, facts)).toBeNull();
     });
 
     it('forces the Piloting Skill Rolls of each ruleset', () => {

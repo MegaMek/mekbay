@@ -640,15 +640,12 @@ describe('MekEntity weapons', () => {
     expect(entity.jumpMP()).toBe(0);
   });
 
-  it('represents LAM mode damage as an explicit alternate', () => {
+  it("gives a LAM a 'Mech's punch and kick, and the AirMech Ram", () => {
     const entity = new LamEntity();
     entity.setTonnage(55);
 
-    expect(entity.intrinsicWeapons().find(attack => attack.kind === 'kick')?.damage).toEqual({
-      kind: 'fixed',
-      value: 11,
-      alternatives: { airmek: { kind: 'fixed', value: 6 } },
-    });
+    expect(entity.intrinsicWeapons().find(attack => attack.kind === 'kick')?.damage).toEqual({ kind: 'fixed', value: 11 });
+    expect(entity.intrinsicWeapons().find(attack => attack.kind === 'punch')?.damage).toEqual({ kind: 'fixed', value: 6 });
     expect(entity.intrinsicWeapons().some(attack => attack.kind === 'airmek-ram')).toBeTrue();
   });
 

@@ -68,6 +68,8 @@ export interface WeaponAttackProfile {
     readonly damageByHits?: readonly number[];
     /** A heat-causing weapon: its hit may deliver heat as well as, or instead of, damage. */
     readonly heatWeapon?: AttackHeatWeapon;
+    /** A rifle: each hit loses 3 points where it strikes (`rifleHitDamage`). */
+    readonly rifle?: true;
     /** A hit also rolls on the Determining Critical Hits Table: a leg attack, battle armor's swarm damage. */
     readonly critical?: true;
     /**
@@ -176,6 +178,7 @@ export function weaponAttackProfile(facts: WeaponAttackFacts, rules: CBTGameRule
             projectiles: Math.max(1, projectiles),
             allHit: equipment.ammoType === 'SRM_STREAK' || equipment.ammoType === 'LRM_STREAK',
             groupSize: Math.max(damagePerHit, groupSize),
+            ...(equipment.ammoType === 'RIFLE' ? { rifle: true as const } : {}),
         });
     // Each inferno missile that hits is its own group: one hit-location roll, no damage.
     if (isInfernoAmmo(ammo)) {

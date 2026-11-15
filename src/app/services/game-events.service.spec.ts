@@ -72,6 +72,19 @@ describe('parseGameEvent', () => {
         expect(parseGameEvent(report({ critical: false }))).toBeNull();
     });
 
+    it("keeps a rifle's mark, which only a weapon attack carries", () => {
+        const rifle = (extra: object) => ({ ...attack(), weapons: [{
+            name: 'Heavy Rifle', types: ['DB'], targetNumber: 7, toHit: [4, 4], rifle: true,
+            groups: [{ damage: 9, location: [3, 4], aux: 2 }], ...extra,
+        }] });
+        expect(parseGameEvent(rifle({}))).toEqual(jasmine.objectContaining({
+            weapons: [jasmine.objectContaining({ rifle: true })],
+        }));
+        expect(parseGameEvent(rifle({ rifle: false }))).toBeNull();
+        expect(parseGameEvent(rifle({ physical: 'punch', table: 'punch', groups: [{ damage: 9, location: [3], aux: 2 }] })))
+            .toBeNull();
+    });
+
     it('keeps a hit that struck the swarming infantry, with its battle armor trooper', () => {
         const report = (swarmStrike: unknown) => ({ ...attack(), weapons: [{
             name: 'Medium Laser (struck while swarming)', types: ['DE'], targetNumber: 7, toHit: [5, 5], swarmStrike,

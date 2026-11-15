@@ -53,6 +53,8 @@ export interface AttackWeaponReport {
     readonly table?: Exclude<HitTable, 'standard'>;
     /** A hit also rolls on the Determining Critical Hits Table: a leg attack, battle armor's swarm damage. */
     readonly critical?: true;
+    /** A rifle: each hit loses 3 points where it strikes (`rifleHitDamage`). */
+    readonly rifle?: true;
     /**
      * The swarming infantry struck comes off the unit it swarms: a brush off that hits, or the infantry shaken off by
      * a jump, a fall or erratic manoeuvres.
@@ -184,7 +186,7 @@ function parseWeaponReport(value: unknown): AttackWeaponReport | null {
     if (value === null || typeof value !== 'object' || Array.isArray(value)) return null;
     const {
         name, types, partialCover, targetNumber, toHit, cluster, table, physical, arc, inferno, noHitLocation, heat, aim,
-        critical, swarmRelease, swarmStrike, groups,
+        critical, rifle, swarmRelease, swarmStrike, groups,
     } = value as Record<string, unknown>;
     if (!isId(name) || !isInteger(targetNumber, -100, 100) || !isTwoDice(toHit)
         || !Array.isArray(types) || types.length > WEAPON_TYPES.length
@@ -195,6 +197,7 @@ function parseWeaponReport(value: unknown): AttackWeaponReport | null {
         || (heat !== undefined && !isInteger(heat, 1, MAX_DAMAGE))
         || (table !== undefined && table !== 'punch' && table !== 'kick' && table !== 'swarm')
         || (critical !== undefined && critical !== true)
+        || (rifle !== undefined && (rifle !== true || physical !== undefined))
         || (swarmRelease !== undefined && swarmRelease !== true)
         || (swarmStrike !== undefined && !isSwarmStrike(swarmStrike))
         || (physical !== undefined && !PHYSICAL_ATTACK_KINDS.includes(physical as PhysicalAttackKind))
@@ -240,6 +243,7 @@ function parseWeaponReport(value: unknown): AttackWeaponReport | null {
         ...(parsedCluster === undefined ? {} : { cluster: parsedCluster }),
         ...(table === undefined ? {} : { table: table as Exclude<HitTable, 'standard'> }),
         ...(critical ? { critical: true as const } : {}),
+        ...(rifle ? { rifle: true as const } : {}),
         ...(swarmRelease ? { swarmRelease: true as const } : {}),
         ...(swarmStrike === undefined ? {} : {
             swarmStrike: Object.freeze((swarmStrike as { trooper?: number }).trooper === undefined

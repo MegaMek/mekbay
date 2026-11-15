@@ -17,6 +17,19 @@ describe('weapon attack resolution', () => {
         ammo: { type: 'LRM', rackSize: 15, damagePerShot: 1 },
     });
 
+    it('marks a rifle, whose hits lose their 3 points only where they strike (`rifleHitDamage`)', () => {
+        const rifle = weaponAttackProfile({
+            componentId: weaponId,
+            equipment: new WeaponEquipment({
+                id: 'Rifle (Cannon, Heavy)', name: 'Heavy Rifle', type: 'weapon', flags: ['F_BALLISTIC', 'F_DIRECT_FIRE'],
+                weapon: { damage: 9, ammoType: 'RIFLE' },
+            }),
+            mode: undefined, damage: { values: [9], maximum: 9 }, ammo: null, types: ['DB'], name: 'Heavy Rifle',
+            targetNumber: 6, partialCover: false,
+        }, TW_GAME_RULES)!;
+        expect([rifle.damagePerHit, rifle.rifle]).toEqual([9, true]);
+    });
+
     it('rolls missiles on the Cluster Hits Table and groups them in five-point clusters', () => {
         const profile = weaponAttackProfile({ componentId: weaponId, equipment: lrm15, mode: undefined, damage: { values: [1], maximum: 15, unit: 'missile' }, ammo: lrmAmmo, types: [], name: 'LRM 15', targetNumber: 8, partialCover: false }, TW_GAME_RULES)!;
 

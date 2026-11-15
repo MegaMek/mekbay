@@ -18,7 +18,6 @@ export type FixedPhysicalDamage = {
   readonly kind: 'fixed';
   readonly value: number;
   readonly boostedValue?: number;
-  readonly alternatives?: Readonly<Record<string, IntrinsicWeaponDamage>>;
 };
 
 export type IntrinsicWeaponDamage =

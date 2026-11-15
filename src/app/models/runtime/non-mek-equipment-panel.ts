@@ -844,7 +844,7 @@ function projectProtoMekFrenzy(
         // Non-'Mek physical attacks read the standard table, which water cover always meets.
         meetsWaterCover: true,
         // A ProtoMek is underwater from Depth 1; only a standing 'Mech needs Depth 2 (TW p. 56).
-        effect: halvedUnderwater(Object.freeze({
+        effect: halvedUnderwater(ruleset, Object.freeze({
             kind: 'damage' as const,
             damage: action.damage.value,
             maximumDamage: action.damage.value,

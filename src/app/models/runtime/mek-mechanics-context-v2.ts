@@ -558,6 +558,7 @@ export function projectMekPhysicalAttacksContextV2(
         movementMode: input.movementMode,
         movementDistance: input.movementDistance,
         water: input.water,
+        airborneAirMek: input.conversionMode === 'airmek' && input.airborne,
         componentAvailable: input.componentAvailable,
         componentDestroyed: input.componentDestroyed,
         componentMode: input.componentMode,

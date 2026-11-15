@@ -6,7 +6,11 @@ import {
     mekPhysicalLocationRows,
     type MekHitArc,
 } from '../../utils/record-sheet-reference-table';
-import type { LocationId } from '../entity/entity-identifiers';
+import type { ArmorFaceId, LocationId } from '../entity/entity-identifiers';
+import type { CBTRuleset } from '../cbt-ruleset.model';
+import { resolveArmorDamage, rifleHitDamage, type DamageSource } from '../rules/armor-damage-rules';
+import type { TnTargetUnitType } from '../target-number-calculator.model';
+import type { CBTRuntimeArmorFace, CBTUnitRuntimeIndex } from './cbt-unit-runtime';
 import type { AeroCriticalType } from '../rules/aero-critical-rules';
 import { MEK_TORSO_LOCATIONS } from '../entity/types/mek';
 import { isMekEntity } from '../entity/utils/entity-type-guards';
@@ -274,4 +278,47 @@ export function readAttackHitLocation(
         ...(result.aeroCritical === undefined ? {} : { aeroCritical: result.aeroCritical }),
         ...(result.transferredFrom ? { transferred: true as const } : {}),
     });
+}
+
+/** The armor face a hit on this location strikes: a torso's rear from behind, otherwise the front or only face. */
+export function struckArmorFace(
+    index: CBTUnitRuntimeIndex,
+    locationId: LocationId,
+    rear: boolean,
+): CBTRuntimeArmorFace | undefined {
+    const faces = (index.locations.get(locationId)?.armorFaceIds ?? []).map(faceId => index.armorFaces.get(faceId));
+    return faces.find(face => face?.face === (rear ? 'rear' : 'front')) ?? (rear ? undefined : faces[0]);
+}
+
+/**
+ * Previews what an attack's hits deal to the struck unit, read in the order they are applied: a rifle hit loses 3
+ * points where it strikes (`rifleHitDamage`), against the armor the attack's earlier hits leave on that face. Damage
+ * moving on from a destroyed location, modular armor, and hits that strike swarming infantry instead are not followed;
+ * the hits as applied always are.
+ */
+export function attackDamagePreview(
+    member: CBTForceMember | null,
+    ruleset: CBTRuleset,
+    unitType?: TnTargetUnitType,
+): (location: AttackHitLocation | null, damage: number, source: DamageSource) => number {
+    const snapshot = member?.force.getUnitSnapshot(member.id) ?? null;
+    const armorLeft = new Map<ArmorFaceId, number>();
+    return (location, damage, source) => {
+        const rifle = source.kind === 'weapon' && source.rifle === true;
+        if (!snapshot) return rifle ? rifleHitDamage(ruleset, damage, { unitType }) : damage;
+        const struck = location?.kind === 'mek'
+            ? [...snapshot.index.locations.values()].find(candidate => candidate.code === location.location)
+            : location?.kind === 'non-mek' ? snapshot.index.locations.get(location.locationId) : undefined;
+        if (!struck) return damage;
+        const face = struckArmorFace(snapshot.index, struck.id,
+            location?.kind === 'mek' && location.rear && MEK_TORSO_LOCATIONS.has(struck.code));
+        if (!face) return damage;
+        const armor = armorLeft.get(face.id) ?? snapshot.query.remainingArmor(face.id, 'preview');
+        const dealt = rifle
+            ? rifleHitDamage(snapshot.ruleset, damage, { entity: snapshot.entity, location: struck.code, armor })
+            : damage;
+        armorLeft.set(face.id, armor - resolveArmorDamage(snapshot.ruleset, dealt, armor,
+            snapshot.entity.armorAt(struck.code).type, source).armorDamage);
+        return dealt;
+    };
 }

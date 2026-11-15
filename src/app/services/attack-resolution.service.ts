@@ -21,7 +21,7 @@ import { gameRulesFor } from '../models/rules/game-rules';
 import { isCBTMekForceMember, type CBTForceMember } from '../models/force-member.model';
 import { hasMekRuntime } from '../models/cbt-unit-snapshot';
 import { mekUnitWaterState } from '../models/runtime/mek-targeting-rules';
-import { PHYSICAL_DAMAGE, type DamageSource } from '../models/rules/armor-damage-rules';
+import { attackDamageSource, PHYSICAL_DAMAGE, type DamageSource } from '../models/rules/armor-damage-rules';
 import {
     hitTableDice,
     physicalAttackPilotChecks,
@@ -364,6 +364,8 @@ export class AttackResolutionService {
                 arc: target.local?.calculator?.attackDirection ?? 'front',
                 defender: defender?.member ?? null,
                 delivery: defender ? Object.freeze({ toForce: defender.forceId, toUnit: defender.member.id }) : null,
+                ruleset: fired.ruleset,
+                ...(defender ? {} : { unitType: projectTargetingTarget(target, fired.ruleset).unitType }),
                 profiles: Object.freeze(weapons),
             });
         });
@@ -404,9 +406,7 @@ export class AttackResolutionService {
         const inferno = readInfernoMissiles(member, event.arc, event.weapons);
         const heat = readAttackHeat(member, event.arc, event.weapons);
         const read = event.weapons.filter(weapon => !weapon.inferno).flatMap(weapon => {
-            const source: DamageSource = weapon.physical
-                ? PHYSICAL_DAMAGE
-                : Object.freeze({ kind: 'weapon' as const, types: weapon.types });
+            const source = attackDamageSource(weapon);
             if (weapon.swarmStrike) return swarmStrikeHits(member, weapon, source);
             const natural12 = weapon.toHit[0] + weapon.toHit[1] === 12;
             const struck = new Set<string>();
@@ -502,7 +502,7 @@ export class AttackResolutionService {
                 notes.push('Swarming infantry brushed off');
             }
             for (const outcome of outcomes) {
-                const self = physicalSelfDamage(outcome.kind, outcome.hit, {
+                const self = physicalSelfDamage(ruleset, outcome.kind, outcome.hit, {
                     attackerTons: member.entity.tonnage(), targetTons: outcome.targetTons ?? 0, attackDamage: outcome.damage,
                     attackerSubmerged,
                 });

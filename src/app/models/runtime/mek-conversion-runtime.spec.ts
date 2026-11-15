@@ -61,6 +61,26 @@ describe('Mek conversion modes at runtime', () => {
         expect(setAirborne(createDirectQuadVeeRuntimeFixture(), true)).toBeFalse();
     });
 
+    it('halves the punches and kicks of a flying AirMech, rounding up, and of no other LAM (IO:AE p. 106)', () => {
+        const lam = createDirectLamRuntimeFixture();
+        const damage = (actionId: string) => {
+            const projection = lam.instance.query().mekPhysicalAttacks();
+            if (projection.kind !== 'supported') throw new Error('LAM physical attacks are unsupported');
+            const row = projection.attacks.find(attack =>
+                attack.target.kind === 'intrinsic' && attack.target.actionId === actionId);
+            return row?.effect.kind === 'damage' ? row.effect.damage : null;
+        };
+        const punchAndKick = () => [damage('intrinsic:punch:LA'), damage('intrinsic:kick')];
+
+        // The 50-ton fixture has no arm actuators, so its punch of 5 is halved to 2; it kicks for 10. Both stay whole
+        // as a BattleMech and as an AirMech on the ground.
+        expect(punchAndKick()).toEqual([2, 10]);
+        expect(convert(lam, 'airmek')).toBeTrue();
+        expect(punchAndKick()).toEqual([2, 10]);
+        expect(setAirborne(lam, true)).toBeTrue();
+        expect(punchAndKick()).toEqual([1, 5]);
+    });
+
     for (const ruleset of rulesets) {
         it(`${ruleset}: moves a LAM on its mode's MP, with jumping and sprinting only as a BattleMech`, () => {
             const lam = createDirectLamRuntimeFixture(ruleset);

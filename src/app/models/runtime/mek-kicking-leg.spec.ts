@@ -116,6 +116,7 @@ describe('Mek kicking leg', () => {
     readonly lostAt?: readonly (readonly [ComponentId, LocationId])[];
     readonly fired?: readonly LocationId[];
     readonly water?: UnitWaterState;
+    readonly airborneAirMek?: boolean;
   } = {}): MekPhysicalAttackRuntimeFactsV2 & MekCombatModifierRuntimeFacts {
     const destroyed = new Set(state.destroyed ?? []);
     const lostAt = new Set((state.lostAt ?? []).map(([id, location]) => `${id}@${location}`));
@@ -125,6 +126,7 @@ describe('Mek kicking leg', () => {
       movementMode: null,
       movementDistance: 0,
       water: state.water ?? { partiallyUnderwater: false, submerged: false },
+      airborneAirMek: state.airborneAirMek ?? false,
       conditions: new Set(),
       dedicatedPilotPresent: false,
       dedicatedPilotFunctional: false,
@@ -188,6 +190,33 @@ describe('Mek kicking leg', () => {
     expect([kickRow(test, {}).damage, kickRow(test, { water: standing }).damage]).toEqual([15, 7]);
     expect([punch(), punch(standing), punch(submerged)]).toEqual([5, 5, 2]);
     expect(kickRow(test, { water: submerged }).damage).toBe(7);
+  });
+
+  it('lets Total Warfare halve a kick or an underwater attack to 0, but keeps arms and Core at 1', () => {
+    // A 10-ton 'Mech kicks for 3 with talons and punches for 1.
+    const light = MTF.replace('mass:50', 'mass:10').replace('engine:200', 'engine:40');
+    const legActuators = (test: Kick) => (['LL', 'RL'] as const).flatMap(code =>
+      [test.actuator(code, 'upper-leg'), test.actuator(code, 'lower-leg')]);
+    const submerged = { partiallyUnderwater: false, submerged: true };
+    const damage = (ruleset: CBTRuleset) => {
+      const test = kickTest(ruleset, light);
+      return [
+        kickRow(test, { destroyed: legActuators(test) }).damage,
+        kickRow(test, { water: submerged }, 'intrinsic:punch:LA').damage,
+        kickRow(test, { destroyed: [test.actuator('LA', 'upper-arm')] }, 'intrinsic:punch:LA').damage,
+      ];
+    };
+    // Total Warfare rounds a kick's actuator halving and underwater halving down to 0 (BMM pp. 49, 65), but an arm
+    // actuator keeps a punch at 1 (TW p. 145); Core keeps every attack at 1 (p. 88).
+    expect(damage(TOTAL_WARFARE_RULESET)).toEqual([0, 0, 1]);
+    expect(damage(CORE_2026_RULESET)).toEqual([1, 1, 1]);
+  });
+
+  it("halves a flying AirMech's kick and punch, rounding up (IO:AE p. 106)", () => {
+    const test = kickTest(CORE_2026_RULESET);
+    const flying = { airborneAirMek: true };
+    // 15 with talons becomes 8, and a 50-ton punch of 5 becomes 3.
+    expect([kickRow(test, flying).damage, kickRow(test, flying, 'intrinsic:punch:LA').damage]).toEqual([8, 3]);
   });
 
   it('applies talons, then TSM, then destroyed leg actuators', () => {
