@@ -539,6 +539,66 @@ export async function exportForceToMul(force: CBTForce): Promise<void> {
     downloadTextFile(`${sanitizeMulFilename(force.name)}.mul`, xml);
 }
 
+export interface OperationForceForMul {
+    force: CBTForce;
+    alignment: 'friendly' | 'enemy';
+    isOpposition?: boolean;
+}
+
+export async function serializeOperationToMul(forces: OperationForceForMul[], operationName: string): Promise<string> {
+    const cbtForces = forces.filter(f => f.force.gameSystem === GameSystem.CLASSIC);
+    if (cbtForces.length === 0) {
+        throw new Error('MUL export is only available for Classic BattleTech forces.');
+    }
+
+    for (const { force } of cbtForces) {
+        for (const unit of force.units()) {
+            await unit.load();
+        }
+    }
+
+    const doc = document.implementation.createDocument('', 'record');
+    const root = doc.documentElement;
+    setAttributes(root, { version: getMulVersion() });
+
+    const survivorsElement = doc.createElement('survivors');
+    const salvageElement = doc.createElement('salvage');
+
+    let entityIndex = 0;
+    for (const { force, alignment, isOpposition } of cbtForces) {
+        for (const forceUnit of force.units()) {
+            const entityElement = createEntityElement(doc, forceUnit, entityIndex++);
+
+            // Add alignment as a custom attribute for MekHQ
+            setAttributes(entityElement, { alignment });
+
+            // Place opposition forces in salvage, others in survivors
+            const targetElement = isOpposition ? salvageElement : survivorsElement;
+            appendIndented(targetElement, doc, entityElement, '\t\t');
+            targetElement.appendChild(doc.createTextNode('\n'));
+        }
+    }
+
+    if (survivorsElement.childElementCount > 0) {
+        appendIndented(root, doc, survivorsElement, '\t');
+        root.appendChild(doc.createTextNode('\n'));
+    }
+
+    if (salvageElement.childElementCount > 0) {
+        appendIndented(root, doc, salvageElement, '\t');
+        root.appendChild(doc.createTextNode('\n'));
+    }
+
+    appendClosingIndent(root, doc, '');
+
+    return `<?xml version="1.0" encoding="UTF-8"?>\n\n${new XMLSerializer().serializeToString(doc)}`;
+}
+
+export async function exportOperationToMul(forces: OperationForceForMul[], operationName: string): Promise<void> {
+    const xml = await serializeOperationToMul(forces, operationName);
+    downloadTextFile(`${sanitizeMulFilename(operationName)}-battle-report.mul`, xml);
+}
+
 function parseMulDocument(xmlText: string): XMLDocument {
     const parser = new DOMParser();
     const doc = parser.parseFromString(xmlText, 'application/xml');
