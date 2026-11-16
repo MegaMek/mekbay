@@ -1,7 +1,7 @@
 // Copyright (C) 2026 The MegaMek Team
 // SPDX-License-Identifier: GPL-3.0-or-later
 
-import { ChangeDetectionStrategy, Component, computed, effect, inject, input } from '@angular/core';
+import { ChangeDetectionStrategy, Component, computed, effect, inject, input, signal } from '@angular/core';
 import { CdkDropList, type CdkDrag, type CdkDragDrop } from '@angular/cdk/drag-drop';
 import type { Force } from '../../models/force.model';
 import { isCBTForceMember } from '../../models/force-member.model';
@@ -19,11 +19,9 @@ import { PilotSelectorComponent } from './pilot-selector.component';
   template: `
     <div
       class="crew-slot"
-      [class.slot-layout]="layout() === 'slots'"
       (click)="$event.stopPropagation()"
       [attr.title]="policy().reason"
     >
-      @if (layout() === 'slots') { <span class="slot-label">{{ label() }}</span> }
       <div
         class="slot-body"
         cdkDropList
@@ -40,7 +38,6 @@ import { PilotSelectorComponent } from './pilot-selector.component';
           [person]="occupant"
           [label]="label()"
           [layout]="layout()"
-          [assigned]="true"
           [canEdit]="policy().canEdit"
           [canMove]="canMove()"
           [reason]="policy().reason"
@@ -48,16 +45,18 @@ import { PilotSelectorComponent } from './pilot-selector.component';
           [skillSet]="skillSet()"
           [wounds]="wounds()"
           (edited)="crew.edit(force(), occupant.id)"
-          (unassigned)="crew.unassign(force(), unitId(), positionId())"
-          (deleted)="crew.delete(force(), occupant.id)"
+          (dragging)="vacated.set($event)"
         />
-      } @else {
+      }
+      <!-- While its occupant is dragged away, the station shows the vacancy it would leave;
+           the CDK placeholder then is not the only child and hides. -->
+      @if (!person() || vacated()) {
         <pilot-selector
           [force]="force()"
           [unitId]="unitId()"
           [positionId]="positionId()"
           [label]="label()"
-          [dense]="layout() === 'rows' || layout() === 'compact'"
+          [layout]="layout()"
           [disabled]="!canMove()"
         />
       }
@@ -70,22 +69,10 @@ import { PilotSelectorComponent } from './pilot-selector.component';
         display: block;
         min-width: 0;
       }
-      /* A card dragged over this station only highlights it. The ghost is a clone from another
-         component, so it stays visible only where it stands in for the card that left. */
+      /* A card dragged over this station only highlights it, and the station a card left shows
+         its vacancy instead, so CDK's placeholder clone is never the only child and stays hidden. */
       :host ::ng-deep .slot-body > .cdk-drag-placeholder:not(:only-child) {
         display: none;
-      }
-      .slot-layout {
-        display: flex;
-        flex-direction: column;
-        gap: 4px;
-      }
-      .slot-label {
-        padding: 0 4px;
-        color: var(--text-color-secondary);
-        font-size: .65rem;
-        text-transform: uppercase;
-        letter-spacing: .04em;
       }
       .slot-body.cdk-drop-list-receiving {
         outline: 1px dashed var(--bt-yellow);
@@ -105,9 +92,10 @@ export class CrewSlotComponent {
   readonly positionId = input.required<string>();
   readonly label = input('Pilot');
   readonly layout = input<CrewLayout>('rows');
-  readonly showHealth = input(false);
   readonly crew = inject(CrewAssignmentService);
   readonly dropId = `crew-slot-${uuidv7()}`;
+  /** The occupant is being dragged out of this station. */
+  readonly vacated = signal(false);
   readonly policy = computed(() => this.force().getUnitCrewPolicy(this.unitId()));
   readonly person = computed(() => this.force().getAssignedPerson(this.unitId(), this.positionId()));
   readonly skillSet = computed(() => {
@@ -124,7 +112,6 @@ export class CrewSlotComponent {
       : undefined;
   });
   readonly wounds = computed(() => {
-    if (!this.showHealth()) return undefined;
     const member = this.force()
       .members()
       .find((candidate) => candidate.id === this.unitId());

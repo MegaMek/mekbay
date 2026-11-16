@@ -245,13 +245,18 @@
     min-height: 0;
 }
 
+// Reserves fill the column below the units and scroll inside it, instead of stopping at a fixed share.
 .summary-reserves {
-    flex: 0 0 auto;
-    max-height: 40%;
+    flex: 1 1 0;
+    min-height: 120px;
     overflow-y: auto;
     margin-top: 12px;
     padding-top: 10px;
     border-top: 1px solid var(--border-color);
+}
+
+.summary-reserves:empty {
+    display: none;
 }
 
 .radar-tab-chart {

@@ -4,6 +4,7 @@
 
 import { UnitNameService } from '../../../services/unit-name.service';
 import { Component, ChangeDetectionStrategy, input, inject, computed, resource, signal } from '@angular/core';
+import { NgTemplateOutlet } from '@angular/common';
 import type { UnitSummary } from '../../../models/unit-summary.model';
 import { buildUnitComponentMetadata, type UnitConditionComponent as UnitComponent } from '../../../utils/unit-component-metadata-builder';
 import { weaponTypes } from '../../../utils/equipment.util';
@@ -47,6 +48,10 @@ import { NativeEntityService } from '../../../services/native-entity.service';
 import { forceMemberAdjustedValue, isCBTForceMember, type ForceMember } from '../../../models/force-member.model';
 import { ForceUnitCrewComponent } from '../../force-crew/force-unit-crew.component';
 import { QuirkBadgeComponent } from '../../quirk-badge/quirk-badge.component';
+import { UnitTagsComponent, type TagClickEvent } from '../../unit-tags/unit-tags.component';
+import { SheetPanelComponent } from '../../sheet-panel/sheet-panel.component';
+import { TaggingService } from '../../../services/tagging.service';
+import { unitFactsInSpecs, type UnitDetailsLayout } from '../unit-details-layout';
 
 type SourceListEntry = Sourcebook & { sourceAnnotations: string[] };
 type ComponentDetailsDisplayStyle = 'normal' | 'additional';
@@ -217,6 +222,22 @@ export function getRulesRefBadgeGroups(
         .map(group => group.badges);
 }
 
+/** The value shown for a unit: a force member's own, a search's override, or the base at the given skills. */
+export function unitDetailsAdjustedValue(
+    unit: UnitSummary,
+    member: ForceMember | undefined,
+    damageMode: Parameters<typeof forceMemberAdjustedValue>[1],
+    override: number | undefined,
+    gunnery: number | undefined,
+    piloting: number | undefined,
+    isAlphaStrike: boolean,
+): number | null {
+    if (member) return forceMemberAdjustedValue(member, damageMode);
+    if (override !== undefined) return override;
+    if (gunnery === undefined || piloting === undefined) return null;
+    return isAlphaStrike ? adjustPointValueForSkill(unit.as.PV, gunnery) : calculateAdjustedBV(unit, unit.bv, gunnery, piloting);
+}
+
 export function shouldShowAdjustedPilotSkills(
     adjustedBv: number | null,
     baseBv: number,
@@ -233,7 +254,7 @@ export function shouldShowAdjustedPilotSkills(
 @Component({
     selector: 'unit-details-general-tab',
     changeDetection: ChangeDetectionStrategy.OnPush,
-    imports: [UnitComponentItemComponent, ModeSwitchComponent, StatBarSpecsPipe, FilterAmmoPipe, TooltipDirective, ForceUnitCrewComponent, QuirkBadgeComponent],
+    imports: [NgTemplateOutlet, UnitComponentItemComponent, ModeSwitchComponent, StatBarSpecsPipe, FilterAmmoPipe, TooltipDirective, ForceUnitCrewComponent, QuirkBadgeComponent, UnitTagsComponent, SheetPanelComponent],
     templateUrl: './unit-details-general-tab.component.html',
     styleUrl: './unit-details-general-tab.component.css'
 })
@@ -245,6 +266,7 @@ export class UnitDetailsGeneralTabComponent {
     private optionsService = inject(OptionsService);
     private gameService = inject(GameService);
     private nativeEntities = inject(NativeEntityService);
+    private tagging = inject(TaggingService);
 
     // Inputs
     unit = input.required<UnitSummary>();
@@ -252,6 +274,9 @@ export class UnitDetailsGeneralTabComponent {
     gunnerySkill = input<number | undefined>(undefined);
     pilotingSkill = input<number | undefined>(undefined);
     adjustedValueOverride = input<number | undefined>(undefined);
+    /** Prototype arrangement of the same blocks; `classic` is today's layout. */
+    layout = input<UnitDetailsLayout>('classic');
+    readonly factsInSpecs = computed(() => unitFactsInSpecs(this.layout()));
 
     private readonly runtimeSnapshot = computed(() => {
         const member = this.forceMember();
@@ -447,25 +472,26 @@ export class UnitDetailsGeneralTabComponent {
         return weaponTypes.map(wt => ({ ...wt, count: counts[wt.code] ?? 0 }));
     });
 
-    adjustedValue = computed(() => {
-        const member = this.forceMember();
-        if (member) {
-            return forceMemberAdjustedValue(member, this.optionsService.options().forceViewerBVPVDisplayDamage);
-        }
-        const override = this.adjustedValueOverride();
-        if (override !== undefined) {
-            return override;
-        }
-        const gunnery = this.gunnerySkill();
-        const piloting = this.pilotingSkill();
+    adjustedValue = computed(() => unitDetailsAdjustedValue(
+        this.unit(),
+        this.forceMember(),
+        this.optionsService.options().forceViewerBVPVDisplayDamage,
+        this.adjustedValueOverride(),
+        this.gunnerySkill(),
+        this.pilotingSkill(),
+        this.gameService.isAlphaStrike(),
+    ));
+
+    /** Walk / run [run with MASC] / jump / UMU, as the record sheet lists it. */
+    movementText = computed(() => {
         const unit = this.unit();
-        if (gunnery === undefined || piloting === undefined) {
-            return null;
-        }
-        return this.gameService.isAlphaStrike()
-            ? adjustPointValueForSkill(unit.as.PV, gunnery)
-            : calculateAdjustedBV(unit, unit.bv, gunnery, piloting);
+        return `${unit.walk} / ${unit.run}${unit.run2 != unit.run ? ` [${unit.run2}]` : ''}`
+            + `${unit.jump ? ` / ${unit.jump}` : ''}${unit.umu ? ` / ${unit.umu}` : ''}`;
     });
+
+    openTags({ unit, event }: TagClickEvent): void {
+        void this.tagging.openTagSelector([unit], event.currentTarget as HTMLElement);
+    }
 
     readonly isAlphaStrike = computed(() => this.forceMember()
         ? this.forceMember()!.force.gameSystem === 'as'

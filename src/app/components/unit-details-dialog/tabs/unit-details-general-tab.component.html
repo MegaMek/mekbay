@@ -1,6 +1,188 @@
 <!-- General Tab Content -->
-<div class="tab-content tab-general">
-  <!-- This unit's own crew comes first; the rest describes the design. -->
+<div class="tab-content tab-general" [attr.data-layout]="layout()">
+  @switch (layout()) {
+    @case ('gauges') {
+      <ng-container [ngTemplateOutlet]="crewSeats" />
+      <ng-container [ngTemplateOutlet]="tagRow" />
+      <ng-container [ngTemplateOutlet]="gauges" />
+      <ng-container [ngTemplateOutlet]="specGroups" />
+      <ng-container [ngTemplateOutlet]="quirksBlock" />
+      <ng-container [ngTemplateOutlet]="loadoutBlock" />
+    }
+    @case ('sheet') {
+      <ng-container [ngTemplateOutlet]="tagRow" />
+      <!-- Only a force unit has warriors; stacked, so a lone pilot costs one short row. -->
+      @if (forceMember(); as member) {
+        <sheet-panel heading="Warrior Data">
+          <force-unit-crew [force]="member.force" [unitId]="member.id" layout="sheet" />
+        </sheet-panel>
+      }
+      <sheet-panel [heading]="unit().type + ' Data'">
+        <ng-container [ngTemplateOutlet]="specGroups" />
+        <ng-container [ngTemplateOutlet]="quirksBlock" />
+      </sheet-panel>
+      <ng-container [ngTemplateOutlet]="statBars" />
+      <ng-container [ngTemplateOutlet]="loadoutBlock" />
+    }
+    @case ('columns') {
+      <div class="rail-layout">
+        <aside class="rail">
+          @if (forceMember(); as member) {
+            <force-unit-crew [force]="member.force" [unitId]="member.id" layout="slots" [joined]="true" />
+          }
+          <ng-container [ngTemplateOutlet]="tagRow" />
+          <ng-container [ngTemplateOutlet]="gauges" />
+          <ng-container [ngTemplateOutlet]="specPanels" />
+          <ng-container [ngTemplateOutlet]="quirksBlock" />
+        </aside>
+        <div class="rail-main">
+          <ng-container [ngTemplateOutlet]="loadoutBlock" />
+          <div class="spanner"></div>
+          <ng-container [ngTemplateOutlet]="bottomInfo" />
+        </div>
+      </div>
+    }
+    @case ('specs') {
+      @if (forceMember(); as member) {
+        <force-unit-crew [force]="member.force" [unitId]="member.id" layout="compact" />
+      }
+      <ng-container [ngTemplateOutlet]="tagRow" />
+      <details class="spec-details" open>
+        <summary>Specifications</summary>
+        <div class="spec-details-body">
+          <ng-container [ngTemplateOutlet]="specGroups" />
+          <ng-container [ngTemplateOutlet]="quirksBlock" />
+          <ng-container [ngTemplateOutlet]="statBars" />
+        </div>
+      </details>
+      <ng-container [ngTemplateOutlet]="loadoutBlock" />
+    }
+    @default {
+      <ng-container [ngTemplateOutlet]="crewSlots" />
+      <ng-container [ngTemplateOutlet]="basicInfo" />
+      <ng-container [ngTemplateOutlet]="quirksBlock" />
+      <ng-container [ngTemplateOutlet]="statBars" />
+      <ng-container [ngTemplateOutlet]="loadoutBlock" />
+    }
+  }
+  @if (layout() !== 'columns') {
+    <div class="spanner"></div>
+    <ng-container [ngTemplateOutlet]="bottomInfo" />
+  }
+</div>
+@if (unit().loadIssues.length) {
+  <div class="unit-load-issues-footer">
+    <section class="unit-load-issues framed-borders error" aria-label="Unit data issues">
+      <button
+        class="unit-load-issues-toggle"
+        type="button"
+        (click)="toggleLoadIssues()"
+        [attr.aria-expanded]="loadIssuesOpen()"
+      >
+        <span class="chevron" [class.collapsed]="!loadIssuesOpen()" aria-hidden="true"></span>
+        <span class="unit-load-issues-title">Unit data issues ({{ unit().loadIssues.length }})</span>
+      </button>
+      @if (loadIssuesOpen()) {
+        <ul class="unit-load-issues-list allow-select">
+          @for (issue of unit().loadIssues; track $index) {
+            <li>
+              <strong>{{ issue.severity === 'error' ? 'Error' : 'Warning' }}:</strong>
+              @if (issue.count > 1) { {{ issue.count }}× }{{ issue.message }}
+            </li>
+          }
+        </ul>
+      }
+    </section>
+  </div>
+}
+
+<!-- Building blocks shared by every layout -->
+<ng-template #bottomInfo>
+  <div class="bottom-info allow-select">
+    <div class="bottom-left">
+      @if (sourceList().length > 0) {
+        <span class="label muted">Sources:</span>
+        @for (src of sourceList(); let index = $index; track index) {
+          <span class="source-entry">
+            @if (src.title) {
+              <a class="source-link" (click)="openSourcebooksDialog(index)">{{ src.title }}</a>
+              @if (src.sourceAnnotations.length > 0) {
+                &nbsp;<span class="source-note">({{ src.sourceAnnotations.join(', ') }})</span>
+              }
+            } @else {
+              <span>{{ src.abbrev }}</span>
+              @if (src.sourceAnnotations.length > 0) {
+                &nbsp;<span class="source-note">({{ src.sourceAnnotations.join(', ') }})</span>
+              }
+            }
+          </span>
+        }
+      }
+      @if (forcePacks().length > 0) {
+        <span class="label muted">Force Packs: </span>
+        @for (pack of forcePacks(); let i = $index; track i) {
+          <span>{{ pack }}</span>
+        }
+      }
+      @if (rulesRefBadgeGroups().length > 0) {
+        <span class="label muted">Rulebooks:</span>
+        <div class="rules-ref-badges">
+          @for (badgeGroup of visibleRulesRefBadgeGroups(); let groupIndex = $index; track groupIndex) {
+            @if (groupIndex > 0) {
+              <span class="rules-ref-operator">||</span>
+            }
+            <span class="rules-ref-bucket">
+              @for (badge of badgeGroup; let badgeIndex = $index; track badgeIndex) {
+                @if (badgeIndex > 0) {
+                  <span class="rules-ref-operator">+</span>
+                }
+                <span
+                  class="rules-ref-badge"
+                  [class.base-rules-ref]="badge.isBase"
+                  [tooltip]="rulesRefBadgeTooltips().get(badge) ?? null"
+                  >{{ badge.books.join('/') }}</span
+                >
+              }
+            </span>
+          }
+          @if (hasHiddenRulesRefBadgeGroups()) {
+            <span class="rules-ref-operator">||</span>
+            <button
+              type="button"
+              class="rules-ref-more"
+              (click)="showAllRulesRefBadgeGroups()"
+              aria-label="Show all rulebook alternatives"
+            >
+              (more...)
+            </button>
+          }
+        </div>
+      }
+    </div>
+    <div class="bottom-right">
+      @if (sarnaWikiUrl(); as wikiUrl) {
+        <a
+          class="sarna-link"
+          target="_BLANK"
+          rel="noopener noreferrer"
+          [href]="wikiUrl"
+          [title]="'Open Sarna wiki page for ' + (sarnaPageTitle() || unitNames.chassis(unit()))"
+        >
+          <img class="sarna-logo" src="/images/sarna.png" alt="Sarna" />
+          SARNA
+        </a>
+      }
+      @if ((unit().mul1id ?? 0) >= 1) {
+        <span class="label muted">MUL ID: </span
+        ><a class="mul-link" target="_BLANK" href="http://masterunitlist.info/Unit/Details/{{ unit().mul1id }}">{{
+          unit().mul1id
+        }}</a>
+      }
+    </div>
+  </div>
+</ng-template>
+
+<ng-template #crewSlots>
   @if (forceMember(); as member) {
     <section class="crew-section" aria-label="Crew">
       <force-unit-crew
@@ -8,10 +190,22 @@
         [force]="member.force"
         [unitId]="member.id"
         layout="slots"
-        [showHealth]="true"
       />
     </section>
   }
+</ng-template>
+
+<ng-template #crewSeats>
+  @if (forceMember(); as member) {
+    <force-unit-crew class="crew-seats" [force]="member.force" [unitId]="member.id" layout="seats" />
+  }
+</ng-template>
+
+<ng-template #tagRow>
+  <unit-tags class="tag-row" mode="row" [unit]="unit()" (tagClick)="openTags($event)" />
+</ng-template>
+
+<ng-template #basicInfo>
   <!-- Basic Info -->
   <div class="basic-info-block allow-select">
     <div>
@@ -79,18 +273,7 @@
     @if (unit().walk || unit().run || unit().jump || unit().umu) {
       <div>
         <span class="muted">Movement: </span>
-        <strong
-          >{{ unit().walk }} / {{ unit().run }}
-          @if (unit().run2 != unit().run) {
-            <span> [{{ unit().run2 }}]</span>
-          }
-          @if (unit().jump) {
-            / {{ unit().jump }}
-          }
-          @if (unit().umu) {
-            / {{ unit().umu }}
-          }
-        </strong>
+        <strong>{{ movementText() }}</strong>
       </div>
     }
     @if (unit().c3 && unit().c3 != 'None') {
@@ -99,6 +282,80 @@
       </div>
     }
   </div>
+</ng-template>
+
+<ng-template #basicInfoRows>
+  <dl>
+    <div class="pair wide"><dt>Type</dt><dd>{{ unit().type }}@if (unit().subtype != unit().type) {<span> · {{ unit().subtype }}</span>}</dd></div>
+    <div class="pair"><dt>Class</dt><dd>{{ unit().weightClass }}</dd></div>
+    @if (factsInSpecs()) {
+      <div class="pair"><dt>Tonnage</dt><dd>{{ formatThousands(unit().tons) }} t</dd></div>
+      @if (unit().role && unit().role != 'None') {
+        <div class="pair"><dt>Role</dt><dd>{{ unit().role }}</dd></div>
+      }
+    }
+    @if (unit().moveType && unit().moveType != 'None') {
+      <div class="pair"><dt>Motive</dt><dd>{{ unit().moveType }}</dd></div>
+    }
+    @if (unit().walk || unit().run || unit().jump || unit().umu) {
+      <div class="pair"><dt>Movement</dt><dd>{{ movementText() }}</dd></div>
+    }
+    @if (unit().engine) {
+      <div class="pair"><dt>Engine</dt><dd>@if (unit().engineRating) {<span>{{ unit().engineRating }} </span>}{{ unit().engine }}</dd></div>
+    }
+    @if (unit().armorType) {
+      <div class="pair"><dt>Armor</dt><dd>{{ formatArmorType(unit().armorType) }}</dd></div>
+    }
+    @if (unit().structureType) {
+      <div class="pair"><dt>Structure</dt><dd>{{ formatStructureType(unit().structureType) }}</dd></div>
+    }
+    @if (unit().c3 && unit().c3 != 'None') {
+      <div class="pair"><dt>Network</dt><dd>{{ unit().c3 }}</dd></div>
+    }
+  </dl>
+</ng-template>
+
+<ng-template #originRows>
+  <dl>
+    <div class="pair"><dt>Tech</dt><dd>{{ unit()._techBaseDisplay }}</dd></div>
+    <div class="pair"><dt>Rating</dt><dd>{{ unit().techRating }}</dd></div>
+    <div class="pair"><dt>Rules</dt><dd>{{ unit().level }}</dd></div>
+    @if (unit().year) {
+      <div class="pair"><dt>Intro</dt><dd>
+        {{ unit().year }}
+        @if (unit()._era?.img) {
+          <img [src]="unit()._era?.img" class="era-icon" title="{{ unit()._era?.name }}" />
+        }
+      </dd></div>
+    }
+    <div class="pair"><dt>Cost</dt><dd>{{ formatThousands(unit().cost) }}</dd></div>
+  </dl>
+</ng-template>
+
+<ng-template #specGroups>
+  <div class="spec-groups allow-select">
+    <section class="spec-group basic">
+      <h4>Basic Info</h4>
+      <ng-container [ngTemplateOutlet]="basicInfoRows" />
+    </section>
+    <section class="spec-group">
+      <h4>Origin</h4>
+      <ng-container [ngTemplateOutlet]="originRows" />
+    </section>
+  </div>
+</ng-template>
+
+<!-- The same groups, each framed as a record sheet panel. -->
+<ng-template #specPanels>
+  <sheet-panel class="spec-group basic allow-select" heading="Basic Info">
+    <ng-container [ngTemplateOutlet]="basicInfoRows" />
+  </sheet-panel>
+  <sheet-panel class="spec-group allow-select" heading="Origin">
+    <ng-container [ngTemplateOutlet]="originRows" />
+  </sheet-panel>
+</ng-template>
+
+<ng-template #quirksBlock>
   @if (unit().quirks && unit().quirks.length > 0) {
     <div class="quirks-block">
       <div class="quirks">
@@ -109,6 +366,21 @@
       </div>
     </div>
   }
+</ng-template>
+
+<ng-template #gauges>
+  <div class="gauges">
+    @for (spec of unit() | statBarSpecs; track spec.label) {
+      <div class="gauge" [tooltip]="spec.description ?? null">
+        <span class="gauge-label">{{ spec.label }}</span>
+        <span class="gauge-value" [class.zero]="!spec.value">{{ spec.valueText ?? spec.value }}</span>
+        <span class="gauge-track"><span class="gauge-fill" [style.width.%]="spec.percent"></span></span>
+      </div>
+    }
+  </div>
+</ng-template>
+
+<ng-template #statBars>
   <!-- Stat Progress Bars -->
   <div class="stat-bars-columns">
     @for (spec of unit() | statBarSpecs; let i = $index; track i) {
@@ -121,29 +393,34 @@
       </div>
     }
   </div>
-  <!-- Weapon Type Summary Bar -->
-  <div class="type-summary-bar">
-    @for (type of typeSummary(); track type.code) {
-      <div class="type-summary-rect" [style.border-color]="type.color" [title]="type.name">
-        <div [style.background-color]="type.color" class="icon">
-          <img class="type-icon" [src]="type.img" />
+</ng-template>
+
+<ng-template #loadoutBlock>
+  <div class="loadout-bar">
+    <!-- Weapon Type Summary Bar -->
+    <div class="type-summary-bar">
+      @for (type of typeSummary(); track type.code) {
+        <div class="type-summary-rect" [class.zero]="type.count === 0" [style.border-color]="type.color" [title]="type.name">
+          <div [style.background-color]="type.color" class="icon">
+            <img class="type-icon" [src]="type.img" />
+          </div>
+          <div class="type-count" [class.empty]="type.count === 0">{{ type.count }}</div>
         </div>
-        <div class="type-count" [class.empty]="type.count === 0">{{ type.count }}</div>
+      }
+    </div>
+    @if (componentViewModeAvailable()) {
+      <div class="component-view-mode" aria-label="Component view mode">
+        <mode-switch
+          leftLabel="Weapons"
+          rightLabel="Details"
+          [selectedRight]="showFilteredComponents()"
+          ariaLabel="Component view mode"
+          switchAriaLabel="Toggle component details view"
+          (selectedRightChange)="setComponentViewMode($event)"
+        ></mode-switch>
       </div>
     }
   </div>
-  @if (componentViewModeAvailable()) {
-    <div class="component-view-mode" aria-label="Component view mode">
-      <mode-switch
-        leftLabel="Weapons"
-        rightLabel="Details"
-        [selectedRight]="showFilteredComponents()"
-        ariaLabel="Component view mode"
-        switchAriaLabel="Toggle component details view"
-        (selectedRightChange)="setComponentViewMode($event)"
-      ></mode-switch>
-    </div>
-  }
   <!-- Components Grid -->
   <!-- Matrix layout (3x3) when supported and defined for unit.type -->
   @if (componentLayout().mode === 'matrix') {
@@ -359,113 +636,4 @@
       }
     </div>
   }
-  <div class="spanner"></div>
-  <div class="bottom-info allow-select">
-    <div class="bottom-left">
-      @if (sourceList().length > 0) {
-        <span class="label muted">Sources:</span>
-        @for (src of sourceList(); let index = $index; track index) {
-          <span class="source-entry">
-            @if (src.title) {
-              <a class="source-link" (click)="openSourcebooksDialog(index)">{{ src.title }}</a>
-              @if (src.sourceAnnotations.length > 0) {
-                &nbsp;<span class="source-note">({{ src.sourceAnnotations.join(', ') }})</span>
-              }
-            } @else {
-              <span>{{ src.abbrev }}</span>
-              @if (src.sourceAnnotations.length > 0) {
-                &nbsp;<span class="source-note">({{ src.sourceAnnotations.join(', ') }})</span>
-              }
-            }
-          </span>
-        }
-      }
-      @if (forcePacks().length > 0) {
-        <span class="label muted">Force Packs: </span>
-        @for (pack of forcePacks(); let i = $index; track i) {
-          <span>{{ pack }}</span>
-        }
-      }
-      @if (rulesRefBadgeGroups().length > 0) {
-        <span class="label muted">Rulebooks:</span>
-        <div class="rules-ref-badges">
-          @for (badgeGroup of visibleRulesRefBadgeGroups(); let groupIndex = $index; track groupIndex) {
-            @if (groupIndex > 0) {
-              <span class="rules-ref-operator">||</span>
-            }
-            <span class="rules-ref-bucket">
-              @for (badge of badgeGroup; let badgeIndex = $index; track badgeIndex) {
-                @if (badgeIndex > 0) {
-                  <span class="rules-ref-operator">+</span>
-                }
-                <span
-                  class="rules-ref-badge"
-                  [class.base-rules-ref]="badge.isBase"
-                  [tooltip]="rulesRefBadgeTooltips().get(badge) ?? null"
-                  >{{ badge.books.join('/') }}</span
-                >
-              }
-            </span>
-          }
-          @if (hasHiddenRulesRefBadgeGroups()) {
-            <span class="rules-ref-operator">||</span>
-            <button
-              type="button"
-              class="rules-ref-more"
-              (click)="showAllRulesRefBadgeGroups()"
-              aria-label="Show all rulebook alternatives"
-            >
-              (more...)
-            </button>
-          }
-        </div>
-      }
-    </div>
-    <div class="bottom-right">
-      @if (sarnaWikiUrl(); as wikiUrl) {
-        <a
-          class="sarna-link"
-          target="_BLANK"
-          rel="noopener noreferrer"
-          [href]="wikiUrl"
-          [title]="'Open Sarna wiki page for ' + (sarnaPageTitle() || unitNames.chassis(unit()))"
-        >
-          <img class="sarna-logo" src="/images/sarna.png" alt="Sarna" />
-          SARNA
-        </a>
-      }
-      @if ((unit().mul1id ?? 0) >= 1) {
-        <span class="label muted">MUL ID: </span
-        ><a class="mul-link" target="_BLANK" href="http://masterunitlist.info/Unit/Details/{{ unit().mul1id }}">{{
-          unit().mul1id
-        }}</a>
-      }
-    </div>
-  </div>
-</div>
-
-@if (unit().loadIssues.length) {
-  <div class="unit-load-issues-footer">
-    <section class="unit-load-issues framed-borders error" aria-label="Unit data issues">
-      <button
-        class="unit-load-issues-toggle"
-        type="button"
-        (click)="toggleLoadIssues()"
-        [attr.aria-expanded]="loadIssuesOpen()"
-      >
-        <span class="chevron" [class.collapsed]="!loadIssuesOpen()" aria-hidden="true"></span>
-        <span class="unit-load-issues-title">Unit data issues ({{ unit().loadIssues.length }})</span>
-      </button>
-      @if (loadIssuesOpen()) {
-        <ul class="unit-load-issues-list allow-select">
-          @for (issue of unit().loadIssues; track $index) {
-            <li>
-              <strong>{{ issue.severity === 'error' ? 'Error' : 'Warning' }}:</strong>
-              @if (issue.count > 1) { {{ issue.count }}× }{{ issue.message }}
-            </li>
-          }
-        </ul>
-      }
-    </section>
-  </div>
-}
+</ng-template>

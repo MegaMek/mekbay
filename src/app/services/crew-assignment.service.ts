@@ -92,10 +92,6 @@ export class CrewAssignmentService {
         this.report(await force.assignPersonToUnit(personId, unitId, positionId));
     }
 
-    async unassign(force: Force, unitId: string, positionId: string): Promise<void> {
-        this.report(await force.unassignPerson(unitId, positionId));
-    }
-
     async create(force: Force, unitId?: string, positionId?: string): Promise<void> {
         const person = unitId !== undefined && positionId !== undefined
             ? await force.createPersonForUnit(unitId, positionId)

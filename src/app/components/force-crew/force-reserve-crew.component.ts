@@ -26,7 +26,7 @@ import { CrewCardComponent, type CrewLayout } from './crew-card.component';
                 @for (person of people(); track person.id) {
                     <crew-card [force]="force()" [person]="person" [layout]="layout()" [canEdit]="canEdit()" [canMove]="canEdit()"
                         [wounds]="crew.reserveWounds(force(), person)"
-                        (edited)="crew.edit(force(), person.id)" (deleted)="crew.delete(force(), person.id)" />
+                        [canDelete]="canEdit()" (edited)="crew.edit(force(), person.id)" (deleted)="crew.delete(force(), person.id)" />
                 } @empty {
                     <p class="empty">No reserve crew &mdash; drop a pilot here to take them off their unit.</p>
                 }

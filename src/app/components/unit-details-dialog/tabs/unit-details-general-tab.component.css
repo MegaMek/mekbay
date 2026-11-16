@@ -631,3 +631,325 @@
 .instance-crew {
   --crew-slot-width: 300px;
 }
+
+/* ===== Prototype layouts (unit-details-layout.ts) ===== */
+/* Today's layout keeps the type counts and the view switch as separate centered rows. */
+.loadout-bar {
+  display: contents;
+}
+
+.tab-general:not([data-layout='classic']) {
+  gap: 12px;
+  padding-top: 12px;
+}
+
+.tab-general:not([data-layout='classic']) .loadout-bar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 6px 12px;
+  padding: 6px 0;
+  border-top: 1px solid var(--border-color);
+  border-bottom: 1px solid var(--border-color);
+}
+
+.tab-general:not([data-layout='classic']) .type-summary-bar {
+  width: auto;
+  max-width: none;
+  margin: 0;
+  gap: 6px;
+  justify-content: flex-start;
+  align-self: auto;
+}
+
+.tab-general:not([data-layout='classic']) .type-summary-rect {
+  flex: 0 0 auto;
+}
+
+.tab-general:not([data-layout='classic']) .type-summary-rect .icon {
+  width: 22px;
+  height: 22px;
+}
+
+.tab-general:not([data-layout='classic']) .type-count {
+  min-width: 26px;
+  margin: 0 6px 0 4px;
+  font-size: 1em;
+}
+
+.tab-general:not([data-layout='classic']) .component-view-mode {
+  margin: 0 0 0 auto;
+}
+
+.tab-general:not([data-layout='classic']) .quirks-block,
+.tab-general:not([data-layout='classic']) .stat-bars-columns {
+  margin: 0;
+}
+
+/* On a phone, empty weapon categories hide so the bar stays one line. */
+@container (max-width: 500px) {
+  .tab-general:not([data-layout='classic']) .type-summary-rect.zero {
+    display: none;
+  }
+}
+
+/* Gauges: each stat once, its value over its bar. */
+.gauges {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(92px, 1fr));
+  border-top: 1px solid var(--border-color);
+  border-left: 1px solid var(--border-color);
+}
+
+.gauge {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+  padding: 4px 6px 5px;
+  border-right: 1px solid var(--border-color);
+  border-bottom: 1px solid var(--border-color);
+}
+
+.gauge-label {
+  overflow: hidden;
+  color: var(--text-color-tertiary);
+  font-size: 0.66em;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  text-overflow: ellipsis;
+  text-transform: uppercase;
+  white-space: nowrap;
+}
+
+.gauge-value {
+  font-size: 1.05em;
+  line-height: 1.15;
+  font-weight: bold;
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+
+.gauge-value.zero {
+  color: var(--text-color-tertiary);
+}
+
+.gauge-track {
+  position: relative;
+  display: block;
+  height: 3px;
+  background: #ffffff1a;
+}
+
+.gauge-fill {
+  position: absolute;
+  inset: 0 auto 0 0;
+  background: #aaa;
+}
+
+/* Specs in three short ruled groups. */
+.spec-groups {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+  gap: 12px 20px;
+}
+
+.spec-group h4 {
+  margin: 0 0 4px;
+  padding-bottom: 3px;
+  border-bottom: 1px solid var(--border-color);
+  color: var(--bt-yellow);
+  font-size: 0.75em;
+  font-weight: 700;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+}
+
+.spec-group dl {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  margin: 0;
+}
+
+.spec-group .pair {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  gap: 4px 12px;
+  min-width: 0;
+}
+
+.spec-group dt {
+  flex-shrink: 0;
+  color: var(--text-color-secondary);
+}
+
+.spec-group dd {
+  margin: 0;
+  font-weight: bold;
+  text-align: right;
+  overflow-wrap: anywhere;
+}
+
+.spec-group .era-icon {
+  width: 16px;
+  height: 16px;
+  vertical-align: middle;
+}
+
+/* With room for three columns, Basic Info takes two of them and lays its pairs out in both. */
+@container (min-width: 800px) {
+  .spec-groups {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+  }
+
+  .spec-group.basic {
+    grid-column: span 2;
+  }
+
+  .spec-group.basic dl {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 3px 20px;
+  }
+}
+
+/* On a phone, two aligned columns of cells, each caption over its value like the gauges above. */
+@container (max-width: 500px) {
+  .spec-groups {
+    grid-template-columns: 1fr;
+    gap: 8px;
+  }
+
+  .spec-group dl {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 6px 16px;
+  }
+
+  .spec-group .pair {
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 0;
+  }
+
+  .spec-group .pair.wide {
+    grid-column: 1 / -1;
+  }
+
+  .spec-group dt {
+    color: var(--text-color-tertiary);
+    font-size: 0.66em;
+    font-weight: 600;
+    letter-spacing: 0.04em;
+    text-transform: uppercase;
+  }
+
+  .spec-group dd {
+    text-align: left;
+  }
+
+  .spec-group h4 {
+    margin-bottom: 2px;
+  }
+
+  .tab-general:not([data-layout='classic']) {
+    gap: 10px;
+    padding-top: 8px;
+  }
+}
+
+/* Two Columns: who and what in a side rail, the loadout beside it; stacked on a phone. */
+.rail-layout {
+  display: grid;
+  flex: 1;
+  grid-template-columns: minmax(0, 1fr);
+  gap: 16px;
+}
+
+.rail {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  min-width: 0;
+}
+
+.rail-main {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  min-width: 0;
+}
+
+/* Both columns end on the tab's own bottom padding, so the last lines align. */
+.tab-general .rail-main .bottom-info {
+  padding-bottom: 0;
+}
+
+/* The loadout opens the column, so nothing above it needs a separator. */
+.tab-general .rail-main .loadout-bar {
+  padding-top: 0;
+  border-top: 0;
+}
+
+@container (min-width: 760px) {
+  .rail-layout {
+    grid-template-columns: 290px minmax(0, 1fr);
+  }
+
+  /* The sticky rail is only as tall as its content; the main column fills the row, so it draws the divider. */
+  .rail {
+    position: sticky;
+    top: 0;
+    align-self: start;
+  }
+
+  .rail-main {
+    padding-left: 16px;
+    border-left: 1px solid var(--border-color);
+  }
+
+  .rail .spec-groups {
+    grid-template-columns: 1fr;
+  }
+
+  .rail .spec-group.basic {
+    grid-column: auto;
+  }
+
+  .rail .spec-group.basic dl {
+    display: flex;
+  }
+
+  .rail .gauges {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+  }
+}
+
+.spec-details {
+  border: 1px solid var(--border-color);
+  background: #0002;
+}
+
+.spec-details > summary {
+  padding: 8px 10px;
+  color: var(--text-color-secondary);
+  cursor: pointer;
+  font-size: 0.85em;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.spec-details[open] > summary {
+  border-bottom: 1px solid var(--border-color);
+}
+
+.spec-details-body {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  padding: 10px;
+}

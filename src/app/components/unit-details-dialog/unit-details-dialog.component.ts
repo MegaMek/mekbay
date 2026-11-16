@@ -48,6 +48,10 @@ import {
 } from '../../models/force-member.model';
 import { DEFAULT_GUNNERY_SKILL, DEFAULT_PILOTING_SKILL } from '../../models/crew-member.model';
 import { effectiveEntityPilotingSkill } from '../../models/entity/utils/battle-value/skill-facts';
+import { OptionsService } from '../../services/options.service';
+import { forceMemberConditionDisplays } from '../../utils/force-member-conditions.util';
+import { shouldShowAdjustedPilotSkills, unitDetailsAdjustedValue } from './tabs/unit-details-general-tab.component';
+import { setUnitDetailsLayout, UNIT_DETAILS_LAYOUTS, unitDetailsLayout, unitFactsInSpecs, type UnitDetailsLayout } from './unit-details-layout';
 
 
 export interface UnitDetailsDialogData {
@@ -82,6 +86,7 @@ export interface UnitDetailsChangeAction {
     templateUrl: './unit-details-dialog.component.html',
     styleUrl: './unit-details-dialog.component.css',
     host: {
+        '[class.prototype-layout]': "layout() !== 'classic'",
         '[class.fluff-background]': 'hostHasFluff',
         '[style.--fluff-bg]': 'hostFluffBg'
     }
@@ -105,6 +110,13 @@ export class UnitDetailsDialogComponent {
     private fluffImages = inject(UnitFluffImageService);
     private detailsSummaries = inject(UnitDetailsSummaryService);
     private dataService = inject(DataService);
+    private optionsService = inject(OptionsService);
+    /** Prototype layout chosen in the footer; `classic` is today's dialog. */
+    readonly layout = unitDetailsLayout.asReadonly();
+    readonly headerShowsFacts = computed(() => !unitFactsInSpecs(this.layout()));
+    readonly layouts = UNIT_DETAILS_LAYOUTS;
+    readonly layoutNumber = computed(() => UNIT_DETAILS_LAYOUTS.findIndex(option => option.id === this.layout()) + 1);
+    readonly layoutLabel = computed(() => UNIT_DETAILS_LAYOUTS[this.layoutNumber() - 1]?.label ?? '');
     add = output<UnitSummary>();
     select = output<UnitSummary>();
     change = output<{ oldUnit: ASForceUnit; newUnit: UnitSummary }>();
@@ -251,6 +263,49 @@ export class UnitDetailsDialogComponent {
         }
         return this.unit;
     });
+
+    /** The identity bar follows the header past the middle of a swipe. */
+    private readonly headerShowsIncoming = computed(() => this.headerUnit() !== this.unit);
+    private readonly headerForceMember = computed(() =>
+        this.headerShowsIncoming() ? this.incomingForceMember() : this.currentForceMember());
+
+    /** The same value the General tab computes, with the reason it differs from the base. */
+    readonly headerValue = computed(() => {
+        const unit = this.headerUnit();
+        const incoming = this.headerShowsIncoming();
+        const member = this.headerForceMember();
+        const isAlphaStrike = member ? member.force.gameSystem === GameSystem.AS : this.gameService.isAlphaStrike();
+        const gunnery = incoming ? this.incomingGunnerySkill() : this.gunnerySkill();
+        const piloting = incoming ? this.incomingPilotingSkill() : this.pilotingSkill();
+        const override = (incoming ? this.incomingSearchResultContext() : this.searchResultContext())?.adjustedValue;
+        const base = isAlphaStrike ? unit.as.PV : unit.bv;
+        const adjusted = unitDetailsAdjustedValue(unit, member, this.optionsService.options().forceViewerBVPVDisplayDamage,
+            override, gunnery, piloting, this.gameService.isAlphaStrike());
+        const value = adjusted ?? base;
+        return {
+            label: isAlphaStrike ? 'PV' : 'BV',
+            value,
+            base: value !== base ? base : null,
+            skills: !member && shouldShowAdjustedPilotSkills(adjusted, base, gunnery, piloting)
+                ? isAlphaStrike ? `Skill ${gunnery}` : `${gunnery}/${piloting}` : null,
+        };
+    });
+
+    /** Force conditions, the same chips the sidebar shows; catalog units have none. */
+    readonly headerConditions = computed(() => {
+        const member = this.headerForceMember();
+        if (!member) return [];
+        // Follow this member's runtime so the chips change with damage and repairs.
+        if (member instanceof CBTForceMember) {
+            if (member.entity.entityType === 'Mek') member.mekRecordSheetSnapshot();
+            else member.nonMekRecordSheetSnapshot();
+        }
+        return forceMemberConditionDisplays(member);
+    });
+
+    setLayout(layout: UnitDetailsLayout): void {
+        setUnitDetailsLayout(layout);
+    }
 
     // Fluff background image URL - based on header unit (most visible during swipe)
     headerFluffImageUrl = computed(() => {

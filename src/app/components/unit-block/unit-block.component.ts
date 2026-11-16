@@ -19,13 +19,7 @@ import { ASForceUnit } from '../../models/as-force-unit.model';
 import { C3Capabilities, C3Network, C3NetworkType, c3NetworkTypeName, type C3Component, projectNonMekC3Components } from '../../models/c3-network.model';
 import { GameSystem } from '../../models/common.model';
 import { formatMovement, formatMovementWithAlternate } from '../../utils/as-common.util';
-import {
-    crewStateDefinitions,
-    getUnitConditionDefinition,
-    NARC_CONDITION_COLOR,
-    unitConditionSortIndex,
-} from '../../models/unit-status-presentation';
-import { MEK_CREW_STATE_DISPLAYS } from '../../models/mek-record-sheet-controls';
+import { forceMemberConditionDisplays, type UnitConditionDisplay } from '../../utils/force-member-conditions.util';
 import { formatBvPv } from '../../utils/force-viewer-bv-pv-display.util';
 import {
     forceMemberAlias,
@@ -42,17 +36,10 @@ import { UnitNotificationBadgesComponent } from '../unit-notification-badges/uni
 import { effectiveEntityPilotingSkill } from '../../models/entity/utils/battle-value/skill-facts';
 import { projectRuntimeUnitNotifications } from '../unit-notification-badges/unit-notification-runtime.util';
 import { projectCBTUnitTagEcmCapabilitySummary } from '../../models/runtime/cbt-unit-capability-projection';
-import type { UnitConditionKey } from '../../models/unit-condition.model';
 import { FormatBvPipe } from '../../pipes/format-bv.pipe';
 import { UnitDataBadgesComponent } from '../unit-data-badges/unit-data-badges.component';
 import { CustomUnitsService } from '../../services/custom-units.service';
 import { buildUnitIssues } from '../../utils/unit-summary-builder';
-
-interface UnitConditionDisplay {
-    key: string;
-    label: string;
-    color: string;
-}
 
 interface UnitBlockPresentation {
     readonly name: string;
@@ -61,8 +48,6 @@ interface UnitBlockPresentation {
     readonly role: string;
     readonly tons: number;
 }
-
-const NON_MEK_CREW_STATE_DISPLAYS = crewStateDefinitions(['killed', 'stunned']);
 
 export interface UnitBlockPilotEditEvent {
     event: MouseEvent;
@@ -280,56 +265,7 @@ export class UnitBlockComponent {
         const forceUnit = this.forceUnit();
         if (!forceUnit) return [];
         this.runtimeRevision();
-        const conditionKeys = new Set<UnitConditionKey>();
-        let crewConditions: UnitConditionDisplay[] = [];
-        let locationConditions: UnitConditionDisplay[] = [];
-        if (isCBTMekForceMember(forceUnit)) {
-            const status = forceUnit.force.getMekUnitStatusSnapshot(forceUnit.id);
-            status?.conditions.forEach(condition => conditionKeys.add(condition));
-            const crewStates = new Set(status?.crew.map(position => position.effectiveState) ?? []);
-            crewConditions = [...crewStates].flatMap(state => {
-                if (state === 'healthy') return [];
-                const definition = MEK_CREW_STATE_DISPLAYS.find(candidate => candidate.key === state);
-                return definition ? [{
-                    key: `crew-${definition.key}`,
-                    label: definition.bannerLabel,
-                    color: definition.color,
-                }] : [];
-            });
-            if (status?.hasNarc) {
-                locationConditions = [{ key: 'location-narc', label: 'NARC', color: NARC_CONDITION_COLOR }];
-            }
-        } else if (isCBTForceMember(forceUnit)) {
-            forceUnit.force.getUnitConditions(forceUnit.id)?.forEach(condition => conditionKeys.add(condition));
-            const sheet = forceUnit.force.getNonMekRecordSheetSnapshot(forceUnit.id);
-            const definitions = sheet !== null
-                && ['ProtoMek', 'Tank', 'VTOL', 'Naval'].includes(sheet.unitType)
-                ? NON_MEK_CREW_STATE_DISPLAYS
-                : [];
-            const crewStates = new Set(sheet?.crew.map(position => position.effectiveState) ?? []);
-            crewConditions = [...crewStates].flatMap(state => {
-                const definition = definitions.find(candidate => candidate.key === state);
-                return definition ? [{
-                    key: `crew-${definition.key}`,
-                    label: definition.bannerLabel,
-                    color: definition.color,
-                }] : [];
-            });
-        } else {
-            for (const condition of forceUnit.getConditions().keys()) conditionKeys.add(condition);
-        }
-
-        const unitConditions = Array.from(conditionKeys)
-            .map(key => {
-                const condition = getUnitConditionDefinition(key);
-                return {
-                    key,
-                    label: condition?.bannerLabel ?? condition?.label ?? key.toUpperCase(),
-                    color: condition?.color ?? '#666',
-                };
-            })
-            .sort((left, right) => unitConditionSortIndex(left.key) - unitConditionSortIndex(right.key) || left.label.localeCompare(right.label));
-        return [...unitConditions, ...crewConditions, ...locationConditions];
+        return forceMemberConditionDisplays(forceUnit);
     });
 
     private readonly capabilitySummary = computed(() => {

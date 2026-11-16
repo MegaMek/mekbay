@@ -6,6 +6,7 @@ import { CustomUnitActionsComponent } from './custom-unit-actions.component';
 import { CustomUnitSyncService } from '../../services/custom-unit-sync.service';
 import { ConstructionForceService } from '../../construction/construction-force.service';
 import { ToastService } from '../../services/toast.service';
+import { PlayerNamesService } from '../../services/player-names.service';
 import { createEmptyUnit } from '../../testing/unit-test-helpers';
 import { createDirectMekRuntimeFixture } from '../../models/runtime/testing/direct-mek-runtime-fixture';
 import type { SavedCustomUnit } from '../../models/custom-unit.model';
@@ -14,15 +15,17 @@ import type { CBTForceMember } from '../../models/force-member.model';
 describe('custom unit details actions', () => {
     it('shows Unsubscribe for a subscription and restores Subscribe after removing it', async () => {
         const unit = createEmptyUnit({ isCustom: true });
-        const records = signal<SavedCustomUnit[]>([{ uuid: unit.uuid, owned: false, subscribed: true } as SavedCustomUnit]);
+        const records = signal<SavedCustomUnit[]>([{ uuid: unit.uuid, owned: false, subscribed: true, ownerId: 'public-owner' } as SavedCustomUnit]);
         const unsubscribe = jasmine.createSpy('unsubscribe').and.callFake(async () => records.set([]));
         TestBed.configureTestingModule({ providers: [provideZonelessChangeDetection(),
             { provide: CustomUnitSyncService, useValue: { library: { records, isOwned: () => false }, unsubscribe } },
             { provide: ConstructionForceService, useValue: {} }, { provide: ToastService, useValue: { showToast: () => {} } },
+            { provide: PlayerNamesService, useValue: { label: (id: string) => id === 'public-owner' ? '@Specter' : '@?' } },
         ] });
         const fixture = TestBed.createComponent(CustomUnitActionsComponent);
         fixture.componentRef.setInput('unit', unit); fixture.detectChanges();
         expect(fixture.nativeElement.textContent).toContain('Unsubscribe');
+        expect(fixture.nativeElement.textContent).toContain('Design by @Specter');
         await fixture.componentInstance.toggleSubscription(); fixture.detectChanges();
         expect(unsubscribe).toHaveBeenCalledOnceWith(unit.uuid);
         expect(fixture.nativeElement.textContent).toContain('Subscribe');
@@ -43,6 +46,7 @@ describe('custom unit details actions', () => {
                 hasUpdate: () => true, parseDraft: () => runtime.entity } } },
             { provide: ConstructionForceService, useValue: { captureOrigins: () => new Map(), applySavedConstruction: apply } },
             { provide: ToastService, useValue: { showToast: () => {} } },
+            { provide: PlayerNamesService, useValue: { label: () => '@?' } },
         ] });
         const fixture = TestBed.createComponent(CustomUnitActionsComponent);
         fixture.componentRef.setInput('unit', createEmptyUnit({ uuid: runtime.identity, isCustom: true }));

@@ -5,6 +5,7 @@ import type { UnitSummary } from '../../models/unit-summary.model';
 import type { CBTForceMember } from '../../models/force-member.model';
 import { CustomUnitSyncService } from '../../services/custom-unit-sync.service';
 import { ToastService } from '../../services/toast.service';
+import { PlayerNamesService } from '../../services/player-names.service';
 import { ConstructionForceService } from '../../construction/construction-force.service';
 import { constructionCanUpdateDesign } from '../../construction/domain/construction-repairs';
 
@@ -13,11 +14,14 @@ import { constructionCanUpdateDesign } from '../../construction/domain/construct
     changeDetection: ChangeDetectionStrategy.OnPush,
     template: `@if (unit().isCustom) {
         @if (!sync.library.isOwned(unit().uuid)) {
+            @if (record()?.ownerId; as ownerId) {
+                <div class="status-line" [title]="ownerId">Design by {{ playerNames.label(ownerId) }}</div>
+            }
             <button type="button" class="modal-btn bt-button" [disabled]="busy()" (click)="toggleSubscription()">{{ record()?.subscribed ? 'Unsubscribe' : 'Subscribe' }}</button>
         }
         @if (updateAvailable()) {
             <button type="button" class="modal-btn bt-button" [disabled]="busy() || !canUpdate()" (click)="update()">Update design</button>
-            <div class="update-status" role="status">
+            <div class="status-line" role="status">
                 <span class="update-badge">Update available</span>
                 @if (!canUpdate()) { <span>Fully repair this unit and finish pending changes to update.</span> }
             </div>
@@ -26,7 +30,7 @@ import { constructionCanUpdateDesign } from '../../construction/domain/construct
     styles: `
         :host { display: contents; }
         .modal-btn { width: auto; padding: 8px 16px; text-transform: uppercase; }
-        .update-status {
+        .status-line {
             order: 1;
             flex: 1 0 100%;
             display: flex;
@@ -44,6 +48,7 @@ export class CustomUnitActionsComponent {
     readonly unit = input.required<UnitSummary>();
     readonly member = input<CBTForceMember | undefined>();
     readonly sync = inject(CustomUnitSyncService);
+    readonly playerNames = inject(PlayerNamesService);
     private readonly toast = inject(ToastService);
     private readonly construction = inject(ConstructionForceService);
     readonly busy = signal(false);

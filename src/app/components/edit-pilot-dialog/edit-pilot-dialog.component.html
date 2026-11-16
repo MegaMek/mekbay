@@ -157,11 +157,11 @@
               }
               @if (data.editWounds) {
                 <div class="crew-wounds form-fields">
-                  <span class="field-label">Wounds: {{ member.wounds() }} / {{ maxCrewWounds }}</span>
+                  <span class="field-label">Hits taken: {{ member.wounds() }} / {{ maxCrewWounds }}</span>
                   <div
                     class="wounds-bar"
                     role="group"
-                    [attr.aria-label]="'Wounds for ' + (member.name() || crewNameLabel(index))"
+                    [attr.aria-label]="'Hits taken for ' + (member.name() || crewNameLabel(index))"
                   >
                     @for (wounds of woundsSegments; track wounds) {
                       <button

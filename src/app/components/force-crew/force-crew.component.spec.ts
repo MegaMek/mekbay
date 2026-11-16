@@ -103,7 +103,8 @@ describe('shared force crew controls', () => {
         fixture.detectChanges();
         const slots = fixture.debugElement.queryAll(By.directive(CrewSlotComponent));
         expect(slots.length).toBe(3);
-        expect(slots.map(slot => slot.nativeElement.querySelector('.slot-label').textContent)).toEqual(['Pilot', 'Gunner', 'Tech Officer']);
+        // An occupied station names itself inside the card; a vacancy says which station is empty.
+        expect(slots[0].nativeElement.querySelector('.crew-caption').textContent.trim()).toBe('Pilot');
         expect(slots[0].nativeElement.textContent).toContain('Alex');
         expect(slots[1].nativeElement.textContent).toContain('No Gunner');
         expect(slots[2].nativeElement.textContent).toContain('No Tech Officer');
@@ -203,7 +204,6 @@ describe('shared force crew controls', () => {
         expect(fixture.nativeElement.querySelector('section')).not.toBeNull();
         expect(crew.connectedDropLists()).toEqual([fixture.componentInstance.dropId]);
         expect(fixture.nativeElement.querySelector('.crew-card.compact')).not.toBeNull();
-        expect(fixture.nativeElement.querySelector('.crew-actions')).toBeNull();
         const button = fixture.nativeElement.querySelector('.crew-main') as HTMLButtonElement;
         expect(button.title).toContain('Alex · Skill 3');
         button.click();
@@ -325,7 +325,7 @@ describe('shared force crew controls', () => {
         const source = ownerFixture();
         source.owner.gameSystem = GameSystem.CBT;
         const entity = new ProtoMekEntity(createTestEquipmentRegistry());
-        source.owner.members = () => [{ kind: 'cbt', id: 'unit', entity }] as never[];
+        source.owner.members = () => [{ kind: 'cbt', id: 'unit', entity, nonMekRecordSheetSnapshot: () => null }] as never[];
         const fixture = TestBed.createComponent(ForceUnitCrewComponent);
         fixture.componentRef.setInput('force', source.force);
         fixture.componentRef.setInput('unitId', 'unit');

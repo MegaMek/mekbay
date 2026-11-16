@@ -167,6 +167,16 @@
     color: #58a6ff;
 }
 
+.tag-owner {
+    flex: 0 1 auto;
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    font-size: 0.85em;
+    opacity: 0.7;
+}
+
 .tag-subscribed-icon {
     font-size: 1.1em;
     opacity: 0.7;

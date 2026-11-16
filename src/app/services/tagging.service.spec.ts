@@ -35,6 +35,7 @@ describe('TaggingService', () => {
 
     const dataServiceMock = {
         getUnits: jasmine.createSpy('getUnits'),
+        getUnitByUuid: jasmine.createSpy('getUnitByUuid'),
     };
     const filtersServiceMock = {
         invalidateTagsCache: jasmine.createSpy('invalidateTagsCache'),
@@ -87,6 +88,8 @@ describe('TaggingService', () => {
         closed = new Subject<void>();
 
         dataServiceMock.getUnits.calls.reset();
+        dataServiceMock.getUnitByUuid.calls.reset();
+        dataServiceMock.getUnitByUuid.and.returnValue(undefined);
         filtersServiceMock.invalidateTagsCache.calls.reset();
         tagsServiceMock.getTagData.calls.reset();
         tagsServiceMock.modifyTag.calls.reset();
@@ -143,5 +146,19 @@ describe('TaggingService', () => {
         tagSelector.tagSelected.emit({ tag: 'CLAN', tagType: 'chassis' });
 
         expect(tagsServiceMock.modifyTag).toHaveBeenCalledWith([prime, variantA, variantB], 'CLAN', 'chassis', 'add');
+    });
+
+    it('tags the catalog entry and reads its live tags when given a details copy of the unit', async () => {
+        const catalogUnit = createUnit('Dasher Prime');
+        const detailsCopy = { ...catalogUnit, _nameTags: [] };
+        dataServiceMock.getUnits.and.returnValue([catalogUnit]);
+        dataServiceMock.getUnitByUuid.and.callFake((uuid: string) => uuid === catalogUnit.uuid ? catalogUnit : undefined);
+        tagsServiceMock.getTagData.and.resolveTo({ tags: {}, timestamp: 1, formatVersion: 5 });
+
+        await service.openTagSelector([detailsCopy]);
+
+        expect(tagSelector.assignedNameTags()).toEqual(['CLAN']);
+        tagSelector.tagSelected.emit({ tag: 'Lance', tagType: 'name' });
+        expect(tagsServiceMock.modifyTag).toHaveBeenCalledWith([catalogUnit], 'Lance', 'name', 'add');
     });
 });

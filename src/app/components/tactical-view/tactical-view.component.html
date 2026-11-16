@@ -109,7 +109,7 @@
                         </button>
                         }
                     </span>
-                    <span class="wound-track" role="group" [attr.aria-label]="'Wounds for ' + (crew.name || position)">
+                    <span class="wound-track" role="group" [attr.aria-label]="'Hits taken for ' + (crew.name || position)">
                         @for (wound of crewWoundSteps; track wound.wounds) {
                         <button type="button" class="wound-button"
                             [class.active]="wound.wounds <= crew.state.wounds" [disabled]="readOnly()"

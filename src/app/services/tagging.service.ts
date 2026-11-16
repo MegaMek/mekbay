@@ -93,6 +93,8 @@ export class TaggingService {
         }
 
         if (units.length === 0) return;
+        // Tag state lives on catalog entries; details and force views hand over copies whose tags never update.
+        units = units.map(unit => this.dataService.getUnitByUuid(unit.uuid) ?? unit);
 
         // Get all unique tags from all units (for both sections)
         const allUnits = this.dataService.getUnits();

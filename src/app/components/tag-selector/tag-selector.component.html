@@ -106,9 +106,9 @@
                 @for (pt of publicTags(); track pt.publicId + ':' + pt.tag) {
                     <div 
                         class="tag-option tag-option-public"
-                        [class.subscribed]="pt.subscribed"
-                        [title]="'From: ' + pt.publicId">
+                        [class.subscribed]="pt.subscribed">
                         <span class="tag-label">{{ pt.tag }}</span>
+                        <span class="tag-owner" [title]="pt.publicId">{{ playerNames.label(pt.publicId) }}</span>
                         @if (pt.subscribed) {
                             <span class="tag-subscribed-icon" title="Subscribed">⟳</span>
                             <button

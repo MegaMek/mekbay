@@ -1,35 +1,59 @@
-<div class="unit-tags" [class.compact]="mode() === 'compact'" [class.full]="mode() === 'full'">
-    @if (mode() === 'full') {
-        @for (entry of chassisTagEntries(); track entry.tag.toLowerCase()) {
-            <span class="tag tag-chassis">{{ formatTagEntry(entry) }}</span>
+<div class="unit-tags" [class.compact]="mode() === 'compact'" [class.full]="mode() === 'full'" [class.row]="mode() === 'row'">
+    @if (mode() === 'row') {
+        <!-- The row's label is also its button, and says what it does. -->
+        <button type="button" class="tags-chip" (click)="onTagClick($event)" [disabled]="!enableTagsEditing()"
+            [attr.aria-label]="hasTags() ? 'Edit tags' : 'Add tag'">
+            <ng-container [ngTemplateOutlet]="tagIcon" />{{ hasTags() ? 'Tags' : 'Add tag' }}
+        </button>
+        @for (entry of visibleRowTags(); track entry.key) {
+            <span class="tag" [class.tag-chassis]="entry.kind === 'chassis'" [class.tag-name]="entry.kind === 'name'"
+                [class.tag-public]="entry.kind === 'public'" [class.subscribed]="entry.subscribed" [title]="entry.title">
+                @if (entry.kind === 'chassis') {
+                    <svg class="all-variants" viewBox="0 0 12 12" aria-hidden="true" focusable="false">
+                        <rect x="1" y="3.5" width="7" height="7" fill="none" stroke="currentColor" stroke-width="1.3" />
+                        <path d="M3.5 1h7.5v7.5" fill="none" stroke="currentColor" stroke-width="1.3" />
+                    </svg>
+                }
+                {{ entry.tag }}
+                @if (entry.quantity > 1) { <b class="quantity">{{ entry.quantity }}</b> }
+            </span>
         }
-        @for (entry of nameTagEntries(); track entry.tag.toLowerCase()) {
-            <span class="tag tag-name">{{ formatTagEntry(entry) }}</span>
+        @if (hiddenRowTagCount() > 0) {
+            <button type="button" class="tag tag-more" (click)="onTagClick($event)"
+                [attr.aria-label]="hiddenRowTagCount() + ' more tags'">+{{ hiddenRowTagCount() }}</button>
         }
-        @for (pt of publicTags(); track pt.publicId + ':' + pt.tag) {
-            <span class="tag tag-public" [class.subscribed]="pt.subscribed" [title]="'From: ' + pt.publicId">{{ pt.tag }}</span>
+    } @else {
+        @if (mode() === 'full') {
+            @for (entry of chassisTagEntries(); track entry.tag.toLowerCase()) {
+                <span class="tag tag-chassis">{{ formatTagEntry(entry) }}</span>
+            }
+            @for (entry of nameTagEntries(); track entry.tag.toLowerCase()) {
+                <span class="tag tag-name">{{ formatTagEntry(entry) }}</span>
+            }
+            @for (pt of publicTags(); track pt.publicId + ':' + pt.tag) {
+                <span class="tag tag-public" [class.subscribed]="pt.subscribed" [title]="publicTagTitle(pt)">{{ pt.tag }}</span>
+            }
         }
-    }
-    @if (enableTagsEditing()) {
-    <a class="add-tag-btn" (click)="onTagClick($event)" title="Add tag" aria-label="Add tag">
-        @if (mode() === 'compact') {
-            @if (hasTags()) {
+        @if (enableTagsEditing()) {
+        <a class="add-tag-btn" [class.tagged]="mode() === 'compact' && hasTags()" (click)="onTagClick($event)"
+            [title]="hasTags() ? 'Edit tags' : 'Add tag'" [attr.aria-label]="hasTags() ? 'Edit tags' : 'Add tag'">
+            @if (mode() === 'compact' && hasTags()) {
                 <span class="tags-counter">{{ totalTagCount() }}</span>
-                <svg fill="var(--bt-yellow)" width="24px" height="24px" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg" aria-hidden="true" focusable="false">
-                    <path d="M21.842 6.218a1.977 1.977 0 0 0-.424-.628A1.99 1.99 0 0 0 20 5H8c-.297 0-.578.132-.769.359l-5 6c-.309.371-.309.91 0 1.281l5 6c.191.228.472.36.769.36h12a1.977 1.977 0 0 0 1.41-.582A1.99 1.99 0 0 0 22 17V7c0-.266-.052-.525-.158-.782z" />
+                <svg width="22px" height="22px" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg" aria-hidden="true" focusable="false">
+                    <path fill="currentColor" fill-rule="evenodd" [attr.d]="tagPath + ' ' + tagHolePath" />
                 </svg>
             } @else {
-                <svg fill="none" stroke="currentColor" width="24px" height="24px" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg" aria-hidden="true" focusable="false">
-                    <path d="M21.842 6.218a1.977 1.977 0 0 0-.424-.628A1.99 1.99 0 0 0 20 5H8c-.297 0-.578.132-.769.359l-5 6c-.309.371-.309.91 0 1.281l5 6c.191.228.472.36.769.36h12a1.977 1.977 0 0 0 1.41-.582A1.99 1.99 0 0 0 22 17V7c0-.266-.052-.525-.158-.782z" stroke-width="1.5" />
-                    <path d="M14 8V16M10 12H18" stroke-width="2" stroke-linecap="round" />
-                </svg>
+                <ng-container [ngTemplateOutlet]="tagIcon" />
             }
-        } @else {
-            <svg fill="none" stroke="currentColor" width="24px" height="24px" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg" aria-hidden="true" focusable="false">
-                <path d="M21.842 6.218a1.977 1.977 0 0 0-.424-.628A1.99 1.99 0 0 0 20 5H8c-.297 0-.578.132-.769.359l-5 6c-.309.371-.309.91 0 1.281l5 6c.191.228.472.36.769.36h12a1.977 1.977 0 0 0 1.41-.582A1.99 1.99 0 0 0 22 17V7c0-.266-.052-.525-.158-.782z" stroke-width="1.5" />
-                <path d="M14 8V16M10 12H18" stroke-width="2" stroke-linecap="round" />
-            </svg>
+        </a>
         }
-    </a>
     }
 </div>
+
+<!-- A price tag with a hole: no plus sign, so it never reads as "add unit". -->
+<ng-template #tagIcon>
+    <svg class="tag-icon" width="22px" height="22px" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg" aria-hidden="true" focusable="false">
+        <path [attr.d]="tagPath" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linejoin="round" />
+        <circle cx="7.6" cy="7.6" r="1.6" fill="currentColor" />
+    </svg>
+</ng-template>

@@ -31,14 +31,16 @@ export function describeCrew(
 ): CrewDescription {
   const isAS = force.gameSystem === GameSystem.AS;
   const aerospace = skillSet === 'aerospace';
-  const gunnery = !isAS && aerospace ? person.aeroGunnery ?? 4 : person.gunnery ?? 4;
-  const personalPiloting = aerospace ? person.aeroPiloting ?? 5 : person.piloting ?? 5;
+  const gunnery = !isAS && aerospace ? (person.aeroGunnery ?? 4) : (person.gunnery ?? 4);
+  const personalPiloting = aerospace ? (person.aeroPiloting ?? 5) : (person.piloting ?? 5);
   const piloting = effectivePiloting ?? personalPiloting;
   const skills = isAS
     ? `Skill ${person.gunnery ?? 4}`
     : `${aerospace ? 'Aerospace' : 'Ground'} Gunnery ${gunnery}, Piloting ${piloting}` +
       (piloting !== personalPiloting ? ` (personal Piloting ${personalPiloting})` : '') +
-      (skillSet === 'both' ? `; Aerospace Gunnery ${person.aeroGunnery ?? 4}, Piloting ${person.aeroPiloting ?? 5}` : '');
+      (skillSet === 'both'
+        ? `; Aerospace Gunnery ${person.aeroGunnery ?? 4}, Piloting ${person.aeroPiloting ?? 5}`
+        : '');
   return {
     name: person.name || label,
     isAS,
@@ -48,7 +50,7 @@ export function describeCrew(
       skills,
       ...(person.commander ? ['Commander'] : []),
       ...(person.edge ? [`Edge ${person.edge}`] : []),
-      ...(wounds === undefined ? [] : [`Wounds ${wounds}/${MAX_CREW_WOUNDS}`]),
+      ...(wounds === undefined ? [] : [`Hits taken ${wounds}/${MAX_CREW_WOUNDS}`]),
     ].join(', '),
   };
 }
@@ -69,15 +71,20 @@ export function describeCrew(
       }
     </span>
     <span class="crew-text">
+      @if (caption()) {
+        <span class="crew-caption">{{ caption() }}</span>
+      }
       <span class="crew-title">
         @if (person().commander) {
           <commander-icon class="commander" />
         }
-        <span class="crew-name">{{ description().name }}</span>
+        <span class="crew-name" [class.unnamed]="caption() && !person().name">{{
+          caption() && !person().name ? 'Unnamed' : description().name
+        }}</span>
         <edge-badge [value]="person().edge ?? 0" />
       </span>
       <span class="crew-meta">
-        @if (wounds() !== undefined) {
+        @if (wounds() !== undefined && !track()) {
           <span class="wounds-bar" aria-hidden="true">
             @for (segment of woundsSegments; track segment) {
               <span class="wounds-segment" [class.filled]="segment <= wounds()!"></span>
@@ -85,14 +92,30 @@ export function describeCrew(
           </span>
         }
         <span class="crew-skills"
-          >{{ description().isAS ? 'Skill ' : skillSet() === 'aerospace' ? 'ASF G ' : 'G ' }}{{ description().gunnery }}
-          @if (!description().isAS) {
-            / P {{ description().piloting }}
-          }
-          @if (!description().isAS && skillSet() === 'both') {
-            · ASF G {{ person().aeroGunnery ?? 4 }} / P {{ person().aeroPiloting ?? 5 }}
-          }
-        </span>
+          ><span class="long"
+            >{{ description().isAS ? 'Skill ' : skillSet() === 'aerospace' ? 'ASF G ' : 'G '
+            }}{{ description().gunnery }}
+            @if (!description().isAS) {
+              / P {{ description().piloting }}
+            }
+            @if (!description().isAS && skillSet() === 'both') {
+              · ASF G {{ person().aeroGunnery ?? 4 }} / P {{ person().aeroPiloting ?? 5 }}
+            }</span
+          ><span class="short"
+            >{{ description().gunnery }}
+            @if (!description().isAS) {
+              /{{ description().piloting }}
+            }
+          </span></span
+        >
+        @if (wounds() !== undefined && track()) {
+          <span class="hits" aria-hidden="true">
+            <span class="hits-label">Hits</span>
+            @for (segment of woundsSegments; track segment) {
+              <span class="hit" [class.filled]="segment <= wounds()!">{{ segment }}</span>
+            }
+          </span>
+        }
       </span>
     </span>
   `,
@@ -104,6 +127,7 @@ export function describeCrew(
       gap: 8px;
       min-width: 0;
       text-align: left;
+      container-type: inline-size;
     }
     .crew-avatar {
       display: flex;
@@ -130,6 +154,21 @@ export function describeCrew(
       justify-content: center;
       min-width: 0;
       gap: var(--crew-line-gap, 1px);
+    }
+    .crew-caption {
+      color: var(--text-color-tertiary, #888);
+      font-size: 9px;
+      font-weight: 600;
+      letter-spacing: 0.12em;
+      line-height: 11px;
+      text-transform: uppercase;
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+    }
+    .crew-name.unnamed {
+      color: var(--text-color-secondary);
+      font-style: italic;
     }
     .crew-title,
     .crew-meta {
@@ -183,6 +222,53 @@ export function describeCrew(
       border-color: var(--damage-color);
       background: var(--damage-color);
     }
+    .short {
+      display: none;
+    }
+    /* The record sheet's Hits Taken boxes, on the skills line. */
+    .hits {
+      display: grid;
+      grid-template-columns: auto repeat(6, 18px);
+      flex-shrink: 0;
+      font-size: 9.5px;
+      line-height: 11px;
+      text-align: center;
+    }
+    .hits-label {
+      padding-right: 6px;
+      color: var(--text-color-tertiary, #888);
+      text-align: right;
+    }
+    .hit {
+      border: 1px solid var(--border-color);
+      border-left-width: 0;
+    }
+    .hits-label + .hit {
+      border-left-width: 1px;
+    }
+    .hit.filled {
+      background: var(--damage-color);
+      color: #fff;
+    }
+    /* Narrow seats keep the name and wounds; skills shorten and Edge drops its label. */
+    @container (max-width: 130px) {
+      .long {
+        display: none;
+      }
+      .short {
+        display: inline;
+      }
+      .crew-meta {
+        gap: 5px;
+      }
+      .wounds-segment {
+        width: 5px;
+        height: 8px;
+      }
+      edge-badge ::ng-deep .label {
+        display: none;
+      }
+    }
   `,
 })
 export class CrewProfileComponent {
@@ -193,6 +279,10 @@ export class CrewProfileComponent {
   readonly effectivePiloting = input<number>();
   readonly skillSet = input<CrewSkillSet>('both');
   readonly wounds = input<number>();
+  /** Seat name shown above the person's name; an unnamed person then reads "Unnamed". */
+  readonly caption = input<string>();
+  /** Shows wounds as the record sheet's Hits Taken row instead of pips. */
+  readonly track = input(false);
   readonly silhouette = PERSON_SILHOUETTE_PATH;
   readonly woundsSegments = Array.from({ length: MAX_CREW_WOUNDS }, (_, index) => index + 1);
   readonly description = computed(() =>

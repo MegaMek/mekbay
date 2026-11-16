@@ -1,314 +1,506 @@
 :host ::ng-deep .modal {
-    max-width: 1000px !important;
+  max-width: 1000px !important;
 }
 
 :host ::ng-deep .modal-body {
-    padding: 0px !important;
-    display: flex;
-    flex-direction: column;
-    flex-grow: 1;
+  padding: 0px !important;
+  display: flex;
+  flex-direction: column;
+  flex-grow: 1;
 }
 
 :host ::ng-deep .dialog-body {
-    display: flex;
-    flex-direction: column;
-    flex-grow: 1;
-    touch-action: pan-y pinch-zoom;
-    overflow: hidden;
+  display: flex;
+  flex-direction: column;
+  flex-grow: 1;
+  touch-action: pan-y pinch-zoom;
+  overflow: hidden;
 }
 
 /* Swipe Animation Container */
 .swipe-container {
-    display: flex;
-    flex-direction: column;
-    flex-grow: 1;
-    position: relative;
-    overflow: hidden;
-    width: 100%;
-    height: 100%;
+  display: flex;
+  flex-direction: column;
+  flex-grow: 1;
+  position: relative;
+  overflow: hidden;
+  width: 100%;
+  height: 100%;
 }
 
 .swipe-panel {
-    display: flex;
-    flex-direction: column;
-    flex-grow: 1;
-    width: 100%;
-    min-height: 0;
-    position: relative;
-    overflow-x: hidden;
-    touch-action: pan-y;
+  display: flex;
+  flex-direction: column;
+  flex-grow: 1;
+  width: 100%;
+  min-height: 0;
+  position: relative;
+  overflow-x: hidden;
+  touch-action: pan-y;
 }
 
 :host ::ng-deep .modal.activetab-factions .dialog-body,
 :host ::ng-deep .modal.activetab-factions .swipe-panel,
 .dialog-body.card-zoomed,
 .dialog-body.card-zoomed .swipe-panel {
-    touch-action: pan-x pan-y;
+  touch-action: pan-x pan-y;
 }
 
 :host ::ng-deep .modal.activetab-factions .swipe-panel {
-    overflow: clip;
+  overflow: clip;
 }
 
 /* Hide scrollbars during swiping and animation */
 .swipe-container.swiping .swipe-panel,
 .swipe-container.animating .swipe-panel {
-    overflow-y: hidden;
+  overflow-y: hidden;
 }
 
 /* Only apply transform when swiping/animating to avoid stacking context issues at rest */
 .swipe-container.swiping .swipe-panel.current-panel,
 .swipe-container.animating .swipe-panel.current-panel {
-    transform: translateX(var(--current-offset, 0));
-    will-change: transform;
+  transform: translateX(var(--current-offset, 0));
+  will-change: transform;
 }
 
 .swipe-panel.incoming-panel {
-    position: absolute;
-    top: 0;
-    left: 0;
-    right: 0;
-    bottom: 0;
-    transform: translateX(var(--incoming-offset, 100%));
-    will-change: transform;
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  transform: translateX(var(--incoming-offset, 100%));
+  will-change: transform;
 }
 
 /* Enable transitions only during animation phase (after swipe ends) */
 .swipe-container.animating .swipe-panel {
-    transition: transform 300ms ease-out;
+  transition: transform 300ms ease-out;
 }
 
 /* Disable pointer events during animation */
 .swipe-container.animating {
-    pointer-events: none;
+  pointer-events: none;
 }
 
 /* Header */
 .header {
-    display: flex;
-    flex-direction: row;
-    gap: 8px;
-    position: relative;
-    min-height: 48px;
-    padding: 8px;
-    padding-bottom: 0px;
-    font-weight: bold;
-    font-size: 1.3em;
-    align-items: center;
+  display: flex;
+  flex-direction: row;
+  gap: 8px;
+  position: relative;
+  min-height: 48px;
+  padding: 8px;
+  padding-bottom: 0px;
+  font-weight: bold;
+  font-size: 1.3em;
+  align-items: center;
 }
 
 .header-icon-container {
-    display: flex;
-    justify-content: center;
-    align-items: center;
-    flex-shrink: 0;
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  flex-shrink: 0;
 }
 
 .header-content {
-    display: flex;
-    flex-direction: column;
-    flex-grow: 1;
-    min-width: 0;
-    gap: 2px;
+  display: flex;
+  flex-direction: column;
+  flex-grow: 1;
+  min-width: 0;
+  gap: 2px;
 }
 
 .header-row {
-    display: flex;
-    flex-direction: row;
-    align-items: center;
-    flex-wrap: wrap;
-    gap: 8px;
-    margin-right: 8px;
+  display: flex;
+  flex-direction: row;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-right: 8px;
 }
 
 .header-row-tags {
-    justify-content: flex-end;
-    display: flex;
-    flex-direction: row;
-    align-items: center;
-    flex-wrap: wrap;
-    gap: 4px;
-    padding-right: 8px;
+  justify-content: flex-end;
+  display: flex;
+  flex-direction: row;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 4px;
+  padding-right: 8px;
 }
 
 .header-tags {
-    margin-left: auto;
+  margin-left: auto;
 }
 
 .header-model {
-    font-size: 0.9em;
-    font-weight: normal;
-    color: var(--text-color-secondary);
-    text-transform: none;
-    margin-right: 24px;
+  font-size: 0.9em;
+  font-weight: normal;
+  color: var(--text-color-secondary);
+  text-transform: none;
+  margin-right: 24px;
 }
 
 .header-chassis {
-    font-size: 1.2em;
-    color: var(--text-color);
-    font-weight: bold;
-    letter-spacing: 0.05em;
-    margin-right: 8px;
+  font-size: 1.2em;
+  color: var(--text-color);
+  font-weight: bold;
+  letter-spacing: 0.05em;
+  margin-right: 8px;
 }
 
 .header-chassis-group {
-    display: flex;
-    flex-direction: row;
-    align-items: center;
-    gap: 8px;
-    min-width: 0;
+  display: flex;
+  flex-direction: row;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
 }
 
 .header-chassis-group .header-chassis {
-    margin-right: 0;
+  margin-right: 0;
 }
 
 .header-details {
-    display: flex;
-    flex-direction: row;
-    align-items: center;
-    gap: 0.5em;
-    text-wrap: nowrap;
-    margin-left: auto;
-    margin-right: 8px;
+  display: flex;
+  flex-direction: row;
+  align-items: center;
+  gap: 0.5em;
+  text-wrap: nowrap;
+  margin-left: auto;
+  margin-right: 8px;
 }
 
 .header-details .role {
-    font-size: 0.9em;
-    text-transform: none;
+  font-size: 0.9em;
+  text-transform: none;
 }
 
 .basic-info-block .era-icon {
-    height: 19px;
+  height: 19px;
 }
 
 .info-slot {
-    display: flex;
-    align-items: baseline;
-    flex-direction: row;
-    gap: 4px;
+  display: flex;
+  align-items: baseline;
+  flex-direction: row;
+  gap: 4px;
 }
 
 .info-slot .icon {
-    width: 16px;
-    height: 16px;
-    vertical-align: middle;
+  width: 16px;
+  height: 16px;
+  vertical-align: middle;
 }
 
 .info-slot .icon-text {
-    font-weight: bold;
-    font-size: 20px;
-    line-height: 16px;
+  font-weight: bold;
+  font-size: 20px;
+  line-height: 16px;
 }
 
 /* Fluff Tab */
 :host ::ng-deep .modal.activetab-intel .swipe-panel {
-    background-color: #202b46;
+  background-color: #202b46;
 }
 
 :host.fluff-background ::ng-deep .modal {
-    position: relative;
-    overflow: hidden;
+  position: relative;
+  overflow: hidden;
 }
 
 :host.fluff-background ::ng-deep .modal::after {
-    content: '';
-    position: absolute;
-    inset: 0;
-    background-image: var(--fluff-bg);
-    background-repeat: no-repeat;
-    background-size: 800px auto;
-    background-position: right calc(40% - 80px) top calc(5%);
-    filter: saturate(0) invert(1) blur(0.5px) opacity(0.08);
-    mix-blend-mode: lighten;
-    pointer-events: none;
-    z-index: 0;
-    isolation: isolate;
+  content: '';
+  position: absolute;
+  inset: 0;
+  background-image: var(--fluff-bg);
+  background-repeat: no-repeat;
+  background-size: 800px auto;
+  background-position: right calc(40% - 80px) top calc(5%);
+  filter: saturate(0) invert(1) blur(0.5px) opacity(0.08);
+  mix-blend-mode: lighten;
+  pointer-events: none;
+  z-index: 0;
+  isolation: isolate;
 }
 
-:host.fluff-background ::ng-deep .modal>* {
-    position: relative;
-    z-index: 1;
+:host.fluff-background ::ng-deep .modal > * {
+  position: relative;
+  z-index: 1;
 }
 
 @container (max-width: 600px) {
-    .header {
-        padding-left: 0px;
-        padding-right: 0px;
-    }
+  .header {
+    padding-left: 0px;
+    padding-right: 0px;
+  }
 
-    .header-model {
-        font-size: 0.8em;
-    }
+  .header-model {
+    font-size: 0.8em;
+  }
 
-    .header-chassis {
-        font-size: 1em;
-    }
+  .header-chassis {
+    font-size: 1em;
+  }
 
-    .header-details {
-        font-size: 0.8em;
+  .header-details {
+    font-size: 0.8em;
 
-        .icon {
-            width: 14px;
-            height: 14px;
-        }
+    .icon {
+      width: 14px;
+      height: 14px;
     }
+  }
 }
 
 /* Compact header for low viewport height */
 @media (max-height: 550px) {
-    .header {
-        min-height: unset;
-        padding: 0px 8px 0px 8px;
-        gap: 4px;
-        font-size: 1.1em;
-    }
+  .header {
+    min-height: unset;
+    padding: 0px 8px 0px 8px;
+    gap: 4px;
+    font-size: 1.1em;
+  }
 
-    .header-icon-container {
-        transform: scale(0.5);
-        transform-origin: center;
-        margin: -10px;
-    }
+  .header-icon-container {
+    transform: scale(0.5);
+    transform-origin: center;
+    margin: -10px;
+  }
 
-    .header-content {
-        /* Collapse the two rows into a single inline flow */
-        flex-direction: row;
-        flex-wrap: wrap;
-        align-items: baseline;
-        gap: 0 8px;
-    }
+  .header-content {
+    /* Collapse the two rows into a single inline flow */
+    flex-direction: row;
+    flex-wrap: wrap;
+    align-items: baseline;
+    gap: 0 8px;
+  }
 
-    .header-content .header-row {
-        display: contents;
-    }
+  .header-content .header-row {
+    display: contents;
+  }
 
-    .header-model {
-        font-size: 0.75em;
-        margin-right: 0;
-        order: 1;
-    }
+  .header-model {
+    font-size: 0.75em;
+    margin-right: 0;
+    order: 1;
+  }
 
-    .header-chassis {
-        font-size: 1em;
-        letter-spacing: 0.03em;
-        margin-right: 0;
-        order: 0;
-    }
+  .header-chassis {
+    font-size: 1em;
+    letter-spacing: 0.03em;
+    margin-right: 0;
+    order: 0;
+  }
 
-    .header-details {
-        font-size: 0.85em;
-        margin-left: auto;
-        margin-right: 24px;
-        gap: 0.4em;
-        order: 2;
-    }
+  .header-details {
+    font-size: 0.85em;
+    margin-left: auto;
+    margin-right: 24px;
+    gap: 0.4em;
+    order: 2;
+  }
 
-    .header-details .icon {
-        width: 13px;
-        height: 13px;
-    }
+  .header-details .icon {
+    width: 13px;
+    height: 13px;
+  }
 
-    .header-row-tags {
-        display: none;
-    }
+  .header-row-tags {
+    display: none;
+  }
+}
+
+/* ===== Prototype layouts: the identity bar ===== */
+/* Two baselines: model and the small captions, then chassis and the figures. Sizes follow the original header. */
+.idbar {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr) auto auto;
+  grid-template-areas:
+    'icon model note  role'
+    'icon name  value tons';
+  align-items: baseline;
+  column-gap: 14px;
+  /* Below the frame's top stripes and clear of its 40px clipped corner. */
+  padding: 12px 32px 4px 8px;
+}
+
+/* Without role and tonnage the value is the last column, so no empty track leaves a gap. */
+.idbar.value-only {
+  grid-template-columns: auto minmax(0, 1fr) auto;
+  grid-template-areas:
+    'icon model note'
+    'icon name  value';
+}
+
+.idbar-icon {
+  grid-area: icon;
+  align-self: center;
+  margin-right: -4px;
+}
+
+.idbar-model {
+  grid-area: model;
+  overflow: hidden;
+  color: var(--text-color-secondary);
+  font-size: 1.15em;
+  line-height: 1.15;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.idbar-name {
+  grid-area: name;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 2px 8px;
+  min-width: 0;
+}
+
+.idbar-chassis {
+  font-size: 1.55em;
+  font-weight: bold;
+  letter-spacing: 0.05em;
+  line-height: 1.15;
+}
+
+.idbar-condition {
+  padding: 1px 5px;
+  background: color-mix(in srgb, var(--condition-color) 100%, transparent 50%);
+  color: #fff;
+  font-size: 0.72em;
+  font-weight: 600;
+  white-space: nowrap;
+}
+
+.idbar-tags {
+  align-self: center;
+  margin-left: auto;
+}
+
+.idbar-caption {
+  justify-self: end;
+  color: var(--text-color-secondary);
+  font-size: 0.8em;
+  white-space: nowrap;
+}
+
+.idbar-role {
+  grid-area: role;
+}
+
+.idbar-value-note {
+  grid-area: note;
+}
+
+.idbar-tons,
+.idbar-value {
+  display: flex;
+  align-items: baseline;
+  justify-self: end;
+  gap: 4px;
+  line-height: 1.15;
+  white-space: nowrap;
+}
+
+.idbar-tons {
+  grid-area: tons;
+}
+
+.idbar-value {
+  grid-area: value;
+}
+
+.idbar-figure {
+  font-size: 1.3em;
+  font-weight: bold;
+  font-variant-numeric: tabular-nums;
+}
+
+.idbar-tons-icon {
+  width: 15px;
+  height: 15px;
+}
+
+.idbar-value-label {
+  color: var(--text-color-tertiary);
+  font-size: 0.7em;
+  font-weight: 600;
+  letter-spacing: 0.1em;
+}
+
+.idbar-value-number {
+  font-size: 1.55em;
+  font-weight: bold;
+  font-variant-numeric: tabular-nums;
+}
+
+/* A phone keeps one line per row: smaller type and gaps, and less corner clearance at the full-width frame. */
+@container (max-width: 500px) {
+  .idbar {
+    column-gap: 10px;
+    padding-right: 20px;
+  }
+
+  .idbar-model {
+    font-size: 1em;
+  }
+
+  .idbar-chassis {
+    font-size: 1.3em;
+    letter-spacing: 0.02em;
+  }
+
+  .idbar-figure {
+    font-size: 1.15em;
+  }
+
+  .idbar-value-number {
+    font-size: 1.35em;
+  }
+}
+
+.share-btn {
+  width: 40px;
+  height: 40px;
+  padding: 0;
+}
+
+/* The share button joins the footer, so phones get narrower text buttons to keep one line. */
+@media screen and (max-width: 600px) {
+  :host(.prototype-layout) .modal-btn {
+    width: auto;
+    padding-inline: 14px;
+  }
+}
+
+/* Temporary prototype switch in the footer: a square showing the layout number. */
+.layout-switch {
+  position: relative;
+  display: inline-flex;
+  flex: 0 0 auto;
+  align-items: center;
+  justify-content: center;
+  box-sizing: border-box;
+  width: 32px;
+  height: 32px;
+  border: 1px dashed var(--bt-yellow);
+  background: var(--background-input);
+  color: var(--bt-yellow);
+  font-weight: 700;
+  cursor: pointer;
+}
+
+.layout-switch select {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  opacity: 0;
+  cursor: pointer;
+  /* At 16px iOS opens the picker without zooming the page. */
+  font-size: 16px;
 }

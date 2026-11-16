@@ -38,6 +38,7 @@ import type { PrintAllOptions } from '../../models/print-options.model';
 import { SpriteStorageService } from '../../services/sprite-storage.service';
 import { DataService } from '../../services/data.service';
 import { PublicTagsService } from '../../services/public-tags.service';
+import { PlayerNamesService } from '../../services/player-names.service';
 import { TagsService } from '../../services/tags.service';
 import { TaggingService } from '../../services/tagging.service';
 import { ToastService } from '../../services/toast.service';
@@ -194,6 +195,7 @@ export class OptionsDialogComponent {
     spriteStorageService = inject(SpriteStorageService);
     dataService = inject(DataService);
     publicTagsService = inject(PublicTagsService);
+    readonly playerNames = inject(PlayerNamesService);
     tagsService = inject(TagsService);
     taggingService = inject(TaggingService);
     toastService = inject(ToastService);

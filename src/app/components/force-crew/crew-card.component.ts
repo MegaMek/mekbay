@@ -10,8 +10,11 @@ import type { CrewDragData } from '../../services/crew-assignment.service';
 import { RemoveIconComponent } from '../remove-icon/remove-icon.component';
 import { CrewProfileComponent, describeCrew } from './crew-profile.component';
 
-/** `compact` is the row card without action buttons, for dense unit rows. */
-export type CrewLayout = 'compact' | 'cards' | 'rows' | 'slots';
+/**
+ * `compact` is the row card without action buttons, for dense unit rows.
+ * `seats` are joined segments with the seat name inside; `sheet` adds the record sheet's Hits Taken row.
+ */
+export type CrewLayout = 'compact' | 'cards' | 'rows' | 'slots' | 'seats' | 'sheet';
 
 @Component({
   selector: 'crew-card',
@@ -24,11 +27,15 @@ export type CrewLayout = 'compact' | 'cards' | 'rows' | 'slots';
       [class.card-layout]="layout() === 'cards'"
       [class.row-layout]="layout() === 'rows'"
       [class.slot-layout]="layout() === 'slots'"
+      [class.seat-layout]="layout() === 'seats'"
+      [class.sheet-layout]="layout() === 'sheet'"
       cdkDrag
       cdkDragRootElement="crew-card"
       [cdkDragData]="dragData()"
       [cdkDragDisabled]="!canMove()"
       [cdkDragStartDelay]="{ touch: 200, mouse: 0 }"
+      (cdkDragStarted)="dragging.emit(true)"
+      (cdkDragEnded)="dragging.emit(false)"
       (click)="$event.stopPropagation()"
     >
       <button
@@ -43,38 +50,17 @@ export type CrewLayout = 'compact' | 'cards' | 'rows' | 'slots';
           [force]="force()"
           [person]="person()"
           [label]="label()"
-          [avatarWidth]="layout() === 'rows' || layout() === 'compact' ? 24 : 32"
+          [avatarWidth]="layout() === 'sheet' ? 36 : layout() === 'cards' || layout() === 'slots' ? 32 : 24"
+          [caption]="layout() === 'seats' || layout() === 'sheet' || layout() === 'slots' ? label() : undefined"
+          [track]="layout() === 'sheet'"
           [effectivePiloting]="effectivePiloting()"
           [skillSet]="skillSet()"
           [wounds]="wounds()"
         />
       </button>
-      @if (canMove() && layout() !== 'compact') {
+      <!-- Only reserves offer deletion here; assigned crew is unassigned or deleted from the pilot dialog. -->
+      @if (canDelete() && layout() !== 'compact') {
         <div class="crew-actions" (mousedown)="$event.stopPropagation()" (touchstart)="$event.stopPropagation()">
-          @if (assigned()) {
-            <button
-              type="button"
-              class="icon-action"
-              title="Move to reserves"
-              (click)="unassigned.emit()"
-              [attr.aria-label]="'Move ' + description().name + ' to reserves'"
-            >
-              <svg width="16" height="16" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
-                <path
-                  d="M15 2a4 4 0 0 0-4 4v1a5 5 0 0 0 2 4v2l-3 1.5A4 4 0 0 0 8 18v4h14v-4a4 4 0 0 0-2-3.5L17 13v-2a5 5 0 0 0 2-4V6a4 4 0 0 0-4-4Z"
-                  fill="currentColor"
-                />
-                <path
-                  d="M8 11H1m3-3-3 3 3 3"
-                  fill="none"
-                  stroke="currentColor"
-                  stroke-width="2"
-                  stroke-linecap="round"
-                  stroke-linejoin="round"
-                />
-              </svg>
-            </button>
-          }
           <button
             type="button"
             class="icon-action delete"
@@ -123,7 +109,6 @@ export type CrewLayout = 'compact' | 'cards' | 'rows' | 'slots';
       .crew-actions {
         display: flex;
         align-items: center;
-        gap: 4px;
         padding: 0 8px 0 4px;
       }
       .icon-action {
@@ -143,18 +128,25 @@ export type CrewLayout = 'compact' | 'cards' | 'rows' | 'slots';
       .delete:hover {
         color: red;
       }
+      .card-layout .crew-actions {
+        padding: 0 4px;
+        border-left: 1px solid #ffffff12;
+      }
+      /* A seat is a segment of its unit's strip, which draws the frame. */
+      .seat-layout {
+        border: 0;
+        background: transparent;
+      }
+      .seat-layout .crew-main {
+        padding: 5px 8px 5px 5px;
+      }
+      .sheet-layout .crew-main {
+        padding: 6px 8px;
+      }
       .card-layout .crew-main,
       .slot-layout .crew-main {
         padding: 8px;
         --crew-line-gap: 5px;
-      }
-      .card-layout .crew-actions,
-      .slot-layout .crew-actions {
-        flex-direction: column;
-        justify-content: center;
-        gap: 2px;
-        padding: 0 4px;
-        border-left: 1px solid #ffffff12;
       }
       :host(.cdk-drag-preview) {
         box-sizing: border-box;
@@ -172,15 +164,17 @@ export class CrewCardComponent {
   readonly person = input.required<ForcePerson>();
   readonly label = input('Unnamed crew');
   readonly layout = input<CrewLayout>('rows');
-  readonly assigned = input(false);
   readonly canEdit = input(false);
   readonly canMove = input(false);
   readonly effectivePiloting = input<number>();
   readonly skillSet = input<CrewSkillSet>('both');
   readonly wounds = input<number>();
   readonly reason = input<string>();
+  /** Shows the delete button; only reserve cards pass it. */
+  readonly canDelete = input(false);
   readonly edited = output<void>();
-  readonly unassigned = output<void>();
+  /** True while this card is being dragged out of its place. */
+  readonly dragging = output<boolean>();
   readonly deleted = output<void>();
   readonly description = computed(() =>
     describeCrew(this.force(), this.person(), this.label(), this.skillSet(), this.effectivePiloting(), this.wounds()),

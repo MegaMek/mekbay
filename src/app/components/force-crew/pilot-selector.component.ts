@@ -12,6 +12,7 @@ import { OverlayManagerService } from '../../services/overlay-manager.service';
 import { DropdownPointerActivationGuard, scrollActiveOptionIntoView } from '../../utils/dropdown-interaction.utils';
 import { uuidv7 } from '../../utils/uuid.util';
 import { RemoveIconComponent } from '../remove-icon/remove-icon.component';
+import type { CrewLayout } from './crew-card.component';
 import { CrewProfileComponent } from './crew-profile.component';
 import { PERSON_SILHOUETTE_PATH } from '../crew-portrait/crew-portrait.component';
 
@@ -166,11 +167,15 @@ export class PilotSelectorService {
     selector: 'pilot-selector',
     changeDetection: ChangeDetectionStrategy.OnPush,
     template: `
-        <button #trigger type="button" class="vacancy" [class.dense]="dense()" [disabled]="disabled()" aria-haspopup="listbox"
+        <button #trigger type="button" class="vacancy" [class.dense]="dense()" [class.seat]="seat()" [disabled]="disabled()" aria-haspopup="listbox"
             [attr.aria-expanded]="open()" [attr.aria-label]="'Assign ' + label()"
             (click)="$event.stopPropagation(); toggle()" (keydown.arrowdown)="$event.preventDefault(); show()">
             <img src="/images/helmet.svg" width="24" height="24" alt="" />
-            <span>No {{ label() }}<small>Assign crew</small></span>
+            @if (seat()) {
+                <span><small class="cap">{{ label() }}</small>Vacant<small>Assign crew</small></span>
+            } @else {
+                <span>No {{ label() }}<small>Assign crew</small></span>
+            }
         </button>
     `,
     styles: [`
@@ -181,7 +186,13 @@ export class PilotSelectorService {
         .vacancy:disabled { cursor: default; opacity: .65; }
         .dense { min-height: 40px; padding: 4px; font-size: 13px; line-height: 16px; }
         .dense small { margin: 0; font-size: 11px; line-height: 13px; }
-        .vacancy > span:first-of-type { flex: 1; }
+        .vacancy > span:first-of-type { flex: 1; min-width: 0; }
+        /* A vacant seat in a strip or sheet: hatched, with the seat name above. */
+        .seat { min-height: 44px; padding: 5px 8px 5px 5px; border: 0; font-size: 13px; line-height: 16px;
+            background: repeating-linear-gradient(135deg, transparent 0 6px, #ffffff08 6px 12px); }
+        .seat img { width: 24px; height: 24px; }
+        .seat small { margin: 0; font-size: 11px; line-height: 13px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+        .seat .cap { font-size: 9px; font-weight: 600; letter-spacing: .12em; line-height: 11px; text-transform: uppercase; color: var(--text-color-tertiary, #888); }
         small { display: block; font-size: .75em; margin-top: 2px; }
     `],
 })
@@ -191,7 +202,11 @@ export class PilotSelectorComponent {
     readonly positionId = input.required<string>();
     readonly label = input('Pilot');
     /** Matches the 40px row card instead of the taller slot card. */
-    readonly dense = input(false);
+    readonly layout = input<CrewLayout>('slots');
+    /** Matches the 40px row card instead of the taller slot card. */
+    readonly dense = computed(() => this.layout() === 'rows' || this.layout() === 'compact');
+    /** Matches a seat of a joined strip or a record-sheet row. */
+    readonly seat = computed(() => this.layout() === 'seats' || this.layout() === 'sheet');
     readonly disabled = input(false);
     readonly open = signal(false);
     readonly trigger = viewChild.required<ElementRef<HTMLButtonElement>>('trigger');
