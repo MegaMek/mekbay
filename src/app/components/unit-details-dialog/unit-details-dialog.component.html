@@ -213,7 +213,7 @@
         }
         <unit-construction-button [unit]="unit" [forceMember]="constructionMember()"></unit-construction-button>
         @if (unit.isCustom) {
-        <custom-unit-actions [unit]="unit" [member]="constructionMember()" />
+        <custom-unit-actions [unit]="unit" />
         }
         @if (layout() !== 'classic' && !shareButtonInActions()) {
         <button class="bt-button share-btn" (click)="onShare()" title="Share unit link" aria-label="Share unit link">

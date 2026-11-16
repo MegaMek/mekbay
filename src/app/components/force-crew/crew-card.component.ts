@@ -143,10 +143,13 @@ export type CrewLayout = 'compact' | 'cards' | 'rows' | 'slots' | 'seats' | 'she
       .sheet-layout .crew-main {
         padding: 6px 8px;
       }
-      .card-layout .crew-main,
-      .slot-layout .crew-main {
+      .card-layout .crew-main {
         padding: 8px;
         --crew-line-gap: 5px;
+      }
+      /* A slot names its station inside, so its three lines sit as tight as a sheet seat's. */
+      .slot-layout .crew-main {
+        padding: 6px 8px;
       }
       :host(.cdk-drag-preview) {
         box-sizing: border-box;

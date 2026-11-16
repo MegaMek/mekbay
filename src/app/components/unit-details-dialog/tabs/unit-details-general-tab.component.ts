@@ -3,7 +3,7 @@
 // Author: Drake
 
 import { UnitNameService } from '../../../services/unit-name.service';
-import { Component, ChangeDetectionStrategy, input, inject, computed, resource, signal } from '@angular/core';
+import { Component, ChangeDetectionStrategy, ElementRef, input, inject, computed, effect, resource, signal, viewChild } from '@angular/core';
 import { NgTemplateOutlet } from '@angular/common';
 import type { UnitSummary } from '../../../models/unit-summary.model';
 import { buildUnitComponentMetadata, type UnitConditionComponent as UnitComponent } from '../../../utils/unit-component-metadata-builder';
@@ -50,6 +50,7 @@ import { ForceUnitCrewComponent } from '../../force-crew/force-unit-crew.compone
 import { QuirkBadgeComponent } from '../../quirk-badge/quirk-badge.component';
 import { UnitTagsComponent, type TagClickEvent } from '../../unit-tags/unit-tags.component';
 import { SheetPanelComponent } from '../../sheet-panel/sheet-panel.component';
+import { CustomUnitUpdateComponent } from '../../custom-unit-update/custom-unit-update.component';
 import { TaggingService } from '../../../services/tagging.service';
 import { unitFactsInSpecs, type UnitDetailsLayout } from '../unit-details-layout';
 
@@ -254,7 +255,7 @@ export function shouldShowAdjustedPilotSkills(
 @Component({
     selector: 'unit-details-general-tab',
     changeDetection: ChangeDetectionStrategy.OnPush,
-    imports: [NgTemplateOutlet, UnitComponentItemComponent, ModeSwitchComponent, StatBarSpecsPipe, FilterAmmoPipe, TooltipDirective, ForceUnitCrewComponent, QuirkBadgeComponent, UnitTagsComponent, SheetPanelComponent],
+    imports: [NgTemplateOutlet, UnitComponentItemComponent, ModeSwitchComponent, StatBarSpecsPipe, FilterAmmoPipe, TooltipDirective, ForceUnitCrewComponent, QuirkBadgeComponent, UnitTagsComponent, SheetPanelComponent, CustomUnitUpdateComponent],
     templateUrl: './unit-details-general-tab.component.html',
     styleUrl: './unit-details-general-tab.component.css'
 })
@@ -271,6 +272,39 @@ export class UnitDetailsGeneralTabComponent {
     // Inputs
     unit = input.required<UnitSummary>();
     forceMember = input<ForceMember>();
+    private readonly railLayout = viewChild<ElementRef<HTMLElement>>('railLayout');
+    /**
+     * Two Columns shares the panel's one scroll. Each column sticks at the offset where its end
+     * just fits the view: a column that fits stays put, a taller one scrolls until its end shows.
+     * Sticky offsets depend on each column's height, which CSS cannot read, so they are measured.
+     */
+    private readonly stickyColumns = effect(onCleanup => {
+        const layout = this.railLayout()?.nativeElement;
+        const tab = layout?.parentElement;
+        const scroller = layout?.closest<HTMLElement>('.swipe-panel');
+        if (!layout || !tab || !scroller) return;
+        // The notices stick to the bottom of the view and cover what is under them.
+        const notices = tab.nextElementSibling as HTMLElement | null;
+        const columns = [...layout.children] as HTMLElement[];
+        const place = () => {
+            const style = getComputedStyle(tab);
+            const top = parseFloat(style.paddingTop);
+            const bottom = parseFloat(style.paddingBottom);
+            const view = scroller.clientHeight - (notices?.offsetHeight ?? 0);
+            layout.style.setProperty('--column-fill', `${view - top - bottom}px`);
+            for (const column of columns) {
+                column.style.setProperty('--sticky-top', `${Math.min(top, view - bottom - column.offsetHeight)}px`);
+            }
+        };
+        const observer = new ResizeObserver(place);
+        for (const element of [scroller, ...columns, ...(notices ? [notices] : [])]) observer.observe(element);
+        onCleanup(() => observer.disconnect());
+    });
+    /** A force unit built from a custom design can take that design's newer saved versions. */
+    readonly designUpdateMember = computed(() => {
+        const member = this.forceMember();
+        return this.unit().isCustom && isCBTForceMember(member) ? member : undefined;
+    });
     gunnerySkill = input<number | undefined>(undefined);
     pilotingSkill = input<number | undefined>(undefined);
     adjustedValueOverride = input<number | undefined>(undefined);

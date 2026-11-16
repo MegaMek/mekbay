@@ -110,6 +110,8 @@ floating-comp-info {
     color: #fff;
     overflow: hidden;
     text-overflow: ellipsis;
+    /* A name longer than its box breaks there instead of being cut; sizing is unaffected. */
+    overflow-wrap: break-word;
     flex-grow: 1;
 }
 

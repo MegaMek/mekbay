@@ -25,19 +25,20 @@
       <ng-container [ngTemplateOutlet]="loadoutBlock" />
     }
     @case ('columns') {
-      <div class="rail-layout">
+      <div class="rail-layout" #railLayout>
         <aside class="rail">
           @if (forceMember(); as member) {
             <force-unit-crew [force]="member.force" [unitId]="member.id" layout="slots" [joined]="true" />
           }
           <ng-container [ngTemplateOutlet]="tagRow" />
           <ng-container [ngTemplateOutlet]="gauges" />
-          <ng-container [ngTemplateOutlet]="specPanels" />
+          <div class="rail-panels">
+            <ng-container [ngTemplateOutlet]="specPanels" />
+          </div>
           <ng-container [ngTemplateOutlet]="quirksBlock" />
         </aside>
         <div class="rail-main">
           <ng-container [ngTemplateOutlet]="loadoutBlock" />
-          <div class="spanner"></div>
           <ng-container [ngTemplateOutlet]="bottomInfo" />
         </div>
       </div>
@@ -66,35 +67,40 @@
     }
   }
   @if (layout() !== 'columns') {
-    <div class="spanner"></div>
     <ng-container [ngTemplateOutlet]="bottomInfo" />
   }
 </div>
-@if (unit().loadIssues.length) {
-  <div class="unit-load-issues-footer">
-    <section class="unit-load-issues framed-borders error" aria-label="Unit data issues">
-      <button
-        class="unit-load-issues-toggle"
-        type="button"
-        (click)="toggleLoadIssues()"
-        [attr.aria-expanded]="loadIssuesOpen()"
-      >
-        <span class="chevron" [class.collapsed]="!loadIssuesOpen()" aria-hidden="true"></span>
-        <span class="unit-load-issues-title">Unit data issues ({{ unit().loadIssues.length }})</span>
-      </button>
-      @if (loadIssuesOpen()) {
-        <ul class="unit-load-issues-list allow-select">
-          @for (issue of unit().loadIssues; track $index) {
-            <li>
-              <strong>{{ issue.severity === 'error' ? 'Error' : 'Warning' }}:</strong>
-              @if (issue.count > 1) { {{ issue.count }}× }{{ issue.message }}
-            </li>
-          }
-        </ul>
-      }
-    </section>
-  </div>
-}
+<!-- Notices pinned to the bottom of the tab; each collapses when it has nothing to say. -->
+<div class="tab-notices">
+  @if (designUpdateMember(); as member) {
+    <custom-unit-update class="tab-notice" [unit]="unit()" [member]="member" />
+  }
+  @if (unit().loadIssues.length) {
+    <div class="tab-notice">
+      <section class="unit-load-issues framed-borders error" aria-label="Unit data issues">
+        <button
+          class="unit-load-issues-toggle"
+          type="button"
+          (click)="toggleLoadIssues()"
+          [attr.aria-expanded]="loadIssuesOpen()"
+        >
+          <span class="chevron" [class.collapsed]="!loadIssuesOpen()" aria-hidden="true"></span>
+          <span class="unit-load-issues-title">Unit data issues ({{ unit().loadIssues.length }})</span>
+        </button>
+        @if (loadIssuesOpen()) {
+          <ul class="unit-load-issues-list allow-select">
+            @for (issue of unit().loadIssues; track $index) {
+              <li>
+                <strong>{{ issue.severity === 'error' ? 'Error' : 'Warning' }}:</strong>
+                @if (issue.count > 1) { {{ issue.count }}× }{{ issue.message }}
+              </li>
+            }
+          </ul>
+        }
+      </section>
+    </div>
+  }
+</div>
 
 <!-- Building blocks shared by every layout -->
 <ng-template #bottomInfo>

@@ -20,13 +20,21 @@
   padding: 8px 16px;
 }
 
-.unit-load-issues-footer {
+.tab-notices {
   position: sticky;
   bottom: 0;
   flex: 0 0 auto;
-  padding: 8px 16px;
   background-color: var(--background-color-menu);
   z-index: 2;
+}
+
+.tab-notice {
+  display: block;
+  padding: 8px 16px;
+}
+
+.tab-notice:empty {
+  display: none;
 }
 
 .unit-load-issues-toggle {
@@ -352,7 +360,8 @@
 /* Matrix layout */
 .components-matrix {
   display: grid;
-  grid-template-columns: repeat(3, 1fr);
+  /* Columns shrink with their container instead of pushing the grid over neighbouring content. */
+  grid-template-columns: repeat(3, minmax(0, 1fr));
   gap: 1.25em 16px;
   justify-content: center;
   align-items: stretch;
@@ -363,6 +372,8 @@
 
 .comp-list {
   width: 100%;
+  /* Fit the cell; one long equipment name must not widen the whole location past it. */
+  min-width: 0;
   display: flex;
   flex-direction: column;
   gap: 2px;
@@ -416,6 +427,8 @@
   display: flex;
   justify-content: space-between;
   align-items: flex-end;
+  /* Pushed to the bottom of the column; a spacer element would add a second flex gap. */
+  margin-top: auto;
   padding-bottom: 8px;
 }
 
@@ -541,14 +554,6 @@
   height: auto;
   object-fit: contain;
   display: block;
-}
-
-.features-list,
-.grav-list,
-.ammo-list,
-.additional-components-list {
-  margin-bottom: 8px;
-  line-height: 1.5;
 }
 
 .additional-components-list {
@@ -861,7 +866,8 @@
   }
 }
 
-/* Two Columns: who and what in a side rail, the loadout beside it; stacked on a phone. */
+/* Two Columns: who and what in a side rail beside the loadout once the loadout has room for its
+   grid. Narrower, the rail sits above the loadout one row per block; a phone stacks everything. */
 .rail-layout {
   display: grid;
   flex: 1;
@@ -869,11 +875,42 @@
   gap: 16px;
 }
 
-.rail {
+.rail,
+.rail-panels {
   display: flex;
   flex-direction: column;
   gap: 12px;
   min-width: 0;
+}
+
+/* In the side rail and on a phone, the stats in three even rows. */
+.rail .gauges {
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+}
+
+/* Above the loadout: the stats in one row, then Basic Info (two columns of pairs) beside Origin. */
+@container (min-width: 501px) and (max-width: 959px) {
+  .rail .gauges {
+    grid-template-columns: none;
+    grid-auto-flow: column;
+    grid-auto-columns: minmax(0, 1fr);
+  }
+
+  .rail-panels {
+    display: grid;
+    grid-template-columns: minmax(0, 2fr) minmax(0, 1fr);
+    gap: 16px;
+  }
+
+  .rail .spec-group.basic {
+    grid-column: auto;
+  }
+
+  .rail .spec-group.basic dl {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 3px 20px;
+  }
 }
 
 .rail-main {
@@ -894,37 +931,38 @@
   border-top: 0;
 }
 
-@container (min-width: 760px) {
+@container (min-width: 960px) {
+  /* The divider spans the row, whichever column is taller. */
   .rail-layout {
     grid-template-columns: 290px minmax(0, 1fr);
+    background: linear-gradient(var(--border-color), var(--border-color)) 306px 0 / 1px 100% no-repeat;
   }
 
-  /* The sticky rail is only as tall as its content; the main column fills the row, so it draws the divider. */
-  .rail {
+  /* One shared scroll: a column that fits stays put, a taller one scrolls until its end is in
+     view and then stays while the other goes on. The component measures --sticky-top. */
+  .rail,
+  .rail-main {
     position: sticky;
-    top: 0;
+    top: var(--sticky-top, 0px);
     align-self: start;
   }
 
+  /* At least as tall as the view, so the sources sit at its bottom when the loadout is short. */
   .rail-main {
+    min-height: var(--column-fill, auto);
     padding-left: 16px;
-    border-left: 1px solid var(--border-color);
   }
 
-  .rail .spec-groups {
-    grid-template-columns: 1fr;
+  /* The loadout beside the rail is narrow; location labels need no more than this. */
+  .rail-main .components-matrix .comp-loc {
+    width: 40px;
+    min-width: 40px;
+    max-width: 40px;
   }
 
-  .rail .spec-group.basic {
-    grid-column: auto;
-  }
-
+  /* The 290px rail has room for one pair per line. */
   .rail .spec-group.basic dl {
     display: flex;
-  }
-
-  .rail .gauges {
-    grid-template-columns: repeat(3, minmax(0, 1fr));
   }
 }
 
