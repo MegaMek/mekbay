@@ -45,6 +45,7 @@ import { FormationInfoDialogComponent, type FormationInfoDialogData } from '../f
 import { UnitDetailsDialogComponent, type UnitDetailsDialogData } from '../unit-details-dialog/unit-details-dialog.component';
 import { ForceTagsComponent, type ForceTagClickEvent } from '../force-tags/force-tags.component';
 import { UnitIconComponent } from '../unit-icon/unit-icon.component';
+import { CommanderIconComponent } from '../commander-icon/commander-icon.component';
 import { ForceReservesPreviewComponent } from '../force-reserves-preview/force-reserves-preview.component';
 import { GameSystem } from '../../models/common.model';
 import { adjustPointValueForSkill } from '../../utils/pv-skill-adjustment.util';
@@ -73,7 +74,7 @@ export interface ForcePreviewUnitMenuActionEvent {
 
 @Component({
     selector: 'force-preview-panel',
-    imports: [DecimalPipe, CdkMenuModule, CleanModelStringPipe, MeasureClampOverflowDirective, UnitIconComponent, ForceTagsComponent, ForceReservesPreviewComponent],
+    imports: [DecimalPipe, CdkMenuModule, CleanModelStringPipe, MeasureClampOverflowDirective, UnitIconComponent, ForceTagsComponent, ForceReservesPreviewComponent, CommanderIconComponent],
     changeDetection: ChangeDetectionStrategy.OnPush,
     template: `
     @let unitDisplayName = effectiveUnitDisplayName();
@@ -196,14 +197,7 @@ export interface ForcePreviewUnitMenuActionEvent {
                                 (click)="onUnitClick(unitEntry)">
                                 @if (unitEntry.commander) {
                                     <div class="group-commander-indicator" aria-hidden="true">
-                                        <svg class="group-commander-icon" width="42.08" height="51.88" viewBox="0 0 21.04 25.94" preserveAspectRatio="xMidYMid meet" xmlns="http://www.w3.org/2000/svg" focusable="false">
-                                            <g transform="translate(-.02)">
-                                                <g transform="matrix(.265 0 0 .265 -21.1 0)" fill="currentColor">
-                                                    <path d="m79.7 70 39.3-70 40 70.1h-27l-13-22.1-13 22.1z" />
-                                                    <path d="m81.4 97.9 11.3-21.6h52.3l12 21.6z" />
-                                                </g>
-                                            </g>
-                                        </svg>
+                                        <commander-icon />
                                     </div>
                                 }
                                 <div class="unit-content">
@@ -309,7 +303,7 @@ export interface ForcePreviewUnitMenuActionEvent {
                     </div>
                 </div>
                 }
-                @if ((entry.reserveCount ?? 0) > 0) {
+                @if (showReserves() && (entry.reserveCount ?? 0) > 0) {
                     <force-reserves-preview [count]="entry.reserveCount ?? 0"></force-reserves-preview>
                 }
             </div>
@@ -631,11 +625,8 @@ export interface ForcePreviewUnitMenuActionEvent {
             left: 3px;
         }
 
-        .group-commander-icon {
+        commander-icon {
             width: 16px;
-            height: auto;
-            transform: rotate(180deg);
-            flex-shrink: 0;
         }
 
         .unit-content {
@@ -832,6 +823,8 @@ export class ForcePreviewPanelComponent {
     readonly showHeader = input(true);
     readonly showHint = input(true);
     readonly showNote = input(true);
+    /** False when the host lists the reserve crew itself. */
+    readonly showReserves = input(true);
     readonly scrollUnitsOnly = input(false);
     readonly showLockControls = input(false);
     readonly showUnitCost = input(false);

@@ -20,17 +20,20 @@ import { PilotSelectorComponent } from './pilot-selector.component';
     <div
       class="crew-slot"
       [class.slot-layout]="layout() === 'slots'"
-      cdkDropList
-      [id]="dropId"
-      [cdkDropListConnectedTo]="connectedLists()"
-      [cdkDropListSortingDisabled]="true"
-      [cdkDropListDisabled]="!canMove()"
-      [cdkDropListEnterPredicate]="canDrop"
-      (cdkDropListDropped)="drop($event)"
       (click)="$event.stopPropagation()"
       [attr.title]="policy().reason"
     >
       @if (layout() === 'slots') { <span class="slot-label">{{ label() }}</span> }
+      <div
+        class="slot-body"
+        cdkDropList
+        [id]="dropId"
+        [cdkDropListConnectedTo]="connectedLists()"
+        [cdkDropListSortingDisabled]="true"
+        [cdkDropListDisabled]="!canMove()"
+        [cdkDropListEnterPredicate]="canDrop"
+        (cdkDropListDropped)="drop($event)"
+      >
       @if (person(); as occupant) {
         <crew-card
           [force]="force()"
@@ -54,9 +57,11 @@ import { PilotSelectorComponent } from './pilot-selector.component';
           [unitId]="unitId()"
           [positionId]="positionId()"
           [label]="label()"
+          [dense]="layout() === 'rows' || layout() === 'compact'"
           [disabled]="!canMove()"
         />
       }
+      </div>
     </div>
   `,
   styles: [
@@ -65,8 +70,10 @@ import { PilotSelectorComponent } from './pilot-selector.component';
         display: block;
         min-width: 0;
       }
-      .crew-slot {
-        min-height: 36px;
+      /* A card dragged over this station only highlights it. The ghost is a clone from another
+         component, so it stays visible only where it stands in for the card that left. */
+      :host ::ng-deep .slot-body > .cdk-drag-placeholder:not(:only-child) {
+        display: none;
       }
       .slot-layout {
         display: flex;
@@ -80,8 +87,14 @@ import { PilotSelectorComponent } from './pilot-selector.component';
         text-transform: uppercase;
         letter-spacing: .04em;
       }
-      .cdk-drop-list-receiving {
+      .slot-body.cdk-drop-list-receiving {
         outline: 1px dashed var(--bt-yellow);
+        outline-offset: -1px;
+      }
+      .slot-body.cdk-drop-list-dragging {
+        outline: 1px solid var(--bt-yellow);
+        outline-offset: -1px;
+        background: var(--bt-yellow-background);
       }
     `,
   ],

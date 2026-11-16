@@ -3,7 +3,7 @@
 // Author: Drake
 
 import { UnitNameService } from '../../../services/unit-name.service';
-import { Component, ChangeDetectionStrategy, input, inject, computed, signal } from '@angular/core';
+import { Component, ChangeDetectionStrategy, input, inject, computed, resource, signal } from '@angular/core';
 import type { UnitSummary } from '../../../models/unit-summary.model';
 import { buildUnitComponentMetadata, type UnitConditionComponent as UnitComponent } from '../../../utils/unit-component-metadata-builder';
 import { weaponTypes } from '../../../utils/equipment.util';
@@ -16,6 +16,7 @@ import { FilterAmmoPipe } from '../../../pipes/filter-ammo.pipe';
 import { UnitComponentItemComponent } from '../../unit-component-item/unit-component-item.component';
 import { ModeSwitchComponent } from '../../mode-switch/mode-switch.component';
 import { TooltipDirective } from '../../../directives/tooltip.directive';
+import type { TooltipLine } from '../../tooltip/tooltip.component';
 import { calculateAdjustedBV } from '../../../utils/cbt-common.util';
 import { getUnitSourceFilterValues } from '../../../utils/unit-search-shared.util';
 import { isJumpJetEquipment } from '../../../models/jump-equipment.model';
@@ -41,6 +42,8 @@ import { formatBvPv } from '../../../utils/force-viewer-bv-pv-display.util';
 import { adjustPointValueForSkill } from '../../../utils/pv-skill-adjustment.util';
 import { GameService } from '../../../services/game.service';
 import { BASE_RULES_REFS } from '../../../utils/rules-ref.util';
+import { collectUnitRulesRefComponents, unitRulesRefRequirers } from '../../../utils/unit-rules-ref-builder';
+import { NativeEntityService } from '../../../services/native-entity.service';
 import { forceMemberAdjustedValue, isCBTForceMember, type ForceMember } from '../../../models/force-member.model';
 import { ForceUnitCrewComponent } from '../../force-crew/force-unit-crew.component';
 import { QuirkBadgeComponent } from '../../quirk-badge/quirk-badge.component';
@@ -60,7 +63,8 @@ type ComponentLayoutState = {
 const RULES_REF_COLLAPSED_GROUP_LIMIT = 2;
 
 export interface RulesRefBadge {
-    label: string;
+    /** Interchangeable books: several only for merged base alternatives. */
+    books: string[];
     isBase: boolean;
 }
 
@@ -179,7 +183,7 @@ export function getRulesRefBadgeGroups(
         }
 
         displayGroups.push({
-            badges: nonBaseRefs.map(label => ({ label, isBase: false })),
+            badges: nonBaseRefs.map(book => ({ books: [book], isBase: false })),
             bookCount: nonBaseRefs.length,
             hasBaseRefs: false,
         });
@@ -189,8 +193,8 @@ export function getRulesRefBadgeGroups(
         for (const baseExpression of factorBaseRulesRefExpressions(group.baseRefSets)) {
             displayGroups.push({
                 badges: [
-                    ...baseExpression.map(choice => ({ label: choice.join('/'), isBase: true })),
-                    ...group.nonBaseRefs.map(label => ({ label, isBase: false })),
+                    ...baseExpression.map(books => ({ books, isBase: true })),
+                    ...group.nonBaseRefs.map(book => ({ books: [book], isBase: false })),
                 ],
                 bookCount: baseExpression.length + group.nonBaseRefs.length,
                 hasBaseRefs: true,
@@ -206,8 +210,8 @@ export function getRulesRefBadgeGroups(
             const typeOrder = Number(right.hasBaseRefs) - Number(left.hasBaseRefs);
             if (typeOrder !== 0) return typeOrder;
 
-            const leftKey = left.badges.map(badge => badge.label).join('\u0000');
-            const rightKey = right.badges.map(badge => badge.label).join('\u0000');
+            const leftKey = left.badges.map(badge => badge.books.join('/')).join('\u0000');
+            const rightKey = right.badges.map(badge => badge.books.join('/')).join('\u0000');
             return compareRulesRefNames(leftKey, rightKey);
         })
         .map(group => group.badges);
@@ -240,6 +244,7 @@ export class UnitDetailsGeneralTabComponent {
     private layoutService = inject(LayoutService);
     private optionsService = inject(OptionsService);
     private gameService = inject(GameService);
+    private nativeEntities = inject(NativeEntityService);
 
     // Inputs
     unit = input.required<UnitSummary>();
@@ -316,6 +321,39 @@ export class UnitDetailsGeneralTabComponent {
     showAllRulesRefBadgeGroups(): void {
         this.expandedRulesRefUnit.set(this.unit());
     }
+
+    /** The summary keeps only book names; the equipment behind them comes from the native entity. */
+    private readonly rulesRefComponents = resource({
+        params: () => {
+            if (!this.rulesRefBadgeGroups().some(group => group.some(badge => !badge.isBase))) return undefined;
+            const member = this.forceMember();
+            const unit = this.unit();
+            if (isCBTForceMember(member)) return { uuid: unit.uuid, entity: member.entity };
+            return this.nativeEntities.canLoad(unit) ? { uuid: unit.uuid, entity: null } : undefined;
+        },
+        loader: async ({ params }) => collectUnitRulesRefComponents(
+            params.entity ?? (await this.nativeEntities.load(params.uuid)).entity),
+    });
+    /** Why each supplement is needed: the equipment its companion books leave uncovered. */
+    rulesRefBadgeTooltips = computed(() => {
+        const tooltips = new Map<RulesRefBadge, TooltipLine[]>();
+        if (!this.rulesRefComponents.hasValue()) return tooltips;
+        const components = this.rulesRefComponents.value();
+        for (const group of this.rulesRefBadgeGroups()) {
+            for (const badge of group) {
+                if (badge.isBase) continue;
+                const [book] = badge.books;
+                const companions = group.filter(other => other !== badge).map(other => other.books);
+                tooltips.set(badge, [
+                    { value: `${this.dataService.getSourcebookTitle(book)} is required by:`, isHeader: true },
+                    ...unitRulesRefRequirers(components, book, companions).map(({ name, unless }) => ({
+                        value: unless.length > 0 ? `${name} (unless ${unless.join('/')})` : name,
+                    })),
+                ]);
+            }
+        }
+        return tooltips;
+    });
 
     setComponentViewMode(showDetails: boolean): void {
         if (this.showFilteredComponents() === showDetails) return;

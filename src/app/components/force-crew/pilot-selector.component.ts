@@ -1,22 +1,25 @@
 // Copyright (C) 2026 The MegaMek Team
 // SPDX-License-Identifier: GPL-3.0-or-later
 
-import { ChangeDetectionStrategy, Component, DestroyRef, ElementRef, Injector, afterNextRender, computed, effect, inject, input, output, signal, viewChild } from '@angular/core';
+import { ChangeDetectionStrategy, Component, DestroyRef, ElementRef, Injectable, Injector, afterNextRender, computed, effect, inject, input, output, signal, viewChild } from '@angular/core';
 import { ComponentPortal } from '@angular/cdk/portal';
 import { outputToObservable, takeUntilDestroyed } from '@angular/core/rxjs-interop';
-import { takeUntil } from 'rxjs';
+import { takeUntil, type Observable } from 'rxjs';
 import type { Force } from '../../models/force.model';
 import { GameSystem } from '../../models/common.model';
 import { CrewAssignmentService } from '../../services/crew-assignment.service';
 import { OverlayManagerService } from '../../services/overlay-manager.service';
 import { DropdownPointerActivationGuard, scrollActiveOptionIntoView } from '../../utils/dropdown-interaction.utils';
 import { uuidv7 } from '../../utils/uuid.util';
+import { RemoveIconComponent } from '../remove-icon/remove-icon.component';
+import { CrewProfileComponent } from './crew-profile.component';
 
 export type PilotSelection = { readonly kind: 'create' }
     | { readonly kind: 'assign' | 'delete'; readonly personId: string };
 
 @Component({
     selector: 'pilot-selector-panel',
+    imports: [CrewProfileComponent, RemoveIconComponent],
     changeDetection: ChangeDetectionStrategy.OnPush,
     template: `
         <div class="dropdown-shell glass has-shadow framed-borders" (keydown)="onKeydown($event)">
@@ -29,8 +32,9 @@ export type PilotSelection = { readonly kind: 'create' }
                     [class.keyboard-active]="activeIndex() === 0" aria-selected="false"
                     (focus)="activeIndex.set(0)"
                     (pointermove)="hover(0, $event)" (click)="selected.emit({kind: 'create'})">
-                    <span aria-hidden="true">＋</span><span>Create standard {{ isAS() ? 'pilot' : 'crew member' }}
-                        <small>{{ isAS() ? 'Skill 4' : 'Gunnery 4 / Piloting 5' }}</small></span>
+                    <span class="create-mark" aria-hidden="true">+</span>
+                    <span class="create-text"><span>Create standard {{ isAS() ? 'pilot' : 'crew member' }}</span>
+                        <small>{{ isAS() ? 'Skill 4' : 'G 4 / P 5' }}</small></span>
                 </button>
                 @for (person of people(); track person.id; let index = $index) {
                     <div class="option-row">
@@ -38,12 +42,10 @@ export type PilotSelection = { readonly kind: 'create' }
                             [class.keyboard-active]="activeIndex() === index + 1" aria-selected="false"
                             (focus)="activeIndex.set(index + 1)"
                             (pointermove)="hover(index + 1, $event)" (click)="selected.emit({kind: 'assign', personId: person.id})">
-                            <img src="/images/helmet.svg" width="24" height="24" alt="" />
-                            <span>{{ person.name || 'Unnamed crew' }}<small>{{ isAS() ? 'Skill ' : 'Gunnery ' }}{{ person.gunnery ?? 4 }}
-                                @if (!isAS()) { / Piloting {{ person.piloting ?? 5 }} }</small></span>
+                            <crew-profile [force]="force()" [person]="person" [wounds]="crew.reserveWounds(force(), person)" />
                         </button>
                         <button class="delete" type="button" [attr.aria-label]="'Delete ' + (person.name || 'unnamed crew')"
-                            title="Delete crew member" (click)="selected.emit({kind: 'delete', personId: person.id})">×</button>
+                            title="Delete crew member" (click)="selected.emit({kind: 'delete', personId: person.id})"><remove-icon /></button>
                     </div>
                 }
                 @if (people().length === 0) { <p class="empty">No reserve crew{{ search() ? ' matches your search' : ' available' }}.</p> }
@@ -55,14 +57,19 @@ export type PilotSelection = { readonly kind: 'create' }
         .dropdown-shell { display: flex; flex-direction: column; max-height: min(420px, 65dvh); }
         .search { box-sizing: border-box; width: calc(100% - 16px); margin: 8px; }
         .dropdown-options { overflow: auto; }
-        .option-row { display: flex; }
-        .dropdown-option { display: flex; align-items: center; gap: 10px; flex: 1; width: 100%; padding: 10px 12px;
-            border: 0; border-left: 3px solid transparent; background: transparent; color: var(--text-color); text-align: left; cursor: pointer; }
+        /* Entries are the reserve rows: the same face at the same 40px height. */
+        .option-row { display: flex; border-top: 1px solid #ffffff12; }
+        .dropdown-option { display: flex; align-items: center; gap: 8px; flex: 1; box-sizing: border-box; width: 100%; min-width: 0;
+            min-height: 40px; padding: 4px 4px 4px 5px; border: 0; border-left: 3px solid transparent; background: transparent;
+            color: var(--text-color); font: inherit; text-align: left; cursor: pointer; }
         .dropdown-option:hover, .keyboard-active { background: var(--bt-yellow-background-transparent); border-left-color: var(--bt-yellow); }
-        .create-option { border-bottom: 1px solid var(--border-color); }
-        small { display: block; color: var(--text-color-secondary); font-size: .8em; margin-top: 3px; }
-        .delete { width: 36px; flex-shrink: 0; color: var(--text-color-secondary); background: transparent; border: 0; cursor: pointer; }
-        .delete:hover { color: #ff6868; }
+        .create-mark { display: flex; align-items: center; justify-content: center; flex-shrink: 0; box-sizing: border-box;
+            width: 24px; height: 30px; border: 1px dashed var(--border-color); color: var(--text-color-secondary); font-size: 16px; }
+        .create-text { display: flex; flex-direction: column; gap: 1px; min-width: 0; font-size: 13px; line-height: 16px; }
+        small { color: var(--text-color-secondary); font-size: 11px; line-height: 13px; }
+        .delete { display: flex; align-items: center; justify-content: center; flex-shrink: 0; padding: 0 12px; color: #999;
+            background: transparent; border: 0; cursor: pointer; transition: color .2s; }
+        .delete:hover { color: red; }
         .empty { color: var(--text-color-secondary); font-size: .8em; padding: 8px 14px; }
     `],
 })
@@ -75,7 +82,7 @@ export class PilotSelectorPanelComponent {
     readonly optionsId = `pilot-options-${uuidv7()}`;
     readonly searchInput = viewChild.required<ElementRef<HTMLInputElement>>('searchInput');
     private readonly element = inject(ElementRef<HTMLElement>);
-    private readonly crew = inject(CrewAssignmentService);
+    readonly crew = inject(CrewAssignmentService);
     private readonly pointerGuard = new DropdownPointerActivationGuard();
     readonly isAS = computed(() => this.force().gameSystem === GameSystem.AS);
     readonly people = computed(() => {
@@ -125,11 +132,35 @@ export class PilotSelectorPanelComponent {
     }
 }
 
+/** Lists the reserves for one vacant station; a pick assigns, creates or deletes through the crew service. */
+@Injectable({ providedIn: 'root' })
+export class PilotSelectorService {
+    private readonly overlay = inject(OverlayManagerService);
+    private readonly injector = inject(Injector);
+    private readonly crew = inject(CrewAssignmentService);
+
+    /** Anchored to `trigger`, or centered without one; the result emits once when the list closes. */
+    open(force: Force, unitId: string, positionId: string, trigger: Element | null, overlayId = 'pilot-selector'): Observable<void> {
+        const { componentRef, closed } = this.overlay.createManagedOverlay(overlayId, trigger,
+            new ComponentPortal(PilotSelectorPanelComponent, null, this.injector), { closeOnOutsideClick: true });
+        componentRef.setInput('force', force);
+        outputToObservable(componentRef.instance.selected).pipe(takeUntil(closed)).subscribe(selection => {
+            if (selection.kind === 'delete') { void this.crew.delete(force, selection.personId); return; }
+            this.overlay.closeManagedOverlay(overlayId);
+            if (selection.kind === 'create') void this.crew.create(force, unitId, positionId);
+            else void this.crew.assign(force, selection.personId, unitId, positionId);
+        });
+        outputToObservable(componentRef.instance.dismissed).pipe(takeUntil(closed))
+            .subscribe(() => this.overlay.closeManagedOverlay(overlayId));
+        return closed;
+    }
+}
+
 @Component({
     selector: 'pilot-selector',
     changeDetection: ChangeDetectionStrategy.OnPush,
     template: `
-        <button #trigger type="button" class="vacancy" [disabled]="disabled()" aria-haspopup="listbox"
+        <button #trigger type="button" class="vacancy" [class.dense]="dense()" [disabled]="disabled()" aria-haspopup="listbox"
             [attr.aria-expanded]="open()" [attr.aria-label]="'Assign ' + label()"
             (click)="$event.stopPropagation(); toggle()" (keydown.arrowdown)="$event.preventDefault(); show()">
             <img src="/images/helmet.svg" width="24" height="24" alt="" />
@@ -142,6 +173,8 @@ export class PilotSelectorPanelComponent {
             border: 1px dashed var(--border-color, #ffffff40); color: var(--text-color-secondary); background: #0006; text-align: left; }
         .vacancy img { opacity: .4; }
         .vacancy:disabled { cursor: default; opacity: .65; }
+        .dense { min-height: 40px; padding: 4px; font-size: 13px; line-height: 16px; }
+        .dense small { margin: 0; font-size: 11px; line-height: 13px; }
         .vacancy > span:first-of-type { flex: 1; }
         small { display: block; font-size: .75em; margin-top: 2px; }
     `],
@@ -151,40 +184,32 @@ export class PilotSelectorComponent {
     readonly unitId = input.required<string>();
     readonly positionId = input.required<string>();
     readonly label = input('Pilot');
+    /** Matches the 40px row card instead of the taller slot card. */
+    readonly dense = input(false);
     readonly disabled = input(false);
     readonly open = signal(false);
     readonly trigger = viewChild.required<ElementRef<HTMLButtonElement>>('trigger');
     private readonly overlay = inject(OverlayManagerService);
-    private readonly injector = inject(Injector);
+    private readonly selector = inject(PilotSelectorService);
     private readonly destroyRef = inject(DestroyRef);
-    private readonly crew = inject(CrewAssignmentService);
     private readonly overlayId = `pilot-selector-${uuidv7()}`;
 
-    constructor() { this.destroyRef.onDestroy(() => this.close(false)); }
+    constructor() { this.destroyRef.onDestroy(() => this.close()); }
 
     toggle(): void { this.open() ? this.close() : this.show(); }
 
     show(): void {
         if (this.disabled() || this.open()) return;
         this.open.set(true);
-        const { componentRef, closed } = this.overlay.createManagedOverlay(this.overlayId, this.trigger(),
-            new ComponentPortal(PilotSelectorPanelComponent, null, this.injector), { closeOnOutsideClick: true });
-        componentRef.setInput('force', this.force());
-        outputToObservable(componentRef.instance.selected).pipe(takeUntil(closed), takeUntilDestroyed(this.destroyRef))
-            .subscribe(selection => {
-                if (selection.kind === 'delete') { void this.crew.delete(this.force(), selection.personId); return; }
-                this.close();
-                if (selection.kind === 'create') void this.crew.create(this.force(), this.unitId(), this.positionId());
-                else void this.crew.assign(this.force(), selection.personId, this.unitId(), this.positionId());
+        this.selector.open(this.force(), this.unitId(), this.positionId(), this.trigger().nativeElement, this.overlayId)
+            .pipe(takeUntilDestroyed(this.destroyRef)).subscribe(() => {
+                this.open.set(false);
+                // Keyboard users continue from the station they were filling.
+                if (this.trigger().nativeElement.isConnected) this.trigger().nativeElement.focus();
             });
-        outputToObservable(componentRef.instance.dismissed).pipe(takeUntil(closed), takeUntilDestroyed(this.destroyRef))
-            .subscribe(() => this.close());
-        closed.pipe(takeUntilDestroyed(this.destroyRef)).subscribe(() => this.open.set(false));
     }
 
-    private close(restoreFocus = true): void {
+    private close(): void {
         this.overlay.closeManagedOverlay(this.overlayId);
-        this.open.set(false);
-        if (restoreFocus) this.trigger().nativeElement.focus();
     }
 }

@@ -38,7 +38,7 @@ const DEFAULT_OPTIONS: Options = {
   showFilteredComponents: false,
   unitSearchViewMode: 'list',
   factionAvailabilityViewMode: 'list',
-  forceOverviewViewMode: 'compact',
+  forceOverviewViewMode: 'expanded',
   printAllOptions: {
     clean: false,
     printPilotData: true,
@@ -412,7 +412,11 @@ export class OptionsService {
         DEFAULT_OPTIONS.factionAvailabilityViewMode,
         OPTION_VALUES.factionAvailabilityViewMode,
       ),
-      forceOverviewViewMode: saved?.forceOverviewViewMode ?? DEFAULT_OPTIONS.forceOverviewViewMode,
+      forceOverviewViewMode: resolveSavedValue(
+        saved?.forceOverviewViewMode,
+        DEFAULT_OPTIONS.forceOverviewViewMode,
+        OPTION_VALUES.forceOverviewViewMode,
+      ),
       ASVehiclesCriticalHitTable: saved?.ASVehiclesCriticalHitTable ?? DEFAULT_OPTIONS.ASVehiclesCriticalHitTable,
       ASUseAutomations: saved?.ASUseAutomations ?? DEFAULT_OPTIONS.ASUseAutomations,
       ASUnifiedDamagePicker: saved?.ASUnifiedDamagePicker ?? DEFAULT_OPTIONS.ASUnifiedDamagePicker,

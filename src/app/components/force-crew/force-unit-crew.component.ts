@@ -11,13 +11,14 @@ import type { CrewLayout } from './crew-card.component';
     imports: [CrewSlotComponent],
     changeDetection: ChangeDetectionStrategy.OnPush,
     template: `
-        <div class="unit-crew" [class.slots]="layout() === 'slots'" (click)="$event.stopPropagation()">
+        <div class="unit-crew" [class.slots]="layout() === 'slots'" [class.strip]="layout() === 'compact'"
+            (click)="$event.stopPropagation()">
             @for (position of policy().positions; track position.positionId) {
                 <crew-slot [force]="force()" [unitId]="unitId()" [positionId]="position.positionId"
                     [label]="position.label" [layout]="layout()" [showHealth]="showHealth()" />
             }
             @if (policy().kind === 'none') { <span class="crew-reason">{{ policy().reason || 'This unit has no crew.' }}</span> }
-            @if (policy().kind === 'integrated') { <span class="crew-reason">Integrated crew</span> }
+            @if (policy().kind === 'integrated' && layout() !== 'compact') { <span class="crew-reason">Integrated crew</span> }
         </div>
     `,
     styles: [`
@@ -25,6 +26,8 @@ import type { CrewLayout } from './crew-card.component';
         .unit-crew { display: flex; flex-direction: column; gap: 5px; }
         .slots { flex-flow: row wrap; gap: 8px; justify-content: var(--crew-justify-content, flex-start); }
         .slots crew-slot { flex: 0 1 var(--crew-slot-width, 220px); max-width: var(--crew-slot-width, 220px); }
+        .strip { flex-flow: row var(--crew-wrap, wrap); align-items: center; gap: 4px; }
+        .strip crew-slot { flex: 1 1 var(--crew-slot-basis, 150px); max-width: var(--crew-slot-width, 220px); min-width: 0; }
         .crew-reason { color: var(--text-color-secondary); font-size: .75em; padding: 4px; }
     `],
 })

@@ -77,6 +77,12 @@
   font-size: 0.85em;
 }
 
+/* Wraps onto its own line when the header has no room left beside the title. */
+.expanded-extra {
+  flex: 1 1 200px;
+  min-width: 0;
+}
+
 .expanded-subtitle {
   display: flex;
   flex-direction: column;

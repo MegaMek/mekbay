@@ -148,7 +148,7 @@
             <ng-container unit-details-footer-actions>
         @if (data.selectMode) {
         <button class="modal-btn bt-button" (click)="onSelect()">SELECT</button>
-        } @else if (!data.hideAddButton) {
+        } @else if (!data.hideAddButton && !currentForceMember()) {
         <div class="modal-btn bt-split-button" [class.disabled]="forceWorkspace.smartCurrentForce()?.readOnly()">
             <button class="bt-split-part split-main"
                 [disabled]="forceWorkspace.smartCurrentForce()?.readOnly()"

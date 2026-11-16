@@ -326,7 +326,7 @@ export class AlphaStrikeViewerComponent {
     }
 
     onEditPilot(unit: ASForceUnit): void {
-        void this.pilotEditor.editAlphaStrikeUnit(unit);
+        void this.pilotEditor.editUnit(unit.force, unit.id);
     }
     
     toggleHexMode(): void {

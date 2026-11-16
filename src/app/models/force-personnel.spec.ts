@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 
 import {
-    EMPTY_FORCE_PERSONNEL, addForcePerson, assignForcePerson, assignedForcePerson,
+    EMPTY_FORCE_PERSONNEL, FORCE_PERSON_EDGE_MAX, addForcePerson, assignForcePerson, assignedForcePerson,
     canonicalizeForcePersonnel, cloneForcePersonnel, createForcePerson,
     detachForcePersonnel, removeUnitPersonnel, forcePersonnelCrewAssignment, transferForcePersonnel, updateForcePerson,
 } from './force-personnel';
@@ -48,6 +48,17 @@ describe('force personnel', () => {
         expect(updateForcePerson(snapshot, person.id, { portrait: undefined }).people[0].portrait).toBeUndefined();
         expect(() => createForcePerson({ portrait: 'x'.repeat(257) })).toThrow();
         expect(() => createForcePerson({ portrait: 'bad\0key' })).toThrow();
+    });
+
+    it('keeps Edge sparse, clears it at zero, and rejects values outside its range', () => {
+        expect(createForcePerson({ edge: 0 }).edge).toBeUndefined();
+        const person = createForcePerson({ edge: 3 });
+        expect(person.edge).toBe(3);
+        const snapshot = addForcePerson(EMPTY_FORCE_PERSONNEL, person);
+        expect(updateForcePerson(snapshot, person.id, { edge: 0 }).people[0].edge).toBeUndefined();
+        expect(() => createForcePerson({ edge: -1 })).toThrow();
+        expect(() => createForcePerson({ edge: 1.5 })).toThrow();
+        expect(() => createForcePerson({ edge: FORCE_PERSON_EDGE_MAX + 1 })).toThrow();
     });
 
     it('stores bounded notes verbatim and deletes only occupants of removed units', () => {

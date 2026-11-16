@@ -74,7 +74,11 @@ describe('CBT multi-crew pilot dialog logic', () => {
   });
 
   it('uses generic and station-specific crew name labels', () => {
-    expect(EditPilotDialogComponent.prototype.crewNameLabel.call({ crew: [CREW[0]] }, 0)).toBe('Name');
+    const single = { crew: [CREW[0]], selectedGroupCommander: () => false };
+    expect(EditPilotDialogComponent.prototype.crewNameLabel.call(single, 0)).toBe('Name');
+    expect(
+      EditPilotDialogComponent.prototype.crewNameLabel.call({ ...single, selectedGroupCommander: () => true }, 0),
+    ).toBe('Commander Name');
     expect(EditPilotDialogComponent.prototype.crewNameLabel.call({ crew: CREW }, 0)).toBe('Pilot Name');
     expect(EditPilotDialogComponent.prototype.crewNameLabel.call({ crew: CREW }, 1)).toBe('Gunner Name');
     expect(EditPilotDialogComponent.prototype.crewNameLabel.call({ crew: CREW }, 2)).toBe('Officer Name');
@@ -92,6 +96,7 @@ describe('CBT multi-crew pilot dialog logic', () => {
           name: signal(' Pilot '),
           notes: signal(''),
           portrait: signal('Doctor_M_8'),
+          edge: signal(2),
           gunnery: signal(3),
           piloting: signal(1),
         },
@@ -120,7 +125,7 @@ describe('CBT multi-crew pilot dialog logic', () => {
 
     expect(close).toHaveBeenCalledOnceWith({
       crew: [
-        { id: 0, name: 'Pilot', portrait: 'Doctor_M_8', gunnery: 3, piloting: 5 },
+        { id: 0, name: 'Pilot', portrait: 'Doctor_M_8', edge: 2, gunnery: 3, piloting: 5 },
         { id: 1, name: 'Gunner', gunnery: 2, piloting: 6 },
       ],
       commander: true,

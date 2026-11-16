@@ -64,11 +64,15 @@ unit-block.crew-drop-target {
     outline-offset: -1px;
 }
 
+// The pilot goes into the unit: its frame lights up, nothing is inserted around it.
 .crew-drop-target.cdk-drop-list-dragging {
+    outline: 2px solid var(--bt-yellow);
+    outline-offset: -2px;
     background: var(--bt-yellow-background);
 }
 
-.crew-drop-target .cdk-drag-placeholder {
+// The dragged card is a clone from the reserve list, outside this component's scope.
+.crew-drop-target ::ng-deep .cdk-drag-placeholder {
     display: none;
 }
 

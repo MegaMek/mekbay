@@ -54,7 +54,7 @@ describe('ForceOverviewDialogComponent', () => {
         provideZonelessChangeDetection(),
         { provide: DIALOG_DATA, useValue: { force } },
         { provide: DialogRef, useValue: { close: jasmine.createSpy('close') } },
-        { provide: LayoutService, useValue: { isTouchInput: () => false } },
+        { provide: LayoutService, useValue: { isTouchInput: () => false, isPhone: () => false } },
         { provide: DataService, useValue: {} },
         { provide: DialogsService, useValue: {} },
         { provide: ForceBuilderService, useValue: {} },
@@ -77,7 +77,7 @@ describe('ForceOverviewDialogComponent', () => {
     }).compileComponents();
   });
 
-  it('keeps a usable table viewport when switching from crew rows, including on re-entry', async () => {
+  it('keeps a usable table viewport when switching from the expanded view, including on re-entry', async () => {
     force.groups.set([
       { id: 'group', groupDisplayName: () => 'Test Lance', activeFormation: () => null },
     ] as unknown as UnitGroup[]);
@@ -90,17 +90,20 @@ describe('ForceOverviewDialogComponent', () => {
     await fixture.whenStable();
 
     for (let visit = 0; visit < 2; visit++) {
-      component.viewMode.set('compact');
+      component.viewMode.set('expanded');
       fixture.detectChanges();
       component.viewMode.set('table');
       fixture.detectChanges();
       await fixture.whenStable();
       await new Promise<void>((resolve) => requestAnimationFrame(() => resolve()));
       const viewport = root.querySelector<HTMLElement>('.mb-data-table-viewport')!;
-      expect(viewport.clientHeight)
-        .withContext('Table body must occupy the available dialog height')
+      // The reserve strip is docked under the table; together they fill the dialog.
+      const reserves = root.querySelector<HTMLElement>('force-reserve-crew')!;
+      expect(viewport.clientHeight + reserves.offsetHeight)
+        .withContext('Table body and docked reserves must occupy the available dialog height')
         .toBeGreaterThan(200);
-      expect(root.querySelector('.mb-data-table-header')?.textContent).toContain('G/P');
+      expect(viewport.clientHeight).toBeGreaterThan(reserves.offsetHeight);
+      expect(root.querySelector('.mb-data-table-header')?.textContent).toContain('Crew');
       expect(viewport.textContent).toContain('Test Lance');
     }
   });
@@ -114,7 +117,7 @@ describe('ForceOverviewDialogComponent', () => {
                         <ng-template #tableNameCell let-row>{{ row.kind }}</ng-template>
                         <ng-template #tableYearCell let-row>{{ row.kind }}</ng-template>
                         <ng-template #tableValueCell let-row>{{ row.kind }}</ng-template>
-                        <ng-template #tableSkillCell let-row>{{ row.kind }}</ng-template>
+                        <ng-template #tableCrewCell let-row>{{ row.kind }}</ng-template>
                         <ng-template #tableMovementCell let-row>{{ row.kind }}</ng-template>
                         <ng-template #tableSpecialsCell let-row>{{ row.kind }}</ng-template>
                     `,
@@ -135,11 +138,11 @@ describe('ForceOverviewDialogComponent', () => {
       expect(columns.map((column) => column.id)).toEqual([
         'icon',
         'name',
+        'crew',
         'type',
         'subtype',
         'role',
         'bv',
-        'skill',
         'tons',
         'year',
         'rules',
@@ -152,12 +155,8 @@ describe('ForceOverviewDialogComponent', () => {
         'network',
         'cost',
       ]);
-      expect(columns[bvIndex + 1]).toEqual(
-        jasmine.objectContaining({
-          id: 'skill',
-          header: 'G/P',
-        }),
-      );
+      expect(columns[bvIndex + 1].id).toBe('tons');
+      expect(columns[2]).toEqual(jasmine.objectContaining({ id: 'crew', header: 'Crew' }));
     });
 
     it('toggles individual units and supports select all and clear', () => {
@@ -239,7 +238,7 @@ describe('ForceOverviewDialogComponent', () => {
       }
     });
 
-    it('clears selection when switching to compact reordering mode', () => {
+    it('reorders only in the expanded view and keeps the selection across view modes', () => {
       const forceUnit = { id: 'unit-1', getSummary: () => ({}) } as unknown as ForceMember;
       forceMembers.set([forceUnit]);
 
@@ -248,10 +247,12 @@ describe('ForceOverviewDialogComponent', () => {
       const component = fixture.componentInstance;
 
       component.toggleUnitSelection(forceUnit);
+      expect(component.viewMode()).toBe('table');
+      expect(component.canDragDrop()).toBeFalse();
       component.toggleViewMode();
 
-      expect(component.viewMode()).toBe('compact');
-      expect(component.selectedUnitCount()).toBe(0);
+      expect(component.viewMode()).toBe('expanded');
+      expect(component.selectedUnitCount()).toBe(1);
       expect(component.canDragDrop()).toBeTrue();
     });
   });

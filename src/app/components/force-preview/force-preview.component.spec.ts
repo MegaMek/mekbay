@@ -26,9 +26,8 @@ describe('ForcePreviewComponent reserves', () => {
         const first = force.addUnassignedPerson({ name: 'Alex' })!;
         const second = force.addUnassignedPerson({ name: 'Morgan' })!;
         fixture.detectChanges();
-        const count = fixture.nativeElement.querySelector('.reserve-count') as HTMLElement;
-        expect(count.textContent?.trim()).toBe('2');
-        expect(count.getAttribute('aria-label')).toBe('2 people in reserve');
+        const count = fixture.nativeElement.querySelector('force-reserves-preview') as HTMLElement;
+        expect(count.textContent?.trim()).toBe('2 in reserve');
         expect(fixture.nativeElement.textContent).not.toContain('Alex');
         expect(fixture.nativeElement.querySelectorAll('.unit-square').length).toBe(0);
 

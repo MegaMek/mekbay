@@ -513,6 +513,10 @@
   white-space: nowrap;
 }
 
+.rules-ref-badge[data-tooltip-host] {
+  cursor: help;
+}
+
 .rules-ref-badge.base-rules-ref {
   border-color: var(--bt-yellow);
   background: var(--bt-yellow-background);
@@ -619,10 +623,11 @@
   }
 }
 .crew-section {
-  margin-top: 16px;
+  margin-bottom: 12px;
+  padding-bottom: 12px;
+  border-bottom: 1px solid var(--border-color);
 }
 
 .instance-crew {
-  --crew-justify-content: center;
-  --crew-slot-width: 280px;
+  --crew-slot-width: 300px;
 }

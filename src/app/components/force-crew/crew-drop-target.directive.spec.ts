@@ -21,7 +21,7 @@ class CrewDropTargetHost {
 }
 
 describe('Crew drop target eligibility', () => {
-    it('registers only eligible targets and reacts to crew vacancy and ownership changes', async () => {
+    it('registers only eligible targets and reacts to crew station and ownership changes', async () => {
         const vacancy = signal<string | undefined>('pilot');
         const loadedForces = signal([{}, {}]);
         const unregister = jasmine.createSpy('unregister');
@@ -30,7 +30,7 @@ describe('Crew drop target eligibility', () => {
         TestBed.configureTestingModule({
             imports: [CrewDropTargetHost],
             providers: [{ provide: CrewAssignmentService, useValue: {
-                registerDropList, connectedDropLists, firstVacantPosition: () => vacancy(),
+                registerDropList, connectedDropLists, unitDropPosition: () => vacancy(),
             } }, { provide: ForceWorkspaceStateService, useValue: { loadedForces } }],
         });
         const fixture = TestBed.createComponent(CrewDropTargetHost);
@@ -46,7 +46,7 @@ describe('Crew drop target eligibility', () => {
         expect(list.connectedTo).toEqual(['reserve-list']);
         expect(registerDropList).toHaveBeenCalledOnceWith(fixture.componentInstance.force, list.id);
 
-        // A single force still needs to assign its reserves to vacant unit stations.
+        // A single force still needs to assign its reserves to unit stations.
         loadedForces.set([{}]);
         await fixture.whenStable();
         expect(list.disabled).toBeFalse();
@@ -70,7 +70,7 @@ describe('Crew drop target eligibility', () => {
         expect(list.disabled).toBeTrue();
         expect(unregister).toHaveBeenCalledTimes(2);
 
-        // Force headers accept reserves even when no unit station is vacant.
+        // Force headers accept reserves even when the unit has no station to fill.
         vacancy.set(undefined);
         fixture.componentInstance.unitId.set(undefined);
         fixture.componentInstance.editable.set(true);

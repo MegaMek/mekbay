@@ -1,5 +1,17 @@
 <!-- General Tab Content -->
 <div class="tab-content tab-general">
+  <!-- This unit's own crew comes first; the rest describes the design. -->
+  @if (forceMember(); as member) {
+    <section class="crew-section" aria-label="Crew">
+      <force-unit-crew
+        class="instance-crew"
+        [force]="member.force"
+        [unitId]="member.id"
+        layout="slots"
+        [showHealth]="true"
+      />
+    </section>
+  }
   <!-- Basic Info -->
   <div class="basic-info-block allow-select">
     <div>
@@ -109,17 +121,6 @@
       </div>
     }
   </div>
-  @if (forceMember(); as member) {
-    <section class="crew-section" aria-label="Crew">
-      <force-unit-crew
-        class="instance-crew"
-        [force]="member.force"
-        [unitId]="member.id"
-        layout="slots"
-        [showHealth]="true"
-      />
-    </section>
-  }
   <!-- Weapon Type Summary Bar -->
   <div class="type-summary-bar">
     @for (type of typeSummary(); track type.code) {
@@ -393,11 +394,16 @@
               <span class="rules-ref-operator">||</span>
             }
             <span class="rules-ref-bucket">
-              @for (badge of badgeGroup; let badgeIndex = $index; track badge.label) {
+              @for (badge of badgeGroup; let badgeIndex = $index; track badgeIndex) {
                 @if (badgeIndex > 0) {
                   <span class="rules-ref-operator">+</span>
                 }
-                <span class="rules-ref-badge" [class.base-rules-ref]="badge.isBase">{{ badge.label }}</span>
+                <span
+                  class="rules-ref-badge"
+                  [class.base-rules-ref]="badge.isBase"
+                  [tooltip]="rulesRefBadgeTooltips().get(badge) ?? null"
+                  >{{ badge.books.join('/') }}</span
+                >
               }
             </span>
           }

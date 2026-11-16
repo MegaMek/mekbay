@@ -572,7 +572,7 @@ export class TacticalViewComponent {
     protected editCrew(): void {
         const member = this.member();
         if (!member || this.readOnly()) return;
-        void this.pilotEditor.editCBTMember(member.force, member.id);
+        void this.pilotEditor.editUnit(member.force, member.id);
     }
 
     protected mekArmorRemaining(face: MekRecordSheetArmorFace): number {

@@ -38,6 +38,7 @@ import { OperationStorageService } from '../../services/operation-storage.servic
 import { OrganizationStorageService } from '../../services/organization-storage.service';
 import { GameSystem } from '../../models/common.model';
 import { UnitIconComponent } from '../unit-icon/unit-icon.component';
+import { CommanderIconComponent } from '../commander-icon/commander-icon.component';
 import { ForceReservesPreviewComponent } from '../force-reserves-preview/force-reserves-preview.component';
 import { type ResolvedPack, resolveForcePacks } from '../../utils/force-pack.util';
 import { CustomizeForcePackDialogComponent, type CustomizeForcePackDialogData, type CustomizeForcePackDialogResult } from '../customize-force-pack-dialog/customize-force-pack-dialog.component';
@@ -126,7 +127,7 @@ const DEFAULT_OPERATION_SORT_DIRECTION: SortDirection = 'desc';
 @Component({
     selector: 'force-load-dialog',
     changeDetection: ChangeDetectionStrategy.OnPush,
-    imports: [DecimalPipe, ScrollingModule, BaseDialogComponent, CleanModelStringPipe, FormatTimestamp, MeasureClampOverflowDirective, UnitIconComponent, OpPreviewComponent, FactionImgPipe, ForceTagsComponent, CompactFilterMenuComponent, LoadingSpinnerComponent, ForceReservesPreviewComponent, ForceListPagingDirective],
+    imports: [DecimalPipe, ScrollingModule, BaseDialogComponent, CleanModelStringPipe, FormatTimestamp, MeasureClampOverflowDirective, UnitIconComponent, OpPreviewComponent, FactionImgPipe, ForceTagsComponent, CompactFilterMenuComponent, LoadingSpinnerComponent, ForceReservesPreviewComponent, ForceListPagingDirective, CommanderIconComponent],
     templateUrl: './force-load-dialog.component.html',
     styleUrl: './force-load-dialog.component.css'
 })

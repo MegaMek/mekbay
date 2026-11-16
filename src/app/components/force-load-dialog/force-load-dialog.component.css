@@ -408,11 +408,8 @@
         left: 3px;
     }
 
-    .group-commander-icon {
+    commander-icon {
         width: 16px;
-        height: auto;
-        transform: rotate(180deg);
-        flex-shrink: 0;
     }
     
 }

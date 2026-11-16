@@ -576,11 +576,9 @@ export class PageViewerOverlayService {
         this.toast.showToast(message, 'error');
     }
 
-    /** Edits the person in one crew seat, or the unit's crew when nobody is assigned to it. */
+    /** Edits the person in one crew seat, or lists the reserves for it when nobody is assigned. */
     editCrewPosition(member: CBTForceMember, positionId: CrewPositionId): void {
-        const person = member.force.getAssignedPerson(member.id, positionId);
-        if (person) void this.pilotEditor.editPerson(member.force, person.id);
-        else void this.pilotEditor.editCBTMember(member.force, member.id);
+        void this.pilotEditor.editStation(member.force, member.id, positionId);
     }
 
     /** Picks one crew skill and saves it to the seat's crew profile. */

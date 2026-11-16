@@ -1,11 +1,13 @@
 <div class="wide-dialog">
     <h2 class="wide-dialog-title">Warrior Data</h2>
-    @if (data.group && selectedFormationCommander()) {
-    <div class="formation-commander-status" role="status">This unit is the group commander.</div>
-    }
     <div class="wide-dialog-body">
         <div class="pilot-profile" [class.with-portrait]="data.editPortrait">
-        @if (data.editPortrait) { <pilot-portrait-field [(value)]="portrait" /> }
+        @if (data.editPortrait) {
+        <div class="portrait-column">
+            <pilot-portrait-field [(value)]="portrait" />
+            @if (data.edge !== undefined) { <pilot-edge-field [(value)]="edge" /> }
+        </div>
+        }
         <div class="form-row commander-layout">
             <div class="commander-name-row">
                 @if (data.group || data.personnelActions) {
@@ -15,19 +17,12 @@
                     [attr.aria-pressed]="selectedFormationCommander()"
                     [attr.title]="selectedFormationCommander() ? 'Unset commander' : 'Set as commander'"
                     (click)="setFormationCommanderSelected(!selectedFormationCommander())">
-                    <svg class="formation-commander-icon" width="21" height="26" viewBox="0 0 21 25.9"
-                        xmlns="http://www.w3.org/2000/svg" aria-hidden="true" focusable="false">
-                        <g transform="translate(-.02)">
-                            <g transform="matrix(.265 0 0 .265 -21.1 0)" fill="currentColor">
-                                <path d="m79.7 70 39.3-70 40 70.1h-27l-13-22.1-13 22.1z" />
-                                <path d="m81.4 97.9 11.3-21.6h52.3l12 21.6z" />
-                            </g>
-                        </g>
-                    </svg>
+                    <commander-icon />
                 </button>
                 }
                 <div class="form-fields name-field">
-                    <label class="field-label" for="pilot-name">Name</label>
+                    <label class="field-label" [class.commander]="selectedFormationCommander()" for="pilot-name">{{
+                        selectedFormationCommander() ? 'Commander Name' : 'Name' }}</label>
                     <div class="input-wrapper">
                         <div class="name-input-wrapper">
                             <input #nameInput id="pilot-name" type="text" class="field-input" autocomplete="off"

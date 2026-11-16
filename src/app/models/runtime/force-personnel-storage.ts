@@ -68,6 +68,7 @@ function packPerson(person: ForcePerson, health: CrewMemberRuntimeState | undefi
         ...(person.aeroGunnery === undefined || person.aeroGunnery === 4 ? {} : { ag: person.aeroGunnery }),
         ...(person.aeroPiloting === undefined || person.aeroPiloting === 5 ? {} : { ap: person.aeroPiloting }),
         ...(person.commander ? { commander: true } : {}),
+        ...(person.edge ? { edge: person.edge } : {}),
         ...(person.abilities?.length ? { abilities: structuredClone(person.abilities) } : {}),
         ...(storedHealth ? { health: storedHealth } : {}),
     };
@@ -124,6 +125,7 @@ function unpackPerson(raw: unknown, path: string) {
         ...(row['ag'] === undefined ? {} : { aeroGunnery: row['ag'] }),
         ...(row['ap'] === undefined ? {} : { aeroPiloting: row['ap'] }),
         ...(row['commander'] === undefined ? {} : { commander: row['commander'] }),
+        ...(row['edge'] === undefined ? {} : { edge: row['edge'] }),
         ...(row['abilities'] === undefined ? {} : { abilities: row['abilities'] }),
         ...(health === undefined ? {} : { health: {
             wounds: health['wounds'] ?? 0,

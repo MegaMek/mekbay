@@ -9,7 +9,7 @@ import { CrewAssignmentService, type CrewDragData } from '../../services/crew-as
 import { ForceWorkspaceStateService } from '../../services/force-workspace-state.service';
 import { uuidv7 } from '../../utils/uuid.util';
 
-/** Force headers receive reserves; unit rows receive crew in their first vacant station. */
+/** Force headers receive reserves; unit rows receive crew, replacing an occupant when no station is vacant. */
 @Directive({
     selector: '[crewDropForce]',
     hostDirectives: [CdkDropList],
@@ -24,7 +24,7 @@ export class CrewDropTargetDirective {
     private readonly canReceive = computed(() => this.force().canEditPersonnel()
         && (this.unitId() === undefined
             ? this.workspace.loadedForces().length > 1
-            : this.crew.firstVacantPosition(this.force(), this.unitId()!) !== undefined));
+            : this.crew.unitDropPosition(this.force(), this.unitId()!) !== undefined));
 
     constructor() {
         this.list.id = `crew-target-${uuidv7()}`;

@@ -7,6 +7,7 @@ import { ChangeDetectionStrategy, Component, computed, inject, input } from '@an
 import type { Force } from '../../models/force.model';
 import { GameSystem } from '../../models/common.model';
 import { UnitIconComponent } from '../unit-icon/unit-icon.component';
+import { CommanderIconComponent } from '../commander-icon/commander-icon.component';
 import { ForceReservesPreviewComponent } from '../force-reserves-preview/force-reserves-preview.component';
 import { CleanModelStringPipe } from '../../pipes/clean-model-string.pipe';
 import { OptionsService } from '../../services/options.service';
@@ -29,7 +30,7 @@ import {
 @Component({
     selector: 'force-preview',
     changeDetection: ChangeDetectionStrategy.OnPush,
-    imports: [UnitIconComponent, CleanModelStringPipe, ForceReservesPreviewComponent],
+    imports: [UnitIconComponent, CleanModelStringPipe, ForceReservesPreviewComponent, CommanderIconComponent],
     template: `
     @let unitDisplayName = optionsService.options().unitDisplayName;
     @let f = force();
@@ -67,14 +68,7 @@ import {
                         <div class="unit-square compact-mode" [class.destroyed]="forceMemberDestroyed(fu)">
                             @if (forceMemberCommander(fu)) {
                                 <div class="group-commander-indicator" aria-hidden="true">
-                                    <svg class="group-commander-icon" width="42.08" height="51.88" viewBox="0 0 21.04 25.94" preserveAspectRatio="xMidYMid meet" xmlns="http://www.w3.org/2000/svg" focusable="false">
-                                        <g transform="translate(-.02)">
-                                            <g transform="matrix(.265 0 0 .265 -21.1 0)" fill="currentColor">
-                                                <path d="m79.7 70 39.3-70 40 70.1h-27l-13-22.1-13 22.1z" />
-                                                <path d="m81.4 97.9 11.3-21.6h52.3l12 21.6z" />
-                                            </g>
-                                        </g>
-                                    </svg>
+                                    <commander-icon />
                                 </div>
                             }
                             <div class="unit-content">
@@ -233,11 +227,8 @@ import {
             left: 3px;
         }
 
-        .group-commander-icon {
+        commander-icon {
             width: 16px;
-            height: auto;
-            transform: rotate(180deg);
-            flex-shrink: 0;
         }
 
         .unit-content {

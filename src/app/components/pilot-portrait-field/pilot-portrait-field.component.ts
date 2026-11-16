@@ -4,7 +4,7 @@
 import { ChangeDetectionStrategy, Component, DestroyRef, inject, model } from '@angular/core';
 import { firstValueFrom } from 'rxjs';
 import { DialogsService } from '../../services/dialogs.service';
-import { CrewPortraitComponent } from '../crew-portrait/crew-portrait.component';
+import { CrewPortraitComponent, PERSON_SILHOUETTE_PATH } from '../crew-portrait/crew-portrait.component';
 
 @Component({
   selector: 'pilot-portrait-field',
@@ -35,13 +35,7 @@ import { CrewPortraitComponent } from '../crew-portrait/crew-portrait.component'
           focusable="false"
         >
           <path
-            d="M128 8C82 8 54 39 54 83L57 121
-                        C49 116 45 124 47 137C48 149 52 157 59 158
-                        C63 180 75 196 87 206L86 224
-                        C69 236 43 242 24 253L2 267V318H254V267L232 253
-                        C213 242 187 236 170 224L169 206C181 196 193 180 197 158
-                        C204 157 208 149 209 137C211 124 207 116 199 121
-                        L202 83C202 39 174 8 128 8Z"
+            [attr.d]="silhouette"
             fill="currentColor"
             fill-opacity=".05"
             stroke-width="4"
@@ -78,6 +72,7 @@ import { CrewPortraitComponent } from '../crew-portrait/crew-portrait.component'
 })
 export class PilotPortraitFieldComponent {
   readonly value = model<string>();
+  readonly silhouette = PERSON_SILHOUETTE_PATH;
   private readonly dialogs = inject(DialogsService);
   private readonly destroyRef = inject(DestroyRef);
 

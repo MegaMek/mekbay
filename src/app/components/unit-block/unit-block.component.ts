@@ -11,6 +11,8 @@ import { FormatTonsPipe } from '../../pipes/format-tons.pipe';
 import { OptionsService } from '../../services/options.service';
 import { CdkMenuModule } from '@angular/cdk/menu';
 import { UnitIconComponent } from '../unit-icon/unit-icon.component';
+import { CommanderIconComponent } from '../commander-icon/commander-icon.component';
+import { EdgeBadgeComponent } from '../edge-badge/edge-badge.component';
 import { TooltipDirective } from '../../directives/tooltip.directive';
 import type { TooltipLine } from '../tooltip/tooltip.component';
 import { ASForceUnit } from '../../models/as-force-unit.model';
@@ -64,6 +66,9 @@ const NON_MEK_CREW_STATE_DISPLAYS = crewStateDefinitions(['killed', 'stunned']);
 
 export interface UnitBlockPilotEditEvent {
     event: MouseEvent;
+    positionId: string;
+    /** The clicked crew badge, to anchor a reserve list for a vacant station. */
+    anchor: Element;
 }
 
 @Component({
@@ -73,6 +78,8 @@ export interface UnitBlockPilotEditEvent {
         CdkMenuModule,
         FormatTonsPipe,
         UnitIconComponent,
+        CommanderIconComponent,
+        EdgeBadgeComponent,
         UnitNotificationBadgesComponent,
         UnitDataBadgesComponent,
         TooltipDirective,
@@ -165,10 +172,14 @@ export class UnitBlockComponent {
                 positionId: position.positionId,
                 vacant: !person,
                 skills,
+                edge: person?.edge ?? 0,
                 title: `${position.label}: ${person ? person.name || 'Unnamed' : 'Vacant'}`,
             };
         });
     });
+
+    /** Edge points of everyone aboard. */
+    readonly crewEdge = computed(() => this.crewBadges().reduce((total, badge) => total + badge.edge, 0));
 
     public constructor() {
         effect(onCleanup => {
@@ -541,8 +552,8 @@ export class UnitBlockComponent {
         this.onOpenC3Network.emit(event);
     }
 
-    editPilot(event: MouseEvent): void {
+    editPilot(event: MouseEvent, positionId: string): void {
         event.stopPropagation();
-        this.onEditPilot.emit({ event });
+        this.onEditPilot.emit({ event, positionId, anchor: event.currentTarget as Element });
     }
 }

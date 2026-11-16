@@ -386,14 +386,9 @@ export class ForceBuilderViewerComponent {
     await this.forceDialogs.openC3Network(unit.force, isCBTForceMember(unit) ? unit.force.readOnly() : unit.readOnly());
   }
 
-  async editPilot({ event }: UnitBlockPilotEditEvent, unit: ForceMember) {
-    if (unit.force.readOnly()) return;
+  async editPilot({ event, positionId, anchor }: UnitBlockPilotEditEvent, unit: ForceMember) {
     event.stopPropagation();
-    if (isCBTForceMember(unit)) {
-      await this.pilotEditor.editCBTMember(unit.force, unit.id);
-    } else if (unit instanceof ASForceUnit) {
-      await this.pilotEditor.editAlphaStrikeUnit(unit);
-    }
+    await this.pilotEditor.editStation(unit.force, unit.id, positionId, anchor);
   }
 
   toggleMenu() {

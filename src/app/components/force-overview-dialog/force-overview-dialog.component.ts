@@ -14,7 +14,6 @@ import type { UnitSummary } from '../../models/unit-summary.model';
 import {
     isCBTForceMember,
     isCBTMekForceMember,
-    forceMemberPilotStats,
     type CBTForceMember,
     type ForceMember,
 } from '../../models/force-member.model';
@@ -26,7 +25,6 @@ import { ForceBuilderService } from '../../services/force-builder.service';
 import { ForceDialogsService } from '../../services/force-dialogs.service';
 import { ForceWorkspaceCommandsService } from '../../services/force-workspace-commands.service';
 import { ForceFormationService } from '../../services/force-formation.service';
-import { ForcePilotEditorService } from '../../services/force-pilot-editor.service';
 import { ToastService } from '../../services/toast.service';
 import { OptionsService } from '../../services/options.service';
 import { AsAbilityLookupService } from '../../services/as-ability-lookup.service';
@@ -38,6 +36,7 @@ import { UnitCardExpandedComponent } from '../unit-card-expanded/unit-card-expan
 import { ForceUnitCrewComponent } from '../force-crew/force-unit-crew.component';
 import { ForceReserveCrewComponent } from '../force-crew/force-reserve-crew.component';
 import { CrewDropTargetDirective } from '../force-crew/crew-drop-target.directive';
+import { RemoveIconComponent } from '../remove-icon/remove-icon.component';
 import { UnitIconComponent } from '../unit-icon/unit-icon.component';
 import type { TagClickEvent } from '../unit-tags/unit-tags.component';
 import { AbilityInfoDialogComponent, type AbilityInfoDialogData } from '../ability-info-dialog/ability-info-dialog.component';
@@ -88,14 +87,14 @@ const FORCE_PRIMER_META_THRESHOLD = 0.9;
  * State for the overview that can be persisted.
  */
 export interface OverviewState {
-    viewMode: 'expanded' | 'compact' | 'table';
+    viewMode: 'expanded' | 'table';
     sortKey: string;
     sortDirection: 'asc' | 'desc';
 }
 
 /** Default state for the overview */
 export const DEFAULT_OVERVIEW_STATE: OverviewState = {
-    viewMode: 'compact',
+    viewMode: 'expanded',
     sortKey: '',
     sortDirection: 'asc'
 };
@@ -115,6 +114,7 @@ export const DEFAULT_OVERVIEW_STATE: OverviewState = {
         ForceUnitCrewComponent,
         ForceReserveCrewComponent,
         CrewDropTargetDirective,
+        RemoveIconComponent,
         UnitIconComponent,
         DataTableComponent,
         TooltipDirective,
@@ -128,7 +128,6 @@ export const DEFAULT_OVERVIEW_STATE: OverviewState = {
 })
 export class ForceOverviewDialogComponent {
     readonly unitNames = inject(UnitNameService);
-    protected readonly isCBTMekForceMember = isCBTMekForceMember;
     private dialogRef = inject<DialogRef<void>>(DialogRef);
     protected data = inject<ForceOverviewDialogData>(DIALOG_DATA);
     protected gameService = inject(GameService);
@@ -140,7 +139,6 @@ export class ForceOverviewDialogComponent {
 
     private readonly forceCommands = inject(ForceWorkspaceCommandsService);
     private readonly formations = inject(ForceFormationService);
-    private readonly pilotEditor = inject(ForcePilotEditorService);
     private toastService = inject(ToastService);
     private optionsService = inject(OptionsService);
     private abilityLookup = inject(AsAbilityLookupService);
@@ -157,7 +155,7 @@ export class ForceOverviewDialogComponent {
     private readonly tableNameCell = viewChild<TemplateRef<DataTableCellContext<ForceTableRow>>>('tableNameCell');
     private readonly tableYearCell = viewChild<TemplateRef<DataTableCellContext<ForceTableRow>>>('tableYearCell');
     private readonly tableValueCell = viewChild<TemplateRef<DataTableCellContext<ForceTableRow>>>('tableValueCell');
-    private readonly tableSkillCell = viewChild<TemplateRef<DataTableCellContext<ForceTableRow>>>('tableSkillCell');
+    private readonly tableCrewCell = viewChild<TemplateRef<DataTableCellContext<ForceTableRow>>>('tableCrewCell');
     private readonly tableMovementCell = viewChild<TemplateRef<DataTableCellContext<ForceTableRow>>>('tableMovementCell');
     private readonly tableSpecialsCell = viewChild<TemplateRef<DataTableCellContext<ForceTableRow>>>('tableSpecialsCell');
     private readonly tableGroupRow = viewChild<TemplateRef<{ $implicit: ForceTableRow; row: ForceTableRow; index: number }>>('tableGroupRow');
@@ -208,7 +206,7 @@ export class ForceOverviewDialogComponent {
         .map(opt => opt.key === '' ? { ...opt, label: 'Custom' } : opt);
 
     /** Current view mode */
-    viewMode = signal<'expanded' | 'compact' | 'table'>(this.optionsService.options().forceOverviewViewMode);
+    viewMode = signal<'expanded' | 'table'>(this.optionsService.options().forceOverviewViewMode);
 
     readonly noteLimit = FORCE_NOTE_MAX_LENGTH;
 
@@ -274,33 +272,29 @@ export class ForceOverviewDialogComponent {
     /** Whether the PRIMER tab should be available in the current state */
     readonly showPrimerTab = computed(() => !this.isReadOnly() || this.trimmedPrimerNote().length > 0);
 
-    readonly nextViewMode = computed<'compact' | 'expanded' | 'table'>(() => {
-        const current = this.viewMode();
-        if (current === 'compact') return 'expanded';
-        if (current === 'expanded') return 'table';
-        return 'compact';
-    });
+    readonly nextViewMode = computed<'expanded' | 'table'>(() => this.viewMode() === 'expanded' ? 'table' : 'expanded');
 
-    readonly nextViewModeTitle = computed(() => {
-        const current = this.viewMode();
-        const next = this.nextViewMode();
-        const currentLabel = current === 'compact' ? 'Crew Rows' : current === 'expanded' ? 'Expanded View' : 'Table View';
-        const nextLabel = next === 'compact' ? 'Crew Rows' : next === 'expanded' ? 'Expanded View' : 'Table View';
-        return `${currentLabel}. Click to switch to ${nextLabel}.`;
+    readonly nextViewModeTitle = computed(() => this.viewMode() === 'expanded'
+        ? 'Expanded View. Click to switch to Table View.'
+        : 'Table View. Click to switch to Expanded View.');
+
+    /** Phones stack the reserves as the same 40px rows the sidebar uses. */
+    readonly reserveLayout = computed(() => this.layoutService.isPhone() ? 'rows' : 'cards');
+
+    /** On a phone the crew column should start within the first screen of the table. */
+    private readonly nameColumnTrack = computed(() => ({ minPx: this.layoutService.isPhone() ? 180 : 320, flex: 1.35 }));
+
+    /** One full crew card; a unit with three stations gets room for three narrow ones. */
+    private readonly crewColumnTrack = computed(() => {
+        const force = this.data.force;
+        const stations = Math.max(0, ...force.members().map(member => force.getUnitCrewPolicy(member.id).positions.length));
+        return stations > 2 ? 344 : 232;
     });
 
     constructor() {
         effect(() => {
             const savedViewMode = this.optionsService.options().forceOverviewViewMode;
-            const normalizedViewMode = this.normalizeViewMode(savedViewMode);
-            untracked(() => {
-                if (this.viewMode() !== normalizedViewMode) {
-                    this.viewMode.set(normalizedViewMode);
-                }
-                if (savedViewMode !== normalizedViewMode) {
-                    void this.optionsService.setOption('forceOverviewViewMode', normalizedViewMode);
-                }
-            });
+            untracked(() => this.viewMode.set(savedViewMode));
         });
         effect(() => {
             const availableUnitIds = new Set(this.data.force.members().map(member => member.id));
@@ -377,13 +371,20 @@ export class ForceOverviewDialogComponent {
         const nameCell = this.tableNameCell();
         const yearCell = this.tableYearCell();
         const valueCell = this.tableValueCell();
-        const skillCell = this.tableSkillCell();
+        const crewCell = this.tableCrewCell();
         const movementCell = this.tableMovementCell();
         const specialsCell = this.tableSpecialsCell();
 
-        if (!iconCell || !nameCell || !yearCell || !skillCell || !movementCell) {
+        if (!iconCell || !nameCell || !yearCell || !crewCell || !movementCell) {
             return [];
         }
+        // The crew sits beside the unit it mans, before any statistic.
+        const crewColumn: DataTableColumn<ForceTableRow> = {
+            id: 'crew',
+            header: this.isAlphaStrike() ? 'Pilot' : 'Crew',
+            track: this.crewColumnTrack(),
+            cellTemplate: crewCell,
+        };
 
         if (!this.isAlphaStrike()) {
             if (!valueCell) return [];
@@ -399,13 +400,8 @@ export class ForceOverviewDialogComponent {
                     value: valueCell,
                     movement: movementCell,
                 },
-                afterValueColumns: [{
-                    id: 'skill',
-                    header: 'G/P',
-                    track: 56,
-                    cellTemplate: skillCell,
-                    align: 'center',
-                }],
+                nameTrack: this.nameColumnTrack(),
+                afterNameColumns: [crewColumn],
                 sortSlot: sortSlotHeader ? {
                     header: sortSlotHeader,
                     value: row => row.kind === 'unit' ? this.getTableSortSlot(row.vm.unit) : '',
@@ -426,11 +422,12 @@ export class ForceOverviewDialogComponent {
             {
                 id: 'name',
                 header: 'Name',
-                track: { minPx: 320, flex: 1.35 },
+                track: this.nameColumnTrack(),
                 cellTemplate: nameCell,
                 sortKey: 'name',
                 sortActive: this.isSortActive('name'),
             },
+            crewColumn,
             {
                 id: 'year',
                 header: 'Year',
@@ -471,13 +468,6 @@ export class ForceOverviewDialogComponent {
                 sortActive: this.isSortActive('as.PV'),
                 cellClass: this.tableCellClass('as-td-pv is-bold', this.isSortActive('as.PV')),
                 align: 'right',
-            },
-            {
-                id: 'skill',
-                header: 'Skill',
-                track: 40,
-                cellTemplate: skillCell,
-                align: 'center',
             },
             {
                 id: 'sz',
@@ -573,9 +563,9 @@ export class ForceOverviewDialogComponent {
         return columns;
     });
 
-    /** Whether drag-drop is allowed (compact mode + default sort + not read-only) */
-    canDragDrop = computed(() => 
-        this.viewMode() === 'compact' && 
+    /** Whether units and groups can be reordered (expanded view + custom order + not read-only) */
+    canDragDrop = computed(() =>
+        this.viewMode() === 'expanded' &&  
         this.selectedSort() === '' && 
         !this.isReadOnly() &&
         !this.units().some(vm => isCBTMekForceMember(vm.member))
@@ -616,7 +606,7 @@ export class ForceOverviewDialogComponent {
         return viewModels;
     });
 
-    /** Toggle between expanded and compact view modes */
+    /** Toggle between the expanded and table view modes */
     toggleViewMode(): void {
         this.setViewMode(this.nextViewMode());
     }
@@ -738,16 +728,6 @@ export class ForceOverviewDialogComponent {
         const anchorEl = (evtTarget.closest('.add-tag-btn') as HTMLElement) || evtTarget;
         
         await this.taggingService.openTagSelector([unit], anchorEl);
-    }
-
-    /** Handle pilot click - open pilot edit dialog */
-    async onPilotClick(member: ForceMember): Promise<void> {
-        if (member.force.readOnly()) return;
-        if (isCBTForceMember(member)) {
-            await this.pilotEditor.editCBTMember(member.force, member.id);
-            return;
-        }
-        if (member instanceof ASForceUnit) await this.pilotEditor.editAlphaStrikeUnit(member);
     }
 
     /** Handle force name click - open rename dialog */
@@ -1226,21 +1206,8 @@ export class ForceOverviewDialogComponent {
         });
     }
 
-    /** Compact skill display retains empty stations in multi-crew units. */
-    getPilotSkill(vm: ForceMemberViewModel): string {
-        return forceMemberPilotStats(vm.member);
-    }
-
-    private normalizeViewMode(viewMode: 'expanded' | 'compact' | 'table'): 'expanded' | 'compact' | 'table' {
-        return viewMode;
-    }
-
-    private setViewMode(viewMode: 'expanded' | 'compact' | 'table') {
-        const normalizedViewMode = this.normalizeViewMode(viewMode);
-        if (normalizedViewMode === 'compact') {
-            this.clearUnitSelection();
-        }
-        this.viewMode.set(normalizedViewMode);
-        void this.optionsService.setOption('forceOverviewViewMode', normalizedViewMode);
+    private setViewMode(viewMode: 'expanded' | 'table') {
+        this.viewMode.set(viewMode);
+        void this.optionsService.setOption('forceOverviewViewMode', viewMode);
     }
 }

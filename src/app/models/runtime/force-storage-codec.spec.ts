@@ -1130,11 +1130,11 @@ describe('force storage codec', () => {
             crew: { positions: [] },
         };
         const force = forceWithUnit(unit, 'force:reserve', 'Reserve');
-        force.personnel = { people: [{ id: 'person:reserve', name: 'Morgan', portrait: 'Doctor_M_8', notes: 'Medical notes\nReady for duty', gunnery: 3, commander: true,
+        force.personnel = { people: [{ id: 'person:reserve', name: 'Morgan', portrait: 'Doctor_M_8', notes: 'Medical notes\nReady for duty', gunnery: 3, commander: true, edge: 2,
             abilities: ['future-cbt-ability'], health: { wounds: 2, unconscious: false, ejected: false } }], assignments: [] };
         const stored = encodeForceForStorage(force);
         expect(storedUnit(stored)['crew']).toBeUndefined();
-        expect(storedPerson(stored)).toEqual({ id: 'person:reserve', name: 'Morgan', portrait: 'Doctor_M_8', notes: 'Medical notes\nReady for duty', g: 3, commander: true,
+        expect(storedPerson(stored)).toEqual({ id: 'person:reserve', name: 'Morgan', portrait: 'Doctor_M_8', notes: 'Medical notes\nReady for duty', g: 3, commander: true, edge: 2,
             abilities: ['future-cbt-ability'], health: { wounds: 2 } });
         const decoded = decodeForceFromStorage(stored);
         expect(decoded.personnel).toEqual(force.personnel);

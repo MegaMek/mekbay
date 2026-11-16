@@ -13,11 +13,8 @@
     opacity: 0.5;
 }
 
-.group-commander-icon {
+commander-icon {
     width: 25px;
-    height: auto;
-    transform: rotate(180deg);
-    flex-shrink: 0;
 }
 
 .unit-square.compact-mode {
@@ -160,7 +157,7 @@
         top: 2px;
         left: 2px;
 
-        .group-commander-icon {
+        commander-icon {
             width: 16px;
         }
     }

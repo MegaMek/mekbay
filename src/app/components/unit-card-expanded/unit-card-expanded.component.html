@@ -24,6 +24,11 @@
                 <unit-data-badges [loadIssues]="u.loadIssues" [updateAvailable]="updateAvailable()" />
             </div>
         </div>
+        @if (headerExtra(); as extra) {
+        <div class="expanded-extra" (click)="$event.stopPropagation()" (pointerdown)="$event.stopPropagation()">
+            <ng-container [ngTemplateOutlet]="extra" />
+        </div>
+        }
         <div class="expanded-subtitle">
             @if (u.role && u.role !== 'None') {
             <div class="subtitle-line role" [class.sort-slot]="isSortActive('role')">{{ u.role }}</div>
@@ -167,6 +172,11 @@
                 <unit-data-badges [loadIssues]="u.loadIssues" [updateAvailable]="updateAvailable()" />
             </div>
         </div>
+        @if (headerExtra(); as extra) {
+        <div class="expanded-extra" (click)="$event.stopPropagation()" (pointerdown)="$event.stopPropagation()">
+            <ng-container [ngTemplateOutlet]="extra" />
+        </div>
+        }
         <div class="expanded-subtitle">
             @if (u.role && u.role !== 'None') {
             <div class="subtitle-line role" [class.sort-slot]="isSortActive('role')">{{ u.role }}</div>

@@ -6,7 +6,7 @@ import type { TemplateRef } from '@angular/core';
 import { GameSystem } from '../models/common.model';
 import type { UnitSummary } from '../models/unit-summary.model';
 import { FormatNumberPipe } from '../pipes/format-number.pipe';
-import type { DataTableCellContext, DataTableColumn } from '../components/data-table/data-table.component';
+import type { DataTableCellContext, DataTableColumn, DataTableColumnTrack } from '../components/data-table/data-table.component';
 import { formatASDamageValue, isASDamageFilterKey } from './as-damage.util';
 
 export const UNIT_DATA_TABLE_SORT_KEY_GROUPS: Readonly<Record<string, readonly string[]>> = {
@@ -59,6 +59,8 @@ export interface UnitDataTableColumnOptions<Row> {
     readonly isSortActive: (keyOrGroup: string) => boolean;
     readonly templates: UnitDataTableCellTemplates<Row>;
     readonly valueTrack?: number;
+    readonly nameTrack?: DataTableColumnTrack;
+    readonly afterNameColumns?: readonly DataTableColumn<Row>[];
     readonly afterValueColumns?: readonly DataTableColumn<Row>[];
     readonly sortSlot?: UnitDataTableSortSlot<Row> | null;
     readonly trailingColumns?: readonly DataTableColumn<Row>[];
@@ -188,7 +190,8 @@ function buildAlphaStrikeColumns<Row>(options: UnitDataTableColumnOptions<Row>):
     const value = unitValue(options.getUnit);
     const columns: DataTableColumn<Row>[] = [
         iconColumn(templates.icon),
-        nameColumn(templates.name, options.isSortActive),
+        nameColumn(templates.name, options.isSortActive, options.nameTrack),
+        ...(options.afterNameColumns ?? []),
         yearColumn(templates.year, options.isSortActive),
         {
             id: 'type',
@@ -313,7 +316,8 @@ function buildCBTColumns<Row>(options: UnitDataTableColumnOptions<Row>): DataTab
     const value = unitValue(options.getUnit);
     const columns: DataTableColumn<Row>[] = [
         iconColumn(templates.icon),
-        nameColumn(templates.name, options.isSortActive),
+        nameColumn(templates.name, options.isSortActive, options.nameTrack),
+        ...(options.afterNameColumns ?? []),
         {
             id: 'type',
             header: 'Type',
@@ -470,11 +474,12 @@ function iconColumn<Row>(template: TemplateRef<DataTableCellContext<Row>>): Data
 function nameColumn<Row>(
     template: TemplateRef<DataTableCellContext<Row>>,
     isSortActive: (keyOrGroup: string) => boolean,
+    track: DataTableColumnTrack = { minPx: 320, flex: 1.35 },
 ): DataTableColumn<Row> {
     return {
         id: 'name',
         header: 'Name',
-        track: { minPx: 320, flex: 1.35 },
+        track,
         cellTemplate: template,
         sortKey: 'name',
         sortActive: isSortActive('name'),

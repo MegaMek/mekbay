@@ -1,7 +1,7 @@
 // Copyright (C) 2026 The MegaMek Team
 // SPDX-License-Identifier: GPL-3.0-or-later
 
-import { inject, Injectable } from '@angular/core';
+import { inject, Injectable, Injector } from '@angular/core';
 import { firstValueFrom } from 'rxjs';
 import {
   EditASPilotDialogComponent,
@@ -34,21 +34,27 @@ import { ToastService } from './toast.service';
 export class ForcePilotEditorService {
   private readonly dialogs = inject(DialogsService);
   private readonly toast = inject(ToastService);
+  private readonly injector = inject(Injector);
 
-  async editAlphaStrikeUnit(unit: ASForceUnit): Promise<void> {
-    if (!unit.force.getUnitCrewPolicy(unit.id).canEdit) return;
-    const person = unit.pilot();
-    if (person) await this.editPerson(unit.force, person.id);
-    else await this.editUnitCrew(unit.force, unit.id);
+  /** A unit with one station goes straight to it; several stations are listed to choose from. */
+  async editUnit(force: Force, unitId: string, anchor: Element | null = null): Promise<void> {
+    const policy = force.getUnitCrewPolicy(unitId);
+    if (!policy.canEdit) return;
+    if (policy.positions.length === 1) await this.editStation(force, unitId, policy.positions[0].positionId, anchor);
+    else await this.openUnitCrew(force, unitId);
   }
 
-  async editCBTMember(force: CBTForce, instanceId: string): Promise<void> {
-    const policy = force.getUnitCrewPolicy(instanceId);
+  /** Edits the station's occupant; a vacant station lists the reserves at `anchor`, or centered without one. */
+  async editStation(force: Force, unitId: string, positionId: string, anchor: Element | null = null): Promise<void> {
+    const policy = force.getUnitCrewPolicy(unitId);
     if (!policy.canEdit) return;
-    const onlyPosition = policy.positions.length === 1 ? policy.positions[0] : undefined;
-    const person = onlyPosition && force.getAssignedPerson(instanceId, onlyPosition.positionId);
-    if (person) await this.editPerson(force, person.id);
-    else await this.editUnitCrew(force, instanceId);
+    const person = force.getAssignedPerson(unitId, positionId);
+    if (person) return this.editPerson(force, person.id);
+    // Only swappable stations take a reserve; the crew dialog explains the others.
+    if (policy.kind !== 'swappable') return this.openUnitCrew(force, unitId);
+    // The reserve list edits people through this service. Load it after service construction.
+    const { PilotSelectorService } = await import('../components/force-crew/pilot-selector.component');
+    this.injector.get(PilotSelectorService).open(force, unitId, positionId, anchor);
   }
 
   async editPerson(force: Force, personId: string): Promise<void> {
@@ -84,6 +90,7 @@ export class ForcePilotEditorService {
                 notes: person.notes,
                 portrait: person.portrait,
                 wounds: health?.wounds ?? 0,
+                edge: person.edge ?? 0,
                 gunnery: person.gunnery ?? 4,
                 piloting: person.piloting ?? 5,
                 aeroGunnery: person.aeroGunnery ?? 4,
@@ -124,6 +131,7 @@ export class ForcePilotEditorService {
         name: edited.name.trim() || undefined,
         notes: edited.notes || undefined,
         portrait: edited.portrait,
+        edge: edited.edge,
         gunnery: edited.gunnery,
         piloting: edited.piloting,
         aeroGunnery: edited.aeroGunnery,
@@ -165,7 +173,7 @@ export class ForcePilotEditorService {
     }
   }
 
-  private async editUnitCrew(force: Force, unitId: string): Promise<void> {
+  private async openUnitCrew(force: Force, unitId: string): Promise<void> {
     // This dialog composes the shared controls, which call this service only
     // when a particular person is edited. Load it after service construction.
     const { UnitCrewDialogComponent } = await import('../components/force-crew/unit-crew-dialog.component');
@@ -201,6 +209,7 @@ export class ForcePilotEditorService {
           name: person.name ?? '',
           notes: person.notes,
           portrait: person.portrait,
+          edge: person.edge ?? 0,
           editNotes: true,
           editPortrait: true,
           skill: person.gunnery ?? 4,
@@ -229,6 +238,7 @@ export class ForcePilotEditorService {
       name: result.name.trim() || undefined,
       notes: result.notes || undefined,
       portrait: result.portrait,
+      edge: result.edge,
       gunnery: result.skill,
       abilities: result.abilities,
       commander: result.commander ? true : undefined,

@@ -69,19 +69,9 @@
     line-height: 0;
 }
 
-.formation-commander-icon {
-    width: 21px;
-    height: 26px;
-    transform: rotate(180deg);
-    flex-shrink: 0;
-}
 
-.formation-commander-status {
-    padding: 0;
+.field-label.commander {
     color: var(--bt-yellow);
-    font-size: 0.8em;
-    font-weight: 600;
-    text-align: center;
 }
 
 .skill-field {
@@ -413,16 +403,20 @@
     display: grid;
     grid-template-columns: auto minmax(0, 1fr);
     gap: 12px;
+    // The first row takes any height the portrait column adds, so the name sits on the skill.
+    grid-template-rows: 1fr;
 
-    > pilot-portrait-field { grid-column: 1; grid-row: 1 / span 2; justify-self: start; align-self: stretch; }
+    > .portrait-column { display: flex; flex-direction: column; gap: 12px; grid-column: 1; grid-row: 1 / span 2;
+        justify-self: start; align-self: start; }
     > .commander-layout { display: contents; }
     .commander-name-row, .skill-field { grid-column: 2; min-width: 0; }
+    .commander-name-row { align-self: end; }
     .skill-field { align-self: end; }
 }
 
 @container (max-width: 420px) {
     .pilot-profile.with-portrait {
-        > pilot-portrait-field { grid-row: 1; }
+        > .portrait-column { grid-row: 1; }
         .skill-field { grid-column: 1 / -1; }
     }
 }

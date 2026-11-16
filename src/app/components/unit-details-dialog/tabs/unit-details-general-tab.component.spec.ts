@@ -20,6 +20,7 @@ import { DialogsService } from '../../../services/dialogs.service';
 import { LayoutService } from '../../../services/layout.service';
 import { OptionsService } from '../../../services/options.service';
 import { GameService } from '../../../services/game.service';
+import { NativeEntityService } from '../../../services/native-entity.service';
 
 describe('UnitDetailsGeneralTabComponent', () => {
     describe('equipment condition', () => {
@@ -33,7 +34,7 @@ describe('UnitDetailsGeneralTabComponent', () => {
             } as unknown as CBTForce;
             const member = new CBTForceMember(instance.instanceId, force, entity);
             TestBed.configureTestingModule({
-                providers: [UnitNameService, DataService, DialogsService, LayoutService, OptionsService, GameService]
+                providers: [UnitNameService, DataService, DialogsService, LayoutService, OptionsService, GameService, NativeEntityService]
                     .map(provide => ({ provide, useValue: {} })),
             });
             TestBed.overrideComponent(UnitDetailsGeneralTabComponent, { set: { template: '', imports: [] } });
@@ -95,10 +96,10 @@ describe('UnitDetailsGeneralTabComponent', () => {
                 ['BMM'],
                 ['TM', 'TO:AUE'],
             ])).toEqual([
-                [{ label: 'BMM/Core', isBase: true }],
+                [{ books: ['BMM', 'Core'], isBase: true }],
                 [
-                    { label: 'TM/TW', isBase: true },
-                    { label: 'TO:AUE', isBase: false },
+                    { books: ['TM', 'TW'], isBase: true },
+                    { books: ['TO:AUE'], isBase: false },
                 ],
             ]);
         });
@@ -108,20 +109,20 @@ describe('UnitDetailsGeneralTabComponent', () => {
                 ['ZZ', 'TW', 'AA'],
                 ['IO:AE'],
             ])).toEqual([
-                [{ label: 'IO:AE', isBase: false }],
+                [{ books: ['IO:AE'], isBase: false }],
                 [
-                    { label: 'TW', isBase: true },
-                    { label: 'AA', isBase: false },
-                    { label: 'ZZ', isBase: false },
+                    { books: ['TW'], isBase: true },
+                    { books: ['AA'], isBase: false },
+                    { books: ['ZZ'], isBase: false },
                 ],
             ]);
         });
 
         it('keeps base books joined by plus when the same bucket requires them together', () => {
             expect(getRulesRefBadgeGroups([['TW', 'TO:AUE', 'TM']])).toEqual([[
-                { label: 'TM', isBase: true },
-                { label: 'TW', isBase: true },
-                { label: 'TO:AUE', isBase: false },
+                { books: ['TM'], isBase: true },
+                { books: ['TW'], isBase: true },
+                { books: ['TO:AUE'], isBase: false },
             ]]);
         });
 
@@ -130,9 +131,9 @@ describe('UnitDetailsGeneralTabComponent', () => {
                 ['BMM', 'TM', 'IO:AE'],
                 ['BMM', 'TW', 'IO:AE'],
             ])).toEqual([[
-                { label: 'BMM', isBase: true },
-                { label: 'TM/TW', isBase: true },
-                { label: 'IO:AE', isBase: false },
+                { books: ['BMM'], isBase: true },
+                { books: ['TM', 'TW'], isBase: true },
+                { books: ['IO:AE'], isBase: false },
             ]]);
         });
     });

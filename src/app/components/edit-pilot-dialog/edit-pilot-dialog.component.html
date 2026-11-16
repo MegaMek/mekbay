@@ -1,8 +1,5 @@
 <div class="wide-dialog">
   <h2 class="wide-dialog-title">Warrior Data</h2>
-  @if (data.commanderContext && selectedGroupCommander()) {
-    <div class="group-commander-status" role="status">This unit is the group commander.</div>
-  }
   <div class="wide-dialog-body">
     <div class="form-row commander-layout">
       <div class="commander-name-row">
@@ -22,13 +19,23 @@
               [attr.aria-label]="crewNameLabel(index).replace(' Name', '')"
             >
               @if (data.editPortrait) {
-                <pilot-portrait-field [(value)]="member.portrait" />
+                <div class="portrait-column">
+                  <pilot-portrait-field [(value)]="member.portrait" />
+                  @if (member.edge) {
+                    <pilot-edge-field [(value)]="member.edge" />
+                  }
+                </div>
               }
               @if (index === 0 && layoutService.isPhone() && (data.commanderContext || data.personnelActions)) {
                 <ng-container [ngTemplateOutlet]="pilotActions" />
               }
               <div class="form-fields name-field">
-                <label class="field-label" [for]="'classic-crew-name-' + member.id">{{ crewNameLabel(index) }}</label>
+                <label
+                  class="field-label"
+                  [class.commander]="crew.length === 1 && selectedGroupCommander()"
+                  [for]="'classic-crew-name-' + member.id"
+                  >{{ crewNameLabel(index) }}</label
+                >
                 <div class="input-wrapper">
                   <div class="name-input-wrapper">
                     <input
@@ -218,22 +225,7 @@
       [attr.title]="selectedGroupCommander() ? 'Unset commander' : 'Set as commander'"
       (click)="setGroupCommanderSelected(!selectedGroupCommander())"
     >
-      <svg
-        class="group-commander-icon"
-        width="21"
-        height="26"
-        viewBox="0 0 21 25.9"
-        xmlns="http://www.w3.org/2000/svg"
-        aria-hidden="true"
-        focusable="false"
-      >
-        <g transform="translate(-.02)">
-          <g transform="matrix(.265 0 0 .265 -21.1 0)" fill="currentColor">
-            <path d="m79.7 70 39.3-70 40 70.1h-27l-13-22.1-13 22.1z" />
-            <path d="m81.4 97.9 11.3-21.6h52.3l12 21.6z" />
-          </g>
-        </g>
-      </svg>
+      <commander-icon />
     </button>
     @if (data.personnelActions?.canUnassign || data.personnelActions?.canDelete) {
       <div class="personnel-actions">

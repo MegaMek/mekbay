@@ -30,8 +30,10 @@ import type { CrewPositionId } from '../../models/entity/entity-identifiers';
 import { PilotNameCatalogService } from '../../services/catalogs/pilot-name-catalog.service';
 import { LoggerService } from '../../services/logger.service';
 import { LayoutService } from '../../services/layout.service';
+import { PilotEdgeFieldComponent } from '../pilot-edge-field/pilot-edge-field.component';
 import { PilotNotesFieldComponent } from '../pilot-notes-field/pilot-notes-field.component';
 import { PilotPortraitFieldComponent } from '../pilot-portrait-field/pilot-portrait-field.component';
+import { CommanderIconComponent } from '../commander-icon/commander-icon.component';
 import type { CrewEditAction, CrewEditActions } from '../force-crew/crew-edit-actions';
 import { DEFAULT_GUNNERY_SKILL, DEFAULT_PILOTING_SKILL, MAX_CREW_WOUNDS } from '../../models/crew-member.model';
 import type { CrewSkillSet } from '../../models/unit-crew-policy';
@@ -83,6 +85,8 @@ export interface EditPilotCrewPosition {
   readonly notes?: string;
   readonly portrait?: string;
   readonly wounds?: number;
+  /** Present for persistent people, who own their Edge points. */
+  readonly edge?: number;
   readonly gunnery: number;
   readonly piloting: number;
   readonly aeroGunnery?: number;
@@ -100,6 +104,7 @@ interface EditableCrewMember {
   readonly notes: WritableSignal<string>;
   readonly portrait: WritableSignal<string | undefined>;
   readonly wounds: WritableSignal<number>;
+  readonly edge?: WritableSignal<number>;
   readonly gunnery: WritableSignal<number>;
   readonly piloting: WritableSignal<number>;
   readonly generatingName: WritableSignal<boolean>;
@@ -179,7 +184,13 @@ export function buildCrewSkillPreviewEntries(
 
 @Component({
   selector: 'edit-pilot-dialog',
-  imports: [NgTemplateOutlet, PilotNotesFieldComponent, PilotPortraitFieldComponent],
+  imports: [
+    NgTemplateOutlet,
+    CommanderIconComponent,
+    PilotEdgeFieldComponent,
+    PilotNotesFieldComponent,
+    PilotPortraitFieldComponent,
+  ],
   changeDetection: ChangeDetectionStrategy.OnPush,
   host: {
     class: 'fullscreen-dialog-host glass',
@@ -214,6 +225,7 @@ export class EditPilotDialogComponent {
     notes: signal(member.notes ?? ''),
     portrait: signal(member.portrait),
     wounds: signal(member.wounds ?? 0),
+    edge: member.edge === undefined ? undefined : signal(member.edge),
     gunnery: signal(member.gunnery),
     piloting: signal(member.piloting),
     generatingName: signal(false),
@@ -255,7 +267,7 @@ export class EditPilotDialogComponent {
   }
 
   crewNameLabel(index: number): string {
-    if (this.crew.length === 1) return 'Name';
+    if (this.crew.length === 1) return this.selectedGroupCommander() ? 'Commander Name' : 'Name';
     return CREW_NAME_LABELS[index] ?? `Crew Member ${index + 1} Name`;
   }
 
@@ -380,6 +392,7 @@ export class EditPilotDialogComponent {
       ...(member.notes() ? { notes: member.notes() } : {}),
       ...(member.portrait() ? { portrait: member.portrait() } : {}),
       ...(this.data.editWounds ? { wounds: member.wounds() } : {}),
+      ...(member.edge === undefined ? {} : { edge: member.edge() }),
       gunnery: member.gunnery(),
       piloting: member.piloting(),
       ...(member.aeroGunnery === undefined ? {} : { aeroGunnery: member.aeroGunnery() }),

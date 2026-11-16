@@ -94,8 +94,10 @@
                     [showHint]="false"
                     [scrollUnitsOnly]="true"
                     [showNote]="false"
+                    [showReserves]="false"
                     (hoveredUnitChange)="onPreviewUnitHover($event)">
                 </force-preview-panel>
+                <force-reserve-crew class="summary-reserves" [force]="data.force" [layout]="reserveLayout()" />
             </div>
 
             <div class="radar-tab-chart">
@@ -108,7 +110,6 @@
     } @else {
         <div class="units-list" 
             id="force-groups"
-            [class.compact]="viewMode() === 'compact'" 
             [class.single-group]="hasSingleGroup()" 
             [class.table-mode]="isTableMode()"
             cdkDropList 
@@ -198,12 +199,11 @@
                     }
                 </ng-template>
 
-                <ng-template #tableSkillCell let-row>
+                <ng-template #tableCrewCell let-row>
                     @if (row.kind === 'unit') {
-                    <button type="button" class="as-td as-td-skill clickable"
-                        (click)="onPilotClick(row.vm.member); $event.stopPropagation()"
-                        [attr.aria-label]="isAlphaStrike() ? 'Edit pilot' : 'Edit crew'"
-                        [title]="isAlphaStrike() ? 'Edit pilot' : 'Edit crew'">{{ getPilotSkill(row.vm) }}</button>
+                    <div class="as-td table-crew-cell" (click)="$event.stopPropagation()" (pointerdown)="$event.stopPropagation()">
+                        <force-unit-crew [force]="data.force" [unitId]="row.vm.member.id" layout="compact" />
+                    </div>
                     }
                 </ng-template>
 
@@ -271,69 +271,66 @@
                         [cdkDropListDisabled]="!canDragDrop()"
                         [cdkDropListAutoScrollDisabled]="true"
                         (cdkDropListDropped)="drop($event)">
-                        @if (viewMode() === 'compact' && units.length === 0) {
+                        @if (units.length === 0 && !isReadOnly()) {
                             <div class="empty-group-placeholder" (click)="onEmptyGroupClick(group)">
                                 No units in this group. Drop units here or click to remove.
                             </div>
                         }
-                        @if (viewMode() === 'compact') {
-                            @for (vm of getSortedUnitsForGroup(group); track vm.member.id) {
-                                @let member = vm.member;
-                                <div class="drag-item crew-unit-row" [class.selected]="isUnitSelected(member)"
-                                    cdkDrag
-                                    cdkDragPreviewClass="glass"
-                                    [cdkDragDisabled]="!canDragDrop()"
-                                    (cdkDragStarted)="onUnitDragStart()"
-                                    (cdkDragMoved)="onUnitDragMoved($event)"
-                                    (cdkDragEnded)="onUnitDragEnd()"
-                                    [cdkDragStartDelay]="{ touch: 200, mouse: 0 }">
-                                    <div class="crew-unit-summary">
-                                        <button type="button" class="crew-unit-name"
-                                            (click)="onUnitClick(vm, $event)"
-                                            (contextmenu)="toggleUnitSelection(member, $event)">
-                                            <unit-icon [unit]="vm.unit" [size]="32" />
-                                            <span class="crew-unit-title">
-                                                <strong>{{ memberAlias(member) || unitNames.chassis(vm.unit) + ' ' + vm.unit.model }}</strong>
-                                                <span class="muted">@if (memberAlias(member)) {<span>{{ unitNames.chassis(vm.unit) }} {{ vm.unit.model }} · </span>}{{ vm.unit.tons }} t · {{ vm.unit.role }}</span>
-                                            </span>
-                                        </button>
-                                        <force-unit-crew class="overview-crew" [force]="data.force" [unitId]="member.id" layout="slots" />
-                                        <div class="crew-unit-actions" (mousedown)="$event.stopPropagation()" (touchstart)="$event.stopPropagation()">
-                                            <span class="crew-unit-value"><span class="muted">{{ isAlphaStrike() ? 'PV' : 'BV' }}</span> {{ displayedBvPv([member]) }}</span>
-                                            @if (!isReadOnly()) {
-                                                <button type="button" class="crew-row-action" (click)="repairUnit($event, member)" title="Repair unit" aria-label="Repair unit">↺</button>
-                                                @if (vm.unit.c3 && vm.unit.c3 !== 'None') {
-                                                    <button type="button" class="crew-row-action" (click)="openC3Network($event, member)" title="Configure force networks" aria-label="Configure force networks">C3</button>
-                                                }
-                                                <button type="button" class="crew-row-action danger" (click)="removeUnit($event, member)" title="Delete unit and its assigned crew" aria-label="Delete unit and its assigned crew">×</button>
-                                            }
-                                        </div>
+                        @for (vm of getSortedUnitsForGroup(group); track vm.member.id) {
+                            @let member = vm.member;
+                            <div class="unit-row"
+                                cdkDrag
+                                cdkDragPreviewClass="glass"
+                                [cdkDragDisabled]="!canDragDrop()"
+                                (cdkDragStarted)="onUnitDragStart()"
+                                (cdkDragMoved)="onUnitDragMoved($event)"
+                                (cdkDragEnded)="onUnitDragEnd()"
+                                [cdkDragStartDelay]="{ touch: 200, mouse: 0 }">
+                                @if (!isReadOnly()) {
+                                <div class="unit-rail">
+                                    @if (canDragDrop()) {
+                                    <div class="unit-rail-btn unit-drag-handle" cdkDragHandle title="Drag to reorder" aria-hidden="true">
+                                        <svg width="14" height="14" viewBox="0 0 16 16" fill="currentColor" xmlns="http://www.w3.org/2000/svg">
+                                            <circle cx="5" cy="3" r="1.5"/><circle cx="11" cy="3" r="1.5"/>
+                                            <circle cx="5" cy="8" r="1.5"/><circle cx="11" cy="8" r="1.5"/>
+                                            <circle cx="5" cy="13" r="1.5"/><circle cx="11" cy="13" r="1.5"/>
+                                        </svg>
                                     </div>
+                                    }
+                                    <button type="button" class="unit-rail-btn" (click)="repairUnit($event, member)" title="Repair unit" aria-label="Repair unit">
+                                        <svg fill="currentColor" width="14" height="14" viewBox="0 0 256 256" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
+                                            <path d="M48,244.8l126-126c0.7-0.7,1.4-1.5,2.1-2.3c20.3,6.8,43.6,2.1,59.8-14.1c17.5-17.5,21.6-43.3,12.2-64.7l-38.5,38.5l-30.2-30.2l38.5-38.5c-21.4-9.3-47.2-5.2-64.7,12.2c-16.2,16.2-20.9,39.5-14.1,59.8c-0.8,0.6-1.6,1.3-2.3,2.1l-126,126c-10.2,10.2-10.2,27,0,37.2l0,0C21,255,37.7,255,48,244.8z"/>
+                                        </svg>
+                                    </button>
+                                    @if (vm.unit.c3 && vm.unit.c3 !== 'None') {
+                                    <button type="button" class="unit-rail-btn unit-rail-text" (click)="openC3Network($event, member)" title="Configure force networks" aria-label="Configure force networks">C3</button>
+                                    }
+                                    <button type="button" class="unit-rail-btn danger" (click)="removeUnit($event, member)" title="Remove unit" aria-label="Remove unit and its assigned crew">
+                                        <remove-icon />
+                                    </button>
                                 </div>
-                            }
-                        } @else {
-                            @for (vm of getSortedUnitsForGroup(group); let last = $last; track vm.member.id) {
+                                }
+                                <ng-template #crewStrip>
+                                    <force-unit-crew [force]="data.force" [unitId]="member.id" layout="compact" />
+                                </ng-template>
                                 <unit-card-expanded
                                     longPress
-                                    [unit]="expandedMemberUnit(vm.member)"
-                                    [bvPvDisplay]="displayedBvPv([vm.member])"
-                                    [gunnery]="memberGunnery(vm.member)"
-                                    [piloting]="memberPiloting(vm.member)"
-                                    [forceShowPilotInfo]="isCBTMekForceMember(vm.member)"
+                                    [unit]="expandedMemberUnit(member)"
+                                    [bvPvDisplay]="displayedBvPv([member])"
+                                    [gunnery]="memberGunnery(member)"
+                                    [piloting]="memberPiloting(member)"
+                                    [showPilotInfo]="false"
+                                    [headerExtra]="crewStrip"
                                     [expandedView]="true"
-                                    [isSelected]="isUnitSelected(vm.member)"
+                                    [isSelected]="isUnitSelected(member)"
                                     [sortKey]="selectedSort()"
                                     [sortSlotLabel]="selectedSortLabel()"
                                     [useHex]="useHex()"
                                     (shortPress)="onUnitClick(vm, $event)"
-                                    (longPress)="toggleUnitSelection(vm.member, $event)"
-                                    (tagClick)="onTagClick($event)"
-                                    (pilotInfoClick)="onPilotClick(vm.member)">
+                                    (longPress)="toggleUnitSelection(member, $event)"
+                                    (tagClick)="onTagClick($event)">
                                 </unit-card-expanded>
-                                @if (!last && !isTableMode()) {
-                                    <hr class="divider" />
-                                }
-                            }
+                            </div>
                         }
                     </div>
                 </div>
@@ -351,7 +348,7 @@
                 </div>
             }
             }
-            <force-reserve-crew class="overview-reserves" [force]="data.force" layout="cards" />
+            <force-reserve-crew class="overview-reserves" [force]="data.force" [layout]="reserveLayout()" [showEmpty]="true" />
         </div>
     }
 </div>
@@ -394,14 +391,7 @@
         </div>
         <button type="button" class="bt-button view-toggle-btn" (click)="toggleViewMode()" 
             [title]="nextViewModeTitle()">
-            @if (viewMode() === 'compact') {
-                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                    <rect x="2.5" y="2.5" width="8" height="8" rx="1"/>
-                    <rect x="13.5" y="2.5" width="8" height="8" rx="1"/>
-                    <rect x="2.5" y="13.5" width="8" height="8" rx="1"/>
-                    <rect x="13.5" y="13.5" width="8" height="8" rx="1"/>
-                </svg>
-            } @else if (viewMode() === 'expanded') {
+            @if (viewMode() === 'expanded') {
                 <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
                     <rect x="2.5" y="3" width="19" height="7" rx="1"/>
                     <rect x="2.5" y="14" width="19" height="7" rx="1"/>

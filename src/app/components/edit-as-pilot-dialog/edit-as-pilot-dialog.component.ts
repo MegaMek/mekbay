@@ -32,6 +32,8 @@ import { PilotNameCatalogService } from '../../services/catalogs/pilot-name-cata
 import { LoggerService } from '../../services/logger.service';
 import type { Era } from '../../models/eras.model';
 import type { UnitSubtype, UnitType } from '../../models/entity/types/classification';
+import { CommanderIconComponent } from '../commander-icon/commander-icon.component';
+import { PilotEdgeFieldComponent } from '../pilot-edge-field/pilot-edge-field.component';
 import { PilotNotesFieldComponent } from '../pilot-notes-field/pilot-notes-field.component';
 import { PilotPortraitFieldComponent } from '../pilot-portrait-field/pilot-portrait-field.component';
 import type { CrewEditAction, CrewEditActions } from '../force-crew/crew-edit-actions';
@@ -45,6 +47,8 @@ export interface EditASPilotDialogData {
     notes?: string;
     portrait?: string;
     editPortrait?: boolean;
+    /** Present for persistent people, who own their Edge points. */
+    edge?: number;
     /** Enable only when the caller owns a persistent person and saves notes. */
     editNotes?: boolean;
     personnelActions?: CrewEditActions;
@@ -71,6 +75,7 @@ export interface EditASPilotResult {
     name: string;
     notes?: string;
     portrait?: string;
+    edge?: number;
     skill: number;
     abilities: AbilitySelection[]; // Array of ability IDs or custom abilities
     formationAbilities: string[];
@@ -87,7 +92,7 @@ interface FormationEffectCardView {
 
 @Component({
     selector: 'edit-as-pilot-dialog',
-    imports: [PilotNotesFieldComponent, PilotPortraitFieldComponent],
+    imports: [CommanderIconComponent, PilotEdgeFieldComponent, PilotNotesFieldComponent, PilotPortraitFieldComponent],
     changeDetection: ChangeDetectionStrategy.OnPush,
     host: {
         class: 'fullscreen-dialog-host glass'
@@ -127,6 +132,7 @@ export class EditASPilotDialogComponent {
     readonly nameHasText = signal(!!this.data.name.trim());
     readonly notes = signal(this.data.notes ?? '');
     readonly portrait = signal(this.data.portrait);
+    readonly edge = signal(this.data.edge ?? 0);
     readonly generatingName = signal(false);
 
     private readonly hasPvPreview = this.data.basePv != null;
@@ -1195,6 +1201,7 @@ export class EditASPilotDialogComponent {
             name,
             ...(this.data.notes !== undefined || this.notes() ? { notes: this.notes() } : {}),
             ...(this.portrait() ? { portrait: this.portrait() } : {}),
+            ...(this.data.edge === undefined ? {} : { edge: this.edge() }),
             skill,
             abilities,
             formationAbilities: [...(preview?.assignmentsByUnitId.get(this.data.unitId) ?? this.selectedFormationAbilities())],

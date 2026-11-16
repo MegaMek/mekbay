@@ -4,45 +4,32 @@
 import { DecimalPipe } from '@angular/common';
 import { ChangeDetectionStrategy, Component, input } from '@angular/core';
 
-/** A count-only display group; reserves are people, never synthetic force units. */
+/** A count-only line; reserves are people, never synthetic force units. */
 @Component({
     selector: 'force-reserves-preview',
     imports: [DecimalPipe],
     changeDetection: ChangeDetectionStrategy.OnPush,
     template: `
-        <div class="group-name">Reserves</div>
-        <div class="reserve-count" role="img"
-            [attr.aria-label]="count() === 1 ? '1 person in reserve' : count() + ' people in reserve'">
-            <img src="/images/helmet.svg" width="32" height="32" alt="" aria-hidden="true" />
-            <span aria-hidden="true">{{ count() | number }}</span>
-        </div>
+        <img src="/images/helmet.svg" width="14" height="14" alt="" aria-hidden="true" />
+        <span>{{ count() | number }} in reserve</span>
     `,
     styles: `
         :host {
-            display: flex;
+            display: inline-flex;
             flex: 0 0 auto;
-            flex-direction: column;
-            justify-content: flex-end;
-            gap: 4px;
-        }
-
-        .group-name {
-            font-size: 0.8em;
-            color: var(--text-color-secondary);
-            text-align: left;
-        }
-
-        .reserve-count {
-            display: flex;
-            flex-direction: column;
             align-items: center;
-            justify-content: center;
+            align-self: flex-start;
             gap: 6px;
-            width: 86px;
-            height: 80px;
+            padding: 3px 8px;
             background: #0003;
-            color: var(--text-color);
+            color: var(--text-color-secondary);
+            font-size: 0.8em;
             font-variant-numeric: tabular-nums;
+            white-space: nowrap;
+        }
+
+        img {
+            opacity: 0.7;
         }
     `,
 })

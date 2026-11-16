@@ -4,6 +4,15 @@
 import { ChangeDetectionStrategy, Component, computed, effect, inject, input, signal } from '@angular/core';
 import { PortraitService } from '../../services/portrait.service';
 
+/** Head-and-shoulders outline in a 256x320 box, the portrait aspect; stands in for a missing portrait. */
+export const PERSON_SILHOUETTE_PATH = 'M128 8C82 8 54 39 54 83L57 121'
+    + 'C49 116 45 124 47 137C48 149 52 157 59 158'
+    + 'C63 180 75 196 87 206L86 224'
+    + 'C69 236 43 242 24 253L2 267V318H254V267L232 253'
+    + 'C213 242 187 236 170 224L169 206C181 196 193 180 197 158'
+    + 'C204 157 208 149 209 137C211 124 207 116 199 121'
+    + 'L202 83C202 39 174 8 128 8Z';
+
 /** Clips a shared sheet to one portrait */
 @Component({
     selector: 'crew-portrait',

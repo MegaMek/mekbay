@@ -259,6 +259,21 @@ describe('shared force crew controls', () => {
         expect(TestBed.inject(CrewAssignmentService).connectedDropLists()).toEqual([]);
     });
 
+    it('keeps an empty reserve list as a drop target only where asked and editable', () => {
+        const source = ownerFixture();
+        const fixture = TestBed.createComponent(ForceReserveCrewComponent);
+        fixture.componentRef.setInput('force', source.force);
+        fixture.componentRef.setInput('showEmpty', true);
+        fixture.detectChanges();
+        const crew = TestBed.inject(CrewAssignmentService);
+        expect(fixture.nativeElement.querySelector('.empty')).not.toBeNull();
+        expect(crew.connectedDropLists()).toEqual([fixture.componentInstance.dropId]);
+        source.policy.update(policy => ({ ...policy, canEdit: false }));
+        fixture.detectChanges();
+        expect(fixture.nativeElement.querySelector('section')).toBeNull();
+        expect(crew.connectedDropLists()).toEqual([]);
+    });
+
     it('sorts a dropped reserve by its new index and ignores releases outside the list', async () => {
         const source = ownerFixture();
         source.personnel.update(personnel => ({ ...personnel, assignments: [] }));
@@ -275,7 +290,7 @@ describe('shared force crew controls', () => {
         expect(source.owner.reorderReservePerson).toHaveBeenCalledTimes(1);
     });
 
-    it('assigns the first vacant station and leaves a full or integrated unit untouched', async () => {
+    it('fills the first vacant station, replaces the first occupant of a full unit, and leaves an integrated unit untouched', async () => {
         const source = ownerFixture();
         source.personnel.update(personnel => ({ ...personnel, people: [...personnel.people, { id: 'reserve' }] }));
         source.policy.update(policy => ({ ...policy, positions: [{ positionId: 'pilot', label: 'Pilot' },
@@ -284,11 +299,14 @@ describe('shared force crew controls', () => {
         const data: CrewDragData = { kind: 'force-person', force: source.force, personId: 'reserve' };
         await crew.dropOnUnit(source.force, data, 'unit');
         expect(source.assign).toHaveBeenCalledOnceWith('reserve', 'unit', 'gunner');
+        // No vacancy left: the reserve takes the first station, and Force sends its occupant to reserve.
         source.policy.update(policy => ({ ...policy, positions: [policy.positions[0]] }));
         await crew.dropOnUnit(source.force, data, 'unit');
+        expect(source.assign.calls.mostRecent().args).toEqual(['reserve', 'unit', 'pilot']);
         source.policy.update(policy => ({ ...policy, kind: 'integrated' }));
+        expect(crew.unitDropPosition(source.force, 'unit')).toBeUndefined();
         await crew.dropOnUnit(source.force, data, 'unit');
-        expect(source.assign).toHaveBeenCalledTimes(1);
+        expect(source.assign).toHaveBeenCalledTimes(2);
     });
 
     it('returns a transferred reserve to its source when target assignment fails', async () => {

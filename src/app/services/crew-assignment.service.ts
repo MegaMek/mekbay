@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 
 import { Injectable, inject, signal } from '@angular/core';
+import { GameSystem } from '../models/common.model';
 import type { Force } from '../models/force.model';
 import type { ForcePerson } from '../models/force-personnel';
 import { ForcePilotEditorService } from './force-pilot-editor.service';
@@ -42,13 +43,16 @@ export class CrewAssignmentService {
             && (data.force === target || !data.force.personnel().assignments.some(assignment => assignment.personId === data.personId));
     }
 
-    firstVacantPosition(force: Force, unitId: string): string | undefined {
+    /** A drop on the unit fills its first vacant station; a full unit replaces its first occupant. */
+    unitDropPosition(force: Force, unitId: string): string | undefined {
         const policy = force.getUnitCrewPolicy(unitId);
         if (!policy.canEdit || policy.kind !== 'swappable') return undefined;
-        return policy.positions.find(position => !force.getAssignedPerson(unitId, position.positionId))?.positionId;
+        return (policy.positions.find(position => !force.getAssignedPerson(unitId, position.positionId))
+            ?? policy.positions[0])?.positionId;
     }
 
-    async dropOnUnit(force: Force, data: CrewDragData, unitId: string, positionId = this.firstVacantPosition(force, unitId)): Promise<void> {
+    /** Force ownership swaps two assigned people and sends a replaced occupant to reserve. */
+    async dropOnUnit(force: Force, data: CrewDragData, unitId: string, positionId = this.unitDropPosition(force, unitId)): Promise<void> {
         if (positionId === undefined || !this.canDropPerson(data, force)) return;
         if (data.force === force) return this.assign(force, data.personId, unitId, positionId);
         if (!data.force.transferReservePersonTo(force, data.personId)) return this.report(false);
@@ -72,6 +76,11 @@ export class CrewAssignmentService {
         const personnel = force.personnel();
         const assigned = new Set(personnel.assignments.map(assignment => assignment.personId));
         return personnel.people.filter(person => !assigned.has(person.id));
+    }
+
+    /** A reserve's own wounds; Alpha Strike pilots have no wound track. */
+    reserveWounds(force: Force, person: ForcePerson): number | undefined {
+        return force.gameSystem === GameSystem.AS ? undefined : person.health?.wounds ?? 0;
     }
 
     async edit(force: Force, personId: string): Promise<void> {

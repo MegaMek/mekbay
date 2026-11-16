@@ -25,7 +25,7 @@ export const OPTION_VALUES = {
     unitSearchExpandedViewLayout: ['panel-list-filters', 'filters-list-panel'],
     unitSearchViewMode: ['list', 'card', 'chassis', 'table'],
     factionAvailabilityViewMode: ['list', 'grid'],
-    forceOverviewViewMode: ['expanded', 'compact', 'table'],
+    forceOverviewViewMode: ['expanded', 'table'],
     cbtUnitViewMode: ['sheet', 'tactical'],
     ASVehiclesCriticalHitTable: ['default', 'scouringSands'],
     automationMode: ['yes', 'ask', 'no'],

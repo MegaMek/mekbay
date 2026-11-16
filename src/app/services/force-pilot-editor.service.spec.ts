@@ -12,7 +12,9 @@ import type { UnitCrewPolicy } from '../models/unit-crew-policy';
 import { ProtoMekEntity } from '../models/entity/entities/protomek/protomek-entity';
 import { createTestEquipmentRegistry } from '../models/entity/testing/test-equipment-registry';
 import { TestBipedMekEntity, TestAeroSpaceFighterEntity, TestLamEntity, TestVtolEntity } from '../models/entity/testing/test-entities';
-import type { EditPilotDialogData, EditPilotResult } from '../components/edit-pilot-dialog/edit-pilot-dialog.component';
+import { EditPilotDialogComponent, type EditPilotDialogData, type EditPilotResult } from '../components/edit-pilot-dialog/edit-pilot-dialog.component';
+import { PilotSelectorService } from '../components/force-crew/pilot-selector.component';
+import { UnitCrewDialogComponent } from '../components/force-crew/unit-crew-dialog.component';
 import { DialogsService } from './dialogs.service';
 import { ToastService } from './toast.service';
 import { ForcePilotEditorService } from './force-pilot-editor.service';
@@ -63,6 +65,33 @@ describe('ForcePilotEditorService personnel editing', () => {
     editor = TestBed.inject(ForcePilotEditorService);
   });
 
+  it('edits an occupied station, lists the reserves for a vacant one, and lists stations for several', async () => {
+    const source = ownerFixture(GameSystem.CBT);
+    const occupant = signal<{ id: string } | undefined>(undefined);
+    Object.assign(source.owner, { getAssignedPerson: () => occupant() });
+    const open = spyOn(TestBed.inject(PilotSelectorService), 'open').and.returnValue(of(undefined));
+    dialogs.createDialog.and.returnValue({ closed: of(null) } as never);
+    const anchor = document.createElement('button');
+
+    await editor.editUnit(source.force, 'unit', anchor);
+    expect(open).toHaveBeenCalledOnceWith(source.force, 'unit', 'crew:0', anchor);
+    expect(dialogs.createDialog).not.toHaveBeenCalled();
+
+    occupant.set({ id: 'person' });
+    await editor.editStation(source.force, 'unit', 'crew:0');
+    expect(dialogs.createDialog.calls.mostRecent().args[0]).toBe(EditPilotDialogComponent);
+    expect(open).toHaveBeenCalledTimes(1);
+
+    source.policy.update((policy) => ({ ...policy, positions: [...policy.positions, { positionId: 'crew:1', label: 'Gunner' }] }));
+    await editor.editUnit(source.force, 'unit');
+    expect(dialogs.createDialog.calls.mostRecent().args[0]).toBe(UnitCrewDialogComponent);
+
+    source.policy.update((policy) => ({ ...policy, canEdit: false }));
+    dialogs.createDialog.calls.reset();
+    await editor.editStation(source.force, 'unit', 'crew:0');
+    expect(dialogs.createDialog).not.toHaveBeenCalled();
+  });
+
   for (const [createEntity, skillSet] of [
     [() => new TestBipedMekEntity(), 'ground'], [() => new TestVtolEntity(), 'ground'],
     [() => new TestAeroSpaceFighterEntity(), 'aerospace'], [() => new TestLamEntity(), 'both'],
@@ -92,6 +121,7 @@ describe('ForcePilotEditorService personnel editing', () => {
         name: 'Alexandra',
         notes: 'New notes',
         portrait: 'Doctor_F_1',
+        edge: 3,
         skill: 2,
         abilities: ['marksman'],
         formationAbilities: [],
@@ -101,11 +131,13 @@ describe('ForcePilotEditorService personnel editing', () => {
     await editor.editPerson(source.force, 'person');
     const data = dialogs.createDialog.calls.mostRecent().args[1]!.data as Record<string, unknown>;
     expect(data['notes']).toBe('Existing notes');
+    expect(data['edge']).toBe(0);
     expect(data['personnelActions']).toEqual({ canUnassign: false, canDelete: true });
     expect(source.update).toHaveBeenCalledOnceWith('person', {
       name: 'Alexandra',
       notes: 'New notes',
       portrait: 'Doctor_F_1',
+      edge: 3,
       gunnery: 2,
       abilities: ['marksman'],
       commander: true,
@@ -145,6 +177,7 @@ describe('ForcePilotEditorService personnel editing', () => {
       name: 'Alex',
       notes: undefined,
       portrait: undefined,
+      edge: undefined,
       gunnery: 3,
       piloting: 1,
       aeroGunnery: undefined, aeroPiloting: undefined,
@@ -190,7 +223,7 @@ describe('ForcePilotEditorService personnel editing', () => {
   it('keeps a reserve editable without inventing a unit BV preview', async () => {
     const source = ownerFixture(GameSystem.CBT);
     dialogs.createDialog.and.returnValue({
-      closed: of({ crew: [{ id: 'reserve', name: 'Alex', gunnery: 3, piloting: 2 }], commander: true }),
+      closed: of({ crew: [{ id: 'reserve', name: 'Alex', edge: 2, gunnery: 3, piloting: 2 }], commander: true }),
     } as never);
 
     await editor.editPerson(source.force, 'person');
@@ -199,10 +232,12 @@ describe('ForcePilotEditorService personnel editing', () => {
     expect(data.preSkillBv).toBeUndefined();
     expect(data.skillFacts).toBeUndefined();
     expect(data.personnelActions).toEqual({ canUnassign: false, canDelete: true });
+    expect(data.crew[0].edge).toBe(0);
     expect(source.update).toHaveBeenCalledOnceWith('person', {
       name: 'Alex',
       notes: undefined,
       portrait: undefined,
+      edge: 2,
       gunnery: 3,
       piloting: 2,
       commander: true,

@@ -117,16 +117,21 @@
 
 .crew-member-editor.with-portrait {
   grid-template-columns: auto minmax(0, 1fr);
+  // The first row takes any height the portrait column adds, so the name sits on the skills.
+  grid-template-rows: 1fr;
 
-  > pilot-portrait-field {
+  > .portrait-column {
     grid-column: 1;
     grid-row: 1 / span 2;
     justify-self: start;
-    align-self: stretch;
+    align-self: start;
   }
   > .name-field,
   > .crew-skills {
     grid-column: 2;
+  }
+  > .name-field {
+    align-self: end;
   }
   > .crew-skills {
     align-self: end;
@@ -136,16 +141,15 @@
     grid-column: 1 / -1;
   }
 
-  &.dual-skills > pilot-portrait-field {
+  &.dual-skills > .portrait-column {
     grid-row: 1 / span 3;
-    align-self: start;
   }
 }
 
 @container (max-width: 420px) {
   .crew-member-editor.with-portrait {
-    > pilot-portrait-field,
-    &.dual-skills > pilot-portrait-field {
+    > .portrait-column,
+    &.dual-skills > .portrait-column {
       grid-row: 1;
     }
     > .crew-skills {
@@ -180,12 +184,11 @@
     &.with-portrait {
       grid-template-columns: minmax(0, 1fr) auto minmax(0, 1fr);
 
-      > pilot-portrait-field,
-      &.dual-skills > pilot-portrait-field {
+      > .portrait-column,
+      &.dual-skills > .portrait-column {
         grid-column: 2;
         grid-row: 1;
         justify-self: center;
-        align-self: start;
       }
       > .name-field {
         grid-row: 2;
@@ -216,6 +219,12 @@
     justify-content: center;
     align-items: center;
   }
+}
+
+.portrait-column {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
 }
 
 .crew-skill-note {
@@ -287,19 +296,9 @@
   mask: url('/images/delete.svg') center / contain no-repeat;
 }
 
-.group-commander-icon {
-  width: 21px;
-  height: 26px;
-  transform: rotate(180deg);
-  flex-shrink: 0;
-}
 
-.group-commander-status {
-  padding: 0;
+.field-label.commander {
   color: var(--bt-yellow);
-  font-size: 0.8em;
-  font-weight: 600;
-  text-align: center;
 }
 
 .skill-selector {

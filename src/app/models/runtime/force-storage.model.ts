@@ -15,6 +15,8 @@ export interface StoredForcePerson {
     readonly notes?: string;
     readonly portrait?: string;
     readonly commander?: true;
+    /** Edge points; omitted when zero. */
+    readonly edge?: number;
     readonly abilities?: readonly (string | import('../pilot-abilities.model').ASCustomPilotAbility)[];
     readonly health?: Readonly<{
         wounds?: number;

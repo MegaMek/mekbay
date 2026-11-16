@@ -8,6 +8,7 @@ import {
 } from '../models/equipment.model';
 import type { BaseEntity } from '../models/entity/base-entity';
 import { isIndustrialStructureEquipment } from '../models/construction-equipment.model';
+import { naturalCompare } from './sort.util';
 
 export interface UnitRulesRefApplicability {
   readonly isMek: boolean;
@@ -51,32 +52,74 @@ export function createMinimalUnitRulesRefCombinations(
   return combinations.sort((left, right) => left.length - right.length);
 }
 
+/** One unit component and the sourcebooks that carry its rules. */
+export interface UnitRulesRefComponent {
+  readonly name: string;
+  readonly books: readonly string[];
+}
+
 /** Collect the catalog-only mutable-family inputs used by UnitMetadataBuilder. */
-export function buildUnitRulesRefs(entity: BaseEntity): string[][] {
+export function collectUnitRulesRefComponents(entity: BaseEntity): UnitRulesRefComponent[] {
   const registry = entity.getEquipmentRegistry();
-  const componentRulesRefs: readonly string[][] = [
-    ...[...entity.armorByLocation().values()].map(mounted => rulesRefBooks(mounted.armor)),
-    ...[...entity.structureByLocation().values()].map(mounted => rulesRefBooks(mounted.structure)),
+  return [
+    ...[...entity.armorByLocation().values()].map(mounted => rulesRefComponent(mounted.armor)),
+    ...[...entity.structureByLocation().values()].map(mounted => rulesRefComponent(mounted.structure)),
     ...entity.equipment().flatMap(mounted => {
       const equipment = mounted.equipment;
-      if (!(equipment instanceof WeaponEquipment)) return [rulesRefBooks(equipment)];
+      if (!(equipment instanceof WeaponEquipment)) return [rulesRefComponent(equipment)];
       const intrinsicAmmo = findIntrinsicAmmoForWeapon(equipment, registry);
       return [
-        rulesRefBooks(equipment),
-        ...(intrinsicAmmo ? [rulesRefBooks(intrinsicAmmo)] : []),
+        rulesRefComponent(equipment),
+        ...(intrinsicAmmo ? [rulesRefComponent(intrinsicAmmo)] : []),
       ];
     }),
   ];
-  return createMinimalUnitRulesRefCombinations(componentRulesRefs, {
-    isMek: entity.entityType === 'Mek',
-    isIndustrialMek: entity.entityType === 'Mek'
-      && [...entity.structureByLocation().values()]
-        .some(mounted => isIndustrialStructureEquipment(mounted.structure)),
-  });
 }
 
-function rulesRefBooks(equipment: Equipment | null | undefined): string[] {
-  return [...new Set(equipment?.rulesRefs.map(reference => reference.book) ?? [])];
+export function buildUnitRulesRefs(entity: BaseEntity): string[][] {
+  return createMinimalUnitRulesRefCombinations(
+    collectUnitRulesRefComponents(entity).map(component => component.books),
+    {
+      isMek: entity.entityType === 'Mek',
+      isIndustrialMek: entity.entityType === 'Mek'
+        && [...entity.structureByLocation().values()]
+          .some(mounted => isIndustrialStructureEquipment(mounted.structure)),
+    },
+  );
+}
+
+/** A component that needs a book unless one of the interchangeable companion books is picked. */
+export interface UnitRulesRefRequirer {
+  readonly name: string;
+  readonly unless: readonly string[];
+}
+
+/**
+ * Components that make `book` necessary beside its companion books: they
+ * reference it, and some pick of one book per companion choice leaves them
+ * otherwise uncovered. Unconditional requirers come first.
+ */
+export function unitRulesRefRequirers(
+  components: readonly UnitRulesRefComponent[],
+  book: string,
+  companionChoices: readonly (readonly string[])[],
+): UnitRulesRefRequirer[] {
+  const requirers = new Map<string, UnitRulesRefRequirer>();
+  for (const component of components) {
+    if (!component.books.includes(book)
+      || !companionChoices.every(choice => choice.some(companion => !component.books.includes(companion)))) continue;
+    const unless = companionChoices.flat().filter(companion => component.books.includes(companion));
+    requirers.set(`${component.name}\0${unless.join('/')}`, { name: component.name, unless });
+  }
+  return [...requirers.values()].sort((left, right) =>
+    Number(left.unless.length > 0) - Number(right.unless.length > 0) || naturalCompare(left.name, right.name));
+}
+
+function rulesRefComponent(equipment: Equipment | null | undefined): UnitRulesRefComponent {
+  return {
+    name: equipment?.name ?? '',
+    books: [...new Set(equipment?.rulesRefs.map(reference => reference.book) ?? [])],
+  };
 }
 
 function isBookApplicable(book: string, applicability: UnitRulesRefApplicability): boolean {

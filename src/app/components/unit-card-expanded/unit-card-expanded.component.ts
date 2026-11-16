@@ -3,7 +3,8 @@
 // Author: Drake
 
 import { UnitNameService } from '../../services/unit-name.service';
-import { ChangeDetectionStrategy, Component, inject, input, output, computed } from '@angular/core';
+import { ChangeDetectionStrategy, Component, inject, input, output, computed, type TemplateRef } from '@angular/core';
+import { NgTemplateOutlet } from '@angular/common';
 import type { UnitSummary, UnitComponent } from '../../models/unit-summary.model';
 import type { ForceUnit } from '../../models/force-unit.model';
 import { ASForceUnit } from '../../models/as-force-unit.model';
@@ -62,6 +63,7 @@ import { CustomUnitsService } from '../../services/custom-units.service';
     selector: 'unit-card-expanded',
     changeDetection: ChangeDetectionStrategy.OnPush,
     imports: [
+        NgTemplateOutlet,
         UnitIconComponent,
         UnitTagsComponent,
         UnitDataBadgesComponent,
@@ -112,6 +114,12 @@ export class UnitCardExpandedComponent {
 
     /** To force view of pilot skills even when we don't have a ForceUnit (e.g., force generator) */
     forceShowPilotInfo = input(false);
+
+    /** False when the host presents the crew itself, for example through `headerExtra`. */
+    showPilotInfo = input(true);
+
+    /** Host content for the expanded header, between the title and the subtitle. */
+    headerExtra = input<TemplateRef<unknown> | null>(null);
 
     /** Show adjusted and base BV/PV for a plain search-result Unit. */
     useBvPvDisplayOption = input(false);
@@ -186,6 +194,7 @@ export class UnitCardExpandedComponent {
 
     /** Pilot stats string from ForceUnit (e.g., "4/5") */
     readonly pilotStats = computed<string | null>(() => {
+        if (!this.showPilotInfo()) return null;
         const u = this.unit();
         if (this.isForceUnit(u)) {
             return `${u.getPilotStats()}`;
