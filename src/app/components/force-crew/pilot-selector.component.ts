@@ -13,6 +13,7 @@ import { DropdownPointerActivationGuard, scrollActiveOptionIntoView } from '../.
 import { uuidv7 } from '../../utils/uuid.util';
 import { RemoveIconComponent } from '../remove-icon/remove-icon.component';
 import { CrewProfileComponent } from './crew-profile.component';
+import { PERSON_SILHOUETTE_PATH } from '../crew-portrait/crew-portrait.component';
 
 export type PilotSelection = { readonly kind: 'create' }
     | { readonly kind: 'assign' | 'delete'; readonly personId: string };
@@ -32,7 +33,9 @@ export type PilotSelection = { readonly kind: 'create' }
                     [class.keyboard-active]="activeIndex() === 0" aria-selected="false"
                     (focus)="activeIndex.set(0)"
                     (pointermove)="hover(0, $event)" (click)="selected.emit({kind: 'create'})">
-                    <span class="create-mark" aria-hidden="true">+</span>
+                    <svg class="create-mark" viewBox="0 0 256 320" aria-hidden="true" focusable="false">
+                        <path [attr.d]="silhouette" pathLength="100" />
+                    </svg>
                     <span class="create-text"><span>Create standard {{ isAS() ? 'pilot' : 'crew member' }}</span>
                         <small>{{ isAS() ? 'Skill 4' : 'G 4 / P 5' }}</small></span>
                 </button>
@@ -63,8 +66,10 @@ export type PilotSelection = { readonly kind: 'create' }
             min-height: 40px; padding: 4px 4px 4px 5px; border: 0; border-left: 3px solid transparent; background: transparent;
             color: var(--text-color); font: inherit; text-align: left; cursor: pointer; }
         .dropdown-option:hover, .keyboard-active { background: var(--bt-yellow-background-transparent); border-left-color: var(--bt-yellow); }
-        .create-mark { display: flex; align-items: center; justify-content: center; flex-shrink: 0; box-sizing: border-box;
-            width: 24px; height: 30px; border: 1px dashed var(--border-color); color: var(--text-color-secondary); font-size: 16px; }
+        /* A person not yet created: the reserve rows' outline, dashed. */
+        .create-mark { display: block; flex-shrink: 0; width: 24px; height: 30px; color: var(--text-color-secondary);
+            fill: currentColor; fill-opacity: .08; stroke: currentColor; stroke-width: 11; stroke-linecap: round;
+            stroke-linejoin: round; stroke-dasharray: 3 2; }
         .create-text { display: flex; flex-direction: column; gap: 1px; min-width: 0; font-size: 13px; line-height: 16px; }
         small { color: var(--text-color-secondary); font-size: 11px; line-height: 13px; }
         .delete { display: flex; align-items: center; justify-content: center; flex-shrink: 0; padding: 0 12px; color: #999;
@@ -75,6 +80,7 @@ export type PilotSelection = { readonly kind: 'create' }
 })
 export class PilotSelectorPanelComponent {
     readonly force = input.required<Force>();
+    readonly silhouette = PERSON_SILHOUETTE_PATH;
     readonly selected = output<PilotSelection>();
     readonly dismissed = output<void>();
     readonly search = signal('');
