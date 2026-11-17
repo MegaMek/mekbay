@@ -21,7 +21,21 @@ import { ChangeDetectionStrategy, Component, input } from '@angular/core';
       margin-top: 15px;
       padding: 22px 10px 10px;
       border: 1px solid #8b8b8b;
-      border-radius: 0 10px 0 0;
+      /* The record sheet's 45 degree top-right cut. The clip reaches above the box on the left,
+         where the title tab rises over the border. */
+      clip-path: polygon(-2px -20px, calc(100% - 10px) -20px, calc(100% - 10px) 0, 100% 10px, 100% 100%, -2px 100%);
+    }
+
+    /* A border cannot follow a clipped corner, so the cut draws its own 1px edge just inside it. */
+    :host::after {
+      content: '';
+      position: absolute;
+      top: -1px;
+      right: -1px;
+      width: 10px;
+      height: 10px;
+      background: linear-gradient(to top right, transparent calc(50% - 1px), #8b8b8b calc(50% - 1px), #8b8b8b 50%, transparent 50%);
+      pointer-events: none;
     }
 
     /* The record sheet's title tab, inverted: pointed at both ends on the sheet's 56.31 degree
