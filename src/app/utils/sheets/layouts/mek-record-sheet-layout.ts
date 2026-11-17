@@ -8,10 +8,15 @@ import { addInventoryText, appendInventoryBadges, appendInventoryRowButtons, INV
 import { INVENTORY_BADGE, RECORD_SHEET_FONT } from '../record-sheet-typography';
 
 import type { BaseEntity } from '../../../models/entity/base-entity';
-import { type MekEntity } from '../../../models/entity/entities/mek/mek-entity';
+import {
+    FULL_HEAD_EJECTION_SYSTEM,
+    RISC_HEAT_SINK_OVERRIDE_KIT,
+    type MekEntity,
+} from '../../../models/entity/entities/mek/mek-entity';
 import {
 type EntityMountedEquipment,
 type IntrinsicWeapon,
+type MekLocation,
 } from '../../../models/entity/types';
 import { getMekLocationLabel } from '../../../models/entity/types/mek';
 import { RUN_WITHOUT_MASC_CALCULATION, STANDARD_MOVEMENT_CALCULATION } from '../../../models/entity/types/move';
@@ -617,10 +622,12 @@ function appendMekInventoryRows(
         const baseline = isEquipment
             ? firstBaseline + equipmentLineOffsets[index] * rowStep
             : footerOrigin + physicalOffsets[index - equipmentRows.length] * rowStep;
+        // Slotless equipment is design text: no inventory entry, so the binding never claims, hides, or rewrites it.
+        const slotless = isEquipment && equipmentRows[index].slotless === true;
         const row = svgElement('g');
-        row.setAttribute('class', 'inventoryEntry');
+        row.setAttribute('class', slotless ? 'inventoryFeature' : 'inventoryEntry');
         row.setAttribute('id', `generated-inventory-row@${index}`);
-        setInventoryComponentIds(row, rowData?.componentIds ?? []);
+        if (!slotless) setInventoryComponentIds(row, rowData?.componentIds ?? []);
         row.setAttribute('transform', `translate(0 ${formatNumber(baseline - rowStep + y(1.4))})`);
         if (!rowData || index >= equipmentRows.length + physicalAttacks.length) {
             row.setAttribute('display', 'none');
@@ -628,10 +635,12 @@ function appendMekInventoryRows(
 
         const localBaseline = rowStep - y(1.4);
         const buttons = inventoryRangeButtons(STANDARD_INVENTORY_COLUMNS, x);
-        appendInventoryRowButtons(row, localBaseline, fontScale, rowStep,
-            isEquipment ? equipmentSpans[index][0] : physicalSpans[index - equipmentRows.length],
-            buttons.band, buttons.ranges);
-        appendInventoryBadges(row, localBaseline, fontScale, rowStep);
+        if (!slotless) {
+            appendInventoryRowButtons(row, localBaseline, fontScale, rowStep,
+                isEquipment ? equipmentSpans[index][0] : physicalSpans[index - equipmentRows.length],
+                buttons.band, buttons.ranges);
+            appendInventoryBadges(row, localBaseline, fontScale, rowStep);
+        }
 
         const quantity = isEquipment ? equipmentRows[index].quantity : undefined;
         if (quantity !== undefined) {
@@ -746,6 +755,8 @@ interface MekRecordSheetInventoryRow {
     readonly quantity?: number;
     readonly linkedEquipment: RecordSheetLinkedEquipment | null;
     readonly alternativeModes: readonly RecordSheetInventoryAlternativeMode[];
+    /** Equipment without a mount: design text only, which play never binds or changes. */
+    readonly slotless?: true;
 }
 
 
@@ -781,8 +792,31 @@ function mekRecordSheetInventoryRows(
                 alternativeModes: Object.freeze([]),
             });
         });
-    const rows = [...weaponRows, ...equipmentRows];
+    const rows = [...weaponRows, ...equipmentRows, ...mekSlotlessInventoryRows(entity)];
     return Object.freeze(stateKey === null ? rows : groupRecordSheetWeaponRows(rows, stateKey));
+}
+
+/**
+ * Equipment fitted without a mount or critical slot, listed after the mounted equipment as MegaMekLab lists it. The
+ * Full-Head Ejection System is assigned to the head (TO:AUE p. 122); the RISC kit has no location (IO p. 92).
+ */
+function mekSlotlessInventoryRows(entity: MekEntity): readonly MekRecordSheetInventoryRow[] {
+    const row = (name: string, locations: readonly MekLocation[]): MekRecordSheetInventoryRow => Object.freeze({
+        name,
+        location: formatEquipmentLocationCodes(locations),
+        heat: '—',
+        damage: '[E]',
+        minimumRange: '—',
+        ranges: Object.freeze(['—', '—', '—']),
+        componentIds: Object.freeze([]),
+        linkedEquipment: null,
+        alternativeModes: Object.freeze([]),
+        slotless: true,
+    });
+    return Object.freeze([
+        ...(entity.hasFullHeadEjectionSystem() ? [row(FULL_HEAD_EJECTION_SYSTEM, ['HD'])] : []),
+        ...(entity.hasRiscHeatSinkOverrideKit() ? [row(RISC_HEAT_SINK_OVERRIDE_KIT, [])] : []),
+    ]);
 }
 
 function mekPhysicalInventoryRows(entity: MekEntity): readonly {

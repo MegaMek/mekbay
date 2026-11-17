@@ -130,6 +130,10 @@ const MEK_GYRO_FEATURES: Readonly<Partial<Record<GyroType, EntityFeature>>> = {
   Superheavy: 'Superheavy Gyro',
 };
 
+/** Equipment fitted without a mount or critical slot; the record sheet still lists both in its inventory. */
+export const FULL_HEAD_EJECTION_SYSTEM: EntityFeature = 'Full Head Ejection System';
+export const RISC_HEAT_SINK_OVERRIDE_KIT: EntityFeature = 'RISC Heat Sink Override Kit';
+
 export abstract class MekEntity extends BaseEntity {
   abstract override get locationOrder(): readonly MekLocation[];
 
@@ -561,8 +565,8 @@ export abstract class MekEntity extends BaseEntity {
     if (cockpitFeature) features.push(cockpitFeature);
     const gyroFeature = MEK_GYRO_FEATURES[this.gyroType()];
     if (gyroFeature) features.push(gyroFeature);
-    if (this.hasFullHeadEjectionSystem()) features.push('Full Head Ejection System');
-    if (this.hasRiscHeatSinkOverrideKit()) features.push('RISC Heat Sink Override Kit');
+    if (this.hasFullHeadEjectionSystem()) features.push(FULL_HEAD_EJECTION_SYSTEM);
+    if (this.hasRiscHeatSinkOverrideKit()) features.push(RISC_HEAT_SINK_OVERRIDE_KIT);
     if (this.hasHybridStructure()) features.push('FrankenMek');
     return features;
   }

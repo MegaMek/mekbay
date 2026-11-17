@@ -209,6 +209,7 @@ function projectMekEndTurnChecks(
         shutdown: snapshot.query.hasCondition('shutdown'),
         activeController: activeCrewController(snapshot, 'piloting') !== null,
         hasExplosiveAmmo: heatAmmoExplosionCandidates(snapshot).length > 0,
+        riscHeatSinkOverrideKit: snapshot.entity.hasRiscHeatSinkOverrideKit(),
     }).map(check => Object.freeze({
         label: check.kind === 'shutdown'
             ? 'Heat shutdown check'

@@ -18,25 +18,40 @@ describe('direct Mek automation rules', () => {
 
     it('keeps shutdown, restart, and ammunition checks independent', () => {
         expect(mekHeatAutomationChecks({
-            heat: 23, shutdown: false, activeController: true, hasExplosiveAmmo: true,
+            heat: 23, shutdown: false, activeController: true, hasExplosiveAmmo: true, riscHeatSinkOverrideKit: false,
         })).toEqual([
             { kind: 'shutdown', target: 8 },
             { kind: 'ammo-explosion', target: 6 },
         ]);
         expect(mekHeatAutomationChecks({
-            heat: 30, shutdown: false, activeController: true, hasExplosiveAmmo: false,
+            heat: 30, shutdown: false, activeController: true, hasExplosiveAmmo: false, riscHeatSinkOverrideKit: false,
         })).toEqual([{ kind: 'shutdown', automaticOutcome: 'failed' }]);
         expect(mekHeatAutomationChecks({
-            heat: 13, shutdown: true, activeController: false, hasExplosiveAmmo: false,
+            heat: 13, shutdown: true, activeController: false, hasExplosiveAmmo: false, riscHeatSinkOverrideKit: false,
         })).toEqual([{ kind: 'startup', automaticOutcome: 'success' }]);
         expect(mekHeatAutomationChecks({
-            heat: 18, shutdown: true, activeController: true, hasExplosiveAmmo: false,
+            heat: 18, shutdown: true, activeController: true, hasExplosiveAmmo: false, riscHeatSinkOverrideKit: false,
         })).toEqual([{ kind: 'startup', target: 6 }]);
+    });
+
+    it('takes 2 off only the roll to avoid shutdown under the RISC Heat Sink Override Kit', () => {
+        const kit = { activeController: true, hasExplosiveAmmo: true, riscHeatSinkOverrideKit: true };
+        expect(mekHeatAutomationChecks({ ...kit, heat: 23, shutdown: false })).toEqual([
+            { kind: 'shutdown', target: 6, overrideKit: true },
+            { kind: 'ammo-explosion', target: 6 },
+        ]);
+        // At 14 the kit leaves 2+: the roll still matters, since an unmodified 2 malfunctions the kit.
+        expect(mekHeatAutomationChecks({ ...kit, heat: 14, shutdown: false }))
+            .toEqual([{ kind: 'shutdown', target: 2, overrideKit: true }]);
+        expect(mekHeatAutomationChecks({ ...kit, heat: 30, shutdown: false }))
+            .toEqual([{ kind: 'shutdown', automaticOutcome: 'failed' }, { kind: 'ammo-explosion', target: 8 }]);
+        expect(mekHeatAutomationChecks({ ...kit, heat: 18, shutdown: true, hasExplosiveAmmo: false }))
+            .toEqual([{ kind: 'startup', target: 6 }]);
     });
 
     it('automatically fails shutdown checks when no conscious pilot can intervene', () => {
         expect(mekHeatAutomationChecks({
-            heat: 14, shutdown: false, activeController: false, hasExplosiveAmmo: false,
+            heat: 14, shutdown: false, activeController: false, hasExplosiveAmmo: false, riscHeatSinkOverrideKit: false,
         })).toEqual([{ kind: 'shutdown', automaticOutcome: 'failed' }]);
     });
 

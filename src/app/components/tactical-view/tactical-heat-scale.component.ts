@@ -57,10 +57,12 @@ export class TacticalHeatScaleComponent {
             ?? Math.max(0, (this.mek()?.heatSinks.count ?? 0) - (this.mek()?.heat.heatsinksOff ?? 0));
     });
     readonly family = computed(() => this.mek() ? this.mek()!.identity.form === 'lam' ? 'lam' : 'mek' : 'aero');
-    readonly effects = computed(() => recordSheetHeatEffects(this.family(), this.displayedHeat())
+    private readonly riscOverrideKit = computed(() => this.mek()?.heatSinks.riscOverrideKit === true);
+    readonly effects = computed(() => recordSheetHeatEffects(this.family(), this.displayedHeat(), this.riscOverrideKit())
         .filter(effect => effect.active && !effect.superseded));
     readonly cells = computed(() => this.levels.map(heat => {
-        const marks = recordSheetHeatEffects(this.family(), heat).filter(effect => effect.heat === heat);
+        const marks = recordSheetHeatEffects(this.family(), heat, this.riscOverrideKit())
+            .filter(effect => effect.heat === heat);
         return {
             heat,
             marks,

@@ -8,7 +8,7 @@ import type {
     MekCriticalChanceModifier,
     MekCriticalChanceResult,
 } from '../../models/runtime/mek-critical-hit-v2';
-import { resolveMekCriticalChance } from '../../models/runtime/mek-critical-hit-v2';
+import { mekCriticalChanceTotal, resolveMekCriticalChance } from '../../models/runtime/mek-critical-hit-v2';
 import { DiceRollerComponent } from '../dice-roller/dice-roller.component';
 
 export interface MekCriticalChanceDialogData {
@@ -188,7 +188,7 @@ export class MekCriticalChanceDialogComponent {
     }
 
     private resolveRoll(raw: number): void {
-        const modified = Math.min(this.data.industrialMek ? 14 : 12, raw + this.modifierTotal());
+        const modified = mekCriticalChanceTotal(raw, this.modifierTotal(), this.data.industrialMek);
         this.result.set(resolveMekCriticalChance(
             modified,
             this.data.canBlowOff,

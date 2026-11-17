@@ -478,7 +478,7 @@ weapons-equipment-panel {
   flex: 0 0 auto;
   z-index: 40;
   width: 100%;
-  display: grid;
+  display: none;
   grid-template-columns: minmax(40px, 1fr) auto minmax(40px, 1fr);
   align-items: center;
   gap: 12px;
@@ -487,6 +487,9 @@ weapons-equipment-panel {
     max(8px, var(--safe-area-inset-left));
   border-top: 1px solid var(--border-color);
   background-color: var(--background-color-menu);
+}
+:host-context(.layout-phone) .tactical-navigation-toolbar {
+  display: grid;
 }
 .tactical-footer-nav {
   display: flex;
@@ -932,6 +935,9 @@ weapons-equipment-panel {
 .critical-row[data-run='end']::before {
   top: -1px;
   bottom: 1px;
+}
+.critical-row.run-hovered::before {
+  background: var(--primary-focus-color);
 }
 .critical-name {
   min-width: 0;

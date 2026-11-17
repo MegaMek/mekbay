@@ -287,7 +287,7 @@ export function compileMekHeatProfile(
     );
     const partialWing = compilePartialWing(entity, index, slotsByComponent, blockers);
     const providers = compileHeatProviders(entity, index, ruleset, blockers);
-    classifyUnsupportedConstruction(entity, index, blockers);
+    classifyUnsupportedConstruction(index, blockers);
     classifyUnsupportedEquipmentHeat(index, blockers);
 
     const installedHeatSinkUnits = heatSinks.reduce((total, group) => total + group.units, 0);
@@ -801,16 +801,9 @@ function stealthSystemHeat(equipment: Equipment): 6 | 10 | null {
 }
 
 function classifyUnsupportedConstruction(
-    entity: MekEntity,
     index: MekRuntimeIndex,
     blockers: MekHeatProfileBlocker[],
 ): void {
-    if (entity.hasRiscHeatSinkOverrideKit()) blockers.push(profileBlocker(
-        'UNSUPPORTED_HEAT_AFFECTING_CONSTRUCTION',
-        'risc-heat-sink-override-kit',
-        [],
-        'The RISC heat-sink override kit has no bounded settlement profile',
-    ));
     const materials = new Map<string, string>();
     for (const location of index.locations.values()) {
         const armorEquipment = location.armor.armor;

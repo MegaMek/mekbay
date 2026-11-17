@@ -9,6 +9,7 @@ import type { AutomationReviewEvent } from '../models/automation-review.model';
 import type { CBTForce } from '../models/cbt-force.model';
 import type { CBTForceUnitCommandDispatch,CBTForceUnitCommandResult } from '../models/cbt-force.types';
 import {
+cbtUnitCheckAutomaticEffect,
 cbtUnitCheckAutomaticMessage,
 cbtUnitCheckPresentation,
 cbtUnitCheckReviewDescription,
@@ -25,12 +26,14 @@ import {
 heatAmmoExplosionCandidates,
 mekHeatAutomationChecks,
 orderedCrewPositions,
+riscOverrideKitMalfunction,
 roll2D6,
 rollD6,
 twoD6Total,
 } from '../models/runtime/mek-automation-rules';
 import {
 diceForSlotIndex,
+mekCriticalChanceTotal,
 mekExplosionProtection,
 resolveMekCriticalChance,
 type MekCriticalChanceModifier,
@@ -86,6 +89,7 @@ EndTurnHeatAutomationService,
 stagedEndTurnHeatChecks,
 type EndTurnHeatAdapter,
 type PreparedEndTurnHeatEffects,
+type RolledHeatCheck,
 type StagedEndTurnHeat,
 } from './end-turn-heat-automation.service';
 import { MekFallingAutomationService } from './mek-falling-automation.service';
@@ -252,6 +256,14 @@ export class DirectMekAutomationService {
     private readonly injector = inject(Injector);
     private readonly dialogs = inject(DialogsService);
     private readonly resolvingCriticalEvents = new WeakMap<CBTForce, Map<string, boolean>>();
+    /**
+     * Override kit malfunctions by their shutdown row of a prepared End Turn: a resumed settlement replays the same
+     * rows, so the dice stay fixed across a closed review and applied hits are never applied again.
+     */
+    private readonly overrideKitMalfunctions = new WeakMap<RolledHeatCheck, Readonly<{
+        roll: readonly [number, number];
+        effect?: string;
+    }>>();
     private readonly endTurnHeat = inject(EndTurnHeatAutomationService);
     private readonly endTurnHeatAdapter: EndTurnHeatAdapter<MekSnapshot, StagedMekHeatEffects> = {
         snapshot: (force, instanceId) => this.snapshot(force, instanceId),
@@ -985,7 +997,7 @@ export class DirectMekAutomationService {
         const dice = roll2D6();
         const modifier = modifiers.reduce((total, row) =>
             total + (!row.optional || row.enabled ? row.value : 0), 0);
-        const total = Math.min(profile.industrialMek ? 14 : 12, twoD6Total(dice) + modifier);
+        const total = mekCriticalChanceTotal(twoD6Total(dice), modifier, profile.industrialMek);
         const outcome = resolveMekCriticalChance(total, profile.canBlowOff, profile.industrialMek);
         const caseIIChecks = snapshot.ruleset === 'total-warfare'
             && context.explosionProtection === 'case-ii'
@@ -1465,6 +1477,7 @@ export class DirectMekAutomationService {
             shutdown: snapshot.query.hasCondition('shutdown'),
             activeController: activeCrewController(snapshot, 'piloting') !== null,
             hasExplosiveAmmo: ammoCandidates.length > 0,
+            riscHeatSinkOverrideKit: snapshot.entity.hasRiscHeatSinkOverrideKit(),
         });
         const lifeSupport = projectMekLifeSupportPilotDamage(
             snapshot.entity,
@@ -1524,8 +1537,22 @@ export class DirectMekAutomationService {
                 if (explosion === null) return false;
                 appliedEffect = explosion;
             }
+            // The unmodified roll, whether or not the kit's −2 avoided the shutdown.
+            const malfunctioned = row.check.overrideKit === true && row.total === 2;
+            if (malfunctioned) {
+                const malfunction = await this.resolveOverrideKitMalfunction(
+                    force,
+                    instanceId,
+                    row,
+                    dispatch,
+                    prepared.interactive,
+                );
+                if (malfunction === null) return false;
+                appliedEffect = `${cbtUnitCheckAutomaticEffect(row.check.kind, row.outcome)}; ${malfunction}`;
+            }
             snapshot = this.snapshot(force, instanceId) ?? snapshot;
-            if (this.options.cbtAutomationMode('heatEffectsCheck') === 'yes') {
+            // A malfunction is reported even when the player rolled the check: it changed a roll that looked passed.
+            if (malfunctioned || this.options.cbtAutomationMode('heatEffectsCheck') === 'yes') {
                 this.toast(
                     snapshot,
                     cbtUnitCheckAutomaticMessage(row.check.kind, {
@@ -1534,7 +1561,7 @@ export class DirectMekAutomationService {
                         targetNumber: row.check.target,
                         ...(appliedEffect === undefined ? {} : { effect: appliedEffect }),
                     }),
-                    row.outcome === 'success' ? 'success' : 'error',
+                    row.outcome === 'success' && !malfunctioned ? 'success' : 'error',
                 );
             }
         }
@@ -1563,6 +1590,66 @@ export class DirectMekAutomationService {
             }
         }
         return true;
+    }
+
+    /**
+     * Rolls the RISC Heat Sink Override Kit malfunction (`riscOverrideKitMalfunction`) and marks its engine hits.
+     * Returns the applied effect, or null when cancelled. Like any new critical chance, disabled critical-hit
+     * automation leaves the hits to the player.
+     */
+    private async resolveOverrideKitMalfunction(
+        force: CBTForce,
+        instanceId: string,
+        shutdownRow: RolledHeatCheck,
+        dispatch: CBTForceUnitCommandDispatch,
+        interactive: boolean,
+    ): Promise<string | null> {
+        if (this.options.cbtAutomationMode('criticalHitChanceCheck') === 'no') {
+            return 'RISC override kit malfunction: resolve its engine critical hits manually';
+        }
+        const previous = this.overrideKitMalfunctions.get(shutdownRow);
+        if (previous?.effect !== undefined) return previous.effect;
+        const roll = previous?.roll ?? roll2D6();
+        const settle = (effect: string): string => {
+            this.overrideKitMalfunctions.set(shutdownRow, Object.freeze({ roll, effect }));
+            return effect;
+        };
+        this.overrideKitMalfunctions.set(shutdownRow, Object.freeze({ roll }));
+        const snapshot = this.snapshot(force, instanceId);
+        if (!snapshot) return null;
+        const malfunction = riscOverrideKitMalfunction(snapshot, roll);
+        const modifier = malfunction.modifiers.reduce((total, row) => total + row.value, 0);
+        const excess = malfunction.hits - malfunction.slotIds.length;
+        const event: AutomationReviewEvent = Object.freeze({
+            id: `override-kit-malfunction:${instanceId}:${snapshot.query.stateRevision}`,
+            subject: this.subject(snapshot),
+            event: 'RISC Override Kit Malfunction',
+            description: `Center torso critical check rolled ${twoD6Total(malfunction.roll)}`
+                + `${modifier === 0 ? '' : ` ${modifier > 0 ? '+' : '−'} ${Math.abs(modifier)}`}`
+                + ` = ${malfunction.total}: ${malfunction.hits} engine critical hit${malfunction.hits === 1 ? '' : 's'}.`,
+            breakdown: Object.freeze(malfunction.modifiers.map((row, index) => Object.freeze({
+                id: String(index), label: row.label, value: row.value,
+            }))),
+            effects: Object.freeze([
+                ...malfunction.slotIds.map(slotId =>
+                    `Engine hit in center torso slot ${snapshot.index.slots.get(slotId)!.slotIndex + 1}`),
+                ...(excess > 0 ? [`${excess} excess hit${excess === 1 ? '' : 's'} with no effect`] : []),
+            ]),
+        });
+        const accepted = await this.automation.resolve(
+            'criticalHitChanceCheck',
+            [event],
+            { title: 'Review Override Kit Malfunction', interactive },
+        );
+        if (accepted === null) return null;
+        if (!accepted.has(event.id)) return settle('RISC override kit malfunction skipped');
+        let applied = 0;
+        for (const slotId of malfunction.slotIds) {
+            const result = await dispatch({ type: 'hit-critical', slotId, hits: 1, target: 'committed' }, false);
+            if (!result.accepted) return null;
+            if (result.changed) applied++;
+        }
+        return settle(`RISC override kit malfunction: ${applied} engine critical hit${applied === 1 ? '' : 's'}`);
     }
 
     private async resolveShutdownFall(

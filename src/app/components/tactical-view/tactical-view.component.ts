@@ -225,6 +225,7 @@ export class TacticalViewComponent {
     protected readonly turnTracker = viewChild(TacticalTurnTrackerComponent);
     protected readonly ammoLoadoutExpanded = signal(false);
     protected readonly conditionMenuExpanded = signal(false);
+    protected readonly hoveredCriticalComponentId = signal<string | null>(null);
 
     protected readonly mekSnapshot = computed<MekRecordSheetSnapshot | null>(() => {
         this.equipmentRuntime()?.snapshot();

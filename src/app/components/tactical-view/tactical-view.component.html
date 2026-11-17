@@ -266,6 +266,9 @@
                                     @let hits = mekCriticalHits(slot);
                                     @let run = block.runs.get(slot.slotIndex);
                                     <button type="button" class="critical-row" [attr.data-run]="run" [class.hit]="hits > 0"
+                                        [class.run-hovered]="run && hoveredCriticalComponentId() === slot.components[0].componentId"
+                                        (mouseenter)="hoveredCriticalComponentId.set(run && !readOnly() ? slot.components[0].componentId : null)"
+                                        (mouseleave)="hoveredCriticalComponentId.set(null)"
                                         [class.destroyed]="criticalDestroyed(slot)" [class.unhittable]="!slot.hittable"
                                         [disabled]="readOnly() || !slot.hittable" (click)="activateMekCritical(slot, $event)"
                                         [attr.aria-label]="criticalLabel(slot) + ', ' + hits + ' of ' + slot.hitCapacity + ' critical hits'">

@@ -8,8 +8,9 @@ import { resolveAutomaticFallingDamage } from '../components/falling-damage-dial
 import { projectRuntimeUnitNotifications } from '../components/unit-notification-badges/unit-notification-runtime.util';
 import type { CBTForce } from '../models/cbt-force.model';
 import type { CBTForceUnitCommandDispatch } from '../models/cbt-force.types';
-import type { CBTUnitSnapshot } from '../models/cbt-unit-snapshot';
+import { hasMekRuntime, type CBTUnitSnapshot } from '../models/cbt-unit-snapshot';
 import { createMekUnit } from '../models/runtime/cbt-mek-unit';
+import { riscOverrideKitMalfunction } from '../models/runtime/mek-automation-rules';
 
 import {
 createDirectCommandConsoleRuntimeFixture,
@@ -784,6 +785,131 @@ describe('DirectMekAutomationService', () => {
         const result = harness.fixture.instance.dispatch(resumed!.command);
         expect(result.accepted).toBeTrue();
         expect(harness.fixture.instance.query().turnState().turnCounter).toBe(turn + 1);
+    });
+
+    describe('RISC Heat Sink Override Kit', () => {
+        const engineSlots = (fixture: DirectMekRuntimeFixture) => {
+            const centerTorso = [...fixture.index.locations.values()].find(location => location.code === 'CT')!;
+            return [...fixture.index.slots.values()]
+                .filter(slot => slot.locationId === centerTorso.id && slot.componentIds.some(componentId => {
+                    const component = fixture.index.components.get(componentId);
+                    return component?.kind === 'system' && component.systemType === 'Engine';
+                }))
+                .sort((left, right) => left.slotIndex - right.slotIndex);
+        };
+        const mekSnapshot = (harness: ReturnType<typeof createHarness>) => {
+            const snapshot = harness.snapshot();
+            if (!hasMekRuntime(snapshot)) throw new Error('Expected a Mek snapshot');
+            return snapshot;
+        };
+
+        it('malfunctions on an unmodified shutdown roll of 2 even when the kit avoids the shutdown', async () => {
+            automationModes['heatEffectsCheck'] = 'yes';
+            const harness = createHarness();
+            harness.fixture.entity.hasRiscHeatSinkOverrideKit.set(true);
+            expect(harness.fixture.instance.dispatch({ type: 'set-heat', heat: 24 }).accepted).toBeTrue();
+            spyOn(Math, 'random').and.returnValue(0);
+
+            const prepared = await service.prepareCommand(harness.force, harness.instanceId, {
+                type: 'end-turn',
+                policy: 'automatic',
+            });
+            expect(prepared.heatEffects?.staged.checks.map(row => row.check))
+                .toEqual([{ kind: 'shutdown', target: 2, overrideKit: true }]);
+            expect(await service.settleBeforeCommand(
+                harness.force,
+                harness.instanceId,
+                prepared,
+                harness.dispatch,
+            )).not.toBeNull();
+
+            const slots = engineSlots(harness.fixture);
+            const query = harness.fixture.instance.query();
+            expect(query.hasCondition('shutdown')).toBeFalse();
+            expect(slots.map(slot => query.criticalHits(slot.id, 'committed'))).toEqual([1, 0, 0, 0, 0, 0]);
+            expect(resolveAutomation).toHaveBeenCalledWith(
+                'criticalHitChanceCheck',
+                [jasmine.objectContaining({
+                    event: 'RISC Override Kit Malfunction',
+                    description: 'Center torso critical check rolled 2 = 2: 1 engine critical hit.',
+                })],
+                jasmine.anything(),
+            );
+            expect(showAutomationToast).toHaveBeenCalledWith(
+                harness.instanceId,
+                jasmine.any(String),
+                'Shutdown: PASSED (2 vs 2+) — shutdown avoided; RISC override kit malfunction: 1 engine critical hit',
+                'error',
+            );
+        });
+
+        it('does not apply the malfunction again when a later heat effect is cancelled and resumed', async () => {
+            const instanceId = 'unit:automation:override-kit-resume';
+            const harness = createHarnessForFixture(
+                createDirectExplosionRuntimeFixture('core-2026', {}, instanceId),
+                'core-2026',
+                instanceId,
+            );
+            harness.fixture.entity.hasRiscHeatSinkOverrideKit.set(true);
+            expect(harness.fixture.instance.dispatch({ type: 'set-heat', heat: 30 }).accepted).toBeTrue();
+            spyOn(Math, 'random').and.returnValue(0);
+            let consciousnessReviews = 0;
+            resolveChecksAutomation.and.callFake(async (
+                _key: string,
+                checks: Parameters<typeof resolveAutomationChecksAutomatically>[0],
+                options: { readonly initiallyFailedGroups?: ReadonlySet<string> },
+            ) => checks.some(check => check.label === 'Consciousness check') && ++consciousnessReviews === 1
+                ? null
+                : resolveAutomationChecksAutomatically(checks, options.initiallyFailedGroups));
+            const prepared = await service.prepareCommand(harness.force, harness.instanceId, {
+                type: 'end-turn',
+                policy: 'automatic',
+            });
+            expect(prepared.heatEffects?.staged.checks.map(row => row.check.kind))
+                .toEqual(['shutdown', 'ammo-explosion']);
+            expect(prepared.heatEffects?.staged.checks[0]!.check.overrideKit).toBeTrue();
+            const engineHits = () => engineSlots(harness.fixture)
+                .map(slot => harness.fixture.instance.query().criticalHits(slot.id, 'committed'));
+
+            expect(await service.settleBeforeCommand(
+                harness.force, harness.instanceId, prepared, harness.dispatch,
+            )).toBeNull();
+            expect(engineHits()).toEqual([1, 0, 0, 0, 0, 0]);
+            expect(await service.settleBeforeCommand(
+                harness.force, harness.instanceId, prepared, harness.dispatch,
+            )).not.toBeNull();
+            expect(consciousnessReviews).toBe(2);
+            expect(engineHits()).toEqual([1, 0, 0, 0, 0, 0]);
+            expect(resolveAutomation.calls.allArgs()
+                .filter(args => args[0] === 'criticalHitChanceCheck'
+                    && (args[1] as readonly { readonly event: string }[])
+                        .some(event => event.event === 'RISC Override Kit Malfunction'))).toHaveSize(1);
+        });
+
+        it('hits the top-most undamaged center-torso engine slots, one more than the critical check', () => {
+            const harness = createHarness();
+            const slots = engineSlots(harness.fixture);
+            expect(slots.map(slot => slot.slotIndex)).toEqual([0, 1, 2, 7, 8, 9]);
+            expect(riscOverrideKitMalfunction(mekSnapshot(harness), [3, 4]).slotIds).toEqual([slots[0]!.id]);
+            const twelve = riscOverrideKitMalfunction(mekSnapshot(harness), [6, 6]);
+            expect(twelve.hits).toBe(4);
+            expect(twelve.slotIds).toEqual(slots.slice(0, 4).map(slot => slot.id));
+
+            // This turn's uncommitted hit has already damaged its slot.
+            expect(harness.fixture.instance.dispatch({
+                type: 'hit-critical', slotId: slots[0]!.id, hits: 1, target: 'pending',
+            }).changed).toBeTrue();
+            expect(riscOverrideKitMalfunction(mekSnapshot(harness), [3, 4]).slotIds).toEqual([slots[1]!.id]);
+            for (const slot of slots.slice(1, 3)) {
+                expect(harness.fixture.instance.dispatch({
+                    type: 'hit-critical', slotId: slot.id, hits: 1, target: 'committed',
+                }).accepted).toBeTrue();
+            }
+            // Hits past the last center-torso engine slot are not applied elsewhere.
+            const excess = riscOverrideKitMalfunction(mekSnapshot(harness), [6, 6]);
+            expect(excess.hits).toBe(4);
+            expect(excess.slotIds).toEqual(slots.slice(3).map(slot => slot.id));
+        });
     });
 
     it('uses one force-wide review when heat, effects, and pilot hits all ask', async () => {

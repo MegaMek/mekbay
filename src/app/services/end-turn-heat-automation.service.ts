@@ -506,6 +506,7 @@ function heatCheckContext(check: EndTurnHeatCheck, heat: number): CBTUnitCheckPr
         targetNumber: check.target,
         heat,
         ...(check.kind === 'pilot-damage' ? { hits: 1 } : {}),
+        ...(check.overrideKit ? { overrideKit: true } : {}),
     };
 }
 

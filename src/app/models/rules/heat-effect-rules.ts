@@ -36,6 +36,9 @@ export const AERO_HEAT_EFFECTS: readonly HeatEffectDefinition[] = Object.freeze(
 export const LAM_HEAT_EFFECTS = Object.freeze([...MEK_HEAT_EFFECTS, ...RANDOM_MOVEMENT_HEAT_EFFECTS]
     .sort((a, b) => a.heat - b.heat));
 
+/** IO p. 92: the RISC Heat Sink Override Kit's modifier to the roll to avoid shutdown, and to no other heat check. */
+export const RISC_OVERRIDE_KIT_SHUTDOWN_MODIFIER = -2;
+
 export function heatEffectValue(definitions: readonly HeatEffectDefinition[], kind: HeatEffectKind, heat: number): number | undefined {
     return definitions.filter(effect => effect.kind === kind && effect.heat <= heat).at(-1)?.value;
 }

@@ -27,6 +27,8 @@ export interface CBTUnitCheckPresentationContext {
     readonly hits?: number;
     readonly crewName?: string;
     readonly controlCause?: 'heat-random-movement' | 'controller-loss';
+    /** The shutdown roll is made under the RISC Heat Sink Override Kit. */
+    readonly overrideKit?: boolean;
 }
 
 export interface CBTUnitCheckAutomaticResult {
@@ -37,6 +39,8 @@ export interface CBTUnitCheckAutomaticResult {
     /** Overrides the canonical effect; explicit null suppresses it. */
     readonly effect?: string | null;
 }
+
+const OVERRIDE_KIT_SHUTDOWN_NOTE = 'RISC override kit −2; an unmodified 2 damages the engine.';
 
 /** Canonical origin/next labels for the runtime-neutral pending-check UI. */
 export function cbtUnitCheckPresentation(
@@ -49,7 +53,11 @@ export function cbtUnitCheckPresentation(
         case 'shutdown':
             return {
                 label: 'Shutdown',
-                description: context.targetNumber === undefined ? 'Automatic shutdown!' : 'Avoid shutdown.',
+                description: context.targetNumber === undefined
+                    ? 'Automatic shutdown!'
+                    : context.overrideKit
+                        ? `Avoid shutdown. ${OVERRIDE_KIT_SHUTDOWN_NOTE}`
+                        : 'Avoid shutdown.',
                 failureOutcome: 'shutdown',
                 priority: 10,
             };
@@ -153,7 +161,8 @@ export function cbtUnitCheckReviewDescription(
         case 'shutdown':
             return context.targetNumber === undefined
                 ? 'Automatic shutdown!'
-                : `Shutdown check ${context.targetNumber}+`;
+                : `Shutdown check ${context.targetNumber}+`
+                    + (context.overrideKit ? ` · ${OVERRIDE_KIT_SHUTDOWN_NOTE}` : '');
         case 'startup':
             return context.targetNumber === undefined
                 ? `Engine restarts automatically at heat ${context.heat ?? 0}`

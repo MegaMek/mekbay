@@ -224,6 +224,8 @@ export interface MekRecordSheetSnapshot {
         count: number;
         equipmentKey?: string;
         unavailableUnits: number;
+        /** The RISC Heat Sink Override Kit, which lowers every roll to avoid shutdown. */
+        riscOverrideKit: boolean;
     }>;
     readonly heat: MekHeatStateV2;
     /** End Turn calculates the turn's heat (heat resolution Yes or Ask). */
@@ -606,6 +608,7 @@ export function projectMekRecordSheet(
                     || component.status === 'available') return total;
                 return total + component.equipment.heatSinkUnitsPerMount;
             }, 0),
+            riscOverrideKit: entity.hasRiscHeatSinkOverrideKit(),
         }),
         heat,
         endTurnCalculatesHeat,

@@ -1,15 +1,22 @@
 // Copyright (C) 2026 The MegaMek Team
 // SPDX-License-Identifier: GPL-3.0-or-later
 
-import type { CBTUnitSnapshot } from '../cbt-unit-snapshot';
+import type { CBTMekUnitSnapshot, CBTUnitSnapshot } from '../cbt-unit-snapshot';
 import type { CrewMember } from '../crew-member.model';
-import type { ComponentId, CrewPositionId } from '../entity/entity-identifiers';
+import type { ComponentId, CrewPositionId, CriticalSlotId } from '../entity/entity-identifiers';
 import type { EntityMountedEquipment } from '../entity/types';
 import { AmmoEquipment } from '../equipment.model';
-import { heatEffectValue, MEK_HEAT_EFFECTS } from '../rules/heat-effect-rules';
+import { heatEffectValue, MEK_HEAT_EFFECTS, RISC_OVERRIDE_KIT_SHUTDOWN_MODIFIER } from '../rules/heat-effect-rules';
 import type { AutomationMode } from '../options.model';
 import type { CBTRuntimeCrewPosition } from './cbt-unit-runtime';
-import { ammoExplosionDamagePerShot, ammoRackSize } from './mek-critical-hit-v2';
+import {
+    ammoExplosionDamagePerShot,
+    ammoRackSize,
+    mekCriticalChanceTotal,
+    resolveMekCriticalChance,
+    type MekCriticalChanceModifier,
+} from './mek-critical-hit-v2';
+import { mekCriticalSlotDirectHitThreshold } from './mek-critical-slot-rules';
 
 export type HeatControlCheckKind = 'shutdown' | 'startup' | 'ammo-explosion';
 
@@ -17,6 +24,8 @@ export interface HeatAutomationCheck<Kind extends string = HeatControlCheckKind>
     readonly kind: Kind;
     readonly target?: number;
     readonly automaticOutcome?: 'success' | 'failed';
+    /** A shutdown roll under the RISC Heat Sink Override Kit: `target` includes its −2; an unmodified 2 malfunctions it. */
+    readonly overrideKit?: true;
 }
 
 export interface HeatControlFacts {
@@ -53,17 +62,77 @@ export function heatControlChecks(facts: HeatControlFacts): readonly HeatAutomat
 export interface MekHeatAutomationFacts
     extends Omit<HeatControlFacts, 'shutdownTarget' | 'ammoExplosionTarget'> {
     readonly heat: number;
+    readonly riscHeatSinkOverrideKit: boolean;
 }
 
 /** The Mek heat scale's heat-control checks. */
 export function mekHeatAutomationChecks(
-    { heat, ...facts }: MekHeatAutomationFacts,
+    { heat, riscHeatSinkOverrideKit, ...facts }: MekHeatAutomationFacts,
 ): readonly HeatAutomationCheck[] {
-    return heatControlChecks({
+    const checks = heatControlChecks({
         ...facts,
         shutdownTarget: heatEffectValue(MEK_HEAT_EFFECTS, 'shutdown', heat),
         ammoExplosionTarget: heatEffectValue(MEK_HEAT_EFFECTS, 'ammo-explosion', heat),
     });
+    if (!riscHeatSinkOverrideKit) return checks;
+    // An automatic shutdown has no roll for the kit to modify.
+    return Object.freeze(checks.map(check => check.kind === 'shutdown' && check.target !== undefined
+        ? Object.freeze({
+            ...check,
+            target: check.target + RISC_OVERRIDE_KIT_SHUTDOWN_MODIFIER,
+            overrideKit: true as const,
+        })
+        : check));
+}
+
+export interface RiscOverrideKitMalfunction {
+    readonly roll: readonly [number, number];
+    readonly modifiers: readonly MekCriticalChanceModifier[];
+    readonly total: number;
+    /** The critical-hit check's hits plus one. */
+    readonly hits: number;
+    /** The engine slot each hit marks, in order; shorter than `hits` when the excess has no effect. */
+    readonly slotIds: readonly CriticalSlotId[];
+}
+
+/**
+ * IO p. 92: an unmodified shutdown-avoidance roll of 2 malfunctions the RISC Heat Sink Override Kit. It resolves as a
+ * center-torso critical-hit check with one extra hit, every hit marking the top-most undamaged center-torso engine
+ * slot; hits beyond the last one are not applied elsewhere. The check takes the location's own modifiers, not the
+ * optional ones that depend on an attack's facing (hardened armor, TO:AUE p. 88).
+ */
+export function riscOverrideKitMalfunction(
+    snapshot: CBTMekUnitSnapshot,
+    roll: readonly [number, number],
+): RiscOverrideKitMalfunction {
+    const centerTorso = [...snapshot.index.locations.values()].find(location => location.code === 'CT');
+    if (!centerTorso) throw new Error('A Mek without a center torso cannot resolve an override kit malfunction');
+    const profile = snapshot.query.mekCriticalChance(centerTorso.id, 'committed');
+    const modifiers = Object.freeze(profile.modifiers.filter(row => !row.optional));
+    const total = mekCriticalChanceTotal(
+        twoD6Total(roll),
+        modifiers.reduce((sum, row) => sum + row.value, 0),
+        profile.industrialMek,
+    );
+    const chance = resolveMekCriticalChance(total, false, profile.industrialMek);
+    const hits = (chance.kind === 'critical-hits' ? chance.count : 0) + 1;
+    const engineSlots = [...snapshot.index.slots.values()]
+        .filter(slot => slot.locationId === centerTorso.id && slot.componentIds.some(componentId => {
+            const component = snapshot.index.components.get(componentId);
+            return component?.kind === 'system' && component.systemType === 'Engine';
+        }))
+        .sort((left, right) => left.slotIndex - right.slotIndex);
+    // End Turn settles heat before the turn's pending damage commits: a pending hit already damages its slot.
+    const marks = new Map(engineSlots.map(slot => [slot.id, snapshot.query.criticalHits(slot.id, 'preview')]));
+    const slotIds: CriticalSlotId[] = [];
+    for (let hit = 0; hit < hits; hit++) {
+        const slot = engineSlots.find(candidate =>
+            marks.get(candidate.id)! < mekCriticalSlotDirectHitThreshold(candidate));
+        if (!slot) break;
+        marks.set(slot.id, marks.get(slot.id)! + 1);
+        slotIds.push(slot.id);
+    }
+    return Object.freeze({ roll, modifiers, total, hits, slotIds: Object.freeze(slotIds) });
 }
 
 export interface HeatAmmoExplosionCandidate {

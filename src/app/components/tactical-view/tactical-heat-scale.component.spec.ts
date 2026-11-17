@@ -3,6 +3,7 @@
 
 import { TestBed } from '@angular/core/testing';
 import { TacticalHeatScaleComponent } from './tactical-heat-scale.component';
+import type { MekRecordSheetSnapshot } from '../../models/runtime/mek-record-sheet';
 import type { NonMekRecordSheetSnapshot } from '../../models/runtime/non-mek-record-sheet';
 
 describe('TacticalHeatScaleComponent', () => {
@@ -50,6 +51,33 @@ describe('TacticalHeatScaleComponent', () => {
         expect(marks(21)).toEqual(['pilot-damage 6+']);
         expect(marks(30)).toEqual(['shutdown']);
         expect(marks(9)).toEqual([]);
+    });
+
+    it('shows a RISC Heat Sink Override Kit Mek the avoid numbers it rolls, for shutdown only', () => {
+        TestBed.configureTestingModule({ imports: [TacticalHeatScaleComponent] });
+        const fixture = TestBed.createComponent(TacticalHeatScaleComponent);
+        const show = (riscOverrideKit: boolean) => {
+            fixture.componentRef.setInput('mek', {
+                entityUuid: 'override-kit', identity: { form: 'biped' }, equipment: [], endTurnCalculatesHeat: true,
+                heat: { current: 14, previous: 14, heatsinksOff: 0 },
+                heatProjection: { kind: 'unsupported', blockers: [] },
+                heatSinks: { count: 10, unavailableUnits: 0, riscOverrideKit },
+            } as unknown as MekRecordSheetSnapshot);
+            fixture.detectChanges();
+        };
+        const marks = (heat: number) => [...fixture.nativeElement.querySelectorAll(`[data-heat="${heat}"] .heat-mark`)]
+            .map(mark => `${mark.getAttribute('data-kind')} ${mark.textContent?.trim()}`.trim());
+        const active = () => fixture.componentInstance.effects().map(effect => effect.label);
+
+        show(false);
+        expect([14, 18, 22, 26, 30].map(marks)).toEqual([['shutdown 4+'], ['shutdown 6+'], ['shutdown 8+'],
+            ['shutdown 10+'], ['shutdown']]);
+        expect(active()).toContain('Shutdown, avoid on 4+');
+        show(true);
+        expect([14, 18, 22, 26, 30].map(marks)).toEqual([['shutdown 2+'], ['shutdown 4+'], ['shutdown 6+'],
+            ['shutdown 8+'], ['shutdown']]);
+        expect(marks(19)).toEqual(['ammo-explosion 4+']);
+        expect(active()).toContain('Shutdown, avoid on 2+');
     });
 
     it('cancels a drag without changing heat', () => {

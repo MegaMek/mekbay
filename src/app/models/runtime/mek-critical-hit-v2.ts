@@ -204,6 +204,11 @@ interface DelayedExplosionCandidate {
     readonly source: ExplosionSource;
 }
 
+/** A critical-hit check's modified result, capped at the table's top row (TW: an IndustrialMech's 13 counts as 12). */
+export function mekCriticalChanceTotal(roll: number, modifier: number, industrialMek = false): number {
+    return Math.min(industrialMek ? 14 : 12, roll + modifier);
+}
+
 export function resolveMekCriticalChance(
     total: number,
     canBlowOff: boolean,
