@@ -15,8 +15,9 @@ import { DialogsService } from '../../services/dialogs.service';
 import { KeyboardShortcutService } from '../../services/keyboard-shortcut.service';
 import { copyTextToClipboard } from '../../utils/clipboard.util';
 import { BasePanelComponent } from '../base-panel/base-panel.component';
-import { UnitIconComponent } from '../unit-icon/unit-icon.component';
-import { UnitTagsComponent, type TagClickEvent } from '../unit-tags/unit-tags.component';
+import type { TagClickEvent } from '../unit-tags/unit-tags.component';
+import { UnitIdentityBarComponent, unitValueDisplay } from '../unit-identity-bar/unit-identity-bar.component';
+import { OptionsService } from '../../services/options.service';
 import { UnitDetailsGeneralTabComponent } from '../unit-details-dialog/tabs/unit-details-general-tab.component';
 import { UnitDetailsIntelTabComponent } from '../unit-details-dialog/tabs/unit-details-intel-tab.component';
 import { UnitDetailsFactionTabComponent } from '../unit-details-dialog/tabs/unit-details-factions-tab.component';
@@ -42,8 +43,7 @@ import { buildUnitShareLinks } from '../../utils/force-url.util';
     changeDetection: ChangeDetectionStrategy.OnPush,
     imports: [
         BasePanelComponent,
-        UnitIconComponent,
-        UnitTagsComponent,
+        UnitIdentityBarComponent,
         UnitDetailsGeneralTabComponent,
         UnitDetailsIntelTabComponent,
         UnitDetailsFactionTabComponent,
@@ -65,6 +65,7 @@ import { buildUnitShareLinks } from '../../utils/force-url.util';
 export class UnitDetailsPanelComponent {
     readonly unitNames = inject(UnitNameService);
     private gameService = inject(GameService);
+    private optionsService = inject(OptionsService);
     protected readonly forceWorkspace = inject(ForceWorkspaceStateService);
 
     private readonly forceCommands = inject(ForceWorkspaceCommandsService);
@@ -90,6 +91,11 @@ export class UnitDetailsPanelComponent {
     readonly gunnerySkill = input<number | undefined>(undefined);
     readonly pilotingSkill = input<number | undefined>(undefined);
     readonly adjustedValueOverride = input<number | undefined>(undefined);
+    /** A catalog unit, valued at the search's skills or override. */
+    readonly headerValue = computed(() => unitValueDisplay(
+        this.unit()!, undefined, this.optionsService.options().forceViewerBVPVDisplayDamage,
+        this.adjustedValueOverride(), this.gunnerySkill(), this.pilotingSkill(), this.gameService.isAlphaStrike(),
+    ));
     readonly hasPrev = input<boolean>(false);
     readonly hasNext = input<boolean>(false);
     readonly add = output<UnitSummary>();
@@ -143,12 +149,6 @@ export class UnitDetailsPanelComponent {
         const url = this.fluffImageUrl();
         return url ? `url("${url}")` : null;
     });
-
-    /** Format thousands with commas */
-    formatThousands(value: number): string {
-        if (value === undefined || value === null) return '';
-        return value.toString().replace(/\B(?=(\d{3})+(?!\d))/g, ',');
-    }
 
     private handleShortcutKeyDown(event: KeyboardEvent): boolean {
         if (event.ctrlKey || event.altKey || event.metaKey) return false;

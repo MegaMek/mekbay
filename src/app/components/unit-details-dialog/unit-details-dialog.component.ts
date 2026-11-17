@@ -16,7 +16,6 @@ import { shareUrlWithClipboardFallback } from '../../utils/clipboard.util';
 import { FloatingOverlayService } from '../../services/floating-overlay.service';
 import { SwipeDirective, type SwipeEndEvent, type SwipeMoveEvent, type SwipeStartEvent } from '../../directives/swipe.directive';
 import { LongPressDirective } from '../../directives/long-press.directive';
-import { UnitIconComponent } from '../unit-icon/unit-icon.component';
 import { ASForceUnit } from '../../models/as-force-unit.model';
 import { GameSystem } from '../../models/common.model';
 import { UnitDetailsGeneralTabComponent } from './tabs/unit-details-general-tab.component';
@@ -26,7 +25,7 @@ import { UnitDetailsSheetTabComponent } from './tabs/unit-details-sheet-tab.comp
 import { UnitDetailsVariantsTabComponent, type VariantsTabState, DEFAULT_VARIANTS_TAB_STATE } from './tabs/unit-details-variants-tab.component';
 import { GameService } from '../../services/game.service';
 import { UnitDetailsCardTabComponent } from './tabs/unit-details-card-tab.component';
-import { UnitTagsComponent, type TagClickEvent } from '../unit-tags/unit-tags.component';
+import type { TagClickEvent } from '../unit-tags/unit-tags.component';
 import { TaggingService } from '../../services/tagging.service';
 import { UrlService } from '../../services/url.service';
 import { DialogsService } from '../../services/dialogs.service';
@@ -50,8 +49,7 @@ import { DEFAULT_GUNNERY_SKILL, DEFAULT_PILOTING_SKILL } from '../../models/crew
 import { effectiveEntityPilotingSkill } from '../../models/entity/utils/battle-value/skill-facts';
 import { OptionsService } from '../../services/options.service';
 import { forceMemberConditionDisplays } from '../../utils/force-member-conditions.util';
-import { shouldShowAdjustedPilotSkills, unitDetailsAdjustedValue } from './tabs/unit-details-general-tab.component';
-import { setUnitDetailsLayout, UNIT_DETAILS_LAYOUTS, unitDetailsLayout, unitFactsInSpecs, type UnitDetailsLayout } from './unit-details-layout';
+import { UnitIdentityBarComponent, unitValueDisplay } from '../unit-identity-bar/unit-identity-bar.component';
 
 
 export interface UnitDetailsDialogData {
@@ -82,11 +80,10 @@ export interface UnitDetailsChangeAction {
 @Component({
     selector: 'unit-details-dialog',
     changeDetection: ChangeDetectionStrategy.OnPush,
-    imports: [BaseDialogComponent, SwipeDirective, LongPressDirective, UnitIconComponent, UnitDetailsGeneralTabComponent, UnitDetailsIntelTabComponent, UnitDetailsFactionTabComponent, UnitDetailsSheetTabComponent, UnitDetailsCardTabComponent, UnitDetailsVariantsTabComponent, UnitTagsComponent, UnitDetailsFooterComponent, UnitConstructionButtonComponent, CustomUnitActionsComponent],
+    imports: [BaseDialogComponent, SwipeDirective, LongPressDirective, UnitDetailsGeneralTabComponent, UnitDetailsIntelTabComponent, UnitDetailsFactionTabComponent, UnitDetailsSheetTabComponent, UnitDetailsCardTabComponent, UnitDetailsVariantsTabComponent, UnitDetailsFooterComponent, UnitConstructionButtonComponent, CustomUnitActionsComponent, UnitIdentityBarComponent],
     templateUrl: './unit-details-dialog.component.html',
     styleUrl: './unit-details-dialog.component.css',
     host: {
-        '[class.prototype-layout]': "layout() !== 'classic'",
         '[class.fluff-background]': 'hostHasFluff',
         '[style.--fluff-bg]': 'hostFluffBg'
     }
@@ -100,7 +97,7 @@ export class UnitDetailsDialogComponent {
     private dialogRef = inject(DialogRef<void>);
     data = inject(DIALOG_DATA) as UnitDetailsDialogData;
     toastService = inject(ToastService);
-    layoutService = inject(LayoutService);
+    private readonly layoutService = inject(LayoutService);
     floatingOverlayService = inject(FloatingOverlayService);
     private taggingService = inject(TaggingService);
     private urlService = inject(UrlService);
@@ -111,12 +108,6 @@ export class UnitDetailsDialogComponent {
     private detailsSummaries = inject(UnitDetailsSummaryService);
     private dataService = inject(DataService);
     private optionsService = inject(OptionsService);
-    /** Prototype layout chosen in the footer; `classic` is today's dialog. */
-    readonly layout = unitDetailsLayout.asReadonly();
-    readonly headerShowsFacts = computed(() => !unitFactsInSpecs(this.layout()));
-    readonly layouts = UNIT_DETAILS_LAYOUTS;
-    readonly layoutNumber = computed(() => UNIT_DETAILS_LAYOUTS.findIndex(option => option.id === this.layout()) + 1);
-    readonly layoutLabel = computed(() => UNIT_DETAILS_LAYOUTS[this.layoutNumber() - 1]?.label ?? '');
     add = output<UnitSummary>();
     select = output<UnitSummary>();
     change = output<{ oldUnit: ASForceUnit; newUnit: UnitSummary }>();
@@ -269,26 +260,19 @@ export class UnitDetailsDialogComponent {
     private readonly headerForceMember = computed(() =>
         this.headerShowsIncoming() ? this.incomingForceMember() : this.currentForceMember());
 
-    /** The same value the General tab computes, with the reason it differs from the base. */
+    /** The header's value for the unit it shows, with what it differs from. */
     readonly headerValue = computed(() => {
-        const unit = this.headerUnit();
         const incoming = this.headerShowsIncoming();
         const member = this.headerForceMember();
-        const isAlphaStrike = member ? member.force.gameSystem === GameSystem.AS : this.gameService.isAlphaStrike();
-        const gunnery = incoming ? this.incomingGunnerySkill() : this.gunnerySkill();
-        const piloting = incoming ? this.incomingPilotingSkill() : this.pilotingSkill();
-        const override = (incoming ? this.incomingSearchResultContext() : this.searchResultContext())?.adjustedValue;
-        const base = isAlphaStrike ? unit.as.PV : unit.bv;
-        const adjusted = unitDetailsAdjustedValue(unit, member, this.optionsService.options().forceViewerBVPVDisplayDamage,
-            override, gunnery, piloting, this.gameService.isAlphaStrike());
-        const value = adjusted ?? base;
-        return {
-            label: isAlphaStrike ? 'PV' : 'BV',
-            value,
-            base: value !== base ? base : null,
-            skills: !member && shouldShowAdjustedPilotSkills(adjusted, base, gunnery, piloting)
-                ? isAlphaStrike ? `Skill ${gunnery}` : `${gunnery}/${piloting}` : null,
-        };
+        return unitValueDisplay(
+            this.headerUnit(),
+            member,
+            this.optionsService.options().forceViewerBVPVDisplayDamage,
+            (incoming ? this.incomingSearchResultContext() : this.searchResultContext())?.adjustedValue,
+            incoming ? this.incomingGunnerySkill() : this.gunnerySkill(),
+            incoming ? this.incomingPilotingSkill() : this.pilotingSkill(),
+            member ? member.force.gameSystem === GameSystem.AS : this.gameService.isAlphaStrike(),
+        );
     });
 
     /** Force conditions, the same chips the sidebar shows; catalog units have none. */
@@ -302,10 +286,6 @@ export class UnitDetailsDialogComponent {
         }
         return forceMemberConditionDisplays(member);
     });
-
-    setLayout(layout: UnitDetailsLayout): void {
-        setUnitDetailsLayout(layout);
-    }
 
     // Fluff background image URL - based on header unit (most visible during swipe)
     headerFluffImageUrl = computed(() => {
@@ -589,11 +569,6 @@ export class UnitDetailsDialogComponent {
 
     onClose() {
         this.dialogRef.close();
-    }
-
-    formatThousands(value: number): string {
-        if (value === undefined || value === null) return '';
-        return value.toString().replace(/\B(?=(\d{3})+(?!\d))/g, ',');
     }
 
     async onShare() {

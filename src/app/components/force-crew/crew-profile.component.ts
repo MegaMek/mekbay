@@ -84,7 +84,7 @@ export function describeCrew(
         <edge-badge [value]="person().edge ?? 0" />
       </span>
       <span class="crew-meta">
-        @if (wounds() !== undefined && !track()) {
+        @if (wounds() !== undefined) {
           <span class="wounds-bar" aria-hidden="true">
             @for (segment of woundsSegments; track segment) {
               <span class="wounds-segment" [class.filled]="segment <= wounds()!"></span>
@@ -108,14 +108,6 @@ export function describeCrew(
             }
           </span></span
         >
-        @if (wounds() !== undefined && track()) {
-          <span class="hits" aria-hidden="true">
-            <span class="hits-label">Hits</span>
-            @for (segment of woundsSegments; track segment) {
-              <span class="hit" [class.filled]="segment <= wounds()!">{{ segment }}</span>
-            }
-          </span>
-        }
       </span>
     </span>
   `,
@@ -225,31 +217,6 @@ export function describeCrew(
     .short {
       display: none;
     }
-    /* The record sheet's Hits Taken boxes, on the skills line. */
-    .hits {
-      display: grid;
-      grid-template-columns: auto repeat(6, 18px);
-      flex-shrink: 0;
-      font-size: 9.5px;
-      line-height: 11px;
-      text-align: center;
-    }
-    .hits-label {
-      padding-right: 6px;
-      color: var(--text-color-tertiary, #888);
-      text-align: right;
-    }
-    .hit {
-      border: 1px solid var(--border-color);
-      border-left-width: 0;
-    }
-    .hits-label + .hit {
-      border-left-width: 1px;
-    }
-    .hit.filled {
-      background: var(--damage-color);
-      color: #fff;
-    }
     /* Narrow seats keep the name and wounds; skills shorten and Edge drops its label. */
     @container (max-width: 130px) {
       .long {
@@ -281,8 +248,6 @@ export class CrewProfileComponent {
   readonly wounds = input<number>();
   /** Seat name shown above the person's name; an unnamed person then reads "Unnamed". */
   readonly caption = input<string>();
-  /** Shows wounds as the record sheet's Hits Taken row instead of pips. */
-  readonly track = input(false);
   readonly silhouette = PERSON_SILHOUETTE_PATH;
   readonly woundsSegments = Array.from({ length: MAX_CREW_WOUNDS }, (_, index) => index + 1);
   readonly description = computed(() =>

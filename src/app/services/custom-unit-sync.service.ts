@@ -204,7 +204,7 @@ export class CustomUnitSyncService {
         }
         await this.library.acceptRemoteBatch(received);
         if (account !== this.user.uuid()) throw new Error('The account changed during custom unit sync.');
-        if (updatedSubscriptions) this.toast.showToast(`${updatedSubscriptions} subscribed custom design${updatedSubscriptions === 1 ? '' : 's'} updated. Units already in your forces keep their saved design.`, 'info');
+        if (updatedSubscriptions) this.toast.showToast(`${updatedSubscriptions} subscribed custom design${updatedSubscriptions === 1 ? '' : 's'} updated. Units already in your forces keep their version until you update them from their details; the sidebar marks them with a blue update badge.`, 'info');
         if (deletedSubscriptions) this.toast.showToast(`${deletedSubscriptions} subscribed custom design${deletedSubscriptions === 1 ? ' was' : 's were'} removed by the owner.`, 'info');
     }
 

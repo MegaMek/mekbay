@@ -24,10 +24,14 @@
 
 .load-issue-badge {
     background: red;
+
+    &.accepted {
+        background: var(--background-warning);
+    }
 }
 
 .unit-update-badge {
-    background: #1976d2;
-    font-size: 16px;
-    padding: 0 3px;
+    width: 18px;
+    padding: 0;
+    background: var(--update-color);
 }

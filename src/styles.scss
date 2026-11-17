@@ -39,6 +39,9 @@
   --bt-yellow-background-bright: #5f5018;
   --bt-yellow-background-light: #ffcf73;
   --bt-yellow-background-bright-transparent: #68540fee;
+  /* A newer version of a custom unit's design: the sidebar badge and the details notice. */
+  --update-color: #1976d2;
+  --update-background: #1976d22e;
   color: white;
   -webkit-tap-highlight-color: transparent;
   --semantic-color: #17a2b8;
@@ -394,6 +397,12 @@ hr {
   --frame-color: red;
   border-color: red;
   background-color: rgba(128, 24, 24, 0.28);
+}
+
+.framed-borders.warning {
+  --frame-color: var(--background-warning);
+  border-color: var(--background-warning);
+  background-color: rgba(128, 82, 0, 0.28);
 }
 
 .framed-borders.muted-frame {

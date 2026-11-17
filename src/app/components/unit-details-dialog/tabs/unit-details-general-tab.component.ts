@@ -5,7 +5,7 @@
 import { UnitNameService } from '../../../services/unit-name.service';
 import { Component, ChangeDetectionStrategy, ElementRef, input, inject, computed, effect, resource, signal, viewChild } from '@angular/core';
 import { NgTemplateOutlet } from '@angular/common';
-import type { UnitSummary } from '../../../models/unit-summary.model';
+import { hasAcceptedIssues, type UnitSummary } from '../../../models/unit-summary.model';
 import { buildUnitComponentMetadata, type UnitConditionComponent as UnitComponent } from '../../../utils/unit-component-metadata-builder';
 import { weaponTypes } from '../../../utils/equipment.util';
 import { DataService } from '../../../services/data.service';
@@ -18,7 +18,6 @@ import { UnitComponentItemComponent } from '../../unit-component-item/unit-compo
 import { ModeSwitchComponent } from '../../mode-switch/mode-switch.component';
 import { TooltipDirective } from '../../../directives/tooltip.directive';
 import type { TooltipLine } from '../../tooltip/tooltip.component';
-import { calculateAdjustedBV } from '../../../utils/cbt-common.util';
 import { getUnitSourceFilterValues } from '../../../utils/unit-search-shared.util';
 import { isJumpJetEquipment } from '../../../models/jump-equipment.model';
 import { isHeatSinkEquipment } from '../../../models/heat-equipment.model';
@@ -39,20 +38,18 @@ import {
 } from './unit-details-component-matrix.util';
 import { naturalCompare } from '../../../utils/sort.util';
 import { isClubOrHandWeaponEquipment } from '../../../models/entity/utils/physical-weapon';
-import { formatBvPv } from '../../../utils/force-viewer-bv-pv-display.util';
-import { adjustPointValueForSkill } from '../../../utils/pv-skill-adjustment.util';
-import { GameService } from '../../../services/game.service';
 import { BASE_RULES_REFS } from '../../../utils/rules-ref.util';
 import { collectUnitRulesRefComponents, unitRulesRefRequirers } from '../../../utils/unit-rules-ref-builder';
 import { NativeEntityService } from '../../../services/native-entity.service';
-import { forceMemberAdjustedValue, isCBTForceMember, type ForceMember } from '../../../models/force-member.model';
+import { isCBTForceMember, type ForceMember } from '../../../models/force-member.model';
 import { ForceUnitCrewComponent } from '../../force-crew/force-unit-crew.component';
 import { QuirkBadgeComponent } from '../../quirk-badge/quirk-badge.component';
 import { UnitTagsComponent, type TagClickEvent } from '../../unit-tags/unit-tags.component';
 import { SheetPanelComponent } from '../../sheet-panel/sheet-panel.component';
 import { CustomUnitUpdateComponent } from '../../custom-unit-update/custom-unit-update.component';
 import { TaggingService } from '../../../services/tagging.service';
-import { unitFactsInSpecs, type UnitDetailsLayout } from '../unit-details-layout';
+import { CustomUnitsService } from '../../../services/custom-units.service';
+import { PlayerNamesService } from '../../../services/player-names.service';
 
 type SourceListEntry = Sourcebook & { sourceAnnotations: string[] };
 type ComponentDetailsDisplayStyle = 'normal' | 'additional';
@@ -223,33 +220,12 @@ export function getRulesRefBadgeGroups(
         .map(group => group.badges);
 }
 
-/** The value shown for a unit: a force member's own, a search's override, or the base at the given skills. */
-export function unitDetailsAdjustedValue(
-    unit: UnitSummary,
-    member: ForceMember | undefined,
-    damageMode: Parameters<typeof forceMemberAdjustedValue>[1],
-    override: number | undefined,
-    gunnery: number | undefined,
-    piloting: number | undefined,
-    isAlphaStrike: boolean,
-): number | null {
-    if (member) return forceMemberAdjustedValue(member, damageMode);
-    if (override !== undefined) return override;
-    if (gunnery === undefined || piloting === undefined) return null;
-    return isAlphaStrike ? adjustPointValueForSkill(unit.as.PV, gunnery) : calculateAdjustedBV(unit, unit.bv, gunnery, piloting);
-}
-
-export function shouldShowAdjustedPilotSkills(
-    adjustedBv: number | null,
-    baseBv: number,
-    gunnery: number | undefined,
-    piloting: number | undefined,
-): boolean {
-    return adjustedBv !== null
-        && Number.isFinite(adjustedBv)
-        && adjustedBv !== baseBv
-        && Number.isFinite(gunnery)
-        && Number.isFinite(piloting);
+/** The nearest ancestor that scrolls: the dialog's swipe panel or the sidebar panel's body. */
+function scrollParent(element: HTMLElement): HTMLElement | null {
+    for (let parent = element.parentElement; parent; parent = parent.parentElement) {
+        if (/(auto|scroll)/.test(getComputedStyle(parent).overflowY)) return parent;
+    }
+    return null;
 }
 
 @Component({
@@ -265,23 +241,24 @@ export class UnitDetailsGeneralTabComponent {
     private dialogsService = inject(DialogsService);
     private layoutService = inject(LayoutService);
     private optionsService = inject(OptionsService);
-    private gameService = inject(GameService);
     private nativeEntities = inject(NativeEntityService);
     private tagging = inject(TaggingService);
+    private customUnits = inject(CustomUnitsService);
+    readonly playerNames = inject(PlayerNamesService);
 
     // Inputs
     unit = input.required<UnitSummary>();
     forceMember = input<ForceMember>();
     private readonly railLayout = viewChild<ElementRef<HTMLElement>>('railLayout');
     /**
-     * Two Columns shares the panel's one scroll. Each column sticks at the offset where its end
+     * Side by side, the rail and the loadout share the panel's one scroll. Each column sticks at the offset where its end
      * just fits the view: a column that fits stays put, a taller one scrolls until its end shows.
      * Sticky offsets depend on each column's height, which CSS cannot read, so they are measured.
      */
     private readonly stickyColumns = effect(onCleanup => {
         const layout = this.railLayout()?.nativeElement;
         const tab = layout?.parentElement;
-        const scroller = layout?.closest<HTMLElement>('.swipe-panel');
+        const scroller = layout && scrollParent(layout);
         if (!layout || !tab || !scroller) return;
         // The notices stick to the bottom of the view and cover what is under them.
         const notices = tab.nextElementSibling as HTMLElement | null;
@@ -300,17 +277,18 @@ export class UnitDetailsGeneralTabComponent {
         for (const element of [scroller, ...columns, ...(notices ? [notices] : [])]) observer.observe(element);
         onCleanup(() => observer.disconnect());
     });
+    /** Another player's custom design names its creator among the sources. */
+    readonly designer = computed(() => {
+        const unit = this.unit();
+        if (!unit.isCustom) return null;
+        const record = this.customUnits.records().find(candidate => candidate.uuid === unit.uuid);
+        return record?.owned === false ? record.ownerId ?? null : null;
+    });
     /** A force unit built from a custom design can take that design's newer saved versions. */
     readonly designUpdateMember = computed(() => {
         const member = this.forceMember();
         return this.unit().isCustom && isCBTForceMember(member) ? member : undefined;
     });
-    gunnerySkill = input<number | undefined>(undefined);
-    pilotingSkill = input<number | undefined>(undefined);
-    adjustedValueOverride = input<number | undefined>(undefined);
-    /** Prototype arrangement of the same blocks; `classic` is today's layout. */
-    layout = input<UnitDetailsLayout>('classic');
-    readonly factsInSpecs = computed(() => unitFactsInSpecs(this.layout()));
 
     private readonly runtimeSnapshot = computed(() => {
         const member = this.forceMember();
@@ -331,6 +309,7 @@ export class UnitDetailsGeneralTabComponent {
 
     private readonly collapsedLoadIssuesUnit = signal<UnitSummary | null>(null);
     readonly loadIssuesOpen = computed(() => this.collapsedLoadIssuesUnit() !== this.unit());
+    readonly issuesAccepted = computed(() => hasAcceptedIssues(this.unit().quirks.map(name => this.getQuirk(name))));
 
     toggleLoadIssues(): void {
         this.collapsedLoadIssuesUnit.set(this.loadIssuesOpen() ? this.unit() : null);
@@ -506,16 +485,6 @@ export class UnitDetailsGeneralTabComponent {
         return weaponTypes.map(wt => ({ ...wt, count: counts[wt.code] ?? 0 }));
     });
 
-    adjustedValue = computed(() => unitDetailsAdjustedValue(
-        this.unit(),
-        this.forceMember(),
-        this.optionsService.options().forceViewerBVPVDisplayDamage,
-        this.adjustedValueOverride(),
-        this.gunnerySkill(),
-        this.pilotingSkill(),
-        this.gameService.isAlphaStrike(),
-    ));
-
     /** Walk / run [run with MASC] / jump / UMU, as the record sheet lists it. */
     movementText = computed(() => {
         const unit = this.unit();
@@ -526,27 +495,6 @@ export class UnitDetailsGeneralTabComponent {
     openTags({ unit, event }: TagClickEvent): void {
         void this.tagging.openTagSelector([unit], event.currentTarget as HTMLElement);
     }
-
-    readonly isAlphaStrike = computed(() => this.forceMember()
-        ? this.forceMember()!.force.gameSystem === 'as'
-        : this.gameService.isAlphaStrike());
-
-    readonly valueLabel = computed(() => this.isAlphaStrike() ? 'PV' : 'BV');
-
-    displayedValue = computed(() => {
-        const unit = this.unit();
-        const baseValue = this.isAlphaStrike() ? unit.as.PV : unit.bv;
-        return formatBvPv(this.adjustedValue() ?? baseValue, baseValue, 'both');
-    });
-
-    showAdjustedPilotSkills = computed(() => {
-        return shouldShowAdjustedPilotSkills(
-            this.adjustedValue(),
-            this.gameService.isAlphaStrike() ? this.unit().as.PV : this.unit().bv,
-            this.gunnerySkill(),
-            this.pilotingSkill(),
-        );
-    });
 
     formatThousands(value: number): string {
         if (value === undefined || value === null) return '';

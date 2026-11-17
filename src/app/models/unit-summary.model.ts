@@ -6,13 +6,14 @@ import type { ComponentTechLevel, EntityType, MoveType, UnitSubtype, UnitType } 
 import type { ParseSeverity } from './entity/parsers/parse-context';
 import type { Equipment } from './equipment.model';
 import type { Era } from './eras.model';
+import type { Quirk } from './quirks.model';
 import type { TechBase, UnitTechBaseDisplay } from './tech.model';
 import type { WeaponType } from './weapon-types.model';
 import type { SourceHashCanary } from './source-hash-canary';
 import type { CatalogEntryOrigin, UnitProviderId, UnitUuid } from '../services/unit-catalog/unit-catalog.types';
 
 /** Bump when generated UnitSummary fields or their meaning change. */
-export const UNIT_SUMMARY_VERSION = 29 as const;
+export const UNIT_SUMMARY_VERSION = 30 as const;
 
 /** One distinct parse or validation issue, with how many times the unit has it. */
 export interface UnitIssue {
@@ -20,6 +21,11 @@ export interface UnitIssue {
   readonly severity: ParseSeverity;
   readonly message: string;
   readonly count: number;
+}
+
+/** The illegal_design quirk marks a unit's issues as known and accepted; they stay listed. Takes applicable quirks. */
+export function hasAcceptedIssues(quirks: readonly (Quirk | undefined)[]): boolean {
+  return quirks.some((quirk) => quirk?.key === 'illegal_design');
 }
 
 export type { MoveType, UnitSubtype, UnitType } from './entity/types';

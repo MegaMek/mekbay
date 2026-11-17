@@ -15,7 +15,10 @@ describe('unit issue badges', () => {
             { value: 'Error: Wrong engine rating.' },
             { value: 'Error: 6× ER PPC is unavailable in 2721.' },
         ]);
-        expect(fixture.nativeElement.querySelector('.load-issue-badge')).not.toBeNull();
+        expect(fixture.nativeElement.querySelector('.load-issue-badge:not(.accepted)')).not.toBeNull();
+        fixture.componentRef.setInput('issuesAccepted', true);
+        fixture.detectChanges();
+        expect(fixture.nativeElement.querySelector('.load-issue-badge.accepted')).not.toBeNull();
         fixture.componentRef.setInput('loadIssues', []);
         fixture.detectChanges();
         expect(fixture.nativeElement.querySelector('.load-issue-badge')).toBeNull();

@@ -235,6 +235,23 @@ describe('construction system choices', () => {
     expect(allowed(entity, 'heatSinkType')).not.toContain(sink.id);
   });
 
+  it('offers an empty default role and only the roles MegaMek allows for ground or aerospace units', () => {
+    const mek = design();
+    expect(field(mek, 'role').get()).toBe('');
+    expect(allowed(mek, 'role')).toEqual([
+      '', 'None', 'Ambusher', 'Brawler', 'Juggernaut', 'Missile Boat', 'Scout', 'Skirmisher', 'Sniper', 'Striker',
+    ]);
+    const fighter = createConstructionEntity('Aero', registry);
+    expect(allowed(fighter, 'role')).toEqual([
+      '', 'None', 'Attack Fighter', 'Dogfighter', 'Fast Dogfighter', 'Fire Support', 'Interceptor', 'Transport',
+    ]);
+    mek.role.set('Interceptor');
+    expect(field(mek, 'role').invalid).toBeTrue();
+    expect(() => field(mek, 'role').set('Interceptor')).toThrowError(/incompatible/);
+    field(mek, 'role').set('');
+    expect(mek.role()).toBe('');
+  });
+
   it('only offers an independent engine base on mixed-tech designs', () => {
     const entity = design();
     field(entity, 'techBase').set('Clan');

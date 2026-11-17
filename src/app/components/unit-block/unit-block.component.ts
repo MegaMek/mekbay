@@ -39,7 +39,9 @@ import { projectCBTUnitTagEcmCapabilitySummary } from '../../models/runtime/cbt-
 import { FormatBvPipe } from '../../pipes/format-bv.pipe';
 import { UnitDataBadgesComponent } from '../unit-data-badges/unit-data-badges.component';
 import { CustomUnitsService } from '../../services/custom-units.service';
+import { DataService } from '../../services/data.service';
 import { buildUnitIssues } from '../../utils/unit-summary-builder';
+import { hasAcceptedIssues } from '../../models/unit-summary.model';
 
 interface UnitBlockPresentation {
     readonly name: string;
@@ -78,6 +80,7 @@ export class UnitBlockComponent {
     readonly unitNames = inject(UnitNameService);
     optionsService = inject(OptionsService);
     private readonly customUnits = inject(CustomUnitsService);
+    private readonly dataService = inject(DataService);
     forceUnit = input<ForceMember>();
     compactMode = input<boolean>(false);
     ctrlHeld = input<boolean>(false);
@@ -117,6 +120,14 @@ export class UnitBlockComponent {
         const member = this.forceUnit();
         if (!member) return [];
         return isCBTForceMember(member) ? buildUnitIssues(member.entity) : member.getSummary().loadIssues;
+    });
+
+    readonly issuesAccepted = computed(() => {
+        const member = this.forceUnit();
+        if (!member) return false;
+        return hasAcceptedIssues(isCBTForceMember(member)
+            ? member.entity.applicableQuirks().map(({ quirk }) => quirk)
+            : member.getSummary().quirks.map(name => this.dataService.getQuirkByName(name)));
     });
 
     readonly updateAvailable = computed(() => {

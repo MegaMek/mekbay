@@ -6,7 +6,6 @@ import {
     UnitDetailsGeneralTabComponent,
     getRulesRefBadgeGroups,
     getRulesRefBuckets,
-    shouldShowAdjustedPilotSkills
 } from './unit-details-general-tab.component';
 import { TestBed } from '@angular/core/testing';
 import { CBTForceMember } from '../../../models/force-member.model';
@@ -19,8 +18,10 @@ import { DataService } from '../../../services/data.service';
 import { DialogsService } from '../../../services/dialogs.service';
 import { LayoutService } from '../../../services/layout.service';
 import { OptionsService } from '../../../services/options.service';
-import { GameService } from '../../../services/game.service';
 import { NativeEntityService } from '../../../services/native-entity.service';
+import { GameService } from '../../../services/game.service';
+import { CustomUnitsService } from '../../../services/custom-units.service';
+import { PlayerNamesService } from '../../../services/player-names.service';
 
 describe('UnitDetailsGeneralTabComponent', () => {
     describe('equipment condition', () => {
@@ -34,7 +35,7 @@ describe('UnitDetailsGeneralTabComponent', () => {
             } as unknown as CBTForce;
             const member = new CBTForceMember(instance.instanceId, force, entity);
             TestBed.configureTestingModule({
-                providers: [UnitNameService, DataService, DialogsService, LayoutService, OptionsService, GameService, NativeEntityService]
+                providers: [UnitNameService, DataService, DialogsService, LayoutService, OptionsService, GameService, NativeEntityService, CustomUnitsService, PlayerNamesService]
                     .map(provide => ({ provide, useValue: {} })),
             });
             TestBed.overrideComponent(UnitDetailsGeneralTabComponent, { set: { template: '', imports: [] } });
@@ -135,23 +136,6 @@ describe('UnitDetailsGeneralTabComponent', () => {
                 { books: ['TM', 'TW'], isBase: true },
                 { books: ['IO:AE'], isBase: false },
             ]]);
-        });
-    });
-
-    describe('shouldShowAdjustedPilotSkills', () => {
-        it('shows skills when adjusted BV differs from base BV', () => {
-            expect(shouldShowAdjustedPilotSkills(1200, 1000, 3, 4)).toBeTrue();
-        });
-
-        it('hides skills when adjusted BV equals base BV', () => {
-            expect(shouldShowAdjustedPilotSkills(1000, 1000, 4, 5)).toBeFalse();
-        });
-
-        it('hides skills when BV or skill data is unavailable or invalid', () => {
-            expect(shouldShowAdjustedPilotSkills(null, 1000, 3, 4)).toBeFalse();
-            expect(shouldShowAdjustedPilotSkills(Number.NaN, 1000, 3, 4)).toBeFalse();
-            expect(shouldShowAdjustedPilotSkills(1200, 1000, undefined, 4)).toBeFalse();
-            expect(shouldShowAdjustedPilotSkills(1200, 1000, 3, undefined)).toBeFalse();
         });
     });
 });

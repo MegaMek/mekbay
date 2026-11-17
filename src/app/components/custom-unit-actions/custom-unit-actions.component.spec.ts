@@ -5,7 +5,6 @@ import { TestBed } from '@angular/core/testing';
 import { CustomUnitActionsComponent } from './custom-unit-actions.component';
 import { CustomUnitSyncService } from '../../services/custom-unit-sync.service';
 import { ToastService } from '../../services/toast.service';
-import { PlayerNamesService } from '../../services/player-names.service';
 import { createEmptyUnit } from '../../testing/unit-test-helpers';
 import type { SavedCustomUnit } from '../../models/custom-unit.model';
 
@@ -17,12 +16,10 @@ describe('custom unit details actions', () => {
         TestBed.configureTestingModule({ providers: [provideZonelessChangeDetection(),
             { provide: CustomUnitSyncService, useValue: { library: { records, isOwned: () => false }, unsubscribe } },
             { provide: ToastService, useValue: { showToast: () => {} } },
-            { provide: PlayerNamesService, useValue: { label: (id: string) => id === 'public-owner' ? '@Specter' : '@?' } },
         ] });
         const fixture = TestBed.createComponent(CustomUnitActionsComponent);
         fixture.componentRef.setInput('unit', unit); fixture.detectChanges();
         expect(fixture.nativeElement.textContent).toContain('Unsubscribe');
-        expect(fixture.nativeElement.textContent).toContain('Design by @Specter');
         await fixture.componentInstance.toggleSubscription(); fixture.detectChanges();
         expect(unsubscribe).toHaveBeenCalledOnceWith(unit.uuid);
         expect(fixture.nativeElement.textContent).toContain('Subscribe');

@@ -12,9 +12,9 @@ import { CrewProfileComponent, describeCrew } from './crew-profile.component';
 
 /**
  * `compact` is the row card without action buttons, for dense unit rows.
- * `seats` are joined segments with the seat name inside; `sheet` adds the record sheet's Hits Taken row.
+ * `slots` names its station inside the card.
  */
-export type CrewLayout = 'compact' | 'cards' | 'rows' | 'slots' | 'seats' | 'sheet';
+export type CrewLayout = 'compact' | 'cards' | 'rows' | 'slots';
 
 @Component({
   selector: 'crew-card',
@@ -27,8 +27,6 @@ export type CrewLayout = 'compact' | 'cards' | 'rows' | 'slots' | 'seats' | 'she
       [class.card-layout]="layout() === 'cards'"
       [class.row-layout]="layout() === 'rows'"
       [class.slot-layout]="layout() === 'slots'"
-      [class.seat-layout]="layout() === 'seats'"
-      [class.sheet-layout]="layout() === 'sheet'"
       cdkDrag
       cdkDragRootElement="crew-card"
       [cdkDragData]="dragData()"
@@ -50,9 +48,8 @@ export type CrewLayout = 'compact' | 'cards' | 'rows' | 'slots' | 'seats' | 'she
           [force]="force()"
           [person]="person()"
           [label]="label()"
-          [avatarWidth]="layout() === 'sheet' ? 36 : layout() === 'cards' || layout() === 'slots' ? 32 : 24"
-          [caption]="layout() === 'seats' || layout() === 'sheet' || layout() === 'slots' ? label() : undefined"
-          [track]="layout() === 'sheet'"
+          [avatarWidth]="layout() === 'cards' || layout() === 'slots' ? 32 : 24"
+          [caption]="layout() === 'slots' ? label() : undefined"
           [effectivePiloting]="effectivePiloting()"
           [skillSet]="skillSet()"
           [wounds]="wounds()"
@@ -132,22 +129,11 @@ export type CrewLayout = 'compact' | 'cards' | 'rows' | 'slots' | 'seats' | 'she
         padding: 0 4px;
         border-left: 1px solid #ffffff12;
       }
-      /* A seat is a segment of its unit's strip, which draws the frame. */
-      .seat-layout {
-        border: 0;
-        background: transparent;
-      }
-      .seat-layout .crew-main {
-        padding: 5px 8px 5px 5px;
-      }
-      .sheet-layout .crew-main {
-        padding: 6px 8px;
-      }
       .card-layout .crew-main {
         padding: 8px;
         --crew-line-gap: 5px;
       }
-      /* A slot names its station inside, so its three lines sit as tight as a sheet seat's. */
+      /* A slot names its station inside; its three lines sit tight. */
       .slot-layout .crew-main {
         padding: 6px 8px;
       }

@@ -206,7 +206,18 @@ export function getConstructionFields(entity: BaseEntity, showIncompatible = fal
   text('chassis', 'Chassis', entity.chassis);
   text('model', 'Model/Variant', entity.model);
   if (entity instanceof MekEntity) text('clanName', 'Clan name', entity.clanName);
-  text('role', 'Role', entity.role);
+  // MegaMek UnitRole names as written to unit files; an empty role is undetermined, "None" is no combat role.
+  const groundRoles = ['Ambusher', 'Brawler', 'Juggernaut', 'Missile Boat', 'Scout', 'Skirmisher', 'Sniper', 'Striker'];
+  const aerospaceRoles = ['Attack Fighter', 'Dogfighter', 'Fast Dogfighter', 'Fire Support', 'Interceptor', 'Transport'];
+  select(
+    'role',
+    'Role',
+    entity.role,
+    entity.role.set,
+    ['', 'None', ...groundRoles, ...aerospaceRoles],
+    'Chassis',
+    (role) => !(entity instanceof AeroEntity ? groundRoles : aerospaceRoles).includes(role),
+  );
   fields.push({
     id: 'mulId',
     label: 'MUL ID',

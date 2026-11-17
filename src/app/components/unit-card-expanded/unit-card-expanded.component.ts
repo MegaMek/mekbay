@@ -5,7 +5,7 @@
 import { UnitNameService } from '../../services/unit-name.service';
 import { ChangeDetectionStrategy, Component, inject, input, output, computed, type TemplateRef } from '@angular/core';
 import { NgTemplateOutlet } from '@angular/common';
-import type { UnitSummary, UnitComponent } from '../../models/unit-summary.model';
+import { hasAcceptedIssues, type UnitSummary, type UnitComponent } from '../../models/unit-summary.model';
 import type { ForceUnit } from '../../models/force-unit.model';
 import { ASForceUnit } from '../../models/as-force-unit.model';
 import { UnitIconComponent } from '../unit-icon/unit-icon.component';
@@ -150,6 +150,9 @@ export class UnitCardExpandedComponent {
         const unit = this.resolvedUnit();
         return !!unit.isCustom && this.customUnits.hasUpdate(unit.uuid, unit.hash);
     });
+
+    readonly issuesAccepted = computed(() =>
+        hasAcceptedIssues(this.resolvedUnit().quirks.map(name => this.dataService.getQuirkByName(name))));
 
     /** Resolved alias - from ForceUnit */
     readonly alias = computed<string | undefined>(() => {

@@ -45,7 +45,7 @@
   padding: 10px 8px;
   border: 0;
   background: transparent;
-  color: var(--danger);
+  color: var(--frame-color);
   cursor: pointer;
   text-align: left;
 }
@@ -55,7 +55,7 @@
 }
 
 .unit-load-issues-toggle:focus-visible {
-  outline: 2px solid var(--danger);
+  outline: 2px solid var(--frame-color);
   outline-offset: -2px;
 }
 
@@ -88,57 +88,6 @@
   margin: -8px 0 12px;
 }
 
-/* Basic Info */
-.basic-info-block {
-  display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
-  gap: 4px 16px;
-  justify-content: center;
-  width: 100%;
-  max-width: 100%;
-  min-width: 100%;
-  box-sizing: border-box;
-  margin: 12px 0;
-}
-
-.basic-info-block .era-icon {
-  height: 1.2em;
-  vertical-align: middle;
-  position: relative;
-}
-
-.basic-info-block a {
-  color: var(--text-color);
-  font-weight: bold;
-  text-decoration: underline dotted;
-}
-
-.basic-info-block a:hover {
-  text-decoration: underline;
-}
-
-.basic-info-block > div {
-  display: flex;
-  align-items: flex-start;
-  gap: 4px;
-  min-width: 0;
-}
-
-.basic-info-block .muted {
-  flex-shrink: 0;
-  white-space: nowrap;
-}
-
-.basic-info-block strong,
-.basic-info-block a {
-  min-width: 0;
-  word-break: break-word;
-}
-
-.basic-info-block .pilot-skill-value {
-  color: var(--primary-focus-color);
-}
-
 /* Quirks */
 .quirks {
   display: flex;
@@ -154,65 +103,6 @@
   width: 100%;
   gap: 8px 16px;
   margin: 4px 0px 4px 0px;
-}
-
-/* Stats */
-.stat-bars-columns {
-  display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
-  gap: 8px 16px;
-  justify-content: center;
-  width: 100%;
-  max-width: 100%;
-  min-width: 100%;
-  margin-top: 16px;
-  box-sizing: border-box;
-}
-
-.stat-bar-row {
-  display: flex;
-  flex-direction: row;
-  align-items: center;
-  justify-content: stretch;
-  position: relative;
-  border-bottom: 1px solid #fff;
-  padding-bottom: 1px;
-}
-
-.stat-bar {
-  flex: 1 1 0;
-  height: 20px;
-  position: absolute;
-  display: flex;
-  align-items: center;
-  overflow: hidden;
-  width: 100%;
-}
-
-.stat-bar-fill {
-  background: #777;
-  height: 100%;
-  transition: width 0.3s;
-}
-
-.stat-label {
-  color: #fff;
-  position: absolute;
-  left: 4px;
-  font-weight: 500;
-  font-variant: small-caps;
-  letter-spacing: 0.05em;
-}
-
-.stat-value {
-  min-width: 36px;
-  text-align: right;
-  font-weight: bold;
-  color: #fff;
-  font-size: 1em;
-  padding: 1px;
-  position: relative;
-  width: 100%;
 }
 
 /* Type Summary */
@@ -582,10 +472,6 @@
 
 /* Responsive */
 @container (max-width: 600px) {
-  .stat-bars-columns {
-    grid-template-columns: 1fr 1fr;
-  }
-
   .components-container {
     grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
     gap: 4px;
@@ -622,33 +508,13 @@
   }
 }
 
-@container (max-width: 380px) {
-  .stat-bars-columns {
-    grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
-  }
-}
-.crew-section {
-  margin-bottom: 12px;
-  padding-bottom: 12px;
-  border-bottom: 1px solid var(--border-color);
-}
-
-.instance-crew {
-  --crew-slot-width: 300px;
-}
-
-/* ===== Prototype layouts (unit-details-layout.ts) ===== */
-/* Today's layout keeps the type counts and the view switch as separate centered rows. */
-.loadout-bar {
-  display: contents;
-}
-
-.tab-general:not([data-layout='classic']) {
+/* ===== Layout: who and what in a rail, the loadout beside it ===== */
+.tab-general {
   gap: 12px;
   padding-top: 12px;
 }
 
-.tab-general:not([data-layout='classic']) .loadout-bar {
+.tab-general .loadout-bar {
   display: flex;
   flex-wrap: wrap;
   align-items: center;
@@ -659,7 +525,7 @@
   border-bottom: 1px solid var(--border-color);
 }
 
-.tab-general:not([data-layout='classic']) .type-summary-bar {
+.tab-general .type-summary-bar {
   width: auto;
   max-width: none;
   margin: 0;
@@ -668,33 +534,32 @@
   align-self: auto;
 }
 
-.tab-general:not([data-layout='classic']) .type-summary-rect {
+.tab-general .type-summary-rect {
   flex: 0 0 auto;
 }
 
-.tab-general:not([data-layout='classic']) .type-summary-rect .icon {
+.tab-general .type-summary-rect .icon {
   width: 22px;
   height: 22px;
 }
 
-.tab-general:not([data-layout='classic']) .type-count {
+.tab-general .type-count {
   min-width: 26px;
   margin: 0 6px 0 4px;
   font-size: 1em;
 }
 
-.tab-general:not([data-layout='classic']) .component-view-mode {
+.tab-general .component-view-mode {
   margin: 0 0 0 auto;
 }
 
-.tab-general:not([data-layout='classic']) .quirks-block,
-.tab-general:not([data-layout='classic']) .stat-bars-columns {
+.tab-general .quirks-block {
   margin: 0;
 }
 
 /* On a phone, empty weapon categories hide so the bar stays one line. */
 @container (max-width: 500px) {
-  .tab-general:not([data-layout='classic']) .type-summary-rect.zero {
+  .tab-general .type-summary-rect.zero {
     display: none;
   }
 }
@@ -753,24 +618,6 @@
   background: #aaa;
 }
 
-/* Specs in three short ruled groups. */
-.spec-groups {
-  display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
-  gap: 12px 20px;
-}
-
-.spec-group h4 {
-  margin: 0 0 4px;
-  padding-bottom: 3px;
-  border-bottom: 1px solid var(--border-color);
-  color: var(--bt-yellow);
-  font-size: 0.75em;
-  font-weight: 700;
-  letter-spacing: 0.14em;
-  text-transform: uppercase;
-}
-
 .spec-group dl {
   display: flex;
   flex-direction: column;
@@ -804,30 +651,8 @@
   vertical-align: middle;
 }
 
-/* With room for three columns, Basic Info takes two of them and lays its pairs out in both. */
-@container (min-width: 800px) {
-  .spec-groups {
-    grid-template-columns: repeat(3, minmax(0, 1fr));
-  }
-
-  .spec-group.basic {
-    grid-column: span 2;
-  }
-
-  .spec-group.basic dl {
-    display: grid;
-    grid-template-columns: repeat(2, minmax(0, 1fr));
-    gap: 3px 20px;
-  }
-}
-
 /* On a phone, two aligned columns of cells, each caption over its value like the gauges above. */
 @container (max-width: 500px) {
-  .spec-groups {
-    grid-template-columns: 1fr;
-    gap: 8px;
-  }
-
   .spec-group dl {
     display: grid;
     grid-template-columns: repeat(2, minmax(0, 1fr));
@@ -856,26 +681,25 @@
     text-align: left;
   }
 
-  .spec-group h4 {
-    margin-bottom: 2px;
-  }
-
-  .tab-general:not([data-layout='classic']) {
+  .tab-general {
     gap: 10px;
     padding-top: 8px;
   }
 }
 
-/* Two Columns: who and what in a side rail beside the loadout once the loadout has room for its
+/* Who and what in a side rail beside the loadout once the loadout has room for its
    grid. Narrower, the rail sits above the loadout one row per block; a phone stacks everything. */
 .rail-layout {
   display: grid;
   flex: 1;
   grid-template-columns: minmax(0, 1fr);
+  /* Stacked, spare height goes to the loadout row, where the sources sit at its bottom. */
+  grid-template-rows: auto 1fr;
   gap: 16px;
 }
 
 .rail,
+.rail-head,
 .rail-panels {
   display: flex;
   flex-direction: column;
@@ -888,8 +712,53 @@
   grid-template-columns: repeat(3, minmax(0, 1fr));
 }
 
-/* Above the loadout: the stats in one row, then Basic Info (two columns of pairs) beside Origin. */
+/* Above the loadout: the crew stations side by side, each as wide as in the rail, and the tags
+   after them; beside one pilot, below a crew that fills the line. */
 @container (min-width: 501px) and (max-width: 959px) {
+  .rail-head {
+    flex-flow: row wrap;
+    align-items: flex-start;
+    gap: 12px 16px;
+  }
+
+  .rail-head > force-unit-crew {
+    flex: 0 1 calc(max(var(--crew-count, 1), 1) * 290px);
+    min-width: 0;
+    --crew-joined-direction: row;
+    --crew-joined-slot: 1 1 0;
+    --crew-joined-overlap: 0 0 0 -1px;
+  }
+
+  .rail-head > .tag-row {
+    flex: 1 1 200px;
+    min-width: 0;
+  }
+}
+
+/* Above the loadout, the panels lay their pairs out in two columns. */
+@container (min-width: 501px) and (max-width: 959px) {
+  .rail .spec-group dl {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 3px 20px;
+  }
+}
+
+/* Medium: nine stats in one row would overlap, and the panels side by side would wrap their values,
+   so the stats take two rows and the panels stack at full width. */
+@container (min-width: 501px) and (max-width: 839px) {
+  .rail .gauges {
+    grid-template-columns: repeat(5, minmax(0, 1fr));
+  }
+
+  /* The type is the one long value; it takes the whole row. */
+  .rail .spec-group .pair.wide {
+    grid-column: 1 / -1;
+  }
+}
+
+/* Wider: all stats in one row, then Basic Info (two columns of pairs) beside Origin (one). */
+@container (min-width: 840px) and (max-width: 959px) {
   .rail .gauges {
     grid-template-columns: none;
     grid-auto-flow: column;
@@ -902,14 +771,8 @@
     gap: 16px;
   }
 
-  .rail .spec-group.basic {
-    grid-column: auto;
-  }
-
-  .rail .spec-group.basic dl {
-    display: grid;
-    grid-template-columns: repeat(2, minmax(0, 1fr));
-    gap: 3px 20px;
+  .rail .spec-group:not(.basic) dl {
+    display: flex;
   }
 }
 
@@ -935,6 +798,7 @@
   /* The divider spans the row, whichever column is taller. */
   .rail-layout {
     grid-template-columns: 290px minmax(0, 1fr);
+    grid-template-rows: auto;
     background: linear-gradient(var(--border-color), var(--border-color)) 306px 0 / 1px 100% no-repeat;
   }
 
@@ -960,34 +824,5 @@
     max-width: 40px;
   }
 
-  /* The 290px rail has room for one pair per line. */
-  .rail .spec-group.basic dl {
-    display: flex;
-  }
 }
 
-.spec-details {
-  border: 1px solid var(--border-color);
-  background: #0002;
-}
-
-.spec-details > summary {
-  padding: 8px 10px;
-  color: var(--text-color-secondary);
-  cursor: pointer;
-  font-size: 0.85em;
-  font-weight: 700;
-  letter-spacing: 0.08em;
-  text-transform: uppercase;
-}
-
-.spec-details[open] > summary {
-  border-bottom: 1px solid var(--border-color);
-}
-
-.spec-details-body {
-  display: flex;
-  flex-direction: column;
-  gap: 12px;
-  padding: 10px;
-}
