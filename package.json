@@ -36,6 +36,7 @@
     "profile:unit-search": "node --expose-gc --import tsx scripts/benchmark-unit-search.ts",
     "profile:runtime-mutations": "node --import tsx scripts/benchmark-runtime-mutations.ts",
     "test:bfs-generator": "tsx scripts/bfs-generator.test.ts",
+    "test:load-all-units": "tsx scripts/load-all-units.ts",
     "typecheck:bfs-generator": "tsc -p scripts/tsconfig.bfs.json",
     "typecheck:scripts": "tsc -p scripts/tsconfig.json",
     "watch": "ng build --watch --configuration=development",
