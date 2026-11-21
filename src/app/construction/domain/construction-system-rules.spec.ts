@@ -8,6 +8,7 @@ import { createTestEquipmentRegistry } from '../../models/entity/testing/test-eq
 import { WeaponEquipment } from '../../models/equipment.model';
 import { createConstructionEntity } from './construction-factory';
 import { constructionSystemSlotKeys, reconcileConstructionSystemSlots } from './construction-system-rules';
+import { constructionComponentArmorMessages } from './construction-component-armor';
 
 const weapon = new WeaponEquipment({
   id: 'SRM 6',
@@ -20,6 +21,36 @@ const registry = createTestEquipmentRegistry({ [weapon.id]: weapon });
 const design = () => createConstructionEntity('Biped', registry) as BipedMekEntity;
 
 describe('construction system slot changes', () => {
+  it('drops the armor of system slots the new layout no longer holds', () => {
+    const entity = design();
+    entity.configureEngine(new MountedEngine({ type: 'XL', rating: 200, techBase: 'IS' }));
+    const engineSlots = () => [...constructionSystemSlotKeys(entity)].flatMap(([key, system]) => system === 'Engine' ? [key] : []);
+    entity.armoredSystemSlots.set(new Set(engineSlots()));
+    expect(entity.armoredSystemSlots().size).toBe(12);
+    const before = constructionSystemSlotKeys(entity);
+    entity.configureEngine(new MountedEngine({ type: 'Fusion', rating: 200, techBase: 'IS' }));
+    reconcileConstructionSystemSlots(entity, before);
+    // The side-torso engine slots are gone; the center torso keeps its armored engine.
+    expect([...entity.armoredSystemSlots()].sort()).toEqual(engineSlots().sort());
+    expect(entity.armoredSystemSlots().size).toBe(6);
+
+    // TO:AUE p. 95: the armored engine covers the slots it gains again.
+    const fusion = constructionSystemSlotKeys(entity);
+    entity.configureEngine(new MountedEngine({ type: 'XL', rating: 200, techBase: 'IS' }));
+    reconcileConstructionSystemSlots(entity, fusion);
+    expect([...entity.armoredSystemSlots()].sort()).toEqual(engineSlots().sort());
+    expect(entity.armoredSystemSlots().size).toBe(12);
+  });
+
+  it('reports a system component that is only partly armored', () => {
+    const entity = design();
+    const engineSlots = [...constructionSystemSlotKeys(entity)].flatMap(([key, system]) => system === 'Engine' ? [key] : []);
+    entity.armoredSystemSlots.set(new Set(engineSlots.slice(0, 1)));
+    expect(constructionComponentArmorMessages(entity).map(issue => issue.code)).toEqual(['PARTIAL_COMPONENT_ARMOR']);
+    entity.armoredSystemSlots.set(new Set(engineSlots));
+    expect(constructionComponentArmorMessages(entity)).toEqual([]);
+  });
+
   it('unallocates a whole weapon when a 500-rating engine occupies its two slots', () => {
     const entity = design();
     entity.configureEngine(new MountedEngine({ type: 'Fusion', rating: 300, techBase: 'IS' }));
@@ -63,50 +94,33 @@ describe('construction system slot changes', () => {
     ).toBeFalse();
   });
 
-  it('displaces all overlapping mounts together, including every part of a split weapon', () => {
+  it('moves equipment down when new system slots arrive, keeping its order, a split weapon included', () => {
     const entity = design();
+    const placed = (mountId: string) => entity.equipment().find((mount) => mount.mountId === mountId)!.placements;
     const split = addTestEquipment(entity, weapon, {
-      allocation: {
-        kind: 'location',
-        location: 'LA',
-        placements: [
-          { location: 'LA', slotIndex: 4 },
-          { location: 'LT', slotIndex: 0 },
-        ],
-      },
+      allocation: { kind: 'location', location: 'LA', placements: [{ location: 'LA', slotIndex: 4 }, { location: 'LT', slotIndex: 0 }] },
     });
     const right = addTestEquipment(entity, weapon, {
-      allocation: {
-        kind: 'location',
-        location: 'RT',
-        placements: [0, 1].map((slotIndex) => ({ location: 'RT', slotIndex })),
-      },
+      allocation: { kind: 'location', location: 'RT', placements: [0, 1].map((slotIndex) => ({ location: 'RT', slotIndex })) },
     });
-    const safe = addTestEquipment(entity, weapon, {
-      allocation: {
-        kind: 'location',
-        location: 'LT',
-        placements: [5, 6].map((slotIndex) => ({ location: 'LT', slotIndex })),
-      },
+    const left = addTestEquipment(entity, weapon, {
+      allocation: { kind: 'location', location: 'LT', placements: [5, 6].map((slotIndex) => ({ location: 'LT', slotIndex })) },
     });
     const before = constructionSystemSlotKeys(entity);
+    // The XL engine takes the first three slots of each side torso.
     entity.configureEngine(new MountedEngine({ type: 'XL', rating: 200, techBase: 'IS' }));
     reconcileConstructionSystemSlots(entity, before);
-    expect(
-      entity
-        .equipment()
-        .filter((mount) => mount.allocation.kind === 'unallocated')
-        .map((mount) => mount.mountId),
-    ).toEqual([split.mountId, right.mountId]);
-    expect(entity.equipment().find((mount) => mount.mountId === safe.mountId)).toBe(safe);
-    expect(entity.criticalSlotGrid().get('LA')![4].type).toBe('empty');
+    expect(entity.equipment().filter((mount) => mount.allocation.kind === 'unallocated')).toEqual([]);
+    expect(placed(split.mountId)).toEqual([{ location: 'LA', slotIndex: 4 }, { location: 'LT', slotIndex: 3 }]);
+    expect(placed(left.mountId)).toEqual([4, 5].map((slotIndex) => ({ location: 'LT', slotIndex })));
+    expect(placed(right.mountId)).toEqual([3, 4].map((slotIndex) => ({ location: 'RT', slotIndex })));
     expect(
       entity.validationResult().messages.some((message) => message.code === 'CRIT_PLACEMENT_CONFLICT'),
     ).toBeFalse();
   });
 
   for (const system of ['gyro', 'cockpit', 'actuator'] as const) {
-    it(`also displaces equipment when ${system} slots are added`, () => {
+    it(`moves equipment down when ${system} slots are added, or unallocates it when the location is full`, () => {
       const entity = design();
       if (system === 'cockpit') entity.cockpitType.set('Small');
       if (system === 'actuator') entity.hasHandActuator.set({ left: true, right: false });
@@ -121,23 +135,29 @@ describe('construction system slot changes', () => {
       if (system === 'cockpit') entity.cockpitType.set('Standard');
       if (system === 'actuator') entity.hasHandActuator.set({ left: true, right: true });
       reconcileConstructionSystemSlots(entity, before);
-      expect(entity.equipment().find((item) => item.mountId === mount.mountId)!.allocation.kind).toBe('unallocated');
+      // An XL gyro fills the center torso; the standard cockpit leaves head slot 4 and the hand pushes the arm down.
+      const moved = entity.equipment().find((item) => item.mountId === mount.mountId)!;
+      if (system === 'gyro') expect(moved.allocation.kind).toBe('unallocated');
+      else expect(moved.placements).toEqual([{ location, slotIndex: system === 'cockpit' ? 3 : 4 }]);
     });
   }
 
-  it('does not change pre-existing overlaps or reallocate equipment when systems shrink', () => {
+  it('moves equipment up when system slots go, leaving unallocated equipment alone', () => {
     const entity = design();
-    const invalid = addTestEquipment(entity, weapon, {
+    const overlapping = addTestEquipment(entity, weapon, {
       allocation: { kind: 'location', location: 'CT', placements: [{ location: 'CT', slotIndex: 0 }] },
     });
     const unallocated = addTestEquipment(entity, weapon, { allocation: { kind: 'unallocated' } });
     const before = constructionSystemSlotKeys(entity);
     entity.model.set('Renamed');
     reconcileConstructionSystemSlots(entity, before);
-    expect(entity.equipment()).toEqual([invalid, unallocated]);
+    expect(entity.equipment()).toEqual([overlapping, unallocated]);
+    // A compact engine frees the center torso's lower engine slots.
     entity.configureEngine(new MountedEngine({ type: 'Compact', rating: 200, techBase: 'IS' }));
     reconcileConstructionSystemSlots(entity, before);
-    expect(entity.equipment()).toEqual([invalid, unallocated]);
+    expect(entity.equipment().find((mount) => mount.mountId === overlapping.mountId)!.placements)
+      .toEqual([{ location: 'CT', slotIndex: 7 }]);
+    expect(entity.equipment().find((mount) => mount.mountId === unallocated.mountId)).toBe(unallocated);
   });
 
   it('uses one-based slot numbers and the overlapping location in sharing diagnostics', () => {

@@ -35,6 +35,8 @@ isJumpJetEquipment,
 isPartialWingEquipment,
 isUmuEquipment,
 jumpJetKind,
+type JumpJetKind,
+wholeJumpJetMp,
 } from '../jump-equipment.model';
 import { isModularArmorEquipment } from '../modular-armor.model';
 import {
@@ -50,7 +52,7 @@ isSuperchargerEquipment,
 import type { MekIndexedComponent,MekRuntimeIndex } from './mek-runtime-index';
 import { readBoundOptionalRules, type BoundOptionalRules } from './bound-optional-rules';
 
-export const PUBLISHED_MEK_MECHANICS_PROFILE_SCHEMA_VERSION = 2 as const;
+export const PUBLISHED_MEK_MECHANICS_PROFILE_SCHEMA_VERSION = 3 as const;
 
 export type MekLocationRole =
     | 'head'
@@ -114,10 +116,10 @@ export interface MekShieldGroup extends MekEquipmentGroup, ShieldProfile {
     readonly size: 'small' | 'medium' | 'large';
 }
 
-export type MekJumpJetKind = 'standard' | 'improved' | 'prototype-improved';
-
 export interface MekJumpJetGroup extends MekEquipmentGroup {
-    readonly kind: MekJumpJetKind;
+    readonly legMounted: boolean;
+    readonly kind: JumpJetKind;
+    readonly mpContribution: number;
 }
 
 export type MekTripleStrengthMyomerKind = 'standard' | 'prototype' | 'industrial';
@@ -206,6 +208,7 @@ export interface MekMechanicsMovement {
     readonly baseWalkMp: number;
     readonly baseRunMp: number;
     readonly baseJumpMp: number;
+    readonly installedJumpJetMp: number;
     readonly baseUmuMp: number;
     readonly motiveType: string;
     readonly lamType?: string;
@@ -438,13 +441,13 @@ export function compileMekMechanicsProfile(
     const gyroTopology = compileSingletonSystem(index, indexes, 'Gyro', gyroType !== 'None', blockers);
     const sensorTopology = compileSingletonSystem(index, indexes, 'Sensors', true, blockers);
     const limbs = compileLimbs(index, indexes, locations, blockers);
-    const features = compileFeatures(index, indexes, blockers);
+    const features = compileFeatures(entity, index, indexes, blockers);
 
     if (baseJumpMp > 0 && features.jumpJets.length === 0) blockers.push(profileBlocker(
         'JUMP_MP_WITHOUT_JUMP_JET', String(baseJumpMp), [], [],
         'Base jump MP has no exact jump-jet component topology',
     ));
-    if (baseJumpMp === 0 && features.jumpJets.length > 0) blockers.push(profileBlocker(
+    if (baseJumpMp === 0 && wholeJumpJetMp(features.jumpJets) > 0) blockers.push(profileBlocker(
         'JUMP_JET_WITHOUT_JUMP_MP', String(features.jumpJets.length),
         features.jumpJets.map(group => group.componentId),
         features.jumpJets.flatMap(group => group.criticalSlotIds),
@@ -523,6 +526,7 @@ export function compileMekMechanicsProfile(
             baseWalkMp,
             baseRunMp,
             baseJumpMp,
+            installedJumpJetMp: entity.installedJumpJetMP(),
             baseUmuMp: entity.installedUmuMP(),
             motiveType: entity.motiveType(),
             ...(entity instanceof LamEntity ? { lamType: entity.lamType() } : {}),
@@ -734,6 +738,7 @@ function compileLimbs(
 }
 
 function compileFeatures(
+    entity: MekEntity,
     index: MekRuntimeIndex,
     indexes: CompileIndexes,
     blockers: MekMechanicsProfileBlocker[],
@@ -757,7 +762,9 @@ function compileFeatures(
                 'AMBIGUOUS_EQUIPMENT_ROLE', `${equipment.id}:jump-jet`, [componentId], base.criticalSlotIds,
                 `Jump jet ${equipment.id} has contradictory subtype flags`,
             ));
-            else result.jumpJets.push(Object.freeze({ ...base, kind }));
+            else result.jumpJets.push(Object.freeze({
+                ...base, kind, legMounted: entity.locationIsLeg(component.mount.location), mpContribution: entity.jumpJetMpContribution(component.mount),
+            }));
         }
         if (isUmuEquipment(equipment)) {
             boundedFeature = true;

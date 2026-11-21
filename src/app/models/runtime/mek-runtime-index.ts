@@ -68,7 +68,7 @@ export interface MekIndexedBay {
 
 export interface MekIndexedRelationships {
     readonly linkedTargetBySource: ReadonlyMap<ComponentId, ComponentId>;
-    readonly linkedSourceByTarget: ReadonlyMap<ComponentId, ComponentId>;
+    readonly linkedSourcesByTarget: ReadonlyMap<ComponentId, readonly ComponentId[]>;
     readonly bays: readonly MekIndexedBay[];
 }
 
@@ -205,23 +205,24 @@ export function buildMekRuntimeIndex(entity: MekEntity): MekRuntimeIndex {
             const occupied = new Set(component.placements.map(placement => placement.locationId));
             occupiedLocationIds = [...locations.keys()].filter(locationId => occupied.has(locationId));
         } else {
-            const occupied = new Set(component.mount.getOccupiedLocations());
-            occupiedLocationIds = [...locations.values()]
-                .filter(location => occupied.has(location.code))
-                .map(location => location.id);
+            occupiedLocationIds = component.mount.getOccupiedLocationsMainFirst()
+                .map(code => locationIdByCode.get(code as MekLocation))
+                .filter(locationId => locationId !== undefined);
         }
         locationIdsByComponent.set(componentId, Object.freeze(occupiedLocationIds));
     }
 
     const linkedTargetBySource = new Map<ComponentId, ComponentId>();
-    const linkedSourceByTarget = new Map<ComponentId, ComponentId>();
+    const linkedSourcesByTarget = new Map<ComponentId, readonly ComponentId[]>();
     for (const source of entity.equipment()) {
         const target = entity.getLinkedMount(source);
         if (target === undefined) continue;
         const sourceId = componentIdForMount(source);
         const targetId = componentIdForMount(target);
         linkedTargetBySource.set(sourceId, targetId);
-        linkedSourceByTarget.set(targetId, sourceId);
+        if (!linkedSourcesByTarget.has(targetId)) {
+            linkedSourcesByTarget.set(targetId, Object.freeze(entity.getLinkingMounts(target).map(componentIdForMount)));
+        }
     }
     const bays = entity.equipmentBays().map(bay => Object.freeze({
         kind: bay.kind,
@@ -243,7 +244,7 @@ export function buildMekRuntimeIndex(entity: MekEntity): MekRuntimeIndex {
         intrinsicActions: Object.freeze([...entity.intrinsicWeapons()]),
         relationships: Object.freeze({
             linkedTargetBySource: new ImmutableIndex(linkedTargetBySource),
-            linkedSourceByTarget: new ImmutableIndex(linkedSourceByTarget),
+            linkedSourcesByTarget: new ImmutableIndex(linkedSourcesByTarget),
             bays: Object.freeze(bays),
         }),
     });

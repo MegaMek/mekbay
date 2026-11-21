@@ -73,9 +73,9 @@ export function mekRiscLaserPulseLink(
     index: MekRuntimeIndex,
     laserId: ComponentId,
 ): MekRiscLaserPulseLink | null {
-    const moduleId = index.relationships.linkedSourceByTarget.get(laserId);
-    if (moduleId === undefined
-        || index.relationships.linkedTargetBySource.get(moduleId) !== laserId) return null;
+    const moduleId = index.relationships.linkedSourcesByTarget.get(laserId)?.find(id =>
+        isRiscLaserPulseEnhancement(equipmentForComponent(index, id)));
+    if (moduleId === undefined) return null;
     const module = equipmentForComponent(index, moduleId);
     const laser = equipmentForComponent(index, laserId);
     if (!module || !isRiscLaserPulseLink(module, laser)) return null;

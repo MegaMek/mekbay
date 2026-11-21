@@ -33,8 +33,10 @@ import {
 import type { CockpitType, EngineType, MotiveType, TechRatingSource } from '../../models/entity/types';
 import {
   constructionEquipmentEligibilityIssues,
+  constructionEquipmentPlatformIssues,
   constructionMyomerEquipment,
   setConstructionMyomer,
+  setConstructionMekTonnage,
   setConstructionOmni,
   setConstructionTechBase,
 } from './construction-rules';
@@ -52,6 +54,9 @@ import {
   constructionInfantrySecondaryLimit,
 } from './construction-infantry-ba-rules';
 import {
+  replaceConstructionEngine,
+  syncConstructionMekEngine,
+  mekConstructionEngineLimit,
   constructionBattleArmorChassisApplies,
   constructionCockpitApplies,
   constructionEngineCompatible,
@@ -277,7 +282,7 @@ export function getConstructionFields(entity: BaseEntity, showIncompatible = fal
     (base) => {
       setConstructionTechBase(entity, base);
       if (!entity.mixedTech() && entity.mountedEngine().techBase !== base)
-        replaceEngine({ techBase: base, installed: entity.mountedEngine().installed });
+        replaceConstructionEngine(entity, { techBase: base, installed: entity.mountedEngine().installed });
     },
     ['IS', 'Clan'],
     'Chassis',
@@ -286,7 +291,7 @@ export function getConstructionFields(entity: BaseEntity, showIncompatible = fal
     set: (enabled) => {
       entity.mixedTech.set(enabled);
       if (!enabled && entity.mountedEngine().techBase !== entity.techBase())
-        replaceEngine({ techBase: entity.techBase(), installed: entity.mountedEngine().installed });
+        replaceConstructionEngine(entity, { techBase: entity.techBase(), installed: entity.mountedEngine().installed });
     },
   });
   select('rulesLevel', 'Rules level', entity.rulesLevel, entity.rulesLevel.set, [1, 2, 3, 4, 5], 'Chassis');
@@ -316,44 +321,6 @@ export function getConstructionFields(entity: BaseEntity, showIncompatible = fal
       hint: "Omni technology requires a compatible chassis. FrankenMek can't be Omni.",
     });
 
-  const replaceEngine = (
-    changes: Partial<{ type: EngineType; rating: number; techBase: 'IS' | 'Clan'; installed: boolean }>,
-  ) => {
-    const old = entity.mountedEngine();
-    const next = new MountedEngine({
-      type: old.type(),
-      rating: old.rating,
-      installed: true,
-      isSuperHeavy: old.isSuperHeavy,
-      baseChassisHeatSinks: old.getBaseChassisHeatSinks(false),
-      ...changes,
-      techBase: entity.mixedTech() ? (changes.techBase ?? old.techBase) : entity.techBase(),
-    });
-    if (entity instanceof MekEntity) entity.configureEngine(next);
-    else entity.mountedEngine.set(next);
-  };
-  const mekEngineLimit = (primitive = entity instanceof MekEntity && entity.mountedCockpit().isPrimitive) =>
-    primitive || entity.mountedEngine().type() === 'Compact' ? 400 : 500;
-  const syncMekEngine =
-    entity instanceof MekEntity
-      ? (
-          walkMP = entity.originalWalkMP(),
-          tonnage = entity.tonnage(),
-          primitive = entity.mountedCockpit().isPrimitive,
-        ) => {
-          const rating = entity.calculateEngineRating(walkMP, tonnage, primitive);
-          if (rating < 10 || rating > mekEngineLimit(primitive) || rating % 5 !== 0)
-            throw new Error(
-              `This movement and tonnage require engine rating ${rating}; choose a rating from 10 to ${mekEngineLimit(primitive)} in increments of five.`,
-            );
-          if (
-            rating !== entity.mountedEngine().rating ||
-            !entity.mountedEngine().installed ||
-            (!entity.mixedTech() && entity.mountedEngine().techBase !== entity.techBase())
-          )
-            replaceEngine({ rating });
-        }
-      : undefined;
   const engineFitsTonnage = (rating: number) => {
     const engine = entity.mountedEngine();
     const candidate = new MountedEngine({
@@ -361,7 +328,6 @@ export function getConstructionFields(entity: BaseEntity, showIncompatible = fal
       rating,
       techBase: entity.mixedTech() ? engine.techBase : entity.techBase(),
       installed: true,
-      isSuperHeavy: engine.isSuperHeavy,
     });
     const chassisMass =
       entity instanceof MekEntity
@@ -374,11 +340,11 @@ export function getConstructionFields(entity: BaseEntity, showIncompatible = fal
   };
   const mekEngineChoices =
     entity instanceof MekEntity && entity.tonnage() > 0
-      ? Array.from({ length: Math.floor(mekEngineLimit() / entity.tonnage()) }, (_, index) => ({
+      ? Array.from({ length: Math.floor(mekConstructionEngineLimit(entity) / entity.tonnage()) }, (_, index) => ({
           walkMP: index + 1,
           rating: entity.calculateEngineRating(index + 1),
         }))
-          .filter((choice) => choice.rating >= 10 && choice.rating <= mekEngineLimit() && choice.rating % 5 === 0)
+          .filter((choice) => choice.rating >= 10 && choice.rating <= mekConstructionEngineLimit(entity) && choice.rating % 5 === 0)
           .filter((choice) => engineFitsTonnage(choice.rating))
       : [];
 
@@ -392,10 +358,7 @@ export function getConstructionFields(entity: BaseEntity, showIncompatible = fal
         'tonnage',
         'Chassis tonnage',
         entity.tonnage,
-        (value) => {
-          syncMekEngine!(entity.originalWalkMP(), value);
-          entity.setTonnage(value);
-        },
+        (value) => setConstructionMekTonnage(entity, value),
         Array.from({ length: 39 }, (_, index) => 10 + index * 5),
         'Chassis',
         (value) =>
@@ -471,7 +434,7 @@ export function getConstructionFields(entity: BaseEntity, showIncompatible = fal
       'engineType',
       'Engine',
       () => entity.mountedEngine().type(),
-      (value) => replaceEngine({ type: value, techBase: engineBase(value)! }),
+      (value) => replaceConstructionEngine(entity, { type: value, techBase: engineBase(value)! }),
       Object.keys(ENGINE_DATA) as EngineType[],
       'Systems',
       (value) => engineBase(value) !== undefined,
@@ -482,20 +445,20 @@ export function getConstructionFields(entity: BaseEntity, showIncompatible = fal
         'Engine rating / Walk MP',
         entity.originalWalkMP,
         (value) => {
-          syncMekEngine!(value);
+          if (value !== entity.originalWalkMP() || !entity.hasHybridStructure()) syncConstructionMekEngine(entity, value);
           entity.originalWalkMP.set(value);
         },
         mekEngineChoices.map((choice) => choice.walkMP),
         'Systems',
         undefined,
-        (value) => `${entity.calculateEngineRating(value)} · ${value} Walk MP`,
+        (value) => `${entity.hasHybridStructure() && value === entity.originalWalkMP() ? entity.mountedEngine().rating : entity.calculateEngineRating(value)} · ${value} Walk MP`,
       );
     if (entity.mixedTech() && !entity.isSupportVehicle())
       select(
         'engineTechBase',
         'Engine tech base',
         () => entity.mountedEngine().techBase,
-        (value) => replaceEngine({ techBase: value }),
+        (value) => replaceConstructionEngine(entity, { techBase: value }),
         ['IS', 'Clan'],
         'Systems',
         (value) => constructionEngineCompatible(entity, entity.mountedEngine().type(), value),
@@ -509,7 +472,7 @@ export function getConstructionFields(entity: BaseEntity, showIncompatible = fal
       entity.cockpitType,
       (value) => {
         if (COCKPIT_DATA[value].isPrimitive !== entity.mountedCockpit().isPrimitive)
-          syncMekEngine?.(entity.originalWalkMP(), entity.tonnage(), COCKPIT_DATA[value].isPrimitive);
+          syncConstructionMekEngine(entity, entity.originalWalkMP(), entity.tonnage(), COCKPIT_DATA[value].isPrimitive);
         entity.cockpitType.set(value);
         if (!constructionOmniApplies(entity)) setConstructionOmni(entity, false);
         if (!constructionFullHeadEjectionApplies(entity)) entity.hasFullHeadEjectionSystem.set(false);
@@ -578,7 +541,8 @@ export function getConstructionFields(entity: BaseEntity, showIncompatible = fal
         'Systems',
         (value) => {
           const sink = sinks.find((eq) => eq.id === value);
-          return !!sink && constructionEquipmentEligibilityIssues(entity, sink).length === 0;
+          // This selector replaces the whole system; installed-sink conflicts apply only when adding equipment.
+          return !!sink && technologyAllowed(sink.tech) && constructionEquipmentPlatformIssues(entity, sink).length === 0;
         },
         (value) => sinks.find((eq) => eq.id === value)?.name ?? value,
       );

@@ -88,6 +88,7 @@ import {
     canonicalizeMekHeatStateV2,
     MAX_MEK_HEATSINKS_OFF_V2,
     rekeyMekHeatSourceMap,
+    splitLegacyHeatsinksOff,
 } from './mek-heat-state-v2';
 import {
     C3EM_MODE_STATE_KEY,
@@ -433,10 +434,13 @@ export async function restoreLegacyUnitState(
         const previous = legacyHeatPointsV1(rawHeat['previous']);
         const pendingOverride = legacyHeatPointsV1(rawHeat['next']);
         const parsedHeatsinksOff = nonnegativeInteger(rawHeat['heatsinksOff']);
-        const heatsinksOff = parsedHeatsinksOff !== null
-            && parsedHeatsinksOff <= MAX_MEK_HEATSINKS_OFF_V2
-            ? parsedHeatsinksOff
+        const split = parsedHeatsinksOff !== null && parsedHeatsinksOff <= MAX_MEK_HEATSINKS_OFF_V2
+            ? splitLegacyHeatsinksOff(entity, unit.index, components, parsedHeatsinksOff)
             : null;
+        const heatsinksOff = split?.heatsinksOff ?? null;
+        if (split?.unrepresented) {
+            warnings.push('Legacy disabled heat sinks exceeded the heat sinks the unit has and were clamped.');
+        }
         unsupportedHeat ||= (rawHeat['current'] !== undefined && current === null)
             || (rawHeat['previous'] !== undefined && previous === null)
             || (rawHeat['next'] !== undefined && pendingOverride === null)

@@ -202,16 +202,20 @@ describe('buildUnitComponentMetadata', () => {
       .toEqual(jasmine.objectContaining({ d: 'Special', md: '0.0', os: 1 }));
   });
 
-  it('keeps numeric damage for the double-one-shot IATM Fusillade', () => {
-    const entity = new TankEntity();
+  it('exports the double-one-shot Fusillade per missile, as IO:AE p. 59 resolves it on the Cluster Hits Table', () => {
+    const ammo = new AmmoEquipment({
+      id: 'Clan Ammo iATM-3', name: 'iATM 3 Ammo', type: 'ammo', flags: [],
+      ammo: { type: 'IATM', rackSize: 3, damagePerShot: 2, munitionType: ['M_STANDARD'] },
+    });
+    const entity = new TankEntity(createTestEquipmentRegistry({ [ammo.id]: ammo }));
     const fusillade = weapon('Fusillade', {
       damage: 6, ranges: [5, 10, 15, 20], rackSize: 3, ammoType: 'IATM',
-      flags: ['F_MISSILE', 'F_ONE_SHOT', 'F_DOUBLE_ONE_SHOT'],
+      flags: ['F_MISSILE', 'F_ONE_SHOT', 'F_DOUBLE_ONE_SHOT', 'F_PROTO_WEAPON'],
     });
     entity.setEquipment([mount(fusillade, 'Front')]);
 
     expect(buildUnitComponentMetadata(entity)!.find(component => component.id === fusillade.id))
-      .toEqual(jasmine.objectContaining({ d: '6', md: '6.0', os: 2 }));
+      .toEqual(jasmine.objectContaining({ d: '2/Msl', md: '6.0', os: 2 }));
   });
 
   it('exports Narc damage per missile instead of its ammunition explosion damage', () => {

@@ -27,6 +27,7 @@ import type {
     ForceViewerBVPVDisplayDamage,
     LinearPickerLayout,
     RecordSheetDoubleTapZoomResetMode,
+    RecordSheetGroupWeapons,
     RecordSheetPipLayout,
 } from '../../models/options.model';
 import { CBT_OPTIONAL_RULE_CHOICES, INITIATIVE_ORDER_CHOICES } from '../../models/options.model';
@@ -447,7 +448,7 @@ export class OptionsDialogComponent {
     }
 
     onRecordSheetGroupWeaponsChange(event: Event) {
-        const value = (event.target as HTMLSelectElement).value === 'true';
+        const value = (event.target as HTMLSelectElement).value as RecordSheetGroupWeapons;
         this.optionsService.setOption('recordSheetGroupWeapons', value);
     }
 

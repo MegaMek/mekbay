@@ -9,9 +9,15 @@ import type {
     CrewStateDefinition,
     UnitConditionDefinition,
 } from '../../models/unit-status-presentation';
-import { updateRecordSheetAmmoProfile } from '../../utils/sheets/record-sheet-ammo-rendering';
+import { recordSheetAmmoProfileSections, updateRecordSheetAmmoProfile } from '../../utils/sheets/record-sheet-ammo-rendering';
 import type { RecordSheetDamageHighlights } from '../../utils/sheets/record-sheet-damage-highlights';
-import { formatNumber, recordSheetAmmoEntries, setAttributes, svgElement } from '../../utils/sheets/record-sheet-svg-rendering';
+import {
+    formatNumber,
+    recordSheetAmmoSections,
+    recordSheetDispenserPayload,
+    setAttributes,
+    svgElement,
+} from '../../utils/sheets/record-sheet-svg-rendering';
 import { RECORD_SHEET_CAP_HEIGHT } from '../../utils/sheets/record-sheet-typography';
 import { measureSvgTextCanvas } from '../../utils/svg-text.util';
 import type { RecordSheetInteraction, RecordSheetInteractionHandler } from './record-sheet-interaction';
@@ -156,18 +162,33 @@ export function renderRecordSheetCrewControls(
         () => Object.freeze({ kind: 'crew-state-menu', positionId, context: context() }), 'control'));
 }
 
-/** Writes the sheet's ammo totals, one line per munition, from the unit's ammo bins. */
+/** Writes the sheet's ammo totals, one line per munition in each printed CASE group, from the unit's ammo bins. */
 export function renderRecordSheetAmmoProfile(
     svg: SVGSVGElement,
-    bins: readonly Readonly<{ equipment?: Equipment; ammo?: Readonly<{ displayName: string; remaining: number }> }>[],
+    bins: readonly Readonly<{
+        componentId: string;
+        equipment?: Equipment;
+        ammo?: Readonly<{ displayName: string; remaining: number }>;
+    }>[],
     interactive: boolean,
 ): void {
     const profile = svg.querySelector<SVGElement>('#ammoProfile');
     if (!profile) return;
-    // Coolant pods are catalogued as ammunition but print as equipment, as on the generated sheet.
-    updateRecordSheetAmmoProfile(profile, recordSheetAmmoEntries(bins.flatMap(bin =>
-        bin.ammo === undefined || isCoolantPodEquipment(bin.equipment)
-            ? [] : [[bin.ammo.displayName, bin.ammo.remaining] as const])), interactive);
+    // Each bin keeps the CASE line the generated sheet printed it under
+    const prefixes = new Map(recordSheetAmmoProfileSections(profile)
+        .flatMap(section => section.componentIds.map(componentId => [componentId, section.prefix] as const)));
+    // Coolant pods are catalogued as ammunition but print as equipment; dispensers print their payload, as on the
+    // generated sheet.
+    updateRecordSheetAmmoProfile(profile, recordSheetAmmoSections(bins.flatMap(bin => {
+        const shots = bin.ammo?.remaining ?? recordSheetDispenserPayload(bin.equipment);
+        if (shots === undefined || isCoolantPodEquipment(bin.equipment)) return [];
+        return [{
+            componentId: String(bin.componentId),
+            prefix: prefixes.get(String(bin.componentId)) ?? 'Ammo:',
+            name: bin.ammo?.displayName ?? (bin.equipment!.shortName || bin.equipment!.name),
+            shots,
+        }];
+    })), interactive);
 }
 
 /** The paperdoll's random-hit buttons only show a roll, so read-only sheets keep them through the presentation bind. */

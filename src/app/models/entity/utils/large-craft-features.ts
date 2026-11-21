@@ -17,7 +17,7 @@ import { isAtacOrDtacEquipment } from '../../large-craft-equipment.model';
 import { isLaserInsulatorEquipment } from '../../laser-insulator.model';
 import { isPpcCapacitorEquipment } from '../../ppc-capacitor.model';
 import { isRiscLaserPulseModule } from '../../risc-laser-mode.model';
-import { supportVariableSizeLabel } from '../../support-equipment.model';
+import { supportVariableSizeSuffix } from '../../support-equipment.model';
 import { isSponsonTurretEquipment } from '../../turret-equipment.model';
 import { isHarJelEquipment, isMassEquipment } from '../../utility-equipment.model';
 import { isFireControlEquipment } from './fire-control';
@@ -49,8 +49,8 @@ export function largeCraftMiscFeatureName(equipment: MiscEquipment, size: number
   const name = equipment.shortName;
   if (!equipment.hasFlag('F_VARIABLE_SIZE')) return name;
   if (isMechanicalJumpBoosterEquipment(equipment)) return `${name} (${Math.trunc(size)} MP)`;
-  const supportLabel = supportVariableSizeLabel(equipment, size);
-  if (supportLabel !== null) return supportLabel;
+  const supportSize = supportVariableSizeSuffix(equipment, size);
+  if (supportSize !== null) return `${name} ${supportSize}`;
   if (isAtacOrDtacEquipment(equipment)) {
     return `${name} (${Math.trunc(size)} ${size > 1 ? 'drones' : 'drone'})`;
   }

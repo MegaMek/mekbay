@@ -18,12 +18,9 @@ import { getPpcCapacitorBV } from '../equipment-bv';
 import { vehicleTypeModifier, targetMovementModifier } from './rules';
 import { BVCalculator } from './bv-calculator';
 import { getVibrobladeHeat } from '../../../rules/vibroblade-rules';
-import { laserInsulatorAdjustedHeat } from '../../../laser-insulator.model';
+import { isLaserInsulatorEquipment, laserInsulatorAdjustedHeat } from '../../../laser-insulator.model';
 import { isGaussEquipment } from '../../../gauss-equipment.model';
-import {
-  RISC_LASER_PULSE_HEAT_BONUS,
-  isRiscLaserPulseModule,
-} from '../../../risc-laser-mode.model';
+import { isRiscLaserPulseModule, riscLaserPulseHeat } from '../../../risc-laser-mode.model';
 import {
   PPC_CAPACITOR_HEAT_BONUS,
   isPpcCapacitorEquipment,
@@ -113,13 +110,10 @@ export class HeatTrackingBVCalculator extends BVCalculator {
     if (weapon.ammoType === 'AC_ULTRA' || weapon.ammoType === 'AC_ULTRA_THB') heat *= 2;
     else if (weapon.ammoType === 'AC_ROTARY') heat *= 6;
     if (['SRM_STREAK', 'LRM_STREAK', 'IATM'].includes(weapon.ammoType)) heat *= 0.5;
-    const linkedMount = this.entity.getLinkingMount(mount);
-    const linkedBy = linkedMount && this.isWorking(linkedMount) ? linkedMount.equipment : undefined;
-    if (linkedBy instanceof MiscEquipment) {
-      if (isRiscLaserPulseModule(linkedBy)) heat += RISC_LASER_PULSE_HEAT_BONUS;
-      heat = laserInsulatorAdjustedHeat(heat, linkedBy, weapon);
-      if (isPpcCapacitorEquipment(linkedBy)) heat += PPC_CAPACITOR_HEAT_BONUS;
-    }
+    const attachments = this.entity.getLinkingMounts(mount).filter(source => this.isWorking(source));
+    heat += riscLaserPulseHeat(attachments);
+    if (attachments.some(source => isPpcCapacitorEquipment(source.equipment))) heat += PPC_CAPACITOR_HEAT_BONUS;
+    heat = laserInsulatorAdjustedHeat(heat, attachments.some(source => isLaserInsulatorEquipment(source.equipment)));
     return heat;
   }
 
@@ -180,7 +174,7 @@ export class MekBVCalculator extends HeatTrackingBVCalculator {
     }
     if (this.hasEquipment(isBlueShieldEquipment)) multiplier += BLUE_SHIELD_BV_BONUS;
 
-    const sideTorsoEngineCriticals = this.entity.mountedEngine().getSideTorsoSlots().length;
+    const sideTorsoEngineCriticals = this.entity.mountedEngine().getSideTorsoSlots(this.entity.isSuperHeavy()).length;
     const engineMultiplier = sideTorsoEngineCriticals >= 6 ? 0.25
       : sideTorsoEngineCriticals >= 3 ? 0.5
         : sideTorsoEngineCriticals === 2 ? 0.75
@@ -214,8 +208,7 @@ export class MekBVCalculator extends HeatTrackingBVCalculator {
         : typeof requiredSlots === 'number' ? requiredSlots : 0;
       let value = mount.getBV(this.entity, this.gameRules);
       if (equipment instanceof WeaponEquipment && isPpcEquipment(equipment)) {
-        const capacitor = this.entity.getLinkingMount(mount)?.equipment;
-        if (isPpcCapacitorEquipment(capacitor)) {
+        if (this.entity.getLinkingMounts(mount).some(source => isPpcCapacitorEquipment(source.equipment))) {
           value += getPpcCapacitorBV(mount);
           slots++;
         }
@@ -247,7 +240,7 @@ export class MekBVCalculator extends HeatTrackingBVCalculator {
 
   private hasExplosivePenalty(location: string): boolean {
     if (location === 'Unallocated' || this.locationHasEquipment(location, isCaseIIEquipment)) return false;
-    const sideEngineSlots = this.entity.mountedEngine().getSideTorsoSlots().length;
+    const sideEngineSlots = this.entity.mountedEngine().getSideTorsoSlots(this.entity.isSuperHeavy()).length;
     if (!isQuadMekConfig(this.entity.chassisConfig) && (location === 'LA' || location === 'RA')) {
       const transfer = location === 'LA' ? 'LT' : 'RT';
       return !this.locationHasStandardCase(location) && this.hasExplosivePenalty(transfer);
@@ -261,7 +254,7 @@ export class MekBVCalculator extends HeatTrackingBVCalculator {
   protected blueShieldUnprotectedLocations(): number {
     if (!this.hasEquipment(isBlueShieldEquipment)) return 0;
     const locations = ['CT', 'RT', 'LT', 'RA', 'LA', 'RL', 'LL'];
-    const sideEngineSlots = this.entity.mountedEngine().getSideTorsoSlots().length;
+    const sideEngineSlots = this.entity.mountedEngine().getSideTorsoSlots(this.entity.isSuperHeavy()).length;
     return locations.filter(location => {
       if (this.locationHasEquipment(location, isCaseIIEquipment)) return false;
       if (this.entity.techBase() === 'Clan') {
@@ -428,12 +421,13 @@ export class MekBVCalculator extends HeatTrackingBVCalculator {
       mount => isPartialWingEquipment(mount.equipment),
     ) ? partialWingJumpBonus(this.entity.weightClass()) : 0;
     const movedMP = Math.max(0, jumpMP - partialWingBonus);
-    const firstJumpJet = this.entity.equipment()
-      .find(mount => this.isWorking(mount) && isJumpJetEquipment(mount.equipment))?.equipment;
+    const workingJets = this.entity.equipment()
+      .filter(mount => this.isWorking(mount) && isJumpJetEquipment(mount.equipment));
     const jumpHeat = mekJumpHeat(
       this.entity.mountedEngine().movementHeat,
-      jumpJetKind(firstJumpJet) ?? 'standard',
+      jumpJetKind(workingJets[0]?.equipment) ?? 'standard',
       movedMP,
+      workingJets.map(mount => this.entity.jumpJetMpContribution(mount)),
     );
     return jumpHeat > runHeat
       ? { heat: jumpHeat, type: 'Jump' }
@@ -666,9 +660,9 @@ export class LargeAeroBVCalculator extends AeroBVCalculator {
       if (this.arc(mount) !== arc) continue;
       const equipment = mount.equipment;
       if (this.countsAsOffensiveWeapon(mount)) {
-        const enhancementId = this.entity.getLinkingMount(mount)?.equipment?.id ?? '';
+        const enhancements = this.entity.getLinkingMounts(mount).map(source => source.equipmentId).sort();
         const key = equipment instanceof WeaponEquipment
-          ? JSON.stringify([equipment.id, mount.location, mount.rearMounted, enhancementId])
+          ? JSON.stringify([equipment.id, mount.location, mount.rearMounted, enhancements])
           : mount.mountId;
         const group = weaponGroups.get(key);
         if (group) group.count++;

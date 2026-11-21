@@ -3,13 +3,8 @@
 
 import type { CBTRuleset } from '../cbt-ruleset.model';
 import type { EquipmentStatus } from '../equipment-status.model';
-import type { Equipment } from '../equipment.model';
 import { AmmoEquipment, MiscEquipment, WeaponEquipment, resolveWeaponDamage } from '../equipment.model';
 import { isBombastLaserEquipment } from '../bombast-laser-mode.model';
-import {
-    isCaseIIEquipment,
-    isStandardOrPrototypeCaseEquipment,
-} from '../case-equipment.model';
 import { structureConstructionKind } from '../construction-equipment.model';
 import { isPpcCapacitorEquipment, isPpcEquipment } from '../ppc-capacitor.model';
 import type {
@@ -31,7 +26,7 @@ import {
 } from './component-bombast-laser';
 import {
     PPC_CAPACITOR_CHARGED_STATE,
-    ppcCapacitorWeaponId,
+    ppcCapacitorForWeapon, ppcCapacitorWeaponId,
 } from './component-ppc-capacitor';
 import { hotLoadedAmmoForWeapon, type AmmoLoadout } from './mek-ammo';
 import {
@@ -47,6 +42,7 @@ import {
     type MekRuntimeIndex,
     type MekIndexedCriticalSlot,
 } from './mek-runtime-index';
+import { componentIdForMount } from './unit-runtime-index';
 import type {
     BombastLaserRuntimeState,
     EscalatingFailureRuntimeState,
@@ -77,6 +73,15 @@ export interface MekCriticalRuntimeViewV2 {
     ammoHotLoaded(componentId: ComponentId): boolean;
     ammoEquipment(componentId: ComponentId): AmmoEquipment | null;
 }
+
+/**
+ * The CASE an explosion meets. Prototype CASE (CASE-P) needs a 1D6 roll: "On a result of 1 or 2, the CASE system fails
+ * to vent the explosion in time and the explosion is resolved as if the unit does not have CASE" (IO:AE p. 65).
+ */
+export type MekInstalledExplosionProtection = MekExplosionProtection | 'case-p';
+
+/** The highest 1D6 roll on which prototype CASE fails to vent (IO:AE p. 65). */
+const PROTOTYPE_CASE_FAILURE_ROLL = 2;
 
 export interface HotLoadExplosionRoll {
     readonly dice: readonly number[];
@@ -121,6 +126,7 @@ export interface MekExplosionLocationDamageV2 {
     readonly armorFaceId?: ArmorFaceId;
     readonly armorDamage: number;
     readonly armorRear: boolean;
+    /** The protection the damage met, prototype CASE resolved by its roll. */
     readonly protection: MekExplosionProtection;
 }
 
@@ -141,6 +147,8 @@ export interface MekEquipmentExplosionPlanV2 {
     readonly locations: readonly MekExplosionLocationDamageV2[];
     readonly destroyComponentIds: readonly ComponentId[];
     readonly automaticCritical?: MekAutomaticCriticalV2;
+    /** The explosion met prototype CASE: its 1D6 vent roll, or null until rolled, which resolves as CASE. */
+    readonly prototypeCaseRoll?: number | null;
 }
 
 export interface MekPendingEquipmentExplosionV2 {
@@ -181,7 +189,7 @@ export interface MekCriticalRollProfileV2 {
     readonly targetLocationCode: string;
     readonly diceCount: 1 | 2;
     readonly validRolls: readonly (readonly number[])[];
-    readonly explosionProtection: MekExplosionProtection;
+    readonly explosionProtection: MekInstalledExplosionProtection;
     readonly explosionProtectionNote: string | null;
 }
 
@@ -287,6 +295,7 @@ export function projectMekBlowOffV2(
 }
 
 export function projectMekCriticalRollProfileV2(
+    entity: MekEntity,
     index: MekRuntimeIndex,
     ruleset: CBTRuleset,
     runtime: MekCriticalRuntimeViewV2,
@@ -299,7 +308,8 @@ export function projectMekCriticalRollProfileV2(
     const diceCount = criticalRollDiceCount(targetLocation.code);
     const validRolls = rollableSlotIndexes(index, ruleset, runtime, targetLocationId, target)
         .map(slotIndex => Object.freeze(diceForSlotIndex(targetLocation.code, slotIndex)));
-    const protection = mekExplosionProtection(index, ruleset, runtime, targetLocationId, target);
+    const protection = mekExplosionProtection(entity, index, ruleset, runtime, targetLocationId, target);
+    const caseNote = gameRulesFor(ruleset).getMekExplosionProtectionNote(protection === 'case-p' ? 'case' : protection);
     return Object.freeze({
         sourceLocationId,
         targetLocationId,
@@ -308,7 +318,9 @@ export function projectMekCriticalRollProfileV2(
         diceCount,
         validRolls: Object.freeze(validRolls),
         explosionProtection: protection,
-        explosionProtectionNote: gameRulesFor(ruleset).getMekExplosionProtectionNote(protection),
+        explosionProtectionNote: protection === 'case-p'
+            ? `Roll 1D6: on 1 or 2 it fails to vent and the explosion resolves as without CASE; otherwise as CASE. ${caseNote}`
+            : caseNote,
     });
 }
 
@@ -321,9 +333,13 @@ export function projectMekCriticalRollV2(
     results: readonly number[],
     target: MekCriticalMutationTarget,
     hotLoadExplosion?: HotLoadExplosionRoll,
+    prototypeCaseRoll?: number,
 ): MekCriticalRollPlanV2 {
     const source = index.locations.get(sourceLocationId);
     if (!source) return Object.freeze({ kind: 'invalid', reason: 'unknown-location' });
+    if (prototypeCaseRoll !== undefined && !isD6(prototypeCaseRoll)) {
+        return Object.freeze({ kind: 'invalid', reason: 'invalid-dice' });
+    }
     const targetLocationId = criticalRollLocation(index, ruleset, runtime, sourceLocationId, target);
     const targetLocation = requireLocation(index, targetLocationId);
     const slotIndex = criticalSlotIndexForRoll(targetLocation.code, results);
@@ -352,6 +368,7 @@ export function projectMekCriticalRollV2(
         : undefined;
     let explosion = sourceExplosion !== null && pendingExplosion === undefined
         ? resolveExplosionPlan(
+            entity,
             index,
             ruleset,
             runtime,
@@ -359,6 +376,7 @@ export function projectMekCriticalRollV2(
             target,
             sourceExplosion,
             slot,
+            prototypeCaseRoll,
         )
         : undefined;
     const hotLoadAmmoIds = sourceExplosion?.hotLoaded
@@ -383,7 +401,7 @@ export function projectMekCriticalRollV2(
             const damage = ammo.isExplosive()
                 ? runtime.remainingAmmo(ammoId) * ammoRackSize(ammo) * ammoExplosionDamagePerShot(ammo) : 0;
             const first = explosion;
-            const secondary = resolveExplosionPlan(index, ruleset, {
+            const secondary = resolveExplosionPlan(entity, index, ruleset, {
                 ...runtime,
                 remainingInternal: (id, perspective) => runtime.remainingInternal(id, perspective)
                     - (first.locations.find(location => location.locationId === id)?.internalDamage ?? 0),
@@ -392,7 +410,7 @@ export function projectMekCriticalRollV2(
             }, targetLocationId, target, {
                 ...explosionSource(ammo.name, damage, damage > 0 ? gameRulesFor(ruleset).getMekInternalExplosionPilotHits() : 0),
                 destroyComponentIds: [ammoId],
-            });
+            }, undefined, prototypeCaseRoll);
             const locations = new Map(first.locations.map(location => [location.locationId, location]));
             for (const location of secondary.locations) {
                 const previous = locations.get(location.locationId);
@@ -443,6 +461,7 @@ export function projectPendingMekCriticalExplosionV2(
         return Object.freeze({
             key: candidate.key,
             explosion: resolveExplosionPlan(
+                entity,
                 index,
                 ruleset,
                 runtime,
@@ -471,37 +490,28 @@ export function criticalSlotIndexForRoll(
     return (results[0] <= 3 ? 0 : 6) + results[1] - 1;
 }
 
+/**
+ * The location's CASE from the entity's own resolution, so play, sheet and print agree. Installed CASE stops
+ * protecting once the game destroys it, including by the critical hit that set off the explosion; the CASE a Clan
+ * internal structure incorporates automatically (TM errata p.210) has no component to destroy.
+ */
 export function mekExplosionProtection(
+    entity: MekEntity,
     index: MekRuntimeIndex,
     ruleset: CBTRuleset,
     runtime: MekCriticalRuntimeViewV2,
     locationId: LocationId,
     target: MekCriticalMutationTarget,
     directHitSlot?: MekIndexedCriticalSlot,
-): MekExplosionProtection {
-    if (hasOperationalProtection(
-        index,
-        ruleset,
-        runtime,
-        locationId,
-        target,
-        isCaseIIEquipment,
-        directHitSlot,
-    )) {
-        return 'case-ii';
-    }
-    if (hasOperationalProtection(
-        index,
-        ruleset,
-        runtime,
-        locationId,
-        target,
-        isStandardOrPrototypeCaseEquipment,
-        directHitSlot,
-    )) {
-        return 'case';
-    }
-    return 'none';
+): MekInstalledExplosionProtection {
+    const kind = entity.ammoCaseProtection(requireLocation(index, locationId).code, mount => {
+        const componentId = componentIdForMount(mount);
+        if (runtime.componentStatus(componentId, criticalPerspective(target)) !== 'available') return false;
+        return !mount.equipment || !directHitSlot?.componentIds.includes(componentId)
+            || componentCriticalHits(index, runtime, componentId, target) + 1
+                < mekCriticalDamageThreshold(ruleset, mount.equipment.flags);
+    });
+    return kind === null ? 'none' : kind === 'case-ii' ? 'case-ii' : kind === 'prototype' ? 'case-p' : 'case';
 }
 
 function criticalRollLocation(
@@ -760,6 +770,7 @@ function isDelayedCriticalExplosion(source: ExplosionSource): boolean {
 }
 
 function resolveExplosionPlan(
+    entity: MekEntity,
     index: MekRuntimeIndex,
     ruleset: CBTRuleset,
     runtime: MekCriticalRuntimeViewV2,
@@ -767,8 +778,11 @@ function resolveExplosionPlan(
     target: MekCriticalMutationTarget,
     source: ExplosionSource,
     directHitSlot?: MekIndexedCriticalSlot,
+    prototypeCaseRoll?: number,
 ): MekEquipmentExplosionPlanV2 {
     const rules = gameRulesFor(ruleset);
+    // One roll serves every location the explosion reaches with prototype CASE.
+    let metPrototypeCase = false;
     const internalDamage = new Map<LocationId, number>();
     const armorDamage = new Map<ArmorFaceId, number>();
     const locations: MekExplosionLocationDamageV2[] = [];
@@ -779,7 +793,10 @@ function resolveExplosionPlan(
     while (locationId !== null && damage > 0 && !visited.has(locationId)) {
         visited.add(locationId);
         const location = requireLocation(index, locationId);
-        const protection = mekExplosionProtection(index, ruleset, runtime, locationId, target, directHitSlot);
+        const installed = mekExplosionProtection(entity, index, ruleset, runtime, locationId, target, directHitSlot);
+        metPrototypeCase ||= installed === 'case-p';
+        const protection: MekExplosionProtection = installed !== 'case-p' ? installed
+            : prototypeCaseRoll !== undefined && prototypeCaseRoll <= PROTOTYPE_CASE_FAILURE_ROLL ? 'none' : 'case';
         if (ruleset === 'core-2026' && protection === 'none' && damage > 20) armorBlowoutPending = true;
         const composite = structureConstructionKind(location.structure.structure) === 'composite';
         const multiplier = composite ? 2 : 1;
@@ -846,6 +863,7 @@ function resolveExplosionPlan(
         locations: Object.freeze(locations),
         destroyComponentIds: Object.freeze([...(source.destroyComponentIds ?? [])]),
         ...(automaticCritical === undefined ? {} : { automaticCritical }),
+        ...(metPrototypeCase ? { prototypeCaseRoll: prototypeCaseRoll ?? null } : {}),
     });
 }
 
@@ -879,25 +897,6 @@ function automaticCriticalPlan(
     });
 }
 
-function hasOperationalProtection(
-    index: MekRuntimeIndex,
-    ruleset: CBTRuleset,
-    runtime: MekCriticalRuntimeViewV2,
-    locationId: LocationId,
-    target: MekCriticalMutationTarget,
-    protects: (equipment: Equipment) => boolean,
-    directHitSlot?: MekIndexedCriticalSlot,
-): boolean {
-    return [...index.components.entries()].some(([componentId, component]) => {
-        const equipment = component.kind === 'equipment' ? component.mount.equipment : undefined;
-        if (!equipment || !protects(equipment) || !componentLocationIds(index, componentId).includes(locationId)
-            || runtime.componentStatus(componentId, criticalPerspective(target)) !== 'available') return false;
-        if (!directHitSlot?.componentIds.includes(componentId)) return true;
-        const nextHits = componentCriticalHits(index, runtime, componentId, target) + 1;
-        return nextHits < mekCriticalDamageThreshold(ruleset, equipment.flags);
-    });
-}
-
 function ppcPairForComponent(
     entity: MekEntity,
     index: MekRuntimeIndex,
@@ -905,7 +904,7 @@ function ppcPairForComponent(
 ): Readonly<{ capacitorId: ComponentId; weaponId: ComponentId }> | null {
     const directWeapon = ppcCapacitorWeaponId(entity, index, componentId);
     if (directWeapon !== undefined) return Object.freeze({ capacitorId: componentId, weaponId: directWeapon });
-    const source = index.relationships.linkedSourceByTarget.get(componentId);
+    const source = ppcCapacitorForWeapon(index, componentId);
     if (source === undefined || ppcCapacitorWeaponId(entity, index, source) !== componentId) return null;
     return Object.freeze({ capacitorId: source, weaponId: componentId });
 }

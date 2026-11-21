@@ -24,15 +24,18 @@ describe('unit command history', () => {
         }
     });
 
-    it('logs switching heat sinks as such, though it moves a NEXT that follows the calculation', () => {
+    it('logs switching heat sinks as such, and leaves this turn\'s calculation to the sinks still on', () => {
         const unit = createDirectMekRuntimeFixture('core-2026', 'history-mek-sinks').instance;
-        // 15 outside heat against 10 sinks calculates to 5; NEXT at 6 is +1, and moves when sinks switch off.
+        // 15 outside heat against 10 sinks calculates to 5; NEXT at 6 is +1. Once a move is assigned, sinks switched
+        // off now stop dissipating from the next Heat Phase (Core p. 103), so NEXT stays where it is.
+        expect(unit.dispatch({ type: 'declare-mek-movement',
+            declaration: { mode: 'stationary', distance: 0, boosterComponentIds: [] } }).changed).toBeTrue();
         expect(unit.dispatch({ type: 'add-outside-heat', amount: 15, target: 'committed' }).changed).toBeTrue();
         expect(unit.dispatch({ type: 'set-pending-heat', heat: 6, follow: true }).changed).toBeTrue();
         const before = snapshot(unit);
         const command: CBTUnitCommand = { type: 'set-heatsinks-off', heatsinksOff: 2 };
         expect(unit.dispatch(command).changed).toBeTrue();
-        expect(unit.query().heatState().pendingOverride).toBe(8);
+        expect(unit.query().heatState().pendingOverride).toBe(6);
         expect<unknown>(unitCommandHistory(unit.instanceId, unit, command, before, snapshot(unit))).toEqual({
             messageId: RUNTIME_HISTORY_MESSAGE.HEAT_CHANGED,
             data: [unit.instanceId, 2, 0, 2],

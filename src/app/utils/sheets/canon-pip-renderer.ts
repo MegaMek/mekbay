@@ -94,7 +94,6 @@ export class CanonPipRenderer {
         const renderedHeight = layout.height * scale;
         const offsetX = inset + (availableWidth - renderedWidth) / 2;
         const offsetY = inset + (availableHeight - renderedHeight) / 2;
-        group.setAttribute('transform', `translate(${offsetX} ${offsetY}) scale(${scale})`);
 
         const renderedPoints = layout.points.map(([x, y]) => ({
             x: offsetX + x * scale,
@@ -128,12 +127,13 @@ export class CanonPipRenderer {
         const strokeWidth = useCanonPipRadius
             ? localRadius * bakedStrokeRatio
             : localRadius * strokeWidthRatio;
-        for (const [x, y] of layout.points) {
+        // Pips are placed at their final positions and sizes; only a whole paperdoll is ever scaled.
+        for (const point of renderedPoints) {
             group.appendChild(PipRendererShared.createPipElement(
-                { x, y },
-                localRadius,
+                point,
+                localRadius * scale,
                 options,
-                strokeWidth,
+                strokeWidth * scale,
             ));
         }
 

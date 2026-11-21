@@ -40,14 +40,15 @@ describe('native equipment mount correspondence', () => {
     it('uses physical placements instead of inventory occurrence to match identical Mek equipment', () => {
         const original = new BipedMekEntity(registry);
         original.configureEngine(new MountedEngine({ type: 'Fusion', rating: 200, techBase: 'IS' }));
-        const atFour = addTestEquipment(original, laser, { allocation: { kind: 'location', location: 'RT', placements: [{ location: 'RT', slotIndex: 4 }] } });
-        const atTwo = addTestEquipment(original, laser, { allocation: { kind: 'location', location: 'RT', placements: [{ location: 'RT', slotIndex: 2 }] } });
+        // Packed as the editor keeps it (MegaMek closes empty rows): the later inventory entry sits first.
+        const atOne = addTestEquipment(original, laser, { allocation: { kind: 'location', location: 'RT', placements: [{ location: 'RT', slotIndex: 1 }] } });
+        const atZero = addTestEquipment(original, laser, { allocation: { kind: 'location', location: 'RT', placements: [{ location: 'RT', slotIndex: 0 }] } });
         const detached = parseEntity(encodeNativeEntity(original), 'test.mtf', registry).entity;
         const correspondence = matchNativeMounts(original, detached);
-        const first = detached.equipment().find(mount => mount.placements?.[0].slotIndex === 2)!;
-        const second = detached.equipment().find(mount => mount.placements?.[0].slotIndex === 4)!;
-        expect(correspondence.get(first.mountId)).toBe(atTwo.mountId);
-        expect(correspondence.get(second.mountId)).toBe(atFour.mountId);
+        const first = detached.equipment().find(mount => mount.placements?.[0].slotIndex === 0)!;
+        const second = detached.equipment().find(mount => mount.placements?.[0].slotIndex === 1)!;
+        expect(correspondence.get(first.mountId)).toBe(atZero.mountId);
+        expect(correspondence.get(second.mountId)).toBe(atOne.mountId);
     });
 
     it('matches identical spacecraft weapons by authored bay emission order', () => {

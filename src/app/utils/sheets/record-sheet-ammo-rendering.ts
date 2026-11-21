@@ -4,10 +4,17 @@
 import { layoutRecordSheetAmmo } from '../record-sheet-ammo.util';
 import { measureSvgTextCanvas } from '../svg-text.util';
 
+/** One group of ammo lines: the bins one kind of CASE protects, or the unprotected ones, under their own prefix. */
+export interface RecordSheetAmmoSection {
+    readonly prefix: string;
+    readonly entries: readonly string[];
+    /** The bins' components, so a live sheet can total them again. */
+    readonly componentIds: readonly string[];
+}
+
 interface AmmoProfileMetrics {
     readonly width: number;
     readonly fontSize: number;
-    readonly prefix?: string;
 }
 
 interface AmmoProfileGeometry extends AmmoProfileMetrics {
@@ -20,37 +27,32 @@ interface AmmoProfileGeometry extends AmmoProfileMetrics {
 const SVG_NS = 'http://www.w3.org/2000/svg';
 const AMMO_FONT = 'Roboto, Arial, sans-serif';
 
-/**
- * Marks the inventory rows a growing ammo profile squeezes: their content, from `top` to `contentBottom`,
- * must end above `bottom` minus the profile's height. Coordinates are in the profile's parent space.
- */
-export function markAmmoInventory(
-    group: SVGGElement,
-    region: { readonly top: number; readonly bottom: number; readonly contentBottom: number },
-): void {
-    group.setAttribute('data-ammo-inventory', '');
-    group.setAttribute('data-top', String(region.top));
-    group.setAttribute('data-bottom', String(region.bottom));
-    group.setAttribute('data-content-bottom', String(region.contentBottom));
-}
-
 /** Marks rows authored as if the ammo profile were empty; they rise by the profile's height. */
 export function markAmmoBefore(group: SVGGElement): void {
     group.setAttribute('data-ammo-before', '');
 }
 
-export function measureRecordSheetAmmoProfile(entries: readonly string[], options: AmmoProfileMetrics) {
+export function measureRecordSheetAmmoProfile(
+    sections: readonly Pick<RecordSheetAmmoSection, 'prefix' | 'entries'>[],
+    options: AmmoProfileMetrics,
+) {
     const text = document.createElementNS(SVG_NS, 'text');
     text.setAttribute('font-size', String(options.fontSize));
     text.setAttribute('font-family', AMMO_FONT);
     text.setAttribute('font-weight', 'normal');
-    return layoutRecordSheetAmmo(entries, options.width,
-        value => measureSvgTextCanvas(text, value), options.prefix);
+    const layouts = sections.map(section => layoutRecordSheetAmmo(section.entries, options.width,
+        value => measureSvgTextCanvas(text, value), section.prefix));
+    // One horizontal scale for the whole profile
+    return {
+        lines: layouts.flatMap(layout => layout.lines),
+        widths: layouts.flatMap(layout => layout.widths),
+        scale: Math.min(1, ...layouts.map(layout => layout.scale)),
+    };
 }
 
 export function appendRecordSheetAmmoProfile(
     parent: SVGElement,
-    entries: readonly string[],
+    sections: readonly RecordSheetAmmoSection[],
     options: AmmoProfileGeometry,
 ): SVGGElement {
     const profile = document.createElementNS(SVG_NS, 'g');
@@ -60,16 +62,21 @@ export function appendRecordSheetAmmoProfile(
     profile.setAttribute('data-width', String(options.width));
     profile.setAttribute('data-font-size', String(options.fontSize));
     profile.setAttribute('data-line-height', String(options.lineHeight));
-    profile.setAttribute('data-prefix', options.prefix ?? 'Ammo:');
+    profile.setAttribute('data-sections', JSON.stringify(sections.map(({ prefix, componentIds }) => ({ prefix, componentIds }))));
     parent.appendChild(profile);
-    updateRecordSheetAmmoProfile(profile, entries);
+    updateRecordSheetAmmoProfile(profile, sections);
     return profile;
+}
+
+/** The printed sections' prefixes and bins, in print order. */
+export function recordSheetAmmoProfileSections(profile: SVGElement): readonly Pick<RecordSheetAmmoSection, 'prefix' | 'componentIds'>[] {
+    return JSON.parse(profile.getAttribute('data-sections') ?? '[]');
 }
 
 /** Rebuild only ammo rows; retain the group's interaction handlers and layout anchors. */
 export function updateRecordSheetAmmoProfile(
     profile: SVGElement,
-    entries: readonly string[],
+    sections: readonly Pick<RecordSheetAmmoSection, 'prefix' | 'entries'>[],
     interactive = false,
 ): void {
     const x = Number(profile.getAttribute('data-x'));
@@ -77,8 +84,7 @@ export function updateRecordSheetAmmoProfile(
     const width = Number(profile.getAttribute('data-width'));
     const fontSize = Number(profile.getAttribute('data-font-size'));
     const lineHeight = Number(profile.getAttribute('data-line-height'));
-    const prefix = profile.getAttribute('data-prefix') ?? 'Ammo:';
-    const layout = measureRecordSheetAmmoProfile(entries, { width, fontSize, prefix });
+    const layout = measureRecordSheetAmmoProfile(sections, { width, fontSize });
     profile.replaceChildren(...layout.lines.map((value, index) => {
         const text = document.createElementNS(SVG_NS, 'text');
         text.setAttribute('x', String(x));
@@ -108,12 +114,5 @@ export function updateRecordSheetAmmoProfile(
     const parent = profile.parentElement;
     parent?.querySelectorAll<SVGGElement>(':scope > [data-ammo-before]').forEach(group => {
         group.setAttribute('transform', `translate(0 ${-height})`);
-    });
-    parent?.querySelectorAll<SVGGElement>(':scope > [data-ammo-inventory]').forEach(group => {
-        const top = Number(group.getAttribute('data-top'));
-        const bottom = Number(group.getAttribute('data-bottom')) - height;
-        const contentBottom = Number(group.getAttribute('data-content-bottom'));
-        const scale = contentBottom > top ? Math.min(1, Math.max(0, bottom - top) / (contentBottom - top)) : 1;
-        group.setAttribute('transform', `translate(0 ${top * (1 - scale)}) scale(1 ${scale})`);
     });
 }

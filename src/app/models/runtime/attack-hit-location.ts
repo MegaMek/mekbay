@@ -8,23 +8,28 @@ import {
 } from '../../utils/record-sheet-reference-table';
 import type { ArmorFaceId, LocationId } from '../entity/entity-identifiers';
 import type { CBTRuleset } from '../cbt-ruleset.model';
-import { resolveArmorDamage, rifleHitDamage, type DamageSource } from '../rules/armor-damage-rules';
+import { attackDamageSource, reflectedHeat, resolveArmorDamage, rifleHitDamage, struckOutsideHeat, type DamageSource } from '../rules/armor-damage-rules';
 import type { TnTargetUnitType } from '../target-number-calculator.model';
 import type { CBTRuntimeArmorFace, CBTUnitRuntimeIndex } from './cbt-unit-runtime';
 import type { AeroCriticalType } from '../rules/aero-critical-rules';
-import { MEK_TORSO_LOCATIONS } from '../entity/types/mek';
+import { getMekLocationParent, getTopologyFor, MEK_TORSO_LOCATIONS } from '../entity/types/mek';
+import { structureConstructionKind } from '../construction-equipment.model';
 import { isMekEntity } from '../entity/utils/entity-type-guards';
 import type { CBTForceMember } from '../force-member.model';
 import type { HitTable } from '../rules/physical-attack-rules';
-import type { HitLocationDice } from '../rules/weapon-attack-resolution';
+import { damageGroups, PLATOON_DAMAGE_GROUP, type HitLocationDice } from '../rules/weapon-attack-resolution';
 import { getMekLocationLabel } from '../entity/types/mek';
-import { resolveMekHitLocation } from './mek-fall-rules';
-import type { InfernoMissile } from '../rules/inferno-rules';
+import { compositeStructurePipCarries, resolveMekHitLocation, resolveMekStructureDamage } from './mek-fall-rules';
+import { INFERNO_HEAT_PER_MISSILE, type InfernoMissile } from '../rules/inferno-rules';
 import { aimedShotStrikes, type AimedShotRoll } from '../rules/aimed-shot-rules';
 import { swarmHitLocation } from '../rules/anti-mek-attack-rules';
 import { isVehicleEntity } from '../entity/utils/entity-type-guards';
+import type { AttackWeaponReport } from '../../services/game-events.service';
 import type { BaseEntity } from '../entity/base-entity';
-import { hasNonMekRuntime, type CBTUnitSnapshot } from '../cbt-unit-snapshot';
+import { hasMekRuntime, hasNonMekRuntime, type CBTUnitSnapshot } from '../cbt-unit-snapshot';
+import { isModularArmorEquipment } from '../modular-armor.model';
+import type { MekRuntimeIndex } from './mek-runtime-index';
+import type { MekUnitQueryPort } from './unit-instance';
 import {
     nonMekHitArcs,
     resolveNonMekHitLocation,
@@ -47,28 +52,98 @@ export type AttackHitLocation =
         transferred?: true;
     }>;
 
-/**
- * The outside heat an attack's heat-causing weapons apply: a weapon whose first hit-location roll strikes partial
- * cover delivers none (TW p. 102). The rules are silent on a hit split over several rolls, such as a flamer
- * platoon's; its heat follows the first roll.
- */
-export function readAttackHeat(
+/** A unit whose armor can reduce outside heat: heat-dissipating, or laser-reflective under TW (`reflectedHeat`). */
+function hasHeatReducingArmor(snapshot: CBTUnitSnapshot | null): snapshot is CBTUnitSnapshot {
+    return snapshot !== null
+        && [...snapshot.entity.armorByLocation().values()].some(armor => armor.type === 'HEAT_DISSIPATING' || armor.type === 'REFLECTIVE');
+}
+
+function weaponHitLocation(
     member: CBTForceMember,
     arc: MekHitArc,
-    weapons: readonly Readonly<{
-        heat?: number;
-        arc?: MekHitArc;
-        partialCover?: true;
-        table?: HitTable;
-        groups: readonly Readonly<{ location: HitLocationDice; aux: number }>[];
-    }>[],
-): number {
-    return weapons.reduce((sum, weapon) => {
-        const first = weapon.groups[0];
-        const location = first === undefined ? null : readAttackHitLocation(member, weapon.arc ?? arc, first.location,
-            first.aux, weapon.partialCover === true, weapon.table);
-        return location?.kind === 'miss' ? sum : sum + (weapon.heat ?? 0);
-    }, 0);
+    weapon: AttackWeaponReport,
+    group: AttackWeaponReport['groups'][number],
+): AttackHitLocation | null {
+    return readAttackHitLocation(member, weapon.arc ?? arc, group.location, group.aux,
+        weapon.partialCover === true, weapon.table, weapon.aim);
+}
+
+/**
+ * Where one weapon's outside heat strikes, as rolled: every inferno missile; a heat-causing weapon's first hit (a
+ * first roll into partial cover delivers none, TW p. 102); or each 2-point group of a platoon, with its share of the
+ * heat (TW p. 215; MegaMek InfantryHeatWeaponHandler). A null location is heat without a hit location.
+ */
+export function attackHeatHits(
+    member: CBTForceMember,
+    arc: MekHitArc,
+    weapon: AttackWeaponReport,
+): readonly Readonly<{ location: AttackHitLocation | null; heat: number }>[] {
+    if (weapon.inferno) {
+        return weapon.groups.map(group => ({ location: weaponHitLocation(member, arc, weapon, group), heat: INFERNO_HEAT_PER_MISSILE }));
+    }
+    if (!weapon.heat) return [];
+    if (!weapon.groups.length) return [{ location: null, heat: weapon.heat }];
+    // Only a platoon's heat comes in several groups; a weapon's heat rides its single hit.
+    const shares = weapon.groups.length > 1 ? damageGroups(weapon.heat, PLATOON_DAMAGE_GROUP) : [weapon.heat];
+    return weapon.groups.map((group, index) => ({ location: weaponHitLocation(member, arc, weapon, group), heat: shares[index] ?? 0 }));
+}
+
+/**
+ * Previews an attack's heat and inferno missiles in weapon order. Each weapon's heat strikes before its damage, past
+ * the destroyed locations the attack's earlier hits leave, and meets the armor there as the hit is applied
+ * (`struckOutsideHeat`, Core p. 201).
+ */
+export function readAttackThermalEffects(
+    member: CBTForceMember,
+    arc: MekHitArc,
+    weapons: readonly AttackWeaponReport[],
+    ledger = attackDamageLedger(),
+): { heat: number; inferno: InfernoMissile[] } {
+    let heat = 0;
+    const inferno: InfernoMissile[] = [];
+    if (!weapons.some(weapon => weapon.heat || weapon.inferno)) return { heat, inferno };
+    const snapshot = member.force.getUnitSnapshot(member.id);
+    const reducing = hasHeatReducingArmor(snapshot) ? snapshot : null;
+    const protectedUnit = reducing && hasMekRuntime(reducing) ? reducing : null;
+    const armorLeft = (faceId: ArmorFaceId) => ledger.armor.get(faceId) ?? snapshot!.query.remainingArmor(faceId, 'preview');
+    const destroyed = (locationId: LocationId) => !!protectedUnit && (destroyedByLedger(protectedUnit.index, ledger, locationId)
+        || protectedUnit.query.locationStatus(locationId, 'preview') === 'destroyed');
+    // A heat-tracking non-Mek takes heat where it strikes, which laser-reflective armor there may halve.
+    const nonMekHeat = (amount: number, locationId: LocationId, source: DamageSource) => {
+        const face = snapshot && struckArmorFace(snapshot.index, locationId, false);
+        const code = snapshot?.index.locations.get(locationId)?.code;
+        return face && code && armorLeft(face.id) > 0
+            ? reflectedHeat(snapshot!.ruleset, snapshot!.entity.armorAt(code).type, source, amount) : amount;
+    };
+    const deal = reducing ? attackDamagePreview(member, reducing.ruleset, undefined, ledger) : null;
+    const missile = (location: AttackHitLocation | null, sent: number, delivered: number): InfernoMissile =>
+        ({ location, ...(delivered === sent ? {} : { heat: delivered }) });
+    for (const weapon of weapons) {
+        for (const hit of attackHeatHits(member, arc, weapon)) {
+            if (hit.location?.kind === 'miss') {
+                if (weapon.inferno) inferno.push(missile(hit.location, hit.heat, 0));
+                continue;
+            }
+            if (hit.location?.kind === 'non-mek') {
+                const delivered = nonMekHeat(hit.heat, hit.location.locationId, attackDamageSource(weapon));
+                if (weapon.inferno) inferno.push(missile(hit.location, hit.heat, delivered));
+                else heat += delivered;
+                continue;
+            }
+            const delivered = protectedUnit
+                ? struckOutsideHeat(protectedUnit, hit.heat, hit.location ? { code: hit.location.location, rear: hit.location.rear } : null,
+                    face => armorLeft(face.id), destroyed, attackDamageSource(weapon))
+                : hit.heat;
+            if (weapon.inferno) inferno.push(missile(hit.location, hit.heat, delivered));
+            else heat += delivered;
+        }
+        if (!deal || weapon.inferno) continue;
+        for (const group of weapon.groups) {
+            const location = weaponHitLocation(member, arc, weapon, group);
+            if (group.damage && location && location.kind !== 'miss') deal(location, group.damage, attackDamageSource(weapon));
+        }
+    }
+    return { heat, inferno };
 }
 
 /** Inferno missiles that already struck the unit this turn, for the every-three effects (TW pp. 141-142). */
@@ -76,26 +151,6 @@ export function infernoMissilesThisTurn(snapshot: CBTUnitSnapshot | null): numbe
     return snapshot !== null && hasNonMekRuntime(snapshot)
         ? (snapshot.state.turn.infernoMissiles ?? 0) + (snapshot.state.pendingCombat.infernoMissiles ?? 0)
         : 0;
-}
-
-/** The inferno missiles of an attack's weapons, each read on the struck unit's own table. */
-export function readInfernoMissiles(
-    member: CBTForceMember,
-    arc: MekHitArc,
-    weapons: readonly Readonly<{
-        inferno?: true;
-        noHitLocation?: true;
-        arc?: MekHitArc;
-        partialCover?: true;
-        table?: HitTable;
-        groups: readonly Readonly<{ location: HitLocationDice; aux: number }>[];
-    }>[],
-): readonly InfernoMissile[] {
-    return Object.freeze(weapons.filter(weapon => weapon.inferno).flatMap(weapon => weapon.groups.map(group =>
-        Object.freeze({
-            location: weapon.noHitLocation ? null : readAttackHitLocation(member, weapon.arc ?? arc, group.location,
-                group.aux, weapon.partialCover === true, weapon.table),
-        }))));
 }
 
 /** One location an aimed shot may name, with what is left of it on the side the attack strikes. */
@@ -290,35 +345,113 @@ export function struckArmorFace(
     return faces.find(face => face?.face === (rear ? 'rear' : 'front')) ?? (rear ? undefined : faces[0]);
 }
 
+/** The armor, modular armor and structure an attack's earlier hits leave, read in the order the struck unit takes them. */
+export interface AttackDamageLedger {
+    readonly armor: Map<ArmorFaceId, number>;
+    readonly internal: Map<LocationId, number>;
+    readonly modular: Map<LocationId, number>;
+}
+
+export function attackDamageLedger(from?: AttackDamageLedger): AttackDamageLedger {
+    return { armor: new Map(from?.armor), internal: new Map(from?.internal), modular: new Map(from?.modular) };
+}
+
+/** Modular armor points left on a Mek location's panels, which take a hit before the location's armor. */
+export function modularArmorAt(
+    snapshot: Readonly<{ index: MekRuntimeIndex; query: Pick<MekUnitQueryPort, 'modularArmorRemaining'> }>,
+    locationId: LocationId,
+    perspective: 'committed' | 'preview',
+): number {
+    return [...snapshot.index.components].filter(([componentId, component]) => component.kind === 'equipment'
+        && isModularArmorEquipment(component.mount.equipment)
+        && [...snapshot.index.slots.values()].some(slot => slot.locationId === locationId && slot.componentIds.includes(componentId)))
+        .reduce((sum, [componentId]) => sum + snapshot.query.modularArmorRemaining(componentId, perspective), 0);
+}
+
+/** A location the attack's earlier hits destroyed, or a limb lost with the side torso it hangs from. */
+function destroyedByLedger(index: CBTUnitRuntimeIndex, ledger: AttackDamageLedger, locationId: LocationId): boolean {
+    const sections = [...index.locations.values()];
+    const parent = getMekLocationParent(sections.map(section => section.code), index.locations.get(locationId)?.code ?? '');
+    const parentId = parent ? sections.find(section => section.code === parent)?.id : undefined;
+    return ledger.internal.get(locationId) === 0 || (parentId !== undefined && ledger.internal.get(parentId) === 0);
+}
+
 /**
  * Previews what an attack's hits deal to the struck unit, read in the order they are applied: a rifle hit loses 3
- * points where it strikes (`rifleHitDamage`), against the armor the attack's earlier hits leave on that face. Damage
- * moving on from a destroyed location, modular armor, and hits that strike swarming infantry instead are not followed;
- * the hits as applied always are.
+ * points where it strikes (`rifleHitDamage`), against the armor the attack's earlier hits leave on that face. A Mek
+ * hit takes modular armor panels first and goes on through structure and inward past destroyed locations (Core,
+ * Transferring Damage). Hits that strike swarming infantry instead are not followed; the hits as applied always are.
  */
 export function attackDamagePreview(
     member: CBTForceMember | null,
     ruleset: CBTRuleset,
     unitType?: TnTargetUnitType,
+    ledger = attackDamageLedger(),
 ): (location: AttackHitLocation | null, damage: number, source: DamageSource) => number {
     const snapshot = member?.force.getUnitSnapshot(member.id) ?? null;
-    const armorLeft = new Map<ArmorFaceId, number>();
     return (location, damage, source) => {
         const rifle = source.kind === 'weapon' && source.rifle === true;
         if (!snapshot) return rifle ? rifleHitDamage(ruleset, damage, { unitType }) : damage;
+        const sections = [...snapshot.index.locations.values()];
         const struck = location?.kind === 'mek'
-            ? [...snapshot.index.locations.values()].find(candidate => candidate.code === location.location)
+            ? sections.find(candidate => candidate.code === location.location)
             : location?.kind === 'non-mek' ? snapshot.index.locations.get(location.locationId) : undefined;
         if (!struck) return damage;
-        const face = struckArmorFace(snapshot.index, struck.id,
-            location?.kind === 'mek' && location.rear && MEK_TORSO_LOCATIONS.has(struck.code));
+        const rear = (section: typeof struck) => location?.kind === 'mek' && location.rear && MEK_TORSO_LOCATIONS.has(section.code);
+        const face = struckArmorFace(snapshot.index, struck.id, rear(struck));
         if (!face) return damage;
-        const armor = armorLeft.get(face.id) ?? snapshot.query.remainingArmor(face.id, 'preview');
+        const armorOf = (faceId: ArmorFaceId) => ledger.armor.get(faceId) ?? snapshot.query.remainingArmor(faceId, 'preview');
         const dealt = rifle
-            ? rifleHitDamage(snapshot.ruleset, damage, { entity: snapshot.entity, location: struck.code, armor })
+            ? rifleHitDamage(snapshot.ruleset, damage, { entity: snapshot.entity, location: struck.code, armor: armorOf(face.id) })
             : damage;
-        armorLeft.set(face.id, armor - resolveArmorDamage(snapshot.ruleset, dealt, armor,
-            snapshot.entity.armorAt(struck.code).type, source).armorDamage);
+        const topology = location?.kind === 'mek' ? getTopologyFor(sections.map(section => section.code)) : undefined;
+        const internalOf = (locationId: LocationId) => ledger.internal.get(locationId) ?? snapshot.query.remainingInternal(locationId, 'preview');
+        const kindOf = (code: string) => {
+            const kind = structureConstructionKind(snapshot.entity.structureAt(code).structure);
+            return kind === 'composite' || kind === 'reinforced' ? kind : 'standard';
+        };
+        const mek = hasMekRuntime(snapshot) ? snapshot : null;
+        const modularOf = (locationId: LocationId) => ledger.modular.get(locationId) ?? (mek ? modularArmorAt(mek, locationId, 'preview') : 0);
+        // The next location can take a shared composite pip while its structure stands bare.
+        const bareComposite = (candidate: typeof struck | undefined) => {
+            const candidateFace = candidate && struckArmorFace(snapshot.index, candidate.id, rear(candidate));
+            return !!candidate && !!candidateFace && kindOf(candidate.code) === 'composite' && armorOf(candidateFace.id) === 0
+                && modularOf(candidate.id) === 0 && internalOf(candidate.id) > 0 && !destroyedByLedger(snapshot.index, ledger, candidate.id);
+        };
+        let section: typeof struck | undefined = struck;
+        let remaining = dealt;
+        let sharedPip = false;
+        while (section && (remaining > 0 || sharedPip)) {
+            const sectionFace = struckArmorFace(snapshot.index, section.id, rear(section));
+            if (!sectionFace) break;
+            const next: string | null | undefined = topology?.[section.code as keyof typeof topology]?.transfersTo;
+            const nextSection: typeof struck | undefined = next ? sections.find(candidate => candidate.code === next) : undefined;
+            // A limb that went with its side torso earlier in the attack passes the whole hit on.
+            if (!topology || !destroyedByLedger(snapshot.index, ledger, section.id)) {
+                // Modular armor panels take the hit before the location's armor, as applying the damage does.
+                if (topology && remaining > 0) {
+                    const modular = modularOf(section.id);
+                    const absorbed = Math.min(remaining, modular);
+                    ledger.modular.set(section.id, modular - absorbed);
+                    remaining -= absorbed;
+                }
+                const armor = armorOf(sectionFace.id);
+                const resolved = resolveArmorDamage(snapshot.ruleset, remaining, armor, snapshot.entity.armorAt(section.code).type, source);
+                ledger.armor.set(sectionFace.id, armor - resolved.armorDamage);
+                if (!topology) break;
+                const internal = internalOf(section.id);
+                const received: boolean = sharedPip;
+                const shared: number = received && internal > 0 ? 1 : 0;
+                const kind = kindOf(section.code);
+                const structure = resolveMekStructureDamage(resolved.remainingDamage, internal - shared, kind);
+                const internalDamage: number = shared + structure.internalDamage;
+                ledger.internal.set(section.id, internal - internalDamage);
+                remaining = structure.overflowDamage;
+                sharedPip = !received && compositeStructurePipCarries(snapshot.ruleset, kind, resolved.remainingDamage, internal, internalDamage)
+                    && bareComposite(nextSection);
+            }
+            section = nextSection;
+        }
         return dealt;
     };
 }

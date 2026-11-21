@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 
 import type { PickerChoice } from '../../components/picker/picker.interface';
-import { ATM_INVENTORY_MODES,MML_INVENTORY_MODES } from '../ammo-weapon-profile.model';
+import { ATM_IMPROVED_MAGNETIC_PULSE_PROFILE,ATM_INVENTORY_MODES,MML_INVENTORY_MODES } from '../ammo-weapon-profile.model';
 import type { ComponentId } from '../entity/entity-identifiers';
 import { WeaponEquipment,type AmmoType } from '../equipment.model';
 import { type CBTMekUnit } from './cbt-unit';
@@ -23,8 +23,14 @@ const INVENTORY_MODE_DISPLAY_NAMES: Readonly<Record<string, string>> = Object.fr
     'High Explosive': 'HE',
 });
 
+/**
+ * An iATM fires Improved Magnetic Pulse missiles besides the ATM's munitions, as does the Fusillade, which fires iATM
+ * munitions: they are available to "any unit equipped with improved ATM or Fusillade launchers" (IO:AE p. 61).
+ */
+const IATM_INVENTORY_MODES = Object.freeze([...ATM_INVENTORY_MODES, ATM_IMPROVED_MAGNETIC_PULSE_PROFILE.displayName]);
+
 export type MmlInventoryMode = (typeof MML_INVENTORY_MODES)[number];
-export type AtmInventoryMode = (typeof ATM_INVENTORY_MODES)[number];
+export type AtmInventoryMode = (typeof IATM_INVENTORY_MODES)[number];
 export type ComponentInventoryMode = MmlInventoryMode | AtmInventoryMode;
 export type ComponentInventoryModeFamily = 'mml' | 'atm';
 
@@ -86,7 +92,8 @@ export function expectedInventoryModes(
     ammoType: AmmoType,
 ): readonly ComponentInventoryMode[] | null {
     if (ammoType === 'MML') return MML_INVENTORY_MODES;
-    if (ammoType === 'ATM' || ammoType === 'IATM') return ATM_INVENTORY_MODES;
+    if (ammoType === 'ATM') return ATM_INVENTORY_MODES;
+    if (ammoType === 'IATM') return IATM_INVENTORY_MODES;
     return null;
 }
 

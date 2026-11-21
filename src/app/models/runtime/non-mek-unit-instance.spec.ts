@@ -22,6 +22,10 @@ TestVtolEntity,
 TestWarShipEntity,
 } from '../entity/testing/test-entities';
 import { createTestEquipmentRegistry } from '../entity/testing/test-equipment-registry';
+import { buildEquipmentRegistry } from '../../services/catalogs/equipment-catalog-builder';
+import type { EquipmentRegistry } from '../equipment-lookup';
+import type { ComponentId } from '../entity/entity-identifiers';
+import { parseEntity } from '../entity/parse-entity';
 import {
 addTestEquipment,
 addTestEquipmentWithFlags,
@@ -1648,6 +1652,38 @@ describe('NonMekUnitInstance', () => {
         expect(fixture.runtime.query().remainingAmmo(fixture.ammoId)).toBe(9);
     });
 
+    it('counts a missed lock as fired without ammo or heat, for lock-on weapons only (TW p. 138)', () => {
+        for (const ammoType of ['SRM_STREAK', 'AC'] as const) {
+            const fixture = targetingFixture(`unit:no-lock-${ammoType}`, ammoType);
+            for (const edit of [{
+                kind: 'set-component-selection' as const,
+                componentId: fixture.weaponId,
+                selection: { kind: 'target' as const, targetId: fixture.targetId },
+            }, {
+                kind: 'set-component-ammo' as const,
+                componentId: fixture.weaponId,
+                ammo: { munitionKey: fixture.ammo.internalName, preferredSourceId: fixture.ammoId },
+            }]) {
+                fixture.runtime.dispatchAttackerTargeting({ type: 'edit-attacker-targeting', edit }, fixture.registry, false);
+            }
+
+            const result = fixture.runtime.dispatchSelectedWeaponFire({
+                type: 'fire-selected-weapons', noLock: [fixture.weaponId],
+            }, fixture.registry, false, false);
+
+            if (ammoType === 'SRM_STREAK') {
+                expect(result.changed).toBeTrue();
+                expect(fixture.runtime.query().remainingAmmo(fixture.ammoId)).toBe(10);
+                expect(fixture.runtime.snapshot().turn.weaponsHeat).toBe(0);
+                expect(fixture.runtime.snapshot().turn.firedWeapons).toEqual([fixture.weaponId]);
+            } else {
+                // An autocannon has no lock to miss.
+                expect(result.changed).toBeFalse();
+                expect(fixture.runtime.query().remainingAmmo(fixture.ammoId)).toBe(10);
+            }
+        }
+    });
+
     for (const ruleset of [CORE_2026_RULESET, TOTAL_WARFARE_RULESET]) {
         for (const { status, heat, expectedHeat, bombastMode } of [
             { status: 'available', heat: 5, expectedHeat: 4, bombastMode: undefined },
@@ -1706,6 +1742,47 @@ describe('NonMekUnitInstance', () => {
                 expect(runtime.snapshot().turn.weaponsHeat).toBe(expectedHeat);
             });
         }
+    }
+
+    for (const ruleset of [CORE_2026_RULESET, TOTAL_WARFARE_RULESET]) {
+        it(`fires an insulated aerospace small laser in pulse mode after reload under ${ruleset}`, () => {
+            const laser = new WeaponEquipment({ id: 'Small Laser', name: 'Small Laser', type: 'weapon',
+                flags: ['F_LASER', 'F_ENERGY', 'F_DIRECT_FIRE', 'F_RISC_LASER_PULSE_COMPATIBLE'], weapon: { heat: 1, damage: 3, ranges: [1, 2, 3, 4] } });
+            const entity = new TestAeroSpaceFighterEntity(createTestEquipmentRegistry({ [laser.id]: laser }));
+            entity.uuid.set(UUID);
+            const mount = addTestEquipment(entity, laser, { location: 'Nose' });
+            const weaponId = componentIdForMount(mount);
+            const insulator = addTestEquipmentWithFlags(entity, 'F_LASER_INSULATOR', { location: 'Nose' });
+            const spare = addTestEquipmentWithFlags(entity, 'F_LASER_INSULATOR', { location: 'Nose' });
+            const module = addTestEquipmentWithFlags(entity, 'F_RISC_LASER_PULSE_MODULE', { location: 'Nose' });
+            for (const source of [insulator, module, spare]) entity.linkEquipment(source, mount);
+            let runtime = createNonMekRuntimeForTest('unit:pulse-insulated', { ...baseline(), ruleset }, entity, ruleset);
+            expect(runtime.dispatch({ type: 'set-component-mode', componentId: weaponId, mode: 'Pulse' }).changed).toBeTrue();
+            expect(runtime.dispatch({ type: 'set-component-status', componentId: componentIdForMount(insulator),
+                status: 'disabled', target: 'committed' }).changed).toBeTrue();
+            const saved = serializeNonMekUnit({ entity, index: runtime.getIndex(), state: runtime.snapshot(),
+                baselineRef: runtime.baselineRef, instanceId: runtime.instanceId, uuid: baseline().entity,
+                deployment: { values: { id: 'deployment:test', crewAssignment: createDefaultCrewAssignment(runtime.getIndex().crewPositions) } },
+            });
+            runtime = restoreNonMekRuntimeForTest(saved, entity, ruleset);
+            const targetId = asEncounterTargetId('target:multi');
+            const registry: TargetRegistrySnapshot = { revision: 0,
+                targets: [{ id: targetId, letter: 'A', name: 'Target', color: '#123456', source: 'manual', readOnly: false }] };
+            expect(runtime.dispatchAttackerTargeting({ type: 'edit-attacker-targeting',
+                edit: { kind: 'set-component-selection', componentId: weaponId, selection: { kind: 'target', targetId } },
+            }, registry, false).accepted).toBeTrue();
+            const row = () => projectNonMekEquipmentPanel(entity, runtime.getIndex(), ruleset, runtime.snapshot(),
+                runtime.query(), registry, {}).components.find(component => component.componentId === weaponId)!;
+            expect(row().heatWeakened).toBeFalse();
+            expect(row().weapon?.heat).toBe(2);
+            expect(row().weapon?.effectiveWeaponTypes).toContain('P');
+            expect(runtime.dispatchSelectedWeaponFire({ type: 'fire-selected-weapons' }, registry, false, false).changed).toBeTrue();
+            expect(runtime.snapshot().turn.weaponsHeat).toBe(2);
+            expect(runtime.dispatch({ type: 'set-component-status', componentId: componentIdForMount(module),
+                status: 'destroyed', target: 'committed' }).changed).toBeTrue();
+            expect(row().weapon?.heat).toBe(1);
+            expect(row().weapon?.effectiveWeaponTypes).not.toContain('P');
+        });
     }
 
     it('uses maximum prototype-laser heat for aerospace fire without die evidence', () => {
@@ -2246,20 +2323,50 @@ describe('NonMekUnitInstance', () => {
         expect(runtime.snapshot().heat.current).toBe(13);
     });
 
-    it('gives back the dissipation APPLY HEAT booked on aerospace heat sinks shut down afterwards', () => {
+    it('keeps the aerospace heat sinks APPLY HEAT booked cooling until the End Phase switches them off', () => {
         const fighter = new TestAeroSpaceFighterEntity();
         fighter.uuid.set(UUID);
         fighter.heatSinkCount.set(10);
         const fresh = createNonMekRuntimeForTest('unit:lost-aero-sinks', baseline(), fighter, CORE_2026_RULESET);
-        const runtime = restoreNonMekRuntimeForTest({ ...fresh.serialize(), turn: { weaponsHeat: 14 } }, fighter, CORE_2026_RULESET);
+        // Turn 2, so the switch waits for the End Phase.
+        const runtime = restoreNonMekRuntimeForTest({ ...fresh.serialize(), turn: { turnCounter: 1, weaponsHeat: 14 } }, fighter,
+            CORE_2026_RULESET);
 
         // 14 fired against 10 sinks: 4 heat, every sink used.
         runtime.dispatch({ type: 'set-pending-heat', heat: 4 });
         expect(runtime.dispatch({ type: 'apply-heat' }).changed).toBeTrue();
-        // 3 sinks shut down afterwards cool nothing this turn, so the 3 heat they were booked for comes back.
+        // Sinks switch off in the End Phase (TW, Shutting Off Heat Sinks; Core p. 103), so this turn's 10 still cool.
         expect(runtime.dispatch({ type: 'set-heatsinks-off', heatsinksOff: 3 }).changed).toBeTrue();
         runtime.dispatch({ type: 'end-turn', policy: 'automatic' });
-        expect(runtime.snapshot().heat.current).toBe(7);
+        expect(runtime.snapshot().heat.current).toBe(4);
+        expect(runtime.snapshot().heat.heatsinksOff).toBe(3);
+    });
+
+    it('switches aerospace heat sinks at once on turn 1 until a move is assigned, and from the End Phase otherwise', () => {
+        // The user's rule (Core p. 103 lets a unit begin the game with sinks off); otherwise TW (Shutting Off Heat
+        // Sinks) and Core p. 103 switch them in the End Phase, aerospace units as 'Meks.
+        const fighter = new TestAeroSpaceFighterEntity();
+        fighter.uuid.set(UUID);
+        fighter.heatSinkCount.set(10);
+        const runtime = createNonMekRuntimeForTest('unit:aero-sink-switch', baseline(), fighter, CORE_2026_RULESET);
+        expect(runtime.dispatch({ type: 'set-heatsinks-off', heatsinksOff: 2 }).changed).toBeTrue();
+        expect(runtime.snapshot().heat).toEqual(jasmine.objectContaining({ heatsinksOff: 2 }));
+        expect(runtime.snapshot().heat.heatsinksOffNext).toBeUndefined();
+        expect(runtime.dispatch({ type: 'set-movement',
+            movement: { mode: 'stationary', distance: 0, boosterComponentIds: [] } }).accepted).toBeTrue();
+        expect(runtime.dispatch({ type: 'set-heatsinks-off', heatsinksOff: 3 }).changed).toBeTrue();
+        expect(runtime.snapshot().heat).toEqual(jasmine.objectContaining({ heatsinksOff: 2, heatsinksOffNext: 3 }));
+        runtime.dispatch({ type: 'end-turn', policy: 'automatic' });
+        expect(runtime.snapshot().heat).toEqual(jasmine.objectContaining({ heatsinksOff: 3 }));
+
+        // Turn 2: the switch waits for the End Phase even before a move.
+        expect(runtime.dispatch({ type: 'set-heatsinks-off', heatsinksOff: 5 }).changed).toBeTrue();
+        expect(runtime.snapshot().heat).toEqual(jasmine.objectContaining({ heatsinksOff: 3, heatsinksOffNext: 5 }));
+        const saved = runtime.serialize();
+        expect(restoreNonMekRuntimeForTest(saved, fighter, CORE_2026_RULESET).snapshot().heat.heatsinksOffNext).toBe(5);
+        runtime.dispatch({ type: 'end-turn', policy: 'automatic' });
+        expect(runtime.snapshot().heat).toEqual(jasmine.objectContaining({ heatsinksOff: 5 }));
+        expect(runtime.snapshot().heat.heatsinksOffNext).toBeUndefined();
     });
 
     it('settles applied aerospace heat once, adding only weapons fired afterwards at End Turn', () => {
@@ -2707,18 +2814,117 @@ describe('NonMekUnitInstance', () => {
     });
 });
 
-function targetingFixture(instanceId: string) {
+describe('NonMekUnitInstance Fusillade on the canon Sprite 3', () => {
+    let registry: EquipmentRegistry;
+    beforeAll(async () => {
+        registry = buildEquipmentRegistry(await (await fetch('/online-assets/static/equipment.json')).json());
+    });
+
+    // mm-data protomeks/WoR/Sprite 3.blk without its fluff: two torso Fusillades.
+    const SPRITE_3 = ['UnitType:ProtoMek', 'Name:Sprite Ultraheavy ProtoMech', 'Model:3', 'year:3075',
+        'type:Clan Level 4', 'motion_type:Biped', 'cruiseMP:3', 'jumpingMP:5', 'interface_cockpit:false',
+        'engine_type:0', 'clan_engine:false', 'armor_type:42', 'armor_tech_rating:0', 'armor_tech_level:2',
+        'internal_type:-1', 'armor:9\n30\n6\n6\n14',
+        'Body Equipment:ExtendedJumpJetSystem\nExtendedJumpJetSystem\nExtendedJumpJetSystem\nExtendedJumpJetSystem\n'
+            + 'ExtendedJumpJetSystem\nCLMediumChemLaserAmmo (30)\nEIInterface',
+        'Head Equipment:', 'Torso Equipment:Fusillade\nFusillade', 'Right Arm Equipment:CLMediumChemicalLaser',
+        'Left Arm Equipment:CLMediumChemicalLaser', 'Legs Equipment:', 'tonnage:15.0',
+    ].map(block => {
+        const [tag, ...data] = block.split(':');
+        return `<${tag}>\n${data.join(':')}\n</${tag}>`;
+    }).join('\n');
+
+    it('fires each launcher from its own two shots and spends one on a miss (IO:AE p. 59)', () => {
+        const entity = parseEntity(SPRITE_3, 'Sprite 3.blk', registry).entity;
+        entity.uuid.set(UUID);
+        const runtime = createNonMekRuntimeForTest('unit:sprite-3', baseline(), entity, CORE_2026_RULESET);
+        const [first, second] = [...runtime.getIndex().components.values()]
+            .filter(component => component.mount.equipment?.internalName === 'Fusillade')
+            .map(component => component.id);
+        expect(second).toBeDefined();
+        const munitionKey = 'Clan Ammo iATM-3';
+        const targetId = asEncounterTargetId('target:sprite');
+        const targets: TargetRegistrySnapshot = Object.freeze({ revision: 0, targets: Object.freeze([Object.freeze({
+            id: targetId, letter: 'A', name: 'Target A', color: '#ff0000', source: 'manual' as const, readOnly: false,
+        })]) });
+        const edit = (componentId: ComponentId, preferredSourceId: ComponentId) => [
+            { kind: 'set-component-selection' as const, componentId, selection: { kind: 'target' as const, targetId } },
+            { kind: 'set-component-ammo' as const, componentId, ammo: { munitionKey, preferredSourceId } },
+        ].map(change => runtime.dispatchAttackerTargeting({ type: 'edit-attacker-targeting', edit: change }, targets, false));
+        const fire = (noLock?: ComponentId[]) => runtime.dispatchSelectedWeaponFire({
+            type: 'fire-selected-weapons', ...(noLock ? { noLock } : {}),
+        }, targets, false, false);
+
+        // A launcher's shots feed only that launcher: the panel offers each its own, and the other's is refused.
+        const panel = projectNonMekEquipmentPanel(entity, runtime.getIndex(), CORE_2026_RULESET, runtime.snapshot(),
+            runtime.query(), targets, {});
+        const row = panel.components.find(component => component.componentId === first)!;
+        expect(row.weapon?.ammoSources.map(source => [source.componentId, source.remaining, source.capacity]))
+            .toEqual([[first, 2, 2]]);
+        expect(row.ammo?.capacity).toBe(2);
+        expect(edit(first, second)[1].changed).toBeFalse();
+
+        for (const shotsLeft of [1, 0]) {
+            edit(first, first);
+            edit(second, second);
+            // A Fusillade has no lock to miss: a missed attack still fires its salvo.
+            expect(fire([first]).changed).toBeFalse();
+            expect(fire().changed).toBeTrue();
+            expect([runtime.query().remainingAmmo(first), runtime.query().remainingAmmo(second)])
+                .toEqual([shotsLeft, shotsLeft]);
+            expect(runtime.dispatch({ type: 'end-turn', policy: 'manual' }).accepted).toBeTrue();
+        }
+        edit(first, first);
+        expect(fire().changed).toBeFalse();
+
+        const saved = serializeNonMekUnit({
+            entity, index: runtime.getIndex(), state: runtime.snapshot(), baselineRef: runtime.baselineRef,
+            instanceId: runtime.instanceId, uuid: baseline().entity,
+            deployment: { values: { id: 'deployment:sprite-3', crewAssignment: runtime.getCrewAssignment() } },
+        });
+        expect(restoreNonMekRuntimeForTest(saved, entity, CORE_2026_RULESET).query().remainingAmmo(first)).toBe(0);
+    });
+
+    it('loads and fires Improved Magnetic Pulse missiles at High Explosive range, 1 point each (IO:AE p. 61)', () => {
+        const entity = parseEntity(SPRITE_3, 'Sprite 3.blk', registry).entity;
+        entity.uuid.set(UUID);
+        const runtime = createNonMekRuntimeForTest('unit:sprite-3-imp', baseline(), entity, CORE_2026_RULESET);
+        const weaponId = [...runtime.getIndex().components.values()]
+            .find(component => component.mount.equipment?.internalName === 'Fusillade')!.id;
+        const munitionKey = 'Clan Ammo iATM-3 IMP';
+        expect(runtime.dispatch({ type: 'configure-ammo-source', componentId: weaponId, munitionKey, remaining: 2 }).changed)
+            .toBeTrue();
+        expect(runtime.dispatch({ type: 'set-component-mode', componentId: weaponId, mode: 'Improved Magnetic Pulse' }).changed)
+            .toBeTrue();
+        const targets: TargetRegistrySnapshot = Object.freeze({ revision: 0, targets: Object.freeze([]) });
+        for (const edit of [
+            { kind: 'set-component-selection' as const, componentId: weaponId, selection: { kind: 'selected' as const } },
+            { kind: 'set-component-ammo' as const, componentId: weaponId, ammo: { munitionKey, preferredSourceId: weaponId } },
+        ]) {
+            expect(runtime.dispatchAttackerTargeting({ type: 'edit-attacker-targeting', edit }, targets, false).changed).toBeTrue();
+        }
+
+        const weapon = projectNonMekEquipmentPanel(entity, runtime.getIndex(), CORE_2026_RULESET, runtime.snapshot(),
+            runtime.query(), targets, {}).components.find(component => component.componentId === weaponId)!.weapon!;
+        expect([weapon.ranges, weapon.minimumRange]).toEqual([[3, 6, 9, 12], 0]);
+        expect(weapon.damageByRange?.short?.values).toEqual([1]);
+        expect(runtime.dispatchSelectedWeaponFire({ type: 'fire-selected-weapons' }, targets, false, false).changed).toBeTrue();
+        expect(runtime.query().remainingAmmo(weaponId)).toBe(1);
+    });
+});
+
+function targetingFixture(instanceId: string, ammoType: 'AC' | 'SRM_STREAK' = 'AC') {
     const weapon = new WeaponEquipment({
         id: 'AC_10_Targeting_Test',
         name: 'AC/10',
         type: 'weapon',
-        weapon: { ammoType: 'AC', rackSize: 10, damage: 10, heat: 3, ranges: [5, 10, 15, 20] },
+        weapon: { ammoType, rackSize: 10, damage: 10, heat: 3, ranges: [5, 10, 15, 20] },
     });
     const ammo = new AmmoEquipment({
         id: 'Ammo_AC_10_Targeting_Test',
         name: 'AC/10 Ammo',
         type: 'ammo',
-        ammo: { type: 'AC', rackSize: 10, shots: 10 },
+        ammo: { type: ammoType, rackSize: 10, shots: 10 },
     });
     const entity = new TestTankEntity(createTestEquipmentRegistry({
         [weapon.id]: weapon,

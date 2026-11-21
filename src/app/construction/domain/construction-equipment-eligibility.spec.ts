@@ -25,6 +25,47 @@ describe('MML construction equipment catalog applicability', () => {
     expect(constructionEquipmentApplies(design('Aero'), flotation)).toBeFalse();
   });
 
+  it('never offers clubs improvised on the battlefield, as MegaMekLab does not', () => {
+    const mek = design();
+    for (const flags of [['F_MEK_EQUIPMENT', 'F_CLUB', 'S_CLUB', 'S_TREE_CLUB'], ['F_MEK_EQUIPMENT', 'F_CLUB', 'S_CLUB'], ['F_MEK_EQUIPMENT', 'F_CLUB', 'S_TREE_CLUB']] as EquipmentFlag[][]) {
+      expect(constructionEquipmentApplies(mek, gear(flags))).withContext(flags.join()).toBeFalse();
+    }
+    expect(constructionEquipmentApplies(mek, gear(['F_MEK_EQUIPMENT', 'F_CLUB', 'S_HATCHET']))).toBeTrue();
+  });
+
+  it('allows prototype doubles beside singles and rejects production doubles or laser sinks in the same system', () => {
+    const mek = design() as MekEntity;
+    const singles = gear(['F_MEK_EQUIPMENT', 'F_HEAT_SINK']);
+    const proto = gear(['F_MEK_EQUIPMENT', 'F_IS_DOUBLE_HEAT_SINK_PROTOTYPE']);
+    const doubles = gear(['F_MEK_EQUIPMENT', 'F_DOUBLE_HEAT_SINK']);
+    const laser = gear(['F_MEK_EQUIPMENT', 'F_DOUBLE_HEAT_SINK', 'F_LASER_HEAT_SINK']);
+    mek.heatSinkEquipment.set(singles);
+    expect(eligible(mek, proto)).toBeTrue();
+    for (const sink of [doubles, laser]) expect(eligible(mek, sink)).toBeFalse();
+    mek.heatSinkEquipment.set(doubles);
+    expect(eligible(mek, proto)).toBeFalse();
+    expect(eligible(mek, doubles)).toBeTrue();
+  });
+
+  it('requires one jump-jet type and allocates a one-MP mechanical booster across every leg', () => {
+    const mek = design() as MekEntity;
+    const standard = gear(['F_MEK_EQUIPMENT', 'F_JUMP_JET', 'S_STANDARD']);
+    const improved = gear(['F_MEK_EQUIPMENT', 'F_JUMP_JET', 'S_IMPROVED']);
+    addTestEquipment(mek, standard, { location: 'RT' });
+    expect(eligible(mek, improved)).toBeFalse();
+    expect(eligible(mek, standard)).toBeTrue();
+
+    const tripod = design('Tripod') as MekEntity;
+    const booster = new MiscEquipment({ id: 'Jump Booster', name: 'Jump Booster', type: 'misc', tech: technology,
+      flags: ['F_MEK_EQUIPMENT', 'F_JUMP_BOOSTER', 'F_VARIABLE_SIZE'],
+      stats: { criticalSlots: 'variable', tonnage: 'variable', spreadable: true } });
+    const mount = installConstructionEquipment(tripod, booster, 'LL');
+    expect(mount.size).toBe(1);
+    for (const leg of ['LL', 'RL', 'CL']) {
+      expect(mount.placements?.filter(slot => slot.location === leg).length).withContext(leg).toBe(2);
+    }
+  });
+
   it('filters LAM-only and conversion-incompatible equipment before choosing a location', () => {
     const mek = design(), lam = design('LAM');
     const bay = gear(['F_MEK_EQUIPMENT', 'F_BOMB_BAY']);

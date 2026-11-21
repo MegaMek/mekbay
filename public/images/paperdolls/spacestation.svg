@@ -162,18 +162,18 @@
           <path class="armor unitLocation" data-loc="AFT" fill="transparent" stroke="none" d="M78.75 346.272003h150v75h-150z"/>
         </g>
 
-        <g fill="none" transform="matrix(0.75,0,0,0.75,153.75,-66.227997)" class="paperdoll-pip-profile paperdoll-pip-profile paperdoll-pip-profile paperdoll-pip-profile paperdoll-pip-profile paperdoll-pip-profile">
-          <rect x="-100" width="200" y="125" height="100" data-fill="armor" data-location="NOS"/>
-          <rect x="-205" width="100" y="195" height="200" data-fill="armor" data-location="FLS"/>
-          <rect x="105" width="100" y="195" height="200" data-fill="armor" data-location="FRS"/>
-          <rect x="-205" width="100" y="405" height="200" data-fill="armor" data-location="ALS"/>
-          <rect x="105" width="100" y="405" height="200" data-fill="armor" data-location="ARS"/>
-          <rect x="-100" width="200" y="550" height="100" data-fill="armor" data-location="AFT"/>
+        <g fill="none" transform="translate(153.75 -66.228)" class="paperdoll-pip-profile paperdoll-pip-profile paperdoll-pip-profile paperdoll-pip-profile paperdoll-pip-profile paperdoll-pip-profile">
+          <rect x="-75" width="150" y="93.75" height="75" data-fill="armor" data-location="NOS"/>
+          <rect x="-153.75" width="75" y="146.25" height="150" data-fill="armor" data-location="FLS"/>
+          <rect x="78.75" width="75" y="146.25" height="150" data-fill="armor" data-location="FRS"/>
+          <rect x="-153.75" width="75" y="303.75" height="150" data-fill="armor" data-location="ALS"/>
+          <rect x="78.75" width="75" y="303.75" height="150" data-fill="armor" data-location="ARS"/>
+          <rect x="-75" width="150" y="412.5" height="75" data-fill="armor" data-location="AFT"/>
         </g>
-        <g fill="none" transform="matrix(0.75,0,0,0.75,154.7,73.9)" class="paperdoll-pip-profile paperdoll-pip-profile">
-          <rect x="-40" width="80" y="127.4666667" height="8" data-fill="structure" data-location="SI" data-gap="-8,8"/>
-          <rect x="-40" width="80" y="163.3333333" height="5" data-fill="structure" data-location="SAIL"/>
-          <rect x="-40" width="80" y="196.60001" height="5" data-fill="structure" data-location="DC"/>
+        <g fill="none" transform="translate(154.7 73.9)" class="paperdoll-pip-profile paperdoll-pip-profile">
+          <rect x="-30" width="60" y="95.6" height="6" data-fill="structure" data-location="SI" data-gap="-8,8"/>
+          <rect x="-30" width="60" y="122.5" height="3.75" data-fill="structure" data-location="SAIL"/>
+          <rect x="-30" width="60" y="147.45001" height="3.75" data-fill="structure" data-location="DC"/>
         </g>
       </g>
       </svg>

@@ -62,6 +62,20 @@ describe('OptionsService theme migration', () => {
         expect(reloaded.options().printAllOptions).toEqual({ ...previous, paperSize: 'a4' });
     });
 
+    it('keeps a saved boolean weapon grouping choice: true groups everywhere, false takes the default', async () => {
+        savedOptions = { recordSheetGroupWeapons: true };
+        let service = await createService();
+        expect(service.options().recordSheetGroupWeapons).toBe('enabled');
+        TestBed.resetTestingModule();
+        savedOptions = { recordSheetGroupWeapons: false };
+        service = await createService();
+        expect(service.options().recordSheetGroupWeapons).toBe('previews');
+        TestBed.resetTestingModule();
+        savedOptions = { recordSheetGroupWeapons: 'disabled' };
+        service = await createService();
+        expect(service.options().recordSheetGroupWeapons).toBe('disabled');
+    });
+
     it('defaults old saves to Inner Sphere first and persists the selected name format', async () => {
         savedOptions = {};
         let service = await createService();

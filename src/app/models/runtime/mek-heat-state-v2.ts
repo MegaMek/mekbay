@@ -12,11 +12,14 @@ import type { ComponentId,CriticalSlotId } from '../entity/entity-identifiers';
 import { ImmutableSet } from '../entity/immutable-collections';
 import { MAX_OUTSIDE_HEAT_PER_TURN } from '../rules/inferno-rules';
 import type { UnitWaterState } from '../unit-cover.model';
-import { mekJumpHeat } from '../jump-equipment.model';
+import { mekJumpHeat, wholeJumpJetMp } from '../jump-equipment.model';
 import { isHeatOffset,isHeatValue,settleHeat,type CBTUnitHeatState } from './cbt-unit-runtime';
 import { compileMekHeatProfile,evaluateMekHeatScenarioSupport,type MekHeatProfile,type MekHeatScenarioInput } from './mek-heat-profile';
 import { MAX_MEK_MOVEMENT_MP_V2,type MekMovementHeatInputV2 } from './mek-movement-psr-v2';
 import type { MekRuntimeIndex } from './mek-runtime-index';
+import type { ComponentRuntimeState } from './runtime-state';
+import { POWER_DISABLED_MODE } from './component-electronic-suite';
+import { isPrototypeDoubleHeatSinkEquipment } from '../heat-equipment.model';
 import { canonicalizeMekTurnStateV2,type MekTurnStateV2 } from './mek-turn-state-v2';
 import {
     COMPONENT_HEAT_SOURCE_KINDS,
@@ -51,6 +54,7 @@ export interface MekHeatProjectionV2 {
     readonly committedSources: readonly MekHeatSourceV2[];
     readonly capacity: number;
     readonly underwaterBonus: number;
+    readonly disabledSinkUnits: number;
     /** The turn's settled heat and booked dissipation this projection counts from. */
     readonly ledger: TurnHeatLedger;
     /** Cooling left this turn; negative by the heat sinks lost after APPLY HEAT booked them. */
@@ -124,8 +128,9 @@ export interface MekHeatKernelInputV2 {
     readonly activeElectronicComponents: ReadonlySet<ComponentId>;
     /** Mobile HPG mounts currently charging or transmitting. */
     readonly activeMobileHpgComponents: ReadonlySet<ComponentId>;
-    /** A consumed Coolant Pod doubles the current ordinary sink bank for this turn. */
+    /** A consumed Coolant Pod adds 1 cooling per active heat sink of any type this turn (TO:AUE p. 116). */
     readonly activeCoolantPodComponents: ReadonlySet<ComponentId>;
+    readonly disabledPrototypeHeatSinks: ReadonlySet<ComponentId>;
     readonly ppcCapacitors: readonly {
         readonly capacitorId: ComponentId;
         readonly weaponId: ComponentId;
@@ -155,10 +160,34 @@ export function createPristineMekHeatStateV2(initialHeat = 0): MekHeatStateV2 {
     return Object.freeze({ current: initialHeat, previous: 0, heatsinksOff: 0 });
 }
 
+/**
+ * Legacy saves counted prototype double heat sinks in the bulk heat-sink switch, which on a mixed design now covers
+ * only the other sinks. Returns the bulk count to keep, switching the rest off on prototype doubles one by one, and how
+ * many of those could not be switched off because no prototype double is left on.
+ */
+export function splitLegacyHeatsinksOff(
+    entity: MekEntity,
+    index: MekRuntimeIndex,
+    components: Map<ComponentId, ComponentRuntimeState>,
+    heatsinksOff: number,
+): { readonly heatsinksOff: number; readonly unrepresented: number } {
+    const bulk = Math.min(heatsinksOff, entity.bulkHeatSinkCount());
+    let rest = heatsinksOff - bulk;
+    for (const [componentId, component] of index.components) {
+        if (rest === 0) break;
+        if (component.kind !== 'equipment' || !isPrototypeDoubleHeatSinkEquipment(component.mount.equipment)) continue;
+        const current = components.get(componentId) ?? {};
+        if (current.mode === POWER_DISABLED_MODE) continue;
+        components.set(componentId, Object.freeze({ ...current, mode: POWER_DISABLED_MODE }));
+        rest--;
+    }
+    return { heatsinksOff: bulk, unrepresented: rest };
+}
+
 export function canonicalizeMekHeatStateV2(value: MekHeatStateV2): MekHeatStateV2 {
     if (!isObjectLiteralRecord(value)) throw new Error('Heat state must be a plain object');
     const keys = Object.keys(value);
-    const allowed = new Set(['current', 'previous', 'pendingOverride', 'pendingOffset', 'heatsinksOff']);
+    const allowed = new Set(['current', 'previous', 'pendingOverride', 'pendingOffset', 'heatsinksOff', 'heatsinksOffNext']);
     if (keys.some(key => !allowed.has(key))) throw new Error('Heat state contains an unknown field');
     if (!keys.includes('current') || !keys.includes('previous') || !keys.includes('heatsinksOff')) {
         throw new Error('Heat state is missing a required field');
@@ -174,12 +203,18 @@ export function canonicalizeMekHeatStateV2(value: MekHeatStateV2): MekHeatStateV
         || value.heatsinksOff > MAX_MEK_HEATSINKS_OFF_V2) {
         throw new Error('$.heatsinksOff must be a bounded non-negative integer');
     }
+    if (value.heatsinksOffNext !== undefined && (!Number.isSafeInteger(value.heatsinksOffNext)
+        || value.heatsinksOffNext < 0 || value.heatsinksOffNext > MAX_MEK_HEATSINKS_OFF_V2
+        || value.heatsinksOffNext === value.heatsinksOff)) {
+        throw new Error('$.heatsinksOffNext must be a bounded non-negative integer that changes the switch');
+    }
     return Object.freeze({
         current: value.current,
         previous: value.previous,
         ...(value.pendingOverride === undefined ? {} : { pendingOverride: value.pendingOverride }),
         ...(value.pendingOffset === undefined ? {} : { pendingOffset: value.pendingOffset }),
         heatsinksOff: value.heatsinksOff,
+        ...(value.heatsinksOffNext === undefined ? {} : { heatsinksOffNext: value.heatsinksOffNext }),
     });
 }
 
@@ -216,7 +251,7 @@ export function createMekHeatContextV2(
     }
     const capability = Object.freeze({
         kind: 'supported' as const,
-        maxHeatsinksOff: profileResult.profile.declaredHeatSinkUnits,
+        maxHeatsinksOff: profileResult.profile.bulkHeatSinkUnits,
     });
     const context = Object.freeze({ kind: 'supported' as const });
     HEAT_CONTEXT_BINDINGS.set(context, Object.freeze({
@@ -346,8 +381,10 @@ export function validateMekHeatContextStateV2(
     const blockers: string[] = [];
     // Booked dissipation above what the unit can cool now (sinks lost, a refit) comes back as heat (`projectTurnHeat`).
     const heat = canonicalizeMekHeatStateV2(input.heat);
-    if (heat.heatsinksOff > binding.profile.declaredHeatSinkUnits) {
-        blockers.push(`HEATSINKS_OFF_EXCEEDS_PROFILE:${heat.heatsinksOff}/${binding.profile.declaredHeatSinkUnits}`);
+    for (const off of [heat.heatsinksOff, heat.heatsinksOffNext ?? 0]) {
+        if (off > binding.profile.bulkHeatSinkUnits) {
+            blockers.push(`HEATSINKS_OFF_EXCEEDS_PROFILE:${off}/${binding.profile.bulkHeatSinkUnits}`);
+        }
     }
     return canonicalHeatContextBlockers(blockers);
 }
@@ -480,6 +517,7 @@ export function projectMekHeatV2(
         committedSources: frozenCommitted,
         capacity,
         underwaterBonus: cooling.underwaterBonus,
+        disabledSinkUnits: cooling.disabledSinkUnits,
         ledger: Object.freeze({
             settledHeat: turn.settledHeat,
             ...(turn.heatDissipationConsumed === undefined ? {} : { heatDissipationConsumed: turn.heatDissipationConsumed }),
@@ -575,6 +613,7 @@ export function buildMekHeatKernelInputV2(input: MekHeatKernelInputV2): MekHeatK
         activeElectronicComponents: new ImmutableSet(input.activeElectronicComponents),
         activeMobileHpgComponents: new ImmutableSet(input.activeMobileHpgComponents),
         activeCoolantPodComponents: new ImmutableSet(input.activeCoolantPodComponents),
+        disabledPrototypeHeatSinks: new ImmutableSet(input.disabledPrototypeHeatSinks),
         ppcCapacitors: Object.freeze(input.ppcCapacitors.map(entry => Object.freeze({ ...entry }))),
     });
 }
@@ -585,15 +624,16 @@ function canonicalizeHeatMovement(
     if (value === null) return null;
     if (value === undefined || value === null || typeof value !== 'object'
         || Array.isArray(value) || Object.getPrototypeOf(value) !== Object.prototype
-        || Object.keys(value).some(key => key !== 'mode' && key !== 'distance')
+        || Object.keys(value).some(key => key !== 'mode' && key !== 'distance' && key !== 'jumpJetsFired')
         || !['stationary', 'walk', 'run', 'sprint', 'jump', 'UMU', 'VTOL', 'tracked'].includes(value.mode)
         || !Number.isSafeInteger(value.distance)
         || value.distance < 0
         || value.distance > MAX_MEK_MOVEMENT_MP_V2
+        || (value.jumpJetsFired !== undefined && (value.mode !== 'jump' || !Number.isSafeInteger(value.jumpJetsFired) || value.jumpJetsFired < 0))
         || (value.mode === 'stationary' && value.distance !== 0)) {
         throw new Error('Invalid Mek heat movement input');
     }
-    return Object.freeze({ mode: value.mode, distance: value.distance });
+    return Object.freeze({ ...value });
 }
 
 function buildCommittedHeatSources(
@@ -747,79 +787,73 @@ export function projectMekMovementHeatV2(
 }
 
 function jumpMovementHeat(profile: MekHeatProfile, input: MekMovementHeatFactsV2): number {
-    const workingJumpJets = profile.jump.componentIds.some(
-        componentId => !input.committedUnavailableComponents.has(componentId),
+    const workingJumpJets = profile.jump.jets.filter(
+        jet => !input.committedUnavailableComponents.has(jet.componentId),
     );
     const workingJumpBooster = profile.jump.boosterComponentIds.some(
         componentId => !input.committedUnavailableComponents.has(componentId),
     );
     // MegaMek chooses conventional jets on dual-system Meks; a booster-only
     // jump is the one heatless path.
-    if (workingJumpBooster && !workingJumpJets) return 0;
+    if (input.movement?.jumpJetsFired === undefined && workingJumpBooster && wholeJumpJetMp(workingJumpJets) === 0) return 0;
     const destroyedWingCriticals = profile.partialWing?.criticalSlotIds
         .filter(slotId => input.committedUnavailableCriticalSlots.has(slotId)).length ?? 0;
     const wingReduction = profile.partialWing === undefined
         ? 0
         : Math.max(0, profile.partialWing.jumpHeatDistanceReduction - destroyedWingCriticals);
     const heatDistance = Math.max(0, (input.movement?.distance ?? 0) - wingReduction);
-    const workingJumpKind = workingJumpJets && profile.jump.kind !== 'none' ? profile.jump.kind : 'standard';
-    return mekJumpHeat(profile.engine.jumpHeat, workingJumpKind, heatDistance);
+    const workingJumpKind = (workingJumpJets.length > 0 || input.movement?.jumpJetsFired !== undefined) && profile.jump.kind !== 'none' ? profile.jump.kind : 'standard';
+    return mekJumpHeat(profile.engine.jumpHeat, workingJumpKind, heatDistance,
+        workingJumpJets.map(jet => jet.mpContribution), input.movement?.jumpJetsFired);
 }
 
 function committedCoolingCapacity(
     profile: MekHeatProfile,
     input: MekHeatKernelInputV2,
     heatsinksOff: number,
-): { readonly capacity: number; readonly underwaterBonus: number } {
-    let baseCapacity = profile.baseDissipation;
-    let damagedHeatSinkCount = 0;
+): { readonly capacity: number; readonly underwaterBonus: number; readonly disabledSinkUnits: number } {
+    let baseCapacity = 0;
+    let functioningHeatSinkCount = 0;
+    let submergedCapacity = 0;
+    let remainingOff = heatsinksOff;
+    let disabledSinkUnits = 0;
+    // IO:AE p. 88. Each damaged super-cooled myomer slot takes one surviving sink out of service.
+    let myomerLoss = profile.superCooledMyomer.criticalSlotIds
+        .filter(slotId => input.committedUnavailableCriticalSlots.has(slotId)).length;
+    // The bulk switch leaves leg sinks on as long as possible, as the sheet's anonymous pips always have.
     for (const heatSink of profile.heatSinks) {
-        if (heatSink.criticalSlotIds.some(slotId => input.committedDestroyedCriticalSlots.has(slotId))) {
-            baseCapacity -= heatSink.dissipation;
-            damagedHeatSinkCount += 1;
-        }
+        if (heatSink.criticalSlotIds.some(slotId => input.committedDestroyedCriticalSlots.has(slotId))) continue;
+        const lost = Math.min(myomerLoss, heatSink.units);
+        myomerLoss -= lost;
+        const surviving = heatSink.units - lost;
+        const individuallyOff = heatSink.prototype && input.disabledPrototypeHeatSinks.has(heatSink.componentId);
+        const inBulk = !heatSink.prototype || profile.bulkHeatSinkUnits === profile.declaredHeatSinkUnits;
+        const bulkOff = inBulk && !individuallyOff ? Math.min(remainingOff, surviving) : 0;
+        const disabled = individuallyOff ? surviving : bulkOff;
+        remainingOff -= bulkOff;
+        disabledSinkUnits += disabled;
+        const active = surviving - disabled;
+        const cooling = active * heatSink.dissipationPerUnit;
+        baseCapacity += cooling;
+        functioningHeatSinkCount += active;
+        if (input.water.submerged || input.water.partiallyUnderwater && heatSink.legMounted) submergedCapacity += cooling;
     }
-    baseCapacity -= heatsinksOff * profile.dissipationPerDisabledSink;
-    baseCapacity = Math.max(0, baseCapacity);
-
-    let underwaterBonus = 0;
-    if (input.water.submerged) {
-        underwaterBonus = Math.min(6, baseCapacity);
-    } else if (input.water.partiallyUnderwater) {
-        const functioningHeatSinkCount = Math.max(
-            0,
-            profile.declaredHeatSinkUnits - damagedHeatSinkCount - heatsinksOff,
-        );
-        underwaterBonus = Math.min(6, profile.heatSinks
-            .filter(heatSink => heatSink.legMounted
-                && !heatSink.criticalSlotIds.some(slotId =>
-                    input.committedDestroyedCriticalSlots.has(slotId)))
-            .sort((left, right) => right.dissipation - left.dissipation)
-            .slice(0, functioningHeatSinkCount)
-            .reduce((total, heatSink) => total + heatSink.dissipation, 0));
-    }
+    const underwaterBonus = Math.min(6, submergedCapacity);
 
     let capacity = baseCapacity + underwaterBonus;
-    const destroyedScmCriticals = profile.superCooledMyomer.criticalSlotIds
-        .filter(slotId => input.committedUnavailableCriticalSlots.has(slotId)).length;
-    capacity -= destroyedScmCriticals * profile.superCooledMyomer.dissipationLossPerCriticalHit;
-    capacity = Math.max(0, capacity);
     const radicalHeatSinkCount = profile.providers.filter(provider =>
         provider.kind === 'radical-heat-sink'
         && input.activeEscalatingFailureComponents.has(provider.componentId)
         && !input.committedUnavailableComponents.has(provider.componentId)).length;
     if (!input.destroyed && !input.shutdown && radicalHeatSinkCount > 0) {
-        capacity += radicalHeatSinkCount * Math.max(
-            0,
-            profile.declaredHeatSinkUnits - damagedHeatSinkCount - heatsinksOff,
-        );
+        capacity += radicalHeatSinkCount * functioningHeatSinkCount;
     }
     if (!input.destroyed && !input.shutdown
         && input.activeCoolantPodComponents.size > 0
         && radicalHeatSinkCount === 0
         && [...input.activeCoolantPodComponents].some(componentId =>
             !input.committedUnavailableComponents.has(componentId))) {
-        capacity += baseCapacity;
+        capacity += functioningHeatSinkCount;
     }
     if (profile.partialWing) {
         const destroyedWingCriticals = profile.partialWing.criticalSlotIds
@@ -830,7 +864,7 @@ function committedCoolingCapacity(
                 - destroyedWingCriticals * profile.partialWing.dissipationLossPerCriticalHit,
         );
     }
-    return Object.freeze({ capacity, underwaterBonus });
+    return Object.freeze({ capacity, underwaterBonus, disabledSinkUnits });
 }
 
 function assertHeatValue(value: number, path: string): void {

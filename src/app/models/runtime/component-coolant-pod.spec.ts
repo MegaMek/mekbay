@@ -12,16 +12,13 @@ import {
 } from './testing/direct-mek-runtime-fixture';
 
 describe('direct coolant-pod runtime', () => {
-    it('spends one pod atomically, doubles the working sink bank, and resets after End Turn', () => {
+    it('spends one pod atomically, adds a point per working sink, and resets after End Turn', () => {
         const fixture = createDirectCoolantPodRuntimeFixture();
         const [first, second] = coolantPods(fixture);
 
-        expect(fixture.instance.dispatch({
-            type: 'set-heatsinks-off',
-            
-            
-            heatsinksOff: 3,
-        }).accepted).toBeTrue();
+        // Switched-off sinks stop dissipating once the End Phase passes (Core p. 103).
+        expect(fixture.instance.dispatch({ type: 'set-heatsinks-off', heatsinksOff: 3 }).accepted).toBeTrue();
+        expect(fixture.instance.dispatch({ type: 'end-turn', policy: 'automatic' }).accepted).toBeTrue();
         expect(fixture.instance.dispatch({
             type: 'set-heat',
             
@@ -73,6 +70,8 @@ describe('direct coolant-pod runtime', () => {
         expect(heatCapacity(fixture)).toBe(10);
     });
 
+    // Core pp. 103, 208: the pod has no effect in the turn the radical system is engaged (TW units can't mount both,
+    // IO:AE p. 83).
     it('consumes the pod without stacking with an active Radical Heat Sink', () => {
         const fixture = createDirectCoolantPodRuntimeFixture('core-2026', true);
         const [pod] = coolantPods(fixture);
@@ -80,8 +79,6 @@ describe('direct coolant-pod runtime', () => {
 
         expect(fixture.instance.dispatch({
             type: 'edit-escalating-failure',
-            
-            
             componentId: radical.id,
             edit: { kind: 'select-sequence', index: 0 },
         }).accepted).toBeTrue();

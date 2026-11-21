@@ -56,6 +56,10 @@ export function createDirectMekRuntimeFixture(
     return createFixture(ruleset, instanceId, { gyroType });
 }
 
+export function createMixedHeatSinkFixture(ruleset: CBTRuleset): DirectMekRuntimeFixture {
+    return createFixture(ruleset, 'unit:mixed-sinks', { prototypeSink: true });
+}
+
 export function createDirectHotLoadedAmmoRuntimeFixture(
     enabled = true,
     ruleset: CBTRuleset = CORE_2026_RULESET,
@@ -179,6 +183,14 @@ export function createDirectFlamerRuntimeFixture(
     return createFixture(ruleset, instanceId, { includeFlamer: true });
 }
 
+/** A Streak SRM-2 with its ammunition plus a pristine sparse runtime. */
+export function createDirectStreakRuntimeFixture(
+    ruleset: CBTRuleset = CORE_2026_RULESET,
+    instanceId = 'unit:direct-streak-fixture',
+): DirectMekRuntimeFixture {
+    return createFixture(ruleset, instanceId, { includeStreak: true });
+}
+
 /** Parsed RISC Laser Pulse Module-to-laser link plus a pristine sparse runtime. */
 export function createDirectRiscLaserPulseRuntimeFixture(
     ruleset: CBTRuleset = CORE_2026_RULESET,
@@ -192,7 +204,11 @@ export function createDirectLaserInsulatorRuntimeFixture(
     ruleset: CBTRuleset = CORE_2026_RULESET,
     instanceId = 'unit:direct-laser-insulator-fixture',
 ): DirectMekRuntimeFixture {
-    return createFixture(ruleset, instanceId, { includeLaserInsulator: true });
+    return createFixture(ruleset, instanceId, { laserInsulators: 1 });
+}
+
+export function createMultiAttachmentLaserFixture(ruleset: CBTRuleset): DirectMekRuntimeFixture {
+    return createFixture(ruleset, 'unit:multi-attachment', { includeRiscLaserPulse: true, laserInsulators: 2 });
 }
 
 /** Parsed Apollo-to-MRM link plus a pristine sparse runtime. */
@@ -237,8 +253,8 @@ export function createDirectEscalatingFailureRuntimeFixture(
 
 /** Parsed Mek carrying the production immediate-explosion equipment families. */
 export interface DirectExplosionRuntimeFixtureOptions {
-    readonly structure?: 'Standard' | 'Composite';
-    readonly protection?: 'case' | 'case-ii' | 'both';
+    readonly structure?: 'Standard' | 'Composite' | 'Clan Standard';
+    readonly protection?: 'case' | 'case-ii' | 'both' | 'prototype';
 }
 
 export function createDirectExplosionRuntimeFixture(
@@ -475,11 +491,13 @@ interface DirectFixtureOptions {
     readonly hotLoadedAmmo?: boolean;
     readonly forcedWithdrawal?: boolean;
     readonly sprinting?: boolean;
+    readonly prototypeSink?: boolean;
     readonly includePartialWing?: boolean;
     readonly includeBombast?: boolean;
     readonly includeFlamer?: boolean;
+    readonly includeStreak?: boolean;
     readonly includeRiscLaserPulse?: boolean;
-    readonly includeLaserInsulator?: boolean;
+    readonly laserInsulators?: number;
     readonly includeApollo?: boolean;
     readonly includeTargetingComputer?: boolean;
     readonly includeAes?: boolean;
@@ -496,8 +514,8 @@ interface DirectFixtureOptions {
     readonly includeJetBooster?: boolean;
     readonly includeEscalatingFailureEquipment?: boolean;
     readonly includeExplosionEquipment?: boolean;
-    readonly structure?: 'Standard' | 'Composite';
-    readonly explosionProtection?: 'case' | 'case-ii' | 'both';
+    readonly structure?: 'Standard' | 'Composite' | 'Clan Standard';
+    readonly explosionProtection?: 'case' | 'case-ii' | 'both' | 'prototype';
     readonly includeC3Master?: boolean;
     readonly includeBap?: boolean;
     readonly includeElectronicSuite?: boolean;
@@ -616,7 +634,7 @@ function directMekEquipmentRegistry() {
     });
     const laser = new WeaponEquipment({
         id: 'ISMediumLaser', name: 'Medium Laser', type: 'weapon',
-        flags: ['F_ENERGY', 'F_LASER', 'F_DIRECT_FIRE'], stats: { criticalSlots: 1, bv: 46 },
+        flags: ['F_ENERGY', 'F_LASER', 'F_DIRECT_FIRE', 'F_RISC_LASER_PULSE_COMPATIBLE'], stats: { criticalSlots: 1, bv: 46 },
         weapon: { damage: 5, heat: 3, ranges: [3, 6, 9, 12] },
     });
     const prototypeLaser = new WeaponEquipment({
@@ -666,6 +684,16 @@ function directMekEquipmentRegistry() {
         id: 'Test MG Ammo', name: 'Machine Gun Ammo', type: 'ammo',
         stats: { criticalSlots: 1, bv: 1 },
         ammo: { type: 'MG', rackSize: 2, shots: 20, damagePerShot: 2 },
+    });
+    const streak = new WeaponEquipment({
+        id: 'Test Streak SRM 2', name: 'Test Streak SRM 2', type: 'weapon',
+        flags: ['F_MISSILE'], stats: { criticalSlots: 1, bv: 30 },
+        weapon: { ammoType: 'SRM_STREAK', rackSize: 2, damage: 2, heat: 2, ranges: [0, 3, 6, 9] },
+    });
+    const streakAmmo = new AmmoEquipment({
+        id: 'Test Streak SRM 2 Ammo', name: 'Test Streak SRM 2 Ammo', type: 'ammo',
+        stats: { bv: 4, explosive: true },
+        ammo: { type: 'SRM_STREAK', rackSize: 2, shots: 50, damagePerShot: 2 },
     });
     const flamer = new WeaponEquipment({
         id: 'Test Flamer', name: 'Test Flamer', type: 'weapon',
@@ -933,7 +961,16 @@ function directMekEquipmentRegistry() {
         id: 'Test CASE II', name: 'CASE II', type: 'misc',
         flags: ['F_CASE_II'], stats: { criticalSlots: 1, hittable: false },
     });
+    const prototypeCaseEquipment = new MiscEquipment({
+        id: 'Test CASE-P', name: 'CASE-P (Prototype)', type: 'misc',
+        flags: ['F_CASE_P'], stats: { criticalSlots: 1, hittable: false },
+    });
+    const prototypeSink = new MiscEquipment({
+        id: 'ISDoubleHeatSinkPrototype', name: 'Double Heat Sink Prototype', type: 'misc',
+        flags: ['F_IS_DOUBLE_HEAT_SINK_PROTOTYPE'], stats: { criticalSlots: 3 },
+    });
     return createTestEquipmentRegistry({
+        [prototypeSink.id]: prototypeSink,
         [compositeStructure.id]: compositeStructure,
         [industrialStructure.id]: industrialStructure,
         [laser.id]: laser,
@@ -947,6 +984,8 @@ function directMekEquipmentRegistry() {
         [machineGun.id]: machineGun,
         [machineGunAmmo.id]: machineGunAmmo,
         [flamer.id]: flamer,
+        [streak.id]: streak,
+        [streakAmmo.id]: streakAmmo,
         [ammo.id]: ammo,
         [mml.id]: mml,
         [atm.id]: atm,
@@ -1005,6 +1044,7 @@ function directMekEquipmentRegistry() {
         [coolantPod.id]: coolantPod,
         [caseEquipment.id]: caseEquipment,
         [caseIIEquipment.id]: caseIIEquipment,
+        [prototypeCaseEquipment.id]: prototypeCaseEquipment,
     });
 }
 
@@ -1015,8 +1055,9 @@ function directMekMtf(options: DirectFixtureOptions): string {
     if (options.includeMachineGunArray) return directMachineGunArrayMtf();
     const includeBombast = options.includeBombast ?? false;
     const includeFlamer = options.includeFlamer ?? false;
+    const includeStreak = options.includeStreak ?? false;
     const includeRiscLaserPulse = options.includeRiscLaserPulse ?? false;
-    const includeLaserInsulator = options.includeLaserInsulator ?? false;
+    const laserInsulators = options.laserInsulators ?? 0;
     const includeApollo = options.includeApollo ?? false;
     const includeTargetingComputer = options.includeTargetingComputer ?? false;
     const includeDroneOperatingSystem = options.includeDroneOperatingSystem ?? false;
@@ -1048,8 +1089,10 @@ function directMekMtf(options: DirectFixtureOptions): string {
         : includeClaw ? 275 : includeVibroblade ? 300 : 100;
     const cockpit = tripod ? 'Tripod' : options.industrial ? 'Industrial' : options.cockpitType;
     const rightTorsoEquipment = [
+        ...(options.prototypeSink ? Array(3).fill('ISDoubleHeatSinkPrototype') : []),
         ...(includeBombast ? ['Test Bombast Laser'] : []),
         ...(includeFlamer ? ['Test Flamer'] : []),
+        ...(includeStreak ? ['Test Streak SRM 2', 'Test Streak SRM 2 Ammo'] : []),
         ...(includeTargetingComputer ? ['IS Targeting Computer'] : []),
         ...(includeDroneOperatingSystem ? ['Test Drone Operating System'] : []),
         ...(includeModularArmor ? ['Test Modular Armor', 'Test Jump Jet'] : []),
@@ -1085,18 +1128,18 @@ function directMekMtf(options: DirectFixtureOptions): string {
             ? ['Test CASE'] : []),
         ...(options.explosionProtection === 'case-ii' || options.explosionProtection === 'both'
             ? ['Test CASE II'] : []),
+        ...(options.explosionProtection === 'prototype' ? ['Test CASE-P'] : []),
     ];
     const leftArmEquipment = [
         'ISMediumLaser',
         ...(includeRiscLaserPulse ? ['Test RISC Laser Pulse Module'] : []),
-        ...(includeLaserInsulator ? ['Test Laser Insulator'] : []),
+        ...Array<string>(laserInsulators).fill('Test Laser Insulator'),
         'Test AC',
         options.sharedAmmoSlot ? 'Test Ammo|Test Ammo' : 'Test Ammo',
         'Test MML',
-        'Test ATM',
-        'Test ATM Ammo',
+        ...(laserInsulators > 1 ? [] : ['Test ATM', 'Test ATM Ammo']),
         'Test PPC',
-        ...(!includeRiscLaserPulse && !includeLaserInsulator
+        ...(!includeRiscLaserPulse && !laserInsulators
             ? [includePairedArmAes ? 'Test AES' : 'Test PPC Capacitor']
             : []),
     ];
@@ -1160,7 +1203,7 @@ mass:${mass}
 engine:${engine} ${options.engineType ?? 'Fusion'} Engine
 ${cockpit ? `cockpit:${cockpit}\n` : ''}gyro:${options.gyroType ?? 'Standard'}
 structure:${options.industrial ? 'Industrial' : options.structure ?? 'Standard'}
-heat sinks:10 Single
+heat sinks:${options.prototypeSink ? '11 Single' : '10 Single'}
 walk mp:${options.baseWalkMp ?? 5}
 jump mp:${includeModularArmor ? 2 : 0}
 armor:Standard(Inner Sphere)

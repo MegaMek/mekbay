@@ -150,7 +150,9 @@ documented in [STYLES.md](STYLES.md).
 ## Grouped inventories
 
 `recordSheetGroupWeapons` (Classic BattleTech options and the print dialog) counts
-identical weapons on one inventory row under a `#` column. It is a record-sheet
+identical weapons on one inventory row under a `#` column: `enabled` on every
+sheet, `previews` (the default) only on the unit details sheet preview
+(`svg-viewer-lite` `previewGrouping`), `disabled` nowhere. It is a record-sheet
 presentation only; the equipment dialog and tactical view keep a row per weapon.
 `record-sheet-weapon-grouping.ts` owns it:
 

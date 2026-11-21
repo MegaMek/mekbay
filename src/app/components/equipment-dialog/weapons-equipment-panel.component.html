@@ -153,7 +153,7 @@
                                         @if (machineGunArrayMemberSummary(row); as summary) {
                                             <span class="mga-membership-badge">{{ summary }}</span>
                                         }
-                                        @for (modifier of row.modifiers; track modifier.name) {
+                                        @for (modifier of row.modifiers; track $index) {
                                             <span class="modifier"
                                                 [class.destroyed]="modifier.status === 'destroyed'"
                                                 [class.fired]="modifier.status === 'fired'"

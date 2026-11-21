@@ -533,8 +533,10 @@ export class PageViewerMekInteractionService {
     ): void {
         const unit = this.currentMekUnit(member, interaction.context);
         if (!unit) return;
-        this.overlays.openActiveHeatSinksPicker(member.id, event, unit.entity.totalHeatSinks(),
-            unit.query.heatState().heatsinksOff, heatsinksOff => void this.dispatchDirect(member, interaction, heatsinksOff));
+        const count = unit.entity.bulkHeatSinkCount();
+        this.overlays.openActiveHeatSinksPicker(member.id, event, count, unit.query.heatState().heatsinksOffNext ?? unit.query.heatState().heatsinksOff,
+            heatsinksOff => void this.dispatchDirect(member, interaction, heatsinksOff),
+            count === unit.entity.totalHeatSinks() ? 'Active Heatsinks' : 'Active Single Heat Sinks');
     }
 
     private async promptHeat(
@@ -1013,7 +1015,7 @@ export class PageViewerMekInteractionService {
         if (!unit) return null;
         return Object.freeze({
             query: unit.query,
-            heatSinkCount: unit.entity.totalHeatSinks(),
+            heatSinkCount: unit.entity.bulkHeatSinkCount(),
         });
     }
 

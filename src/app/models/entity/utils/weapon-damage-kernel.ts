@@ -12,6 +12,13 @@ export interface WeaponDamageFacts {
   readonly rapidFireCount: number;
 }
 
+/**
+ * A Fusillade: the ProtoMek launcher of iATM munitions, which lacks the iATM's Streak-like features (IO:AE p. 59).
+ */
+export function isFusilladeLauncher(weapon: Pick<WeaponDamageFacts, 'ammoType' | 'flags'>): boolean {
+  return weapon.ammoType === 'IATM' && weapon.flags.has('F_PROTO_WEAPON');
+}
+
 export interface AmmoDamageFacts {
   readonly damagePerShot: number;
 }
@@ -40,7 +47,11 @@ export function resolveWeaponDamageFacts(
   if (damage === 'special' && weapon.oneShotCount > 0 && ammo) {
     return fixedDamage(ammo.damagePerShot);
   }
-  if (damage === 'cluster') return resolveClusterDamage(weapon, ammo);
+  // A Fusillade "must roll on the 3 column of the Cluster Hits Table upon any successful attack" (IO:AE p. 59), each
+  // missile doing its loaded ammunition's damage.
+  if (damage === 'cluster' || isFusilladeLauncher(weapon)) {
+    return resolveClusterDamage(weapon, ammo);
+  }
   if (damage === 'artillery') return fixedDamage(weapon.rackSize, 'artillery');
   if (damage === 'variable') {
     return fixedDamage(weapon.id === 'CLPlasmaCannon' ? 0 : weapon.rackSize);

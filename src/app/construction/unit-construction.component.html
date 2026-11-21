@@ -1572,6 +1572,9 @@
                 @for (location of column; track location.id) {
                   <article
                     class="location-card"
+                    [class.invalid-donor]="!!location.donorIssue"
+                    [attr.aria-invalid]="location.donorIssue ? true : null"
+                    [attr.title]="location.donorIssue ?? null"
                     [class.selected-location]="selectedLocation() === location.id"
                     [attr.data-location]="location.id"
                   >
@@ -1811,6 +1814,7 @@
                                       step="5"
                                       [attr.aria-label]="location.label + ' donor structure tonnage'"
                                       [ngModel]="donorTonnage(location.id)"
+                                      [ngModelOptions]="{ updateOn: 'blur' }"
                                       (ngModelChange)="setStructure(structureAt(location.id), location.id, $event)"
                                       [disabled]="!designEditing()"
                                   /></label>
@@ -2766,24 +2770,27 @@
           }
         </div>
         <fieldset class="system-armor-controls">
-          <legend>Critical-slot armor</legend>
+          <legend>Component armor</legend>
           @let armorIssue = componentArmorIssue(system.system);
           @if (armorIssue) {
             <p class="muted">{{ armorIssue }}</p>
           }
-          @for (slot of selectedSystemSlots(); track slot.location + ':' + slot.index) {
-            @if (!armorIssue || slot.armored) {
-              <label
-                ><input
-                  class="bt-checkbox"
-                  type="checkbox"
-                  [ngModel]="slot.armored"
-                  (ngModelChange)="setSystemArmored(slot.location, slot.index, $event)"
-                  [disabled]="!designEditing()"
-                />
-                {{ locationLabel(slot.location) }} · Slot {{ slot.index + 1 }}</label
-              >
-            }
+          @let slots = selectedSystemSlots();
+          @let armoredSlots = selectedSystemArmoredSlots();
+          @if (slots.length && (!armorIssue || armoredSlots)) {
+            <label
+              ><input
+                class="bt-checkbox"
+                type="checkbox"
+                [ngModel]="armoredSlots > 0"
+                (ngModelChange)="setSystemArmored(slots[0].location, slots[0].index, $event)"
+                [disabled]="!designEditing()"
+              />
+              Armored · all {{ slots.length }} critical slots
+              @if (armoredSlots && armoredSlots < slots.length) {
+                ({{ armoredSlots }} armored)
+              }</label
+            >
           }
         </fieldset>
         @if (removableSystem(system.location, system.system)) {

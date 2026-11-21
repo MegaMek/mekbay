@@ -97,6 +97,29 @@ describe('Entity equipment panel projection', () => {
         });
     });
 
+    it('adds linked Artemis IV to an aerospace launcher\'s attack values, as the sheet prints them', () => {
+        const weapon = new WeaponEquipment({
+            id: 'AeroLRM20', name: 'LRM 20', type: 'weapon', flags: ['F_ARTEMIS_COMPATIBLE', 'F_MISSILE'],
+            weapon: { ammoType: 'LRM', rackSize: 20, damage: 'cluster', ranges: [7, 14, 21, 28], av: [12, 12, 12] },
+        });
+        const ammo = new AmmoEquipment({
+            id: 'AeroLRM20ArtemisAmmo', name: 'Artemis ammo', type: 'ammo',
+            ammo: { type: 'LRM', rackSize: 20, shots: 6, munitionType: ['M_ARTEMIS_CAPABLE'] },
+        });
+        const entity = new TestAeroSpaceFighterEntity(createTestEquipmentRegistry({ [weapon.id]: weapon, [ammo.id]: ammo }));
+        entity.uuid.set(UUID);
+        const location = entity.locationOrder[0];
+        const mount = addTestEquipment(entity, weapon, { location });
+        entity.linkEquipment(addTestEquipmentWithFlags(entity, 'F_ARTEMIS', { location }), mount);
+        addTestEquipment(entity, ammo, { location, shotsCount: 6 });
+        const runtime = createNonMekRuntimeForTest('unit:fighter-artemis-iv', baseline(), entity, CORE_2026_RULESET);
+
+        const row = projectNonMekEquipmentPanel(entity, runtime.getIndex(), CORE_2026_RULESET, runtime.snapshot(),
+            runtime.query(), { revision: 0, targets: [] }, {}).components.find(component => component.weapon !== undefined)!;
+        // TW p. 303: an LRM 20 is 12, or 16 with Artemis IV
+        expect(row.weapon?.aerospace?.attackValues).toEqual([16, 16, 16, 0]);
+    });
+
     for (const ruleset of [CORE_2026_RULESET, TOTAL_WARFARE_RULESET]) {
         it(`uses linked vehicle Artemis V only for operational direct fire with matching ammo in ${ruleset}`, () => {
             const weapon = new WeaponEquipment({

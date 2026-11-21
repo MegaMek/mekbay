@@ -73,10 +73,15 @@ describe('Mek jump into water', () => {
         expect(instance.query().mekPilotChecks()).toEqual([jasmine.objectContaining({ immediate: true, status: 'pending' })]);
     });
 
-    it('rolls under Core too, the water set before the jump', () => {
+    it('rejects takeoff from depth two and raises a Core landing check when jumping into it', () => {
         const { instance } = createDirectShieldRuntimeFixture('core-2026', 'small', 'unit:jump-water-core');
         expect(water(instance, 2).changed).toBeTrue();
+        expect(instance.dispatch(jump).changed).toBeFalse();
+        expect(instance.snapshot().movementPsr.movement).toBeNull();
+        expect(checks(instance)).toEqual([]);
+        water(instance, 0);
         expect(instance.dispatch(jump).accepted).toBeTrue();
+        water(instance, 2);
         expect(checks(instance)).toEqual([['Jumped into water', piloting(instance), 'pending']]);
     });
 });

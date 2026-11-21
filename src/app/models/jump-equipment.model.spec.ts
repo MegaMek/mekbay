@@ -11,7 +11,7 @@ describe('jump equipment', () => {
 
     it('distinguishes primitive prototype jets from prototype improved jets', () => {
         expect(jumpJetKind(jumpJet(['F_JUMP_JET']))).toBe('standard');
-        expect(jumpJetKind(jumpJet(['F_JUMP_JET', 'S_PROTOTYPE']))).toBe('standard');
+        expect(jumpJetKind(jumpJet(['F_JUMP_JET', 'S_PROTOTYPE']))).toBe('primitive-prototype');
         expect(jumpJetKind(jumpJet(['F_JUMP_JET', 'S_IMPROVED']))).toBe('improved');
         expect(jumpJetKind(jumpJet(['F_JUMP_JET', 'S_IMPROVED', 'S_PROTOTYPE'])))
             .toBe('prototype-improved');

@@ -7,7 +7,7 @@ import { BUILDING_CLASSES, BUILDING_TYPES, BUILDING_SIDE_LABELS, buildingLocatio
 import { buildingCapitalWeapon, buildingElevatorRange } from '../../../models/entity/utils/building-construction';
 import { buildingDoorGroups, buildingLinkedDoorGeometry } from '../../../models/entity/utils/building-doors';
 import { getBayRecordSheetName, getBayRecordSheetCapacity } from '../../../models/entity/bays/bay-definitions';
-import { appendRecordSheetAmmoProfile, markAmmoInventory, measureRecordSheetAmmoProfile } from '../record-sheet-ammo-rendering';
+import { appendRecordSheetAmmoProfile, measureRecordSheetAmmoProfile } from '../record-sheet-ammo-rendering';
 import { recordSheetInventoryMountName } from '../record-sheet-inventory-equipment';
 import { appendInventoryRowButtons, inventoryCellLines, inventoryRangeButtons, inventoryRangeColumns, fitInventoryText, MIN_INVENTORY_FONT, MIN_INVENTORY_LINE_RATIO } from '../inventory-text-layout';
 import { addText, formatNumber, recordSheetAmmoProfile, recordSheetInventoryWeapons, setAttributes,
@@ -21,6 +21,20 @@ interface InventoryRow {
     readonly note?: boolean;
     readonly mode?: { readonly name: string };
 }
+/**
+ * Columns of the 224-wide panel, after the Mek inventory: a count, the name, the hex/location, then damage start-aligned
+ * with room for its specials, before the range boxes.
+ */
+const COUNT_X = 8.41;
+const NAME_X = 13.82;
+const LOCATION_X = 99;
+const LOCATION_WIDTH = 24;
+const DAMAGE_X = 115;
+const DAMAGE_WIDTH = 47;
+const NAME_WIDTH = LOCATION_X - LOCATION_WIDTH / 2 - 2 - NAME_X;
+/** Notes run under the whole row, to the range boxes' right edge. */
+const NOTE_WIDTH = 211 - NAME_X;
+
 export interface BuildingInventoryPage {
     readonly rows: readonly InventoryRow[];
     readonly fontSize: number;
@@ -134,7 +148,8 @@ function inventoryRows(entity: StaticEmplacementEntity): InventoryRow[] {
 function wrapRows(rows: readonly InventoryRow[], fontSize: number, width: number): InventoryRow[] {
     return rows.flatMap(row => {
         const cells = row.cells.map((value, column) => inventoryCellLines(value,
-            (column === 1 ? row.note ? 187 : 77 : column === 2 ? 30 : column === 3 ? 20 : 12) * width / 224, fontSize));
+            (column === 1 ? row.note ? NOTE_WIDTH : NAME_WIDTH : column === 2 ? LOCATION_WIDTH : column === 3 ? DAMAGE_WIDTH : 12) * width / 224,
+            fontSize));
         return Array.from({ length: Math.max(1, ...cells.map(lines => lines.length)) }, (_, index) => ({
             ...row, cells: cells.map(lines => lines[index] ?? '') }));
     });
@@ -181,15 +196,16 @@ export function drawBuildingInventory(group: SVGGElement, entity: StaticEmplacem
     const scale = width / 224;
     const columns = inventoryRangeColumns(7, 220);
     const buttons = inventoryRangeButtons(columns, x => x * scale);
-    const xs = [12, 24, 119, 147, ...columns.ranges].map(x => x * scale);
-    addText(group, 'Weapons & Equipment Inventory', 9, 14, { size: 8.6, weight: 700, maxWidth: width - 42 });
-    addText(group, '(hexes)', width - 9, 14, { size: 6, anchor: 'end' });
-    ['Qty', 'Type', 'Hex/Loc', 'Dmg', 'Min', 'Sht', 'Med', 'Lng'].forEach((label, index) =>
-        addText(group, label, xs[index], 27, { size: 6, weight: 700, anchor: index === 1 ? 'start' : 'middle' }));
+    const xs = [COUNT_X, NAME_X, LOCATION_X, DAMAGE_X, ...columns.ranges].map(x => x * scale);
+    // Name and damage start at their column; the rest centre on theirs.
+    const anchor = (column: number) => column === 1 || column === 3 ? 'start' : 'middle';
+    addText(group, 'Weapons & Equipment Inventory', 9, 14, { size: RECORD_SHEET_FONT.section, weight: 700, maxWidth: width - 42 });
+    addText(group, '(hexes)', width - 9, 14, { size: RECORD_SHEET_FONT.inventory, anchor: 'end' });
+    ['#', 'Type', 'Hex/Loc', 'Dmg', 'Min', 'Sht', 'Med', 'Lng'].forEach((label, index) =>
+        addText(group, label, xs[index], 27, { size: RECORD_SHEET_FONT.inventory, weight: 700, anchor: anchor(index) }));
     if (!page) return;
     const { fontSize, lineStep } = page;
     const rows = svgElement('g');
-    markAmmoInventory(rows, { top: 32, bottom: height - 8, contentBottom: 32 + page.rows.length * lineStep });
     group.appendChild(rows);
     const groups = new Map<number, SVGGElement>();
     page.rows.forEach((row, index) => {
@@ -216,8 +232,7 @@ export function drawBuildingInventory(group: SVGGElement, entity: StaticEmplacem
         row.cells.forEach((value, column) => {
             if (!value) return;
             const classes = ['qty', 'name', 'location', 'damage', 'range_min', 'range_short', 'range_medium', 'range_long'];
-            addText(parent, value, xs[column], y, { class: classes[column], size: fontSize,
-                anchor: column === 1 ? 'start' : 'middle' });
+            addText(parent, value, xs[column], y, { class: classes[column], size: fontSize, anchor: anchor(column) });
         });
     });
     appendRecordSheetAmmoProfile(group, recordSheetAmmoProfile(entity), {

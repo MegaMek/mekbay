@@ -9,9 +9,12 @@ import {
     activeProbeEffectivelyPowered,
     electronicComponentModes,
     effectiveEcmMode,
+    isBulkSwitchedPrototypeHeatSink,
     isPowerControlledEquipment,
     type ElectronicComponentFact,
 } from './component-electronic-suite';
+import { TestBipedMekEntity } from '../entity/testing/test-entities';
+import { addTestEquipment } from '../entity/testing/test-mounted-equipment';
 import { createDirectElectronicSuiteRuntimeFixture } from './testing/direct-mek-runtime-fixture';
 
 describe('direct electronic-suite lifecycle', () => {
@@ -23,8 +26,23 @@ describe('direct electronic-suite lifecycle', () => {
             expect(isPowerControlledEquipment(equipment(flag))).withContext(flag).toBeTrue();
         }
         expect(isPowerControlledEquipment(equipment('F_EI_INTERFACE'))).toBeTrue();
-        expect(isPowerControlledEquipment(equipment('F_EI_INTERFACE'), true)).toBeFalse();
+        expect(isPowerControlledEquipment(equipment('F_EI_INTERFACE'), 'ProtoMek')).toBeFalse();
         expect(electronicComponentModes(equipment('F_TAG'))).toBeNull();
+    });
+
+    it('gives a prototype double heat sink its own switch only beside other heat sinks', () => {
+        const prototype = new MiscEquipment({ id: 'ISDoubleHeatSinkPrototype', name: 'Double Heat Sink Prototype',
+            type: 'misc', flags: ['F_IS_DOUBLE_HEAT_SINK_PROTOTYPE'] });
+        const single = new MiscEquipment({ id: 'Heat Sink', name: 'Heat Sink', type: 'misc', flags: ['F_HEAT_SINK'] });
+        const entity = new TestBipedMekEntity();
+        addTestEquipment(entity, prototype, { location: 'RT' });
+        addTestEquipment(entity, prototype, { location: 'LT' });
+        // Only prototype doubles: the bulk switch covers them all.
+        expect(isBulkSwitchedPrototypeHeatSink(entity, prototype)).toBeTrue();
+        addTestEquipment(entity, single, { location: 'CT' });
+        // Beside a single sink, each prototype double switches at its own mount.
+        expect(isBulkSwitchedPrototypeHeatSink(entity, prototype)).toBeFalse();
+        expect(isBulkSwitchedPrototypeHeatSink(entity, single)).toBeFalse();
     });
 
     it('resolves implicit defaults and hands ECM operation over only at End Turn', () => {

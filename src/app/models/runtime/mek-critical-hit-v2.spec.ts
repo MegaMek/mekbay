@@ -61,6 +61,7 @@ describe('direct Mek critical-hit rules', () => {
         const fixture = createDirectMekRuntimeFixture();
         const arm = [...fixture.index.locations.values()].find(location => location.code === 'LA')!;
         const profile = projectMekCriticalRollProfileV2(
+            fixture.entity,
             fixture.index,
             fixture.instance.ruleset(),
             fixture.instance.query(),
@@ -394,6 +395,30 @@ describe('direct Mek critical-hit rules', () => {
         expect(protection()).toBe('none');
     });
 
+    it('vents through prototype CASE unless its 1D6 roll is 1 or 2 (IO:AE p. 65)', () => {
+        const fixture = createDirectExplosionRuntimeFixture('total-warfare', { protection: 'prototype' });
+        const slot = slotForComponent(fixture, fixture.equipmentComponent('Test Explosive Weapon').id);
+        const plan = (roll?: number) => projectMekCriticalRollV2(fixture.entity, fixture.index,
+            fixture.instance.ruleset(), fixture.instance.query(), slot.locationId, criticalDice(slot.slotIndex),
+            'committed', undefined, roll);
+        const explosion = (roll?: number) => {
+            const rolled = plan(roll);
+            return rolled.kind === 'applied' ? rolled.explosion : undefined;
+        };
+
+        expect(projectMekCriticalRollProfileV2(fixture.entity, fixture.index, fixture.instance.ruleset(),
+            fixture.instance.query(), slot.locationId, 'committed').explosionProtection).toBe('case-p');
+        // Until rolled it resolves as CASE and asks for the roll.
+        expect(explosion()?.prototypeCaseRoll).toBeNull();
+        expect(explosion()?.locations.map(location => location.protection)).toEqual(['case']);
+        expect(explosion(3)?.prototypeCaseRoll).toBe(3);
+        expect(explosion(3)?.locations.map(location => location.protection)).toEqual(['case']);
+        // On a 2 it resolves as without CASE: the 15 points transfer on.
+        expect(explosion(2)?.locations[0]?.protection).toBe('none');
+        expect(explosion(2)!.locations.length).toBeGreaterThan(1);
+        expect(plan(7).kind).toBe('invalid');
+    });
+
     it('marks two composite-structure pips for each point of explosion damage', () => {
         const fixture = createDirectExplosionRuntimeFixture('core-2026', { structure: 'Composite' });
         const source = fixture.equipmentComponent('Test Explosive Misc');
@@ -416,6 +441,19 @@ describe('direct Mek critical-hit rules', () => {
         expect(plan.explosion!.locations.length).toBeGreaterThan(1);
         expect(plan.explosion!.locations[0]!.protection).toBe('none');
         expect(plan.explosion!.locations[1]!.internalDamage).toBeGreaterThan(0);
+    });
+
+    it('vents an explosion through the CASE a Clan internal structure incorporates (TM errata p.210)', () => {
+        const fixture = createDirectExplosionRuntimeFixture('total-warfare', { structure: 'Clan Standard' });
+        const source = fixture.equipmentComponent('Test Explosive Weapon');
+        const plan = criticalRollPlan(fixture, source.id);
+
+        expect(plan.kind).toBe('applied');
+        if (plan.kind !== 'applied') return;
+        expect(plan.explosion!.locations.map(location => location.protection)).toEqual(['case']);
+        const torso = fixture.index.locations.get(plan.targetLocationId)!;
+        expect(projectMekCriticalRollProfileV2(fixture.entity, fixture.index, fixture.instance.ruleset(),
+            fixture.instance.query(), torso.id, 'committed').explosionProtection).toBe('case');
     });
 
     it('ignores malformed critical dice without changing the revision', () => {

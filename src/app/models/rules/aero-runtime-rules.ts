@@ -35,6 +35,8 @@ export interface AeroRuntimeRulesProjection {
         readonly pending: number | null;
         readonly previous: number;
         readonly heatsinksOff: number;
+        /** The switch set during the turn, which holds from its End Phase. */
+        readonly heatsinksOffNext?: number;
         readonly heatSinkCount: number;
         readonly dissipation: number;
         readonly effects: AeroHeatEffects;
@@ -129,6 +131,7 @@ export function projectAeroRuntimeRules(
             pending: tracked ? state.heat.pendingOverride ?? null : null,
             previous: tracked ? state.heat.previous : 0,
             heatsinksOff: tracked ? state.heat.heatsinksOff : 0,
+            ...(tracked && state.heat.heatsinksOffNext !== undefined ? { heatsinksOffNext: state.heat.heatsinksOffNext } : {}),
             heatSinkCount,
             dissipation,
             effects,

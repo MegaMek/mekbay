@@ -4,12 +4,13 @@
 import type { BaseEntity } from '../../../models/entity/base-entity';
 import type { AeroEntity } from '../../../models/entity/entities/aero/aero-entity';
 import { isAeroEntity } from '../../../models/entity/utils/entity-type-guards';
-import { aerospaceAttackValues } from '../../aerospace-range.util';
 import { fullRecordSheetLayoutProfile, type RecordSheetLayoutProfile, type RecordSheetPageFormat } from '../record-sheet-layout';
-import { groupRecordSheetWeaponRows, recordSheetWeaponMountKey, type InventoryWeaponStateKey } from '../record-sheet-weapon-grouping';
-import { createRoot, drawGeneratedFooter, drawHeatScale, drawPageChrome, recordSheetInventoryWeaponMounts, type Box } from '../record-sheet-svg-rendering';
+import { type InventoryWeaponStateKey } from '../record-sheet-weapon-grouping';
+import { createRoot, drawGeneratedFooter, drawHeatScale, drawPageChrome, type Box } from '../record-sheet-svg-rendering';
 import { drawFighterCriticalPanel, drawFighterPilotPanel } from './aero-fighter-record-sheet-controls';
-import { aeroPageBox, aeroWeaponSheetName, drawAeroArtworkRegion, drawAeroDiagramHeader, drawAeroDataPanel, drawAeroHeatDataPanel, drawAeroMovementCompass, drawAeroPaperdoll, drawAeroVelocityPanel, AERO_LOWER_PANEL_BOX, type AeroDataInventoryRow } from './aero-record-sheet-components';
+import type { EntityMountedEquipment } from '../../../models/entity/types';
+import { recordSheetFeatures } from '../record-sheet-features';
+import { aeroInventoryEquipmentRows, aeroInventoryWeaponRows, aeroPageBox, drawAeroArtworkRegion, drawAeroDiagramHeader, drawAeroDataPanel, drawAeroHeatDataPanel, drawAeroMovementCompass, drawAeroPaperdoll, drawAeroVelocityPanel, AERO_LOWER_PANEL_BOX, type AeroDataInventoryRow } from './aero-record-sheet-components';
 import type { RecordSheetLayout, RecordSheetLayoutRequest } from './record-sheet-layout';
 
 /** Small Craft have fighter-style mount rows and a distinct lower-page composition. */
@@ -37,7 +38,7 @@ export class SmallCraftRecordSheetLayout implements RecordSheetLayout {
             panelTitle: 'CRAFT DATA', identity: 'small-craft',
             inventoryRows: stateKey => this.smallCraftInventoryRows(entity, stateKey),
             groupWeapons: request.groupWeapons,
-            flowCargoAfterInventory: true, showAmmoSummary: true,
+            flowCargoAfterInventory: true, showAmmoSummary: true, featureText: recordSheetFeatures(entity).join(', '),
             showQuirks: request.showQuirks, ruleset: request.ruleset,
         });
         await drawAeroPaperdoll(svg, entity, at({ x: 249.651, y: 18, width: 344, height: 440 }), 440, {
@@ -63,35 +64,20 @@ export class SmallCraftRecordSheetLayout implements RecordSheetLayout {
      */
     private smallCraftInventoryRows(entity: AeroEntity, stateKey: InventoryWeaponStateKey | null): readonly AeroDataInventoryRow[] {
         const spheroid = entity.motiveType() === 'Spheroid';
-        const weapons = recordSheetInventoryWeaponMounts(entity).map(mount => {
-            const ranges = aerospaceAttackValues(mount.equipment, null);
-            const name = aeroWeaponSheetName(mount.displayName(), mount.equipment);
-            const occupied = mount.getOccupiedLocations();
-            const sourceLocation = occupied[0] ?? mount.location;
-            const code = entity.componentLocationLabel(sourceLocation).toUpperCase();
+        const location = (mount: EntityMountedEquipment) => {
+            const code = entity.componentLocationLabel(mount.getOccupiedLocations()[0] ?? mount.location).toUpperCase();
             const sideArcs: Readonly<Record<string, string>> = spheroid
                 ? { LS: mount.rearMounted ? 'ALS' : 'FLS', RS: mount.rearMounted ? 'ARS' : 'FRS' }
                 : { LS: 'LWG', RS: 'RWG' };
-            return {
-                kind: 'equipment' as const,
-                quantity: 1,
-                nameLines: [name],
-                location: sideArcs[code] ?? (code || '—'),
-                heat: String(mount.equipment.heat),
-                damageByRange: ranges.map(value => value > 0 ? String(value) : '—') as
-                    [string, string, string, string],
-                componentIds: [mount.mountId],
-                mountKey: recordSheetWeaponMountKey(mount),
-            };
-        });
-        const rows = (stateKey === null ? weapons : groupRecordSheetWeaponRows(weapons, stateKey))
-            .map(({ mountKey: _mountKey, ...row }, index): AeroDataInventoryRow =>
-                ({ ...row, id: `generated-small-craft-inventory-row@${index}` }));
+            return sideArcs[code] ?? (code || '—');
+        };
+        const rows = [...aeroInventoryWeaponRows(entity, stateKey, location),
+            ...aeroInventoryEquipmentRows(entity, stateKey, location)];
 
         const implicit = entity.implicitSystemEquipment().map((equipment, index): AeroDataInventoryRow => ({
             id: `generated-small-craft-system-row@${index}`,
             kind: 'equipment',
-            quantity: 1,
+            ...(stateKey === null ? {} : { quantity: 1 }),
             nameLines: [`${equipment.name}${/\bECM\b/iu.test(equipment.name) ? ' [E]' : ''}`],
             location: 'NOS',
             heat: '—',

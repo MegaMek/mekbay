@@ -481,7 +481,8 @@ function renderHeatSinks(
     const pips = [...svg.querySelectorAll<SVGElement>(manifest.selectors.heatSinkPip)]
         .filter((pip, index, all) => all.indexOf(pip) === index);
     const unavailable = Math.min(snapshot.heatSinks.count, snapshot.heatSinks.unavailableUnits);
-    const disabled = Math.min(snapshot.heatSinks.count - unavailable, snapshot.heat.heatsinksOff);
+    const disabled = Math.min(snapshot.heatSinks.count - unavailable, snapshot.heatProjection.kind === 'supported'
+        ? snapshot.heatProjection.projection.disabledSinkUnits : snapshot.heat.heatsinksOff);
     pips.forEach((pip, index) => {
         const ordinal = index + 1;
         pip.style.display = ordinal <= snapshot.heatSinks.count ? '' : 'none';
@@ -779,21 +780,23 @@ function renderInventory(
         const ranges = row.ranges.every(range => typeof range === 'number')
             ? recordSheetRangeTexts(row.ranges as readonly number[]) : row.ranges;
         writeInventoryName(element, row.label);
+        const alternativeModes = [...element.querySelectorAll<SVGElement>(':scope > .alternativeMode')];
+        const staticModeProfiles = alternativeModes.some(mode => mode.dataset['mekbayStaticModeProfile'] === '1');
         // Equipment rows print design facts the generator laid out; only weapons and attacks change in play.
         if (row.kind !== 'equipment') {
             writeInventoryField(element, 'location', row.location);
             writeInventoryField(element, 'heat', heat);
-            writeInventoryDamage(element, row.damage);
-            writeInventoryField(element, 'range_min', row.minimumRange);
-            writeInventoryField(element, 'range_short', ranges[0] ?? '');
-            writeInventoryField(element, 'range_medium', ranges[1] ?? '');
-            writeInventoryField(element, 'range_long', ranges[2] ?? '');
-            writeInventoryField(element, 'range_extreme', ranges[3] ?? '');
+            // A weapon whose ammo lines print their own damage and ranges (MML, ATM) keeps its own row bare
+            if (!staticModeProfiles) {
+                writeInventoryDamage(element, row.damage);
+                writeInventoryField(element, 'range_min', row.minimumRange);
+                writeInventoryField(element, 'range_short', ranges[0] ?? '');
+                writeInventoryField(element, 'range_medium', ranges[1] ?? '');
+                writeInventoryField(element, 'range_long', ranges[2] ?? '');
+                writeInventoryField(element, 'range_extreme', ranges[3] ?? '');
+            }
         }
-        const alternativeModes = [...element.querySelectorAll<SVGElement>(':scope > .alternativeMode')];
-        const modes = alternativeModes.some(mode => mode.dataset['mekbayStaticModeProfile'] === '1')
-            ? row.modes
-            : row.modes.filter(mode => mode !== row.defaultMode);
+        const modes = staticModeProfiles ? row.modes : row.modes.filter(mode => mode !== row.defaultMode);
         alternativeModes.forEach((modeElement, modeIndex) => {
             const mode = modes[modeIndex];
             modeElement.style.display = mode === undefined ? 'none' : '';
@@ -1004,8 +1007,10 @@ function recordSheetEquipmentRows(snapshot: MekRecordSheetSnapshot): readonly Re
         });
         weaponRows.push({ componentId: component.componentId, row });
     }
+    const position = new Map(snapshot.weaponOrder.map((componentId, index) => [componentId, index]));
+    const rank = (componentId: ComponentId) => position.get(String(componentId)) ?? position.size;
     const weapons = weaponRows
-        .sort((left, right) => compareRecordSheetWeaponRows(left.row, right.row))
+        .sort((left, right) => rank(left.componentId) - rank(right.componentId))
         .map(({ componentId, row }) => Object.freeze({
         componentIds: Object.freeze([componentId]),
         ...row,
@@ -1056,8 +1061,9 @@ function recordSheetEquipmentRows(snapshot: MekRecordSheetSnapshot): readonly Re
                 componentIds: Object.freeze(attack.target.kind === 'component'
                     ? [attack.target.componentId]
                     : []),
-                baseLabel: attack.label,
-                label: attack.label,
+                // The sheet prints the attack's own name; the kicking leg is the panel's choice
+                baseLabel: attack.name ?? attack.label,
+                label: attack.name ?? attack.label,
                 location: formatEquipmentLocationCodes(attack.locationCodes),
                 status: attack.available ? 'available' : 'disabled',
                 ammo: false,
@@ -1082,18 +1088,6 @@ function recordSheetEquipmentRows(snapshot: MekRecordSheetSnapshot): readonly Re
         ...equipment.filter(row => !row.componentIds.some(componentId => attackComponents.has(componentId))),
         ...physical,
     ]);
-}
-
-function compareRecordSheetWeaponRows(
-    left: Omit<RecordSheetEquipmentRow, 'componentIds'>,
-    right: Omit<RecordSheetEquipmentRow, 'componentIds'>,
-): number {
-    const rangeCount = Math.max(left.ranges.length, right.ranges.length);
-    for (let index = 0; index < rangeCount; index++) {
-        const delta = Number(right.ranges[index] ?? 0) - Number(left.ranges[index] ?? 0);
-        if (delta !== 0) return delta;
-    }
-    return Number(right.heat) - Number(left.heat);
 }
 
 function formatDamage(value: string | number | readonly number[]): string {

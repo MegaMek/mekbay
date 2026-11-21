@@ -1,7 +1,15 @@
 // Copyright (C) 2026 The MegaMek Team
 // SPDX-License-Identifier: GPL-3.0-or-later
-import { addInventoryText, appendInventoryBadges, appendInventoryRowButtons, INVENTORY_RANGE_VALUE_WIDTH, inventoryRangeButtons, inventoryRangeColumns, inventoryRangeHeadings, fitInventoryText, inventoryRowLineCount, inventoryRowSpan } from '../inventory-text-layout';
-import { groupRecordSheetEquipmentRows } from '../record-sheet-inventory-equipment';
+import { addInventoryText, appendInventoryBadges, appendInventoryRowButtons, INVENTORY_RANGE_VALUE_WIDTH, inventoryCellLines, inventoryRangeButtons, inventoryRangeColumns, inventoryRangeHeadings, fitInventoryText, inventoryRowLineCount, inventoryRowSpan } from '../inventory-text-layout';
+import {
+    groupRecordSheetEquipmentRows,
+    isRecordSheetInventorySupport,
+    recordSheetElectronicWarfareRange,
+    recordSheetEquipmentDamage,
+    recordSheetInventoryMountName,
+} from '../record-sheet-inventory-equipment';
+import { recordSheetQuirksText } from '../record-sheet-quirks';
+import { STANDARD_MOVEMENT_CALCULATION } from '../../../models/entity/types/move';
 import { drawRecordSheetInventory, groupRecordSheetWeaponRows, type InventoryWeaponStateKey } from '../record-sheet-weapon-grouping';
 import { RECORD_SHEET_FONT } from '../record-sheet-typography';
 
@@ -10,10 +18,14 @@ import type { BattleArmorEntity } from '../../../models/entity/entities/infantry
 import { isBattleArmorEntity } from '../../../models/entity/utils/entity-type-guards';
 import { BattleArmorBVCalculator } from '../../../models/entity/utils/battle-value/family-calculators';
 import { adjustEntityBattleValueForSkills, effectiveEntityPilotingSkill } from '../../../models/entity/utils/battle-value/skill-facts';
-import { isAntiPersonnelMountEquipment } from '../../../models/battle-armor-equipment.model';
+import {
+    isAntiPersonnelMountEquipment,
+    isBattleArmorStructuralEquipment,
+    isExtendedLifeSupportEquipment,
+} from '../../../models/battle-armor-equipment.model';
 import { hasStealthFlag } from '../../../models/stealth-equipment.model';
-import { isJumpJetEquipment, isUmuEquipment } from '../../../models/jump-equipment.model';
-import { appendRecordSheetAmmoProfile, markAmmoInventory } from '../record-sheet-ammo-rendering';
+import { isJumpBoosterEquipment, isJumpJetEquipment, isUmuEquipment } from '../../../models/jump-equipment.model';
+import { appendRecordSheetAmmoProfile, measureRecordSheetAmmoProfile } from '../record-sheet-ammo-rendering';
 import type { RecordSheetPageProfile } from '../record-sheet-layout';
 import {
     crewSkillValueX,
@@ -23,13 +35,13 @@ import {
     addReferenceShade,
     addText,
     appendBattleValue,
-    appendLegacyIdentityAnchors,
     compactArmorDisplayName,
     compactClusterRacks,
     drawCheckbox,
     drawClusterHitsReference,
     drawElevationTracker,
     drawGeneratedFooter,
+    formatMovementWithMaximum,
     formatNumber,
     formatWholeNumber,
     recordSheetAmmoProfile,
@@ -142,8 +154,12 @@ export class BattleArmorRecordSheetLayout extends CompactRecordSheetLayout {
     const piloting = addCrewSkillValue(group, String(effectiveEntityPilotingSkill(entity, 5)), crewSkillValueX(antiMekLabel, fontScale), antiMekLabel, fontScale);
     piloting.id = 'pilotingSkill0';
     addText(group, 'Ground MP:', x(6.966), y(45.966), { size: font(RECORD_SHEET_FONT.inventory), weight: 700 });
-    const walk = addText(group, String(entity.walkMP()), x(45.03), y(45.966), { size: font(RECORD_SHEET_FONT.inventory) });
+    // A DWP slows the suit until it is dropped: the full Ground MP follows in brackets (TO:AUE p. 99)
+    const unburdenedWalk = entity.computeWalkMP({ ...STANDARD_MOVEMENT_CALCULATION, ignoreDWP: true, ignoreBurden: true });
+    const walk = addText(group, formatMovementWithMaximum(entity.walkMP(), unburdenedWalk), x(45.03), y(45.966),
+        { size: font(RECORD_SHEET_FONT.inventory) });
     walk.id = 'mpWalk';
+    walk.setAttribute('data-mekbay-walk-maximum', String(unburdenedWalk));
     group.setAttribute('data-mekbay-movement-badge-scale', formatNumber(fontScale));
     const secondaryMovement = compactBattleArmorSecondaryMovement(entity);
     // The runtime "Stationary" mode follows the movement columns, clear of their modifier badges.
@@ -161,8 +177,9 @@ export class BattleArmorRecordSheetLayout extends CompactRecordSheetLayout {
     // movement row between the skill columns, clear of the secondary movement's modifier badge.
     drawElevationTracker(group, entity, x(75.5), y(30), { width: x(24), height: y(18) });
 
-    drawRecordSheetInventory(group, request.groupWeapons, (parent, stateKey) =>
-        drawCompactBattleArmorInventory(parent, entity, { x, y, font }, stateKey));
+    // The small battle armor inventory always counts identical rows, as MegaMekLab prints it
+    drawRecordSheetInventory(group, true, (parent, stateKey) =>
+        drawCompactBattleArmorInventory(parent, entity, { x, y, font }, stateKey, request.showQuirks));
     drawCompactBattleArmorTroopers(svg, group, entity, { x, y, font }, frameBox);
 
     const flags: readonly [string, boolean, number, number][] = [
@@ -191,7 +208,6 @@ export class BattleArmorRecordSheetLayout extends CompactRecordSheetLayout {
         await appendRecordSheetEraIcon(svg, group, entity.year(), {
             x: x(165.966), y: y(11.752), width: x(20), height: y(20),
         });
-        appendLegacyIdentityAnchors(group, entity, frameBox, request.ruleset);
     }
 }
 
@@ -405,6 +421,7 @@ function drawCompactBattleArmorInventory(
         readonly font: (value: number) => number;
     },
     stateKey: InventoryWeaponStateKey | null,
+    showQuirks: boolean | undefined,
 ): void {
     const { x, y, font } = scale;
     const rawWeapons = recordSheetInventoryWeapons(entity);
@@ -414,19 +431,27 @@ function drawCompactBattleArmorInventory(
         .map(mount => mount.mountId));
     const weapons = rawWeapons.filter(row => row.componentIds.every(id => !antiPersonnelWeaponIds.has(id)));
     const armorName = (entity.uniformArmor()?.armor.name ?? '').toLowerCase();
-    const miscRows: { name: string; componentIds: readonly string[] }[] = [];
+    const miscRows: { name: string; damage: string; ranges: readonly string[]; componentIds: readonly string[] }[] = [];
     entity.equipment().forEach(mount => {
+        const equipment = mount.equipment;
         if (weaponComponentIds.has(mount.mountId) || mount.getAmmoShots() !== undefined) return;
-        const name = mount.displayName();
-        const normalized = name.toLowerCase();
-        if ((armorName && normalized.includes(armorName))
-            || mount.equipment?.type === 'armor'
-            || hasStealthFlag(mount.equipment)
-            || isJumpJetEquipment(mount.equipment)
-            || isUmuEquipment(mount.equipment)
+        if ((armorName && mount.displayName().toLowerCase().includes(armorName))
+            || equipment?.type === 'armor'
+            || hasStealthFlag(equipment)
+            // Movement systems print as MP
+            || isJumpJetEquipment(equipment)
+            || isJumpBoosterEquipment(equipment)
+            || isUmuEquipment(equipment)
             || mount.isAPM
-            || normalized.includes('anti-personnel weapon mount')) return;
-        miscRows.push({ name, componentIds: [mount.mountId] });
+            || isRecordSheetInventorySupport(equipment)
+            || isBattleArmorStructuralEquipment(equipment)) return;
+        const range = equipment ? recordSheetElectronicWarfareRange(equipment) : undefined;
+        miscRows.push({
+            name: recordSheetInventoryMountName(entity, mount),
+            damage: recordSheetEquipmentDamage(mount),
+            ranges: Object.freeze(['—', '—', range === undefined ? '—' : String(range)]),
+            componentIds: [mount.mountId],
+        });
     });
 
     const weaponRows = weapons.map(row => ({ ...row, quantity: 1 }));
@@ -438,9 +463,7 @@ function drawCompactBattleArmorInventory(
             quantity: stateKey !== null && row.quantity === 1 ? undefined : row.quantity,
             location: '',
             heat: '',
-            damage: '',
             minimumRange: '—',
-            ranges: Object.freeze(['—', '—', '—']),
             alternativeModes: Object.freeze([]),
         })),
     ];
@@ -449,13 +472,23 @@ function drawCompactBattleArmorInventory(
     const nameX = showQuantity ? 12.1 : 8.41;
     const nameWidth = BA_NAME_RIGHT - nameX;
     const ammo = recordSheetAmmoProfile(entity);
+    // MegaMekLab's notes, then quirks, follow the ammo line
+    const footer = [
+        { text: battleArmorNotes(entity), italic: false },
+        { text: recordSheetQuirksText(entity, showQuirks), italic: true },
+    ].filter(line => line.text.length > 0);
+    const footerLines = (size: number) => footer.map(line => inventoryCellLines(line.text, x(178), font(size)));
     const rowLines = (row: { name: string; damage: string; minimumRange: string; ranges: readonly string[] }, size: number) =>
         inventoryRowLineCount([[row.name, x(nameWidth)], [row.damage, x(31)], [row.minimumRange, x(INVENTORY_RANGE_VALUE_WIDTH)],
             ...row.ranges.map(value => [value, x(INVENTORY_RANGE_VALUE_WIDTH)] as const)], font(size));
     const firstBaseline = 66.666;
+    const ammoProfile = { width: x(178), fontSize: font(RECORD_SHEET_FONT.inventory) };
+    // The fit always leaves the ammo profile one row; a longer one grows upward, so the rows give up one for each more line
+    const ammoLines = measureRecordSheetAmmoProfile(ammo, ammoProfile).lines.length;
     const metrics = fitInventoryText(105.2 - firstBaseline, fontSize => ({
         lineCount: rows.reduce((sum, row) => sum + rowLines(row, fontSize)
-            + row.alternativeModes.reduce((count, mode) => count + rowLines(mode, fontSize), 0), 0),
+            + row.alternativeModes.reduce((count, mode) => count + rowLines(mode, fontSize), 0), 0)
+            + footerLines(fontSize).flat().length + Math.max(0, ammoLines - 1),
         badgeRows: rows.map(row => rowLines(row, fontSize)), content: undefined }));
     const lineStep = metrics.lineStep;
     const rowFont = metrics.fontSize;
@@ -511,7 +544,7 @@ function drawCompactBattleArmorInventory(
             class: rangeTextClasses[rangeIndex], size: font(rowFont), anchor: 'middle', maxWidth: x(INVENTORY_RANGE_VALUE_WIDTH),
         }));
 
-        let modeLine = displayLine + inventoryRowSpan(lineCount, lineStep);
+        let modeLine = displayLine + inventoryRowSpan(lineCount, lineStep, metrics.badgeHeight);
         row.alternativeModes.forEach(mode => {
             const modeDamageLines = [mode.damage];
             const modeLineCount = rowLines(mode, rowFont);
@@ -537,14 +570,42 @@ function drawCompactBattleArmorInventory(
         inventory.appendChild(entry);
         displayLine = modeLine;
     });
-    markAmmoInventory(inventory, {
-        top: y(firstBaseline - lineStep * 0.82),
-        bottom: y(105.2),
-        contentBottom: y(firstBaseline + Math.max(0, displayLine - 1) * lineStep),
-    });
+    const footerTexts = footerLines(rowFont);
+    const footerCount = footerTexts.flat().length;
     appendRecordSheetAmmoProfile(group, ammo, {
-        x: x(7.55), y: y(104.783), width: x(178), fontSize: font(RECORD_SHEET_FONT.inventory), lineHeight: y(lineStep),
+        ...ammoProfile, x: x(7.55), y: y(104.783 - footerCount * lineStep), lineHeight: y(lineStep),
     });
+    footerTexts.flatMap((lines, index) => lines.map(line => ({ line, italic: footer[index].italic })))
+        .forEach(({ line, italic }, index) => {
+            const text = addText(group, line, x(7.55), y(104.783 - (footerCount - 1 - index) * lineStep), {
+                size: font(rowFont),
+            });
+            if (italic) text.setAttribute('font-style', 'italic');
+        });
+}
+
+/**
+ * MegaMekLab's battle armor notes: what the suit must drop before it can jump, move at full speed or attack 'Mechs,
+ * and whether it is sealed.
+ */
+function battleArmorNotes(entity: BattleArmorEntity): string {
+    const unburdenedJump = entity.computeJumpMP({ ...STANDARD_MOVEMENT_CALCULATION, ignoreDWP: true, ignoreBurden: true }) > 0;
+    const notes: string[] = [];
+    // Inner Sphere suits can't jump or make anti-'Mech attacks until they drop body-mounted missiles (TW pp. 214, 220)
+    if (entity.isBurdened() && (unburdenedJump || entity.legAttackCapable() || entity.swarmAttackCapable())) {
+        notes.push('Must detach missiles before jumping or swarm/leg attacks.');
+    }
+    // A DWP blocks jumping and slows the suit until it is dropped (TO:AUE p. 99)
+    if (entity.equipment().some(mount => mount.isDWP)) {
+        notes.push(unburdenedJump
+            ? 'Must detach DWP before jumping or moving full ground speed.'
+            : 'Must detach DWP before moving full ground speed.');
+    }
+    // An exoskeleton is sealed only by extended life support (TM p. 255)
+    if (entity.isExoskeleton() && !entity.equipment().some(mount => isExtendedLifeSupportEquipment(mount.equipment))) {
+        notes.push('Unsealed Exoskeleton.');
+    }
+    return notes.join(' ');
 }
 
 function drawCompactBattleArmorTroopers(

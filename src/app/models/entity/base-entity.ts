@@ -31,12 +31,12 @@ import {
   WeaponEquipment,
 } from '../equipment.model';
 import { SourcebookReference } from '../sourcebook.model';
-import { isLaserInsulatorEquipment } from '../laser-insulator.model';
+import { isLaserInsulatorEquipment, laserInsulatorAdjustedHeat } from '../laser-insulator.model';
 import { isBombastLaserEquipment } from '../bombast-laser-mode.model';
-import { isRiscLaserPulseModule } from '../risc-laser-mode.model';
+import { isRiscLaserPulseModule, riscLaserPulseHeat } from '../risc-laser-mode.model';
 import { PPC_CAPACITOR_HEAT_BONUS, isPpcCapacitorEquipment, isPpcEquipment } from '../ppc-capacitor.model';
 import { NO_BOMB_CAPACITY, type BombCapacity } from '../aerospace-bomb.model';
-import { isCaseIIEquipment, isStandardCaseEquipment } from '../case-equipment.model';
+import { caseEquipmentKind, isCaseIIEquipment, isStandardCaseEquipment, type CaseEquipmentKind } from '../case-equipment.model';
 import { isChassisSystemEquipment } from '../chassis-equipment.model';
 import { isSupportVehicleBarArmor } from '../construction-equipment.model';
 import {
@@ -484,58 +484,10 @@ export abstract class BaseEntity implements EntityTechnology {
 
   static readonly #NO_IMPLICIT_CLAN_CASE = new Set<string>();
 
-  /** Locations where MegaMek's load-time Mek.addClanCase() installs generated Clan CASE. */
-  readonly automaticClanCaseLocations = computed<ReadonlySet<string>>(() => {
-    if (!this.allowsImplicitClanCase()) return BaseEntity.#NO_IMPLICIT_CLAN_CASE;
-
-    const protectedLocations = new Set(
-      this.equipment()
-        .filter((mount) => isStandardCaseEquipment(mount.equipment) || isCaseIIEquipment(mount.equipment))
-        .flatMap((mount) => mount.getOccupiedLocations()),
-    );
-    const optedOut = this.clanCaseOptOutLocations();
-    const locations = new Set<string>();
-    for (const mount of this.equipment()) {
-      const equipment = mount.equipment;
-      if (!equipment || isStandardCaseEquipment(equipment) || isCaseIIEquipment(equipment)) continue;
-      if (!this.isMountedEquipmentExplosive(mount)) continue;
-      for (const location of mount.getOccupiedLocations()) {
-        if (
-          location !== 'Unallocated' &&
-          this.supportsAutomaticClanCaseAt(location) &&
-          !protectedLocations.has(location) &&
-          !optedOut.has(location)
-        ) {
-          locations.add(location);
-        }
-      }
-    }
-    return locations;
-  });
-
-  /** Static mounted-equipment explosiveness used by BV and implicit Clan CASE. */
-  isMountedEquipmentExplosive(mount: EntityMountedEquipment): boolean {
-    const equipment = mount.equipment;
-    if (!equipment || equipment.hasFlag('F_B_POD') || equipment.hasFlag('F_M_POD')) return false;
-    if (equipment instanceof WeaponEquipment && isBombastLaserEquipment(equipment)) return false;
-    if (equipment instanceof WeaponEquipment && isPpcEquipment(equipment)) {
-      return isPpcCapacitorEquipment(this.getLinkingMount(mount)?.equipment);
-    }
-    if (equipment instanceof MiscEquipment && isPpcCapacitorEquipment(equipment)) {
-      return isPpcEquipment(this.getLinkedMount(mount)?.equipment);
-    }
-    if (equipment instanceof MiscEquipment && isRiscLaserPulseModule(equipment)) {
-      return this.getLinkedMount(mount)?.equipment instanceof WeaponEquipment;
-    }
-    if (
-      equipment instanceof WeaponEquipment &&
-      ['AC_ROTARY', 'AC', 'LAC', 'AC_IMP', 'AC_PRIMITIVE', 'PAC'].includes(equipment.ammoType)
-    )
-      return false;
-    if (equipment instanceof MiscEquipment && isBlueShieldEquipment(equipment)) return false;
-    return equipment.isExplosive();
-  }
-
+  /**
+   * Locations whose explosive equipment the Clan internal structure protects with built-in CASE (TM errata p. 210),
+   * whether or not explicit CASE is there too: the protection the game and BV apply.
+   */
   readonly implicitClanCaseLocations = computed<ReadonlySet<string>>(() => {
     if (!this.allowsImplicitClanCase()) {
       return BaseEntity.#NO_IMPLICIT_CLAN_CASE;
@@ -553,6 +505,42 @@ export abstract class BaseEntity implements EntityTechnology {
     }
     return locations;
   });
+
+  /**
+   * The implicit Clan CASE locations without explicit CASE or CASE II, where MegaMek's load-time Mek.addClanCase()
+   * generates a CASE mount: the CASE that cost, technology and component lists add.
+   */
+  readonly automaticClanCaseLocations = computed<ReadonlySet<string>>(() => {
+    const implicit = this.implicitClanCaseLocations();
+    if (implicit.size === 0) return implicit;
+    const explicit = new Set(this.equipment()
+      .filter((mount) => isStandardCaseEquipment(mount.equipment) || isCaseIIEquipment(mount.equipment))
+      .flatMap((mount) => mount.getOccupiedLocations()));
+    return new Set([...implicit].filter((location) => !explicit.has(location)));
+  });
+
+  /** Static mounted-equipment explosiveness used by BV and implicit Clan CASE. */
+  isMountedEquipmentExplosive(mount: EntityMountedEquipment): boolean {
+    const equipment = mount.equipment;
+    if (!equipment || equipment.hasFlag('F_B_POD') || equipment.hasFlag('F_M_POD')) return false;
+    if (equipment instanceof WeaponEquipment && isBombastLaserEquipment(equipment)) return false;
+    if (equipment instanceof WeaponEquipment && isPpcEquipment(equipment)) {
+      return this.getLinkingMounts(mount).some(source => isPpcCapacitorEquipment(source.equipment));
+    }
+    if (equipment instanceof MiscEquipment && isPpcCapacitorEquipment(equipment)) {
+      return isPpcEquipment(this.getLinkedMount(mount)?.equipment);
+    }
+    if (equipment instanceof MiscEquipment && isRiscLaserPulseModule(equipment)) {
+      return this.getLinkedMount(mount)?.equipment instanceof WeaponEquipment;
+    }
+    if (
+      equipment instanceof WeaponEquipment &&
+      ['AC_ROTARY', 'AC', 'LAC', 'AC_IMP', 'AC_PRIMITIVE', 'PAC'].includes(equipment.ammoType)
+    )
+      return false;
+    if (equipment instanceof MiscEquipment && isBlueShieldEquipment(equipment)) return false;
+    return equipment.isExplosive();
+  }
 
   // ── Equipment - SINGLE SOURCE OF TRUTH ──
   readonly #equipment = signal<EntityMountedEquipment[]>([]);
@@ -623,13 +611,21 @@ export abstract class BaseEntity implements EntityTechnology {
     this.#locationMetadata.set(next);
   }
 
-  locationHasCaseProtection(location: string): boolean {
-    return (
-      this.implicitClanCaseLocations().has(location) ||
-      this.equipment().some(
-        (mount) => mount.getOccupiedLocations().includes(location) && isStandardCaseEquipment(mount.equipment),
-      )
-    );
+  /**
+   * The CASE protecting ammunition in a location, CASE II before CASE. CASE II protects only its own location on every
+   * unit (TO:AUE p. 110). A Mek's CASE protects its own location; on any other unit CASE anywhere protects all its
+   * ammunition (TW pp. 161, 194). A Clan internal structure carries CASE built in (TM errata p. 210). `working`
+   * leaves out the CASE the game has knocked out.
+   */
+  ammoCaseProtection(location: string, working: (mount: EntityMountedEquipment) => boolean = () => true): CaseEquipmentKind | null {
+    const mek = this.entityType === 'Mek';
+    const protecting = this.equipment()
+      .filter((mount) => working(mount))
+      .map((mount) => ({ kind: caseEquipmentKind(mount.equipment), here: mount.getOccupiedLocations().includes(location) }));
+    if (protecting.some(({ kind, here }) => kind === 'case-ii' && here)) return 'case-ii';
+    const implicit = this.implicitClanCaseLocations();
+    return protecting.find(({ kind, here }) => kind !== null && kind !== 'case-ii' && (here || !mek))?.kind
+      ?? ((mek ? implicit.has(location) : implicit.size > 0) ? 'case' : null);
   }
 
   reconcileEquipmentRelationships(): void {
@@ -948,11 +944,14 @@ export abstract class BaseEntity implements EntityTechnology {
             : mount.equipment.ammoType === 'AC_ULTRA' || mount.equipment.ammoType === 'AC_ULTRA_THB'
               ? 2
               : 1;
-        heat += mount.equipment.heat * multiplier;
+        // A pulse module adds its pulse-mode heat (IO:AE p. 87); any number of insulators take 1 off, to a minimum of 1
+        // (TO:AUE p. 134), as MegaMekLab's UnitUtil.getTotalHeatGeneration counts it.
+        const attachments = this.getLinkingMounts(mount);
+        const insulated = attachments.some(source => isLaserInsulatorEquipment(source.equipment));
+        heat += laserInsulatorAdjustedHeat(mount.equipment.heat + riscLaserPulseHeat(attachments), insulated) * multiplier;
       } else if (mount.equipment instanceof MiscEquipment) {
         heat += mount.equipment.operatingHeat;
         if (isPpcCapacitorEquipment(mount.equipment)) heat += PPC_CAPACITOR_HEAT_BONUS;
-        if (isLaserInsulatorEquipment(mount.equipment)) heat -= 1;
       }
     }
     const armor = this.uniformArmor()?.armor;
@@ -1298,23 +1297,18 @@ export abstract class BaseEntity implements EntityTechnology {
     return this.#equipmentRelationships().linkedMount(source, this.#equipmentById());
   }
 
-  /** Resolve the mount that targets this mount. */
-  getLinkingMount(target: EntityMountedEquipment): EntityMountedEquipment | undefined {
-    return this.#equipmentRelationships().linkingMount(target, this.#equipmentById());
+  /** Resolve every source mount attached to a target. */
+  getLinkingMounts(target: EntityMountedEquipment): readonly EntityMountedEquipment[] {
+    return this.#equipmentRelationships().linkingMounts(target, this.#equipmentById());
   }
 
   /** Whether an installed enhancement can target an installed weapon. */
   canLinkEquipment(source: EntityMountedEquipment, target: EntityMountedEquipment): boolean {
     const currentSource = this.findCurrentMount(source);
     const currentTarget = this.findCurrentMount(target);
-    if (
-      !currentSource ||
-      !currentTarget ||
-      !isCompatibleEquipmentLink(currentSource, currentTarget, { year: this.year() })
-    )
-      return false;
-    const existingSource = this.getLinkingMount(currentTarget);
-    return !existingSource || existingSource.mountId === currentSource.mountId;
+    return !!currentSource && !!currentTarget && isCompatibleEquipmentLink(
+      currentSource, currentTarget, { year: this.year(), tonnage: this.tonnage() }, this.getLinkingMounts(currentTarget),
+    );
   }
 
   /** Compatible, currently available targets for an installed enhancement. */
@@ -1355,7 +1349,7 @@ export abstract class BaseEntity implements EntityTechnology {
     let relationships = this.#equipmentRelationships();
     if (options.linkedTo) {
       const target = this.requireCurrentMount(options.linkedTo);
-      if (!isCompatibleEquipmentLink(mount, target, { year: this.year() })) {
+      if (!isCompatibleEquipmentLink(mount, target, { year: this.year(), tonnage: this.tonnage() }, this.getLinkingMounts(target))) {
         throw new Error('Equipment link must connect a compatible weapon enhancement to a weapon in the same location');
       }
       relationships = relationships.withLink(mount, target);
@@ -1422,11 +1416,11 @@ export abstract class BaseEntity implements EntityTechnology {
     });
     let relationships = this.#equipmentRelationships();
     const linked = relationships.linkedMount(previous, this.#equipmentById());
-    const linking = relationships.linkingMount(previous, this.#equipmentById());
-    const linkContext = { year: this.year() };
+    const linking = relationships.linkingMounts(previous, this.#equipmentById());
+    const linkContext = { year: this.year(), tonnage: this.tonnage() };
     if (
       (linked && !isCompatibleEquipmentLink(replacement, linked, linkContext)) ||
-      (linking && !isCompatibleEquipmentLink(linking, replacement, linkContext))
+      linking.some(source => !isCompatibleEquipmentLink(source, replacement, linkContext))
     ) {
       relationships = relationships.withoutLinksFor(previous);
     }

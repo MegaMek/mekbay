@@ -13,7 +13,9 @@ import {
     createDirectModularArmorRuntimeFixture,
     createDirectShieldRuntimeFixture,
     createDirectSuperheavyRuntimeFixture,
+    createMixedHeatSinkFixture,
 } from './testing/direct-mek-runtime-fixture';
+import { isPrototypeDoubleHeatSinkEquipment } from '../heat-equipment.model';
 
 describe('V1 unit-state ingress', () => {
     for (const shutdown of [false, true]) {
@@ -185,6 +187,22 @@ describe('V1 unit-state ingress', () => {
         expect(restored.state.locations.get(center.id)?.internalDamage).toBe(2);
         expect(restored.warnings).toEqual([]);
         expect(Object.keys(restored).sort()).toEqual(['state', 'warnings']);
+    });
+
+    it('switches off the prototype doubles a legacy all-sinks-off count covered', async () => {
+        // V1 switched every sink with one count; the bulk switch now covers only the singles of a mixed design.
+        const fixture = createMixedHeatSinkFixture('total-warfare');
+        const total = fixture.entity.totalHeatSinks(), bulk = fixture.entity.bulkHeatSinkCount();
+        expect(total).toBeGreaterThan(bulk);
+        const restored = await restoreLegacyUnitState(record(fixture.identity, {
+            heat: { current: 0, previous: 0, heatsinksOff: total },
+        }), fixture.entity, fixture.initialized);
+        expect(restored.state.heat.heatsinksOff).toBe(bulk);
+        const prototypes = [...fixture.index.components]
+            .filter(([, component]) => component.kind === 'equipment' && isPrototypeDoubleHeatSinkEquipment(component.mount.equipment));
+        expect(prototypes.length).toBe(total - bulk);
+        expect(prototypes.map(([id]) => restored.state.components.get(id)?.mode)).toEqual(prototypes.map(() => 'disabled'));
+        expect(restored.warnings).toEqual([]);
     });
 
     it('rounds fractional V1 heat to whole points', async () => {

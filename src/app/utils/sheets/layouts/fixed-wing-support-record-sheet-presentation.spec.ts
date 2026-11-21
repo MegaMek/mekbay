@@ -33,7 +33,9 @@ describe('fixed-wing support record-sheet presentation', () => {
         expect(svg.getElementById('armorType')?.textContent).toBe('BAR: 2');
         expect(svg.querySelector('.aero-external-stores')).toBeNull();
         expect([...svg.querySelectorAll('.aero-features text')].map(text => text.textContent).join(' '))
-            .toBe('Features Propeller-Driven, Ultra-Light, STOL Chassis Mods, 1 Ejection Seat, Cargo (13 kg)');
+            .toBe('Features Propeller-Driven, Ultra-Light, STOL Chassis Mods, 1 Ejection Seat');
+        // Cargo prints in the Cargo block, as on every other MekBay sheet
+        expect(svg.textContent).toContain('Bay 0: Cargo (0.013)');
         expect(svg.querySelectorAll('.inventoryEntry').length).toBe(1);
         expect(svg.querySelector('.inventoryEntry')?.textContent).toContain('Recon Camera [E]');
         expect(svg.querySelector('.inventoryEntry')?.getAttribute('data-mekbay-component-ids')).toBe(camera.mountId);

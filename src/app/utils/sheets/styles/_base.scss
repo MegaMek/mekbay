@@ -230,6 +230,11 @@
     fill: var(--disabled-color) !important;
   }
 
+  // A movement mode the unit is built without, muted on screen and on paper like an unused one.
+  .unavailableMoveMode {
+    opacity: 0.5;
+  }
+
   .critSlot.damaged {
     fill: var(--damage-color) !important;
     text-decoration: line-through;

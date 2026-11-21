@@ -33,6 +33,7 @@ import {
 import { createTestEquipmentRegistry } from '../../models/entity/testing/test-equipment-registry';
 import { MountedArmor } from '../../models/entity/components/armor';
 import { MountedStructure } from '../../models/entity/components/structure';
+import type { AmmoMunitionFlag } from '../../models/ammo-munition-flags.type';
 import {
     AmmoEquipment,
     ArmorEquipment,
@@ -405,18 +406,20 @@ describe('RecordSheetSvgGenerator', () => {
         const svg = await RecordSheetSvgGenerator.generate(entity, { ruleset: 'total-warfare' });
         const bays = [...svg.querySelectorAll<SVGGElement>('.inventoryEntry.bay')];
         const lrmRow = bays.find(row => row.querySelector('.name')?.textContent?.includes('LRM 20'))!;
-        const laserRow = bays.find(row => row.querySelector('.name')?.textContent?.includes('Medium Laser'))!;
+        const laserRow = bays.find(row => row.textContent?.includes('Medium Laser'))!;
 
         expect(svg.dataset['mekbayLayout']).toBe('dropship');
         expect(bays.length).toBe(2);
         expect(lrmRow.querySelector('.name')?.textContent).toBe('1 LRM 20 (12 rounds)');
-        expect(lrmRow.querySelector('.range_short')?.textContent).toBe('1 (12)');
+        expect(lrmRow.querySelector('.range_short')?.textContent).toBe('1\u202F(12)');
         expect(laserRow.querySelector('.location')?.textContent).toBe('LW/RW');
+        // A bay lists its weapons in unit-file order
         expect(Array.from(laserRow.querySelectorAll('.name')).map(node => node.textContent))
-            .toEqual(['1 Medium Laser,', '2 Large Laser']);
+            .toEqual(['2 Large Laser,', '1 Medium Laser']);
         expect(laserRow.querySelector('.heat')?.textContent).toBe('19');
-        expect(laserRow.querySelector('.range_short')?.textContent).toBe('3 (21)');
-        expect(laserRow.querySelector('.range_medium')?.textContent).toBe('2 (16)');
+        // The bay's combined 21 is 2 at capital scale (SO p. 147)
+        expect(laserRow.querySelector('.range_short')?.textContent).toBe('2\u202F(21)');
+        expect(laserRow.querySelector('.range_medium')?.textContent).toBe('2\u202F(16)');
         expect(laserRow.getAttribute('data-mekbay-component-ids')?.split(' ').length).toBe(6);
         const children = [...laserRow.children];
         expect(children.indexOf(laserRow.querySelector(':scope > .mainButton')!))
@@ -473,7 +476,8 @@ describe('RecordSheetSvgGenerator', () => {
 
         expect(svg.dataset['mekbayLayout']).toBe('small-craft');
         expect(laserRow?.classList.contains('bay')).toBeFalse();
-        expect(laserRow?.querySelector('.quantity')?.textContent).toBe('1');
+        // Without grouping the inventory has no # column
+        expect(laserRow?.querySelector('.quantity')).toBeNull();
         expect(laserRow?.querySelector('.name')?.textContent).toContain('Large Laser');
         expect(Array.from(svg.querySelectorAll('.inventoryEntry .name')).map(node => node.textContent))
             .toContain('Single-Hex ECM [E]');
@@ -507,7 +511,7 @@ describe('RecordSheetSvgGenerator', () => {
         expect(svg.querySelector('[data-mekbay-region="aero-data"]')?.getAttribute('data-mekbay-aero-scale'))
             .toBe('standard');
         expect(row.querySelector('.name')?.textContent).toBe('2 LRM 15 (40 rounds)*');
-        expect(row.querySelector('.range_short')?.textContent).toBe('2 (24)');
+        expect(row.querySelector('.range_short')?.textContent).toBe('2\u202F(24)');
         expect(svg.textContent).toContain('* w/Artemis IV');
         expect(svg.textContent).toContain('STATION DATA');
         expect(Array.from(svg.querySelectorAll('.svg-frame-title'))
@@ -563,6 +567,408 @@ describe('RecordSheetSvgGenerator', () => {
         });
     }
 
+    it('totals a bay\'s ammo per munition, naming munitions only when a bay carries several', async () => {
+        const entity = new TestWarShipEntity();
+        const bay = (location: string, weapon: WeaponEquipment, bins: readonly (readonly [string, number])[]) => {
+            const launcher = addTestEquipment(entity, weapon, { location });
+            const ammo = bins.map(([name, shots]) => addTestEquipment(entity, new AmmoEquipment({
+                id: `${location} ${name}`, name, shortName: name, type: 'ammo',
+                ammo: { type: weapon.ammoType, rackSize: weapon.rackSize, shots },
+            }), { location, shotsCount: shots }));
+            entity.addEquipmentBay('weapon-bay', { mounts: [launcher, ...ammo] });
+        };
+        bay('Nose', new WeaponEquipment({
+            id: 'Bay LRM 20', name: 'LRM 20', shortName: 'LRM 20', type: 'weapon',
+            weapon: { heat: 6, ammoType: 'LRM', rackSize: 20, av: [12, 12, 12, 0] },
+        }), [['LRM 20', 6], ['LRM 20', 6], ['LRM 20', 6]]);
+        bay('Aft', new WeaponEquipment({
+            id: 'Bay LB 10-X AC', name: 'LB 10-X AC', shortName: 'LB 10-X AC', type: 'weapon',
+            weapon: { heat: 2, ammoType: 'AC_LBX', rackSize: 10, av: [6, 6, 0, 0] },
+        }), [['LB 10-X', 10], ['LB 10-X Cluster', 10]]);
+
+        const svg = await RecordSheetSvgGenerator.generate(entity, { ruleset: 'total-warfare' });
+        const names = [...svg.querySelectorAll<SVGGElement>('.inventoryEntry.bay')]
+            .map(row => [...row.querySelectorAll(':scope > .name')].map(node => node.textContent).join(' '));
+        expect(names).toEqual(['1 LRM 20 (18 rounds)', '1 LB 10-X AC (10 Standard, 10 Cluster)']);
+    });
+
+    it('prints "*" for an AR10 bay\'s values, which depend on the missile fired', async () => {
+        const entity = new TestWarShipEntity();
+        const launcher = addTestEquipment(entity, new WeaponEquipment({
+            id: 'Bay AR10', name: 'AR10', shortName: 'AR10', type: 'weapon',
+            weapon: { capital: true, heat: 20, ammoType: 'AR10', av: [2, 2, 2, 2] },
+        }), { location: 'Nose' });
+        const missiles = ['KW', 'B'].map(name => addTestEquipment(entity, new AmmoEquipment({
+            id: `AR10 ${name}`, name, shortName: name, type: 'ammo', ammo: { type: 'AR10', shots: 10 },
+        }), { location: 'Nose', shotsCount: 10 }));
+        entity.addEquipmentBay('weapon-bay', { mounts: [launcher, ...missiles] });
+
+        const svg = await RecordSheetSvgGenerator.generate(entity, { ruleset: 'total-warfare' });
+        const row = svg.querySelector<SVGGElement>('.inventoryEntry.bay')!;
+        expect(row.querySelector('.name')?.textContent).toBe('1 AR10 (10 KW, 10 B)');
+        // Its heat depends on the missile too (TW p. 304)
+        expect(row.querySelector('.heat')?.textContent).toBe('*');
+        expect(['range_short', 'range_medium', 'range_long', 'range_extreme']
+            .map(range => row.querySelector(`.${range}`)?.textContent)).toEqual(['*', '*', '*', '*']);
+    });
+
+    const bayRanges = (row: Element) => ['range_short', 'range_medium', 'range_long', 'range_extreme']
+        .map(range => row.querySelector(`:scope > .${range}`)?.textContent);
+
+    it('converts a standard bay\'s combined value to capital scale (SO p. 147)', async () => {
+        const entity = new TestJumpShipEntity();
+        const laser = (id: string, value: number) => addTestEquipment(entity, new WeaponEquipment({
+            id, name: id, shortName: id, type: 'weapon', flags: ['F_ENERGY'], weapon: { heat: 3, av: [value, value, 0, 0] },
+        }), { location: 'Nose' });
+        entity.addEquipmentBay('weapon-bay', { mounts: [laser('Medium Laser', 5), laser('Large Laser', 8)] });
+
+        const svg = await RecordSheetSvgGenerator.generate(entity, { ruleset: 'total-warfare' });
+        // 13 is 1 at capital scale, not 1 for each laser
+        expect(bayRanges(svg.querySelector('.inventoryEntry.bay')!)).toEqual(['1\u202F(13)', '1\u202F(13)', '—', '—']);
+    });
+
+    it('gives an ATM bay its bay profile only with a ton of each munition per launcher (TW p. 304)', async () => {
+        const atm = new WeaponEquipment({
+            id: 'Bay ATM 12', name: 'ATM 12', shortName: 'ATM 12', type: 'weapon',
+            weapon: { heat: 8, ammoType: 'ATM', rackSize: 12, av: [20, 20] },
+        });
+        const munition = (name: string, flag: AmmoMunitionFlag) => new AmmoEquipment({
+            id: `ATM 12 ${name}`, name: `ATM 12 ${name}`, shortName: `ATM 12 ${name}`, type: 'ammo',
+            ammo: { type: 'ATM', rackSize: 12, shots: 5, munitionType: [flag] },
+        });
+        const bay = async (bins: readonly (readonly [AmmoEquipment, number])[]) => {
+            const entity = new TestWarShipEntity();
+            const launchers = [0, 1].map(() => addTestEquipment(entity, atm, { location: 'Nose' }));
+            const ammo = bins.map(([equipment, shots]) => addTestEquipment(entity, equipment, { location: 'Nose', shotsCount: shots }));
+            entity.addEquipmentBay('weapon-bay', { mounts: [...launchers, ...ammo] });
+            return (await RecordSheetSvgGenerator.generate(entity, { ruleset: 'total-warfare' })).querySelector('.inventoryEntry.bay')!;
+        };
+        const standard = munition('Standard', 'M_STANDARD');
+        const extendedRange = munition('ER', 'M_EXTENDED_RANGE');
+        const highExplosive = munition('HE', 'M_HIGH_EXPLOSIVE');
+
+        expect(bayRanges(await bay([[standard, 50]]))).toEqual(['4\u202F(40)', '4\u202F(40)', '—', '—']);
+        expect(bayRanges(await bay([[standard, 10], [extendedRange, 10], [highExplosive, 10]])))
+            .toEqual(['6\u202F(60)', '4\u202F(40)', '2\u202F(20)', '2\u202F(20)']);
+        // One ton of high-explosive ammo is not a ton for each launcher: each munition prints its own line
+        const short = await bay([[standard, 10], [extendedRange, 10], [highExplosive, 5]]);
+        expect(bayRanges(short)).toEqual(['', '', '', '']);
+        expect([...short.querySelectorAll('.bayMunition')].map(line => [line.querySelector('.name')?.textContent,
+            ...bayRanges(line)])).toEqual([
+            ['Standard (10 rounds)', '4\u202F(40)', '4\u202F(40)', '—', '—'],
+            ['Extended Range (10 rounds)', '2\u202F(20)', '2\u202F(20)', '2\u202F(20)', '2\u202F(20)'],
+            ['High Explosive (5 rounds)', '6\u202F(60)', '—', '—', '—'],
+        ]);
+    });
+
+    it('prints an MML bay\'s LRM and SRM values on lines of their own', async () => {
+        const entity = new TestWarShipEntity();
+        const launcher = addTestEquipment(entity, new WeaponEquipment({
+            id: 'Bay MML 9', name: 'MML 9', shortName: 'MML 9', type: 'weapon',
+            weapon: { heat: 5, ammoType: 'MML', rackSize: 9, av: [5, 5, 5] },
+        }), { location: 'Nose' });
+        const ammo = ['LRM', 'SRM'].map(name => addTestEquipment(entity, new AmmoEquipment({
+            id: `MML 9/${name}`, name: `MML 9/${name}`, shortName: `MML 9/${name}`, type: 'ammo',
+            ammo: { type: 'MML', rackSize: 9, shots: 10 },
+        }), { location: 'Nose', shotsCount: 10 }));
+        entity.addEquipmentBay('weapon-bay', { mounts: [launcher, ...ammo] });
+
+        const row = (await RecordSheetSvgGenerator.generate(entity, { ruleset: 'total-warfare' })).querySelector('.inventoryEntry.bay')!;
+        // Each line carries its own rounds, so the name prints none
+        expect([...row.querySelectorAll(':scope > .name')].map(node => node.textContent).join(' ')).toBe('1 MML 9');
+        expect([...row.querySelectorAll('.bayMunition')].map(line => [line.querySelector('.name')?.textContent,
+            ...bayRanges(line)])).toEqual([
+            ['LRM (10 rounds)', '1\u202F(5)', '1\u202F(5)', '1\u202F(5)', '—'],
+            ['SRM (10 rounds)', '1\u202F(10)', '—', '—', '—'],
+        ]);
+    });
+
+    it('prints an iATM bay\'s Improved Magnetic Pulse missiles apart from its High Explosive ones (IO:AE p. 61)', async () => {
+        const iatm = new WeaponEquipment({
+            id: 'Bay iATM 12', name: 'iATM 12', shortName: 'iATM 12', type: 'weapon',
+            weapon: { heat: 8, ammoType: 'IATM', rackSize: 12, av: [24, 24] },
+        });
+        const munition = (name: string, flag: AmmoMunitionFlag) => new AmmoEquipment({
+            id: `iATM 12 ${name}`, name: `iATM 12 ${name}`, shortName: `iATM 12 ${name}`, type: 'ammo',
+            ammo: { type: 'IATM', rackSize: 12, shots: 5, munitionType: [flag] },
+        });
+        const bay = async (bins: readonly (readonly [AmmoEquipment, number])[]) => {
+            const entity = new TestWarShipEntity();
+            const launchers = [0, 1].map(() => addTestEquipment(entity, iatm, { location: 'Nose' }));
+            const ammo = bins.map(([equipment, shots]) => addTestEquipment(entity, equipment, { location: 'Nose', shotsCount: shots }));
+            entity.addEquipmentBay('weapon-bay', { mounts: [...launchers, ...ammo] });
+            return (await RecordSheetSvgGenerator.generate(entity, { ruleset: 'total-warfare' })).querySelector('.inventoryEntry.bay')!;
+        };
+        const standard = munition('Standard', 'M_STANDARD');
+        const extendedRange = munition('ER', 'M_EXTENDED_RANGE');
+        const highExplosive = munition('HE', 'M_HIGH_EXPLOSIVE');
+        const magneticPulse = munition('IMP', 'M_IATM_IMP');
+
+        // Two tons of Improved Magnetic Pulse missiles make no ton of High Explosive ones for each launcher: no bay
+        // profile (TW p. 304), and the High Explosive line counts its own rounds only
+        const lines = await bay([[standard, 10], [extendedRange, 10], [highExplosive, 5], [magneticPulse, 10]]);
+        expect([...lines.querySelectorAll(':scope > .name')].map(node => node.textContent).join(' ')).toBe('2 iATM 12');
+        expect(bayRanges(lines)).toEqual(['', '', '', '']);
+        // A name too long for its line wraps onto lines of its own
+        const lineName = (line: Element) => [...line.querySelectorAll('.name')].map(node => node.textContent).join(' ');
+        expect([...lines.querySelectorAll('.bayMunition')].map(line => [lineName(line), ...bayRanges(line)])).toEqual([
+            ['Standard (10 rounds)', '5\u202F(48)', '5\u202F(48)', '—', '—'],
+            ['Extended Range (10 rounds)', '2\u202F(24)', '2\u202F(24)', '2\u202F(24)', '2\u202F(24)'],
+            ['High Explosive (5 rounds)', '7\u202F(72)', '—', '—', '—'],
+            // 1 point per missile, half the standard value, at High Explosive's range
+            ['Improved Magnetic Pulse (10 rounds)', '2\u202F(24)', '—', '—', '—'],
+        ]);
+
+        // With a ton of each of the three per launcher the bay profile applies and the name totals those three; the
+        // Improved Magnetic Pulse missiles, which don't count toward it, print their own line under it
+        const profiled = await bay([[standard, 10], [extendedRange, 10], [highExplosive, 10], [magneticPulse, 5]]);
+        expect([...profiled.querySelectorAll(':scope > .name')].map(node => node.textContent).join(' '))
+            .toBe('2 iATM 12 (10 Standard, 10 Extended Range, 10 High Explosive)');
+        expect(bayRanges(profiled)).toEqual(['7\u202F(72)', '5\u202F(48)', '2\u202F(24)', '2\u202F(24)']);
+        expect([...profiled.querySelectorAll('.bayMunition')].map(line => [lineName(line), ...bayRanges(line)]))
+            .toEqual([['Improved Magnetic Pulse (5 rounds)', '2\u202F(24)', '—', '—', '—']]);
+    });
+
+    it('leaves a launcher out of the munition lines it cannot fire', async () => {
+        const entity = new TestWarShipEntity();
+        const launcher = (ammoType: 'ATM' | 'IATM', name: string, value: number) => addTestEquipment(entity, new WeaponEquipment({
+            id: `Mixed ${name}`, name, shortName: name, type: 'weapon',
+            weapon: { heat: 8, ammoType, rackSize: 12, av: [value, value] },
+        }), { location: 'Nose' });
+        const bin = (ammoType: 'ATM' | 'IATM', name: string, flag: AmmoMunitionFlag) => addTestEquipment(entity, new AmmoEquipment({
+            id: `Mixed ${name}`, name, shortName: name, type: 'ammo',
+            ammo: { type: ammoType, rackSize: 12, shots: 5, munitionType: [flag] },
+        }), { location: 'Nose', shotsCount: 5 });
+        // An ATM carrying only High Explosive missiles, and an iATM carrying Standard and Improved Magnetic Pulse ones
+        entity.addEquipmentBay('weapon-bay', { mounts: [
+            launcher('ATM', 'ATM 12', 20), launcher('IATM', 'iATM 12', 24), bin('ATM', 'ATM 12 HE', 'M_HIGH_EXPLOSIVE'),
+            bin('IATM', 'iATM 12 Standard', 'M_STANDARD'), bin('IATM', 'iATM 12 IMP', 'M_IATM_IMP'),
+        ] });
+
+        const row = (await RecordSheetSvgGenerator.generate(entity, { ruleset: 'total-warfare' })).querySelector('.inventoryEntry.bay')!;
+        expect([...row.querySelectorAll('.bayMunition')].map(line => [
+            [...line.querySelectorAll('.name')].map(node => node.textContent).join(' '), ...bayRanges(line)])).toEqual([
+            ['Standard (5 rounds)', '2\u202F(24)', '2\u202F(24)', '—', '—'],
+            ['High Explosive (5 rounds)', '3\u202F(30)', '—', '—', '—'],
+            // The ATM cannot fire Improved Magnetic Pulse missiles (IO:AE p. 61): only the iATM's half value counts
+            ['Improved Magnetic Pulse (5 rounds)', '1\u202F(12)', '—', '—', '—'],
+        ]);
+    });
+
+    it('names a bay\'s only MML or ATM munition unless it is the launcher\'s first', async () => {
+        const bay = async (weapon: WeaponEquipment, ammo: AmmoEquipment) => {
+            const entity = new TestWarShipEntity();
+            entity.addEquipmentBay('weapon-bay', { mounts: [addTestEquipment(entity, weapon, { location: 'Nose' }),
+                addTestEquipment(entity, ammo, { location: 'Nose', shotsCount: 10 })] });
+            const row = (await RecordSheetSvgGenerator.generate(entity, { ruleset: 'total-warfare' })).querySelector('.inventoryEntry.bay')!;
+            return [[...row.querySelectorAll(':scope > .name')].map(node => node.textContent).join(' '), ...bayRanges(row)];
+        };
+        const mml = new WeaponEquipment({
+            id: 'Only MML 9', name: 'MML 9', shortName: 'MML 9', type: 'weapon',
+            weapon: { heat: 5, ammoType: 'MML', rackSize: 9, av: [5, 5, 5] },
+        });
+        const iatm = new WeaponEquipment({
+            id: 'Only iATM 12', name: 'iATM 12', shortName: 'iATM 12', type: 'weapon',
+            weapon: { heat: 8, ammoType: 'IATM', rackSize: 12, av: [24, 24] },
+        });
+        const ammo = (weapon: WeaponEquipment, name: string, munitionType: readonly AmmoMunitionFlag[] = []) => new AmmoEquipment({
+            id: `${weapon.name}/${name}`, name: `${weapon.name}/${name}`, shortName: `${weapon.name}/${name}`, type: 'ammo',
+            ammo: { type: weapon.ammoType, rackSize: weapon.rackSize, shots: 10, munitionType: [...munitionType] },
+        });
+
+        // The values are the munition's, so a munition other than the launcher's first prints by name
+        expect(await bay(mml, ammo(mml, 'LRM'))).toEqual(['1 MML 9 (10 rounds)', '1\u202F(5)', '1\u202F(5)', '1\u202F(5)', '—']);
+        expect(await bay(mml, ammo(mml, 'SRM'))).toEqual(['1 MML 9 (10 SRM)', '1\u202F(10)', '—', '—', '—']);
+        expect(await bay(iatm, ammo(iatm, 'Standard', ['M_STANDARD'])))
+            .toEqual(['1 iATM 12 (10 rounds)', '2\u202F(24)', '2\u202F(24)', '—', '—']);
+        expect(await bay(iatm, ammo(iatm, 'ER', ['M_EXTENDED_RANGE'])))
+            .toEqual(['1 iATM 12 (10 Extended Range)', '1\u202F(12)', '1\u202F(12)', '1\u202F(12)', '1\u202F(12)']);
+        expect(await bay(iatm, ammo(iatm, 'IMP', ['M_IATM_IMP'])))
+            .toEqual(['1 iATM 12 (10 Improved Magnetic Pulse)', '1\u202F(12)', '—', '—', '—']);
+    });
+
+    it('lays out a bay\'s munition lines alike on both large-craft panels, under the bay\'s range buttons', async () => {
+        const layout = async (entity: TestDropShipEntity | TestWarShipEntity) => {
+            const launchers = [9, 5].map(rackSize => addTestEquipment(entity, new WeaponEquipment({
+                id: `Panel MML ${rackSize}`, name: `MML ${rackSize}`, shortName: `MML ${rackSize}`, type: 'weapon',
+                weapon: { heat: 5, ammoType: 'MML', rackSize, av: [5, 5, 5] },
+            }), { location: 'Nose' }));
+            const ammo = ['LRM', 'SRM'].map(name => addTestEquipment(entity, new AmmoEquipment({
+                id: `Panel MML 9/${name}`, name: `MML 9/${name}`, shortName: `MML 9/${name}`, type: 'ammo',
+                ammo: { type: 'MML', rackSize: 9, shots: 10 },
+            }), { location: 'Nose', shotsCount: 10 }));
+            entity.addEquipmentBay('weapon-bay', { mounts: [...launchers, ...ammo] });
+            const svg = await RecordSheetSvgGenerator.generate(entity, { ruleset: 'total-warfare' });
+            const row = svg.querySelector('.inventoryEntry.bay')!;
+            const munitions = [...row.querySelectorAll('.bayMunition')];
+            const button = row.querySelector(':scope > .shrButton')!;
+            return {
+                singlePage: svg.querySelector('[data-mekbay-aero-scale]') === null,
+                nameX: [...row.querySelectorAll(':scope > .name')].map(name => name.getAttribute('x')),
+                munitionX: munitions.map(line => line.querySelector('.name')?.getAttribute('x')),
+                buttonBottom: Number(button.getAttribute('y')) + Number(button.getAttribute('height')),
+                lastValueBaseline: Number(munitions.at(-1)!.querySelector('.range_short')!.getAttribute('y')),
+            };
+        };
+        const dropShip = await layout(new TestDropShipEntity());
+        const warShip = await layout(new TestWarShipEntity());
+
+        expect([dropShip.singlePage, warShip.singlePage]).toEqual([true, false]);
+        for (const panel of [dropShip, warShip]) {
+            // A bay's lines after its first are indented alike, as MegaMekLab indents them
+            expect(panel.nameX[0]).not.toBe(panel.nameX[1]);
+            expect(panel.munitionX).toEqual([panel.nameX[1], panel.nameX[1]]);
+            // The munition lines' values select the bay's range like its first line's
+            expect(panel.buttonBottom).toBeGreaterThan(panel.lastValueBaseline);
+        }
+        expect(dropShip.munitionX).toEqual(warShip.munitionX);
+    });
+
+    it('widens a single-page DropShip\'s range columns for its bays\' munition line values', async () => {
+        const entity = new TestDropShipEntity();
+        const mml = new WeaponEquipment({
+            id: 'Wide MML 9', name: 'MML 9', shortName: 'MML 9', type: 'weapon',
+            weapon: { heat: 5, ammoType: 'MML', rackSize: 9, av: [5, 5, 5] },
+        });
+        const ammo = ['LRM', 'SRM'].map(name => new AmmoEquipment({
+            id: `Wide MML 9/${name}`, name: `MML 9/${name}`, shortName: `MML 9/${name}`, type: 'ammo',
+            ammo: { type: 'MML', rackSize: 9, shots: 10 },
+        }));
+        // Twenty launchers print 10 (100) on their LRM line and 20 (200) on their SRM line; the bay's own row prints none
+        entity.addEquipmentBay('weapon-bay', { mounts: [
+            ...Array.from({ length: 20 }, () => addTestEquipment(entity, mml, { location: 'Nose' })),
+            ...ammo.map(equipment => addTestEquipment(entity, equipment, { location: 'Nose', shotsCount: 10 })),
+        ] });
+
+        const svg = await RecordSheetSvgGenerator.generate(entity, { ruleset: 'total-warfare' });
+        expect(svg.querySelector('[data-mekbay-aero-scale]')).toBeNull();
+        // Each value prints whole on one line
+        expect([...svg.querySelectorAll('.inventoryEntry.bay .bayMunition')].map(line =>
+            [...line.querySelectorAll('.range_short, .range_medium')].map(value =>
+                [value.textContent, value.querySelectorAll('tspan').length]))).toEqual([
+            [['10 (100)', 0], ['10 (100)', 0]],
+            [['20 (200)', 0], ['—', 0]],
+        ]);
+    });
+
+    it('keeps a dense page\'s last bay row above its data panel footer', async () => {
+        const entity = new TestDropShipEntity();
+        const mml = new WeaponEquipment({
+            id: 'Dense MML 9', name: 'MML 9', shortName: 'MML 9', type: 'weapon',
+            weapon: { heat: 5, ammoType: 'MML', rackSize: 9, av: [5, 5, 5] },
+        });
+        const ammo = ['LRM', 'SRM'].map(name => new AmmoEquipment({
+            id: `Dense MML 9/${name}`, name: `MML 9/${name}`, shortName: `MML 9/${name}`, type: 'ammo',
+            ammo: { type: 'MML', rackSize: 9, shots: 10 },
+        }));
+        // Each bay prints a line for its LRM and another for its SRM, so the page's type shrinks to fit them
+        for (let index = 0; index < 20; index++) {
+            entity.addEquipmentBay('weapon-bay', { mounts: [
+                addTestEquipment(entity, mml, { location: 'Nose' }),
+                ...ammo.map(equipment => addTestEquipment(entity, equipment, { location: 'Nose', shotsCount: 10 })),
+            ] });
+        }
+
+        const [front] = await RecordSheetSvgGenerator.generatePages(entity, { ruleset: 'total-warfare' });
+        const panel = front.querySelector('[data-mekbay-region="aero-data"]')!;
+        const rows = [...panel.querySelectorAll('.inventoryEntry.bay')];
+        const lastBaseline = Math.max(...[...rows.at(-1)!.querySelectorAll('text')].map(text => Number(text.getAttribute('y'))));
+        const footerRule = Math.max(...[...panel.querySelectorAll(':scope > line')].map(line => Number(line.getAttribute('y1'))));
+
+        expect(rows.length).toBe(20);
+        expect(rows.at(-1)!.querySelectorAll('.bayMunition').length).toBe(2);
+        expect(lastBaseline).toBeLessThan(footerRule);
+    });
+
+    it('wraps a large craft\'s footer quirks at the type size they print in, as the fit measured them', async () => {
+        const entity = new TestWarShipEntity();
+        // "Quirks: " and the long name fit in 77 characters, one more than the printed quirk type leaves a line
+        entity.quirks.set([
+            { quirk: { key: 'obsolete', name: 'A'.repeat(68), type: 'negative', description: '' } },
+            { quirk: { key: 'atmo_instability', name: 'Obsolete', type: 'negative', description: '' } },
+        ]);
+        const svg = await RecordSheetSvgGenerator.generate(entity, { ruleset: 'total-warfare' });
+
+        expect([...svg.querySelectorAll('[data-mekbay-region="aero-data"] .unitQuirks text')].map(line => line.textContent))
+            .toEqual(['Quirks:', `${'A'.repeat(68)},`, 'Obsolete']);
+    });
+
+    it('prints a DropShip\'s cargo alike on its single-page and its capital-scale data panel', async () => {
+        const cargo = async (capitalWeapon: boolean) => {
+            const entity = new TestDropShipEntity();
+            entity.transporters.set([
+                { id: 'cargo', kind: 'bay', configuration: { type: 'cargo' }, capacity: 4, doors: 1, bayNumber: 1, omni: false },
+            ]);
+            if (capitalWeapon) {
+                entity.addEquipmentBay('weapon-bay', { mounts: [addTestEquipment(entity, new WeaponEquipment({
+                    id: 'Cargo NAC', name: 'NAC', shortName: 'NAC', type: 'weapon', weapon: { capital: true, heat: 10, av: [2, 2, 1, 0] },
+                }), { location: 'Nose' })] });
+            }
+            const svg = await RecordSheetSvgGenerator.generate(entity, { ruleset: 'total-warfare' });
+            return [svg.querySelector('[data-mekbay-aero-scale]') !== null,
+                [...svg.querySelectorAll('[data-mekbay-region="aero-data"] text')].some(text => text.textContent === 'Bay 1: Cargo (4) (1 Door)')];
+        };
+
+        expect(await cargo(false)).toEqual([false, true]);
+        expect(await cargo(true)).toEqual([true, true]);
+    });
+
+    it('prints each ammo bin once, beside the first of the bay\'s weapons that fires it', async () => {
+        const entity = new TestWarShipEntity();
+        const launcher = (id: string) => addTestEquipment(entity, new WeaponEquipment({
+            id, name: 'LRM 20', shortName: 'LRM 20', type: 'weapon',
+            weapon: { heat: 6, ammoType: 'LRM', rackSize: 20, av: [12, 12, 12, 0] },
+        }), { location: 'Nose' });
+        const weapons = [launcher('ISLRM20'), launcher('CLLRM20')];
+        const ammo = addTestEquipment(entity, new AmmoEquipment({
+            id: 'IS Ammo LRM-20', name: 'LRM 20 Ammo', shortName: 'LRM 20', type: 'ammo',
+            ammo: { type: 'LRM', rackSize: 20, shots: 12 },
+        }), { location: 'Nose', shotsCount: 12 });
+        entity.addEquipmentBay('weapon-bay', { mounts: [...weapons, ammo] });
+
+        const svg = await RecordSheetSvgGenerator.generate(entity, { ruleset: 'total-warfare' });
+        expect([...svg.querySelectorAll('.inventoryEntry.bay .name')].map(name => name.textContent))
+            .toEqual(['1 LRM 20 (12 rounds),', '1 LRM 20']);
+    });
+
+    it('shares a row between opposite bays whose munitions total the same in different bins', async () => {
+        const entity = new TestWarShipEntity();
+        const weapon = new WeaponEquipment({
+            id: 'Bay LRM 20', name: 'LRM 20', shortName: 'LRM 20', type: 'weapon',
+            weapon: { heat: 6, ammoType: 'LRM', rackSize: 20, av: [12, 12, 12, 0] },
+        });
+        const ammo = new AmmoEquipment({
+            id: 'Bay LRM 20 Ammo', name: 'LRM 20 Ammo', shortName: 'LRM 20', type: 'ammo',
+            ammo: { type: 'LRM', rackSize: 20, shots: 6 },
+        });
+        for (const [location, bins] of [['ALS', [10, 10]], ['ARS', [20]]] as const) {
+            const launcher = addTestEquipment(entity, weapon, { location });
+            const loaded = bins.map(shots => addTestEquipment(entity, ammo, { location, shotsCount: shots }));
+            entity.addEquipmentBay('weapon-bay', { mounts: [launcher, ...loaded] });
+        }
+        const svg = await RecordSheetSvgGenerator.generate(entity, { ruleset: 'total-warfare' });
+        const rows = [...svg.querySelectorAll<SVGGElement>('.inventoryEntry.bay')];
+        expect(rows.map(row => [row.querySelector('.name')?.textContent, row.querySelector('.location')?.textContent]))
+            .toEqual([['1 LRM 20 (20 rounds)', 'ALS/ARS']]);
+    });
+
+    it('prints the Artemis legend under a single-page DropShip\'s bays', async () => {
+        const entity = new TestDropShipEntity();
+        const launcher = addTestEquipment(entity, new WeaponEquipment({
+            id: 'Legend LRM 20', name: 'LRM 20', shortName: 'LRM 20', type: 'weapon',
+            flags: ['F_LRM', 'F_MISSILE', 'F_ARTEMIS_COMPATIBLE'],
+            weapon: { heat: 6, ammoType: 'LRM', rackSize: 20, av: [12, 12, 12, 0] },
+        }), { location: 'Nose' });
+        const artemis = addTestEquipmentWithFlags(entity, 'F_ARTEMIS', { location: 'Nose' });
+        entity.linkEquipment(artemis, launcher);
+        entity.addEquipmentBay('weapon-bay', { mounts: [launcher, artemis] });
+
+        const svg = await RecordSheetSvgGenerator.generate(entity, { ruleset: 'total-warfare' });
+        expect(svg.dataset['mekbayLayout']).toBe('dropship');
+        expect(svg.querySelector('.inventoryEntry.bay .name')?.textContent).toBe('1 LRM 20*');
+        expect(svg.textContent).toContain('* w/Artemis IV');
+    });
+
     it('keeps opposite bays separate when equally printed rounds contain different munitions', async () => {
         const entity = new TestWarShipEntity();
         const weapon = new WeaponEquipment({
@@ -582,6 +988,30 @@ describe('RecordSheetSvgGenerator', () => {
         expect(rows.map(row => row.querySelector('.name')?.textContent))
             .toEqual(['1 LRM 20 (24 rounds)', '1 LRM 20 (24 rounds)']);
         expect(rows.map(row => row.querySelector('.location')?.textContent)).toEqual(['ALS', 'ARS']);
+    });
+
+    it('orders a DropShip\'s side bays front then rear of each side, as MegaMekLab does', async () => {
+        const order = async (motive: 'Spheroid' | 'Aerodyne') => {
+            const entity = new TestDropShipEntity();
+            entity.motiveType.set(motive);
+            // Added out of order; each bay carries its own laser, so no two share a row
+            for (const [id, location, rearMounted] of [
+                ['Aft Laser', 'Aft', false], ['Right Rear Laser', 'Right Side', true], ['Right Laser', 'Right Side', false],
+                ['Left Rear Laser', 'Left Side', true], ['Left Laser', 'Left Side', false], ['Nose Laser', 'Nose', false],
+            ] as const) {
+                entity.addEquipmentBay('weapon-bay', { mounts: [addTestEquipment(entity, new WeaponEquipment({
+                    id, name: id, shortName: id, type: 'weapon', weapon: { heat: 3, av: [5, 0, 0, 0] },
+                }), { location, rearMounted })] });
+            }
+            const svg = await RecordSheetSvgGenerator.generate(entity, { ruleset: 'total-warfare' });
+            return [...svg.querySelectorAll('.inventoryEntry.bay')].map(row =>
+                `${row.querySelector('.location')?.textContent} ${row.querySelector('.name')?.textContent}`);
+        };
+
+        expect(await order('Spheroid')).toEqual(['NOS 1 Nose Laser', 'FLS 1 Left Laser', 'ALS 1 Left Rear Laser',
+            'FRS 1 Right Laser', 'ARS 1 Right Rear Laser', 'AFT 1 Aft Laser']);
+        expect(await order('Aerodyne')).toEqual(['NOS 1 Nose Laser', 'LW 1 Left Laser', 'LW 1 Left Rear Laser (R)',
+            'RW 1 Right Laser', 'RW 1 Right Rear Laser (R)', 'AFT 1 Aft Laser']);
     });
 
     it('sorts Small Craft by ground range and maps spheroid front and rear side arcs', async () => {
@@ -619,7 +1049,7 @@ describe('RecordSheetSvgGenerator', () => {
         const svg = await RecordSheetSvgGenerator.generate(entity, { ruleset: 'total-warfare' });
         const row = svg.querySelector<SVGGElement>('.inventoryEntry.bay')!;
         expect(row.querySelector('.name')?.textContent).toBe('1 Large Laser');
-        expect(row.querySelector('.range_short')?.textContent).toBe('1 (8)');
+        expect(row.querySelector('.range_short')?.textContent).toBe('1\u202F(8)');
         expect(svg.textContent).not.toContain('Standard Scale on Reverse');
     });
 

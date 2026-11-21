@@ -15,7 +15,7 @@ import {
 import { AmmoEquipment, WeaponEquipment } from '../equipment.model';
 import type { AttackHitLocation } from '../runtime/attack-hit-location';
 import { gameRulesFor, TW_GAME_RULES, type CBTGameRules } from './game-rules';
-import { infernoEffect, infernoMissilesStruck, type InfernoMissile } from './inferno-rules';
+import { infernoEffect, infernoMissilesStruck, isInfernoAmmo, type InfernoMissile } from './inferno-rules';
 import { resolveWeaponAttack, weaponAttackProfile } from './weapon-attack-resolution';
 
 describe('inferno rules', () => {
@@ -81,19 +81,39 @@ describe('inferno rules', () => {
             id: 'ISSRM6 Inferno Ammo', name: 'SRM 6 Inferno Ammo', type: 'ammo',
             ammo: { type: 'SRM', rackSize: 6, damagePerShot: 2, munitionType: ['M_INFERNO'] },
         });
-        const fire = (rules: CBTGameRules, targetTracksHeat?: boolean) => weaponAttackProfile({
+        const fire = (rules: CBTGameRules) => weaponAttackProfile({
             componentId: asComponentId('srm'), equipment: srm6, mode: undefined,
             damage: { values: [2], maximum: 12, unit: 'missile' }, ammo: inferno, types: [], name: 'SRM 6',
-            targetNumber: 7, partialCover: false, ...(targetTracksHeat === undefined ? {} : { targetTracksHeat }),
+            targetNumber: 7, partialCover: true,
         }, rules)!;
         const profile = fire(TW_GAME_RULES);
 
         expect(profile.inferno).toBeTrue();
         // Roll 8 on the 6 column: 4 missiles, each its own group.
         expect(resolveWeaponAttack(profile, [4, 4], [4, 4])).toEqual({ hit: true, jammed: false, hits: 4, groups: [1, 1, 1, 1], heat: 0 });
-        // Core missiles striking a unit that tracks heat roll no location; a tank takes the TW effects of each one's.
-        const core = gameRulesFor('core-2026');
-        expect([fire(core, true), fire(core, false), fire(core), fire(TW_GAME_RULES, true)]
-            .map(attack => attack.noHitLocation === true)).toEqual([true, false, false, false]);
+        // Core missiles roll their locations too, so partial cover can stop them (Xotl, Core forum ruling, 19 Oct 2026)
+        const core = fire(gameRulesFor('core-2026'));
+        expect(core.partialCover).toBeTrue();
+    });
+
+    it('fires Improved Inferno iATM missiles as infernos that all hit when fired directly (IO:AE pp. 60-61)', () => {
+        const iatm6 = new WeaponEquipment({
+            id: 'CLiATM6', name: 'iATM 6', type: 'weapon', flags: ['F_MISSILE'],
+            weapon: { damage: 'cluster', rackSize: 6, ammoType: 'IATM' },
+        });
+        const iiw = new AmmoEquipment({
+            id: 'CLiATM6 IIW Ammo', name: 'iATM 6 IIW Ammo', type: 'ammo',
+            ammo: { type: 'IATM', rackSize: 6, damagePerShot: 1, munitionType: ['M_IATM_IIW'] },
+        });
+        expect(isInfernoAmmo(iiw)).toBeTrue();
+        const profile = weaponAttackProfile({
+            componentId: asComponentId('iatm'), equipment: iatm6, mode: undefined,
+            damage: { values: [2], maximum: 12, unit: 'missile' }, ammo: iiw, types: [], name: 'iATM 6',
+            targetNumber: 7, partialCover: false,
+        }, TW_GAME_RULES)!;
+        // A Streak-like lock: every missile hits, with no Cluster Hits Table roll.
+        expect(resolveWeaponAttack(profile, [4, 4], [3, 4])).toEqual({
+            hit: true, jammed: false, hits: 6, groups: [1, 1, 1, 1, 1, 1], heat: 0,
+        });
     });
 });

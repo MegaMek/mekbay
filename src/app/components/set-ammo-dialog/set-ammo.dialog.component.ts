@@ -7,7 +7,7 @@ import { DialogRef, DIALOG_DATA } from '@angular/cdk/dialog';
 import type { AmmoEquipment } from '../../models/equipment.model';
 import { hasMekRuntime, type CBTUnitSnapshot } from '../../models/cbt-unit-snapshot';
 import type { ComponentId } from '../../models/entity/entity-identifiers';
-import { entityAmmoLoadouts, entityAmmoSelectionCompatibilityFacts, entityWeaponTechBasesForAmmo, mekAmmoDefaultMunitionKey, mekAmmoLoadouts } from '../../models/runtime/mek-ammo';
+import { entityAmmoDefaultMunitionKey, entityAmmoLoadouts, entityAmmoSelectionCompatibilityFacts, entityWeaponTechBasesForAmmo, mekAmmoDefaultMunitionKey, mekAmmoLoadouts } from '../../models/runtime/mek-ammo';
 import type { EquipmentRegistry } from '../../models/equipment-lookup';
 import type { Era } from '../../models/eras.model';
 import type { EquipmentTechBase } from '../../models/entity/types/tech';
@@ -59,7 +59,7 @@ export function mountedAmmoDialogData(
         : entityAmmoLoadouts(source.entity, mount, source.ruleset);
     const defaultKey = hasMekRuntime(source)
         ? mekAmmoDefaultMunitionKey(source.entity, source.index, componentId)
-        : mount.equipment?.internalName;
+        : entityAmmoDefaultMunitionKey(source.entity, mount);
     const original = loadouts.find(loadout => loadout.munitionKey === defaultKey);
     if (!original) return null;
     const currentAmmo = source.query.ammoEquipment(componentId);

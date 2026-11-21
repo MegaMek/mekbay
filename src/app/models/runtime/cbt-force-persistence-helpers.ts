@@ -75,9 +75,12 @@ export async function remapCBTForceCloneEnvelope(
 export function pruneRemovedUnitsFromEncounter(
     encounter: SerializedCBTEncounterStateV2,
     removedInstanceIds: ReadonlySet<string>,
+    /** Kept units whose source changed: only their endpoints go, as their component IDs may now name other equipment. */
+    changedInstanceIds: ReadonlySet<string> = new Set(),
 ): SerializedCBTEncounterStateV2 {
+    const endpointUnitIds = new Set([...removedInstanceIds, ...changedInstanceIds]);
     const networks = encounter.networks.flatMap(network => {
-        const retained = pruneEncounterNetwork(network, removedInstanceIds);
+        const retained = pruneEncounterNetwork(network, endpointUnitIds);
         return retained === null ? [] : [retained];
     });
     const c3Positions = encounter.c3Positions

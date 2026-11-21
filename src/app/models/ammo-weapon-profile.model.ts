@@ -6,7 +6,13 @@ import { AmmoMunitionFlag } from './ammo-munition-flags.type';
 import { EquipmentFlag } from './equipment-flags.type';
 import type { RangeBrackets } from './equipment.model';
 
-export type AmmoWeaponProfileId = 'mml-lrm' | 'mml-srm' | 'atm-standard' | 'atm-extended-range' | 'atm-high-explosive';
+export type AmmoWeaponProfileId =
+  | 'mml-lrm'
+  | 'mml-srm'
+  | 'atm-standard'
+  | 'atm-extended-range'
+  | 'atm-high-explosive'
+  | 'atm-improved-magnetic-pulse';
 
 export interface AmmoWeaponProfile {
   readonly id: AmmoWeaponProfileId;
@@ -74,6 +80,18 @@ export const ATM_HIGH_EXPLOSIVE_PROFILE: AmmoWeaponProfile = {
   maximumAerospaceBracket: 'short',
 };
 
+/**
+ * An iATM's Improved Magnetic Pulse missiles: High Explosive's range, each missile inflicting 1 point (IO:AE p. 61). No
+ * ATM mode fires them, so they are not among the ATM's inventory profiles.
+ */
+export const ATM_IMPROVED_MAGNETIC_PULSE_PROFILE: AmmoWeaponProfile = {
+  id: 'atm-improved-magnetic-pulse',
+  displayName: 'Improved Magnetic Pulse',
+  minimumRange: ATM_HIGH_EXPLOSIVE_PROFILE.minimumRange,
+  ranges: ATM_HIGH_EXPLOSIVE_PROFILE.ranges,
+  maximumAerospaceBracket: ATM_HIGH_EXPLOSIVE_PROFILE.maximumAerospaceBracket,
+};
+
 export const MML_AMMO_PROFILES: readonly AmmoWeaponProfile[] = [MML_LRM_PROFILE, MML_SRM_PROFILE];
 export const ATM_AMMO_PROFILES: readonly AmmoWeaponProfile[] = [
   ATM_STANDARD_PROFILE,
@@ -94,6 +112,7 @@ export function resolveAmmoWeaponProfile(ammo: AmmoProfileSource | null | undefi
   }
   if (ammo.ammoType !== 'ATM' && ammo.ammoType !== 'IATM') return null;
   if (ammo.hasMunitionType('M_EXTENDED_RANGE')) return ATM_EXTENDED_RANGE_PROFILE;
-  if (ammo.hasMunitionType('M_HIGH_EXPLOSIVE') || ammo.hasMunitionType('M_IATM_IMP')) return ATM_HIGH_EXPLOSIVE_PROFILE;
+  if (ammo.hasMunitionType('M_HIGH_EXPLOSIVE')) return ATM_HIGH_EXPLOSIVE_PROFILE;
+  if (ammo.hasMunitionType('M_IATM_IMP')) return ATM_IMPROVED_MAGNETIC_PULSE_PROFILE;
   return ammo.hasMunitionType('M_STANDARD') ? ATM_STANDARD_PROFILE : null;
 }

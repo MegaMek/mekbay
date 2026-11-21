@@ -5,7 +5,7 @@
 import type { FixedWingSupportEntity } from '../../entities/aero/fixed-wing-support-entity';
 import type { MotiveType } from '../../types';
 import { getEquipmentEngineWeight } from '../equipment-engine-weight';
-import { nextHalfTon, standardRound } from './common';
+import { calculateHeatNeutralRequirement, nextHalfTon, standardRound } from './common';
 import { amount, buildCostReport, multiplier, type EntityCostEntry, type EntityCostReport } from './cost-report';
 import { isPpcEquipment } from '../../../ppc-capacitor.model';
 import { isSupportVehicleBarArmor } from '../../../construction-equipment.model';
@@ -38,13 +38,13 @@ export function calculateFixedWingSupportCostReport(
   const armorCost = calculateFixedWingArmorCost(entity);
   const structuralTechMultiplier = 0.5 + entity.structuralTechRating() * 0.25;
 
+  // The heat sinks the vehicle's weight counts, pulse-module heat included (IO:AE p. 87).
+  const requiredHeatSinks = calculateHeatNeutralRequirement(entity);
   // This family deliberately considers only laser and PPC flags. Unlike other
-  // support vehicles, plasma weapons and flamers do not enter either sum.
-  let requiredHeatSinks = 0;
+  // support vehicles, plasma weapons and flamers do not enter the amplifier sum.
   let amplifierWeaponTonnage = 0;
   for (const mount of entity.mountedWeapons()) {
     if (!mount.equipment.hasFlag('F_LASER') && !isPpcEquipment(mount.equipment)) continue;
-    requiredHeatSinks += mount.equipment.heat;
     amplifierWeaponTonnage += mount.getTonnage(entity) ?? 0;
   }
   const amplifierWeight = engine.isFusion || engine.isFission

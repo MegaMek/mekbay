@@ -84,6 +84,7 @@ describe('PageViewerMekInteractionService', () => {
         const directUnitSnapshot = () => ({
             entity: Object.assign(Object.create(member.entity), {
                 totalHeatSinks: () => currentSnapshot.heatSinks.count,
+                bulkHeatSinkCount: () => currentSnapshot.heatSinks.count,
             }),
             state: editContext(revision).state,
             editContext: editContext(revision),

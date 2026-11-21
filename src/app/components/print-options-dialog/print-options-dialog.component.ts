@@ -5,6 +5,7 @@
 import { ChangeDetectionStrategy, Component, computed, inject, signal } from '@angular/core';
 import { DialogRef, DIALOG_DATA } from '@angular/cdk/dialog';
 import { GameSystem } from '../../models/common.model';
+import type { RecordSheetGroupWeapons } from '../../models/options.model';
 import type { PrintAllOptions } from '../../models/print-options.model';
 import { OptionsService } from '../../services/options.service';
 
@@ -85,12 +86,13 @@ export interface PrintOptionsDialogData {
                         <select id="recordSheetGroupWeapons" class="bt-select option-select"
                             [value]="groupWeapons()"
                             (change)="onGroupWeaponsChange($event)">
-                            <option value="false">Disabled</option>
-                            <option value="true">Enabled</option>
+                            <option value="disabled">Disabled</option>
+                            <option value="previews">Only previews</option>
+                            <option value="enabled">Enabled</option>
                         </select>
                     </div>
                     <div class="description">
-                        <p>Count identical weapons on one inventory row instead of printing a row each.</p>
+                        <p>Count identical weapons on one inventory row instead of printing a row each. Only previews prints a row each.</p>
                     </div>
                 </div>
                 }
@@ -239,7 +241,7 @@ export class PrintOptionsDialogComponent {
     }
 
     protected onGroupWeaponsChange(event: Event): void {
-        void this.optionsService.setOption('recordSheetGroupWeapons', (event.target as HTMLSelectElement).value === 'true');
+        void this.optionsService.setOption('recordSheetGroupWeapons', (event.target as HTMLSelectElement).value as RecordSheetGroupWeapons);
     }
 
     protected onCenterPanelChange(event: Event): void {

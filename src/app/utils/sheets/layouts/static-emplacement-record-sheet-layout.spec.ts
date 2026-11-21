@@ -596,7 +596,7 @@ Unresolved Searchlight
         const ids = pages.flatMap(page => [...page.querySelectorAll('.inventoryEntry')]
             .flatMap(row => row.getAttribute('data-mekbay-component-ids')!.split(' ')));
         expect(ids.sort()).toEqual(entity.equipment().map(mount => mount.mountId).sort());
-        for (const page of pages) expect(page.querySelector('[data-ammo-inventory] line')).toBeNull();
+        for (const page of pages) expect(page.querySelector('.inventoryEntry')!.parentElement!.querySelector('line')).toBeNull();
     });
 
     it('prints the feature key and map symbols for doors, elevators, bays and roof turrets', async () => {

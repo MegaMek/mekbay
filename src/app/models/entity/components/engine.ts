@@ -47,13 +47,12 @@ export interface MountedEngineInit {
   readonly rating: number;
   readonly techBase: EntityTechBase;
   readonly installed?: boolean;
-  readonly isSuperHeavy?: boolean;
   readonly baseChassisHeatSinks?: number;
 }
 
 /**
  * MountedEngine contains all engine-related data for an entity:
- * - The engine definition (type, rating, tech base, large/superheavy)
+ * - The engine definition (type, rating, tech base)
  * - A reference to the engine-type descriptor from `ENGINE_DATA`
  * Heat-sink equipment and its allocation live on the owning entity.
  */
@@ -63,7 +62,6 @@ export class MountedEngine {
   readonly rating: number;
   readonly techBase: EntityTechBase;
   readonly installed: boolean;
-  readonly isSuperHeavy: boolean;
   private baseChassisHeatSinks: number;
 
   constructor(init: MountedEngineInit) {
@@ -71,7 +69,6 @@ export class MountedEngine {
     this.rating = init.rating;
     this.techBase = init.techBase;
     this.installed = init.installed ?? true;
-    this.isSuperHeavy = init.isSuperHeavy ?? false;
     this.baseChassisHeatSinks = init.baseChassisHeatSinks ?? -1;
 
   }
@@ -201,16 +198,16 @@ export class MountedEngine {
    *
    * Returns an array of 0-based slot indices in the CT that the engine occupies.
    */
-  getCTSlots(gyroType: GyroType): number[] {
-    return getEngineCTSlots(this, gyroType);
+  getCTSlots(gyroType: GyroType, superheavyChassis: boolean): number[] {
+    return getEngineCTSlots(this, gyroType, superheavyChassis);
   }
 
   /**
    * Get the engine side-torso critical slot indices.
    * Returns an array of 0-based slot indices in each side torso.
    */
-  getSideTorsoSlots(): number[] {
-    return getEngineSideTorsoSlots(this);
+  getSideTorsoSlots(superheavyChassis: boolean): number[] {
+    return getEngineSideTorsoSlots(this, superheavyChassis);
   }
 }
 
@@ -222,13 +219,13 @@ export class MountedEngine {
  * Compute the CT critical slot indices occupied by the engine.
  * Mirrors MegaMek `Engine.getCenterTorsoCriticalSlots()`.
  */
-function getEngineCTSlots(engine: MountedEngine, gyroType: GyroType): number[] {
+function getEngineCTSlots(engine: MountedEngine, gyroType: GyroType, superheavyChassis: boolean): number[] {
   if (engine.type() === 'Compact') {
-    return engine.isSuperHeavy ? [0, 1] : [0, 1, 2];
+    return superheavyChassis ? [0, 1] : [0, 1, 2];
   }
 
   if (engine.isLarge) {
-    if (engine.isSuperHeavy) {
+    if (superheavyChassis) {
       if (gyroType === 'None') return [0, 1, 2, 3];
       return [0, 1, 2, 5];
     }
@@ -239,27 +236,27 @@ function getEngineCTSlots(engine: MountedEngine, gyroType: GyroType): number[] {
 
   // Normal-sized engine
   if (gyroType === 'None') {
-    return engine.isSuperHeavy ? [0, 1, 2] : [0, 1, 2, 3, 4, 5];
+    return superheavyChassis ? [0, 1, 2] : [0, 1, 2, 3, 4, 5];
   }
   if (gyroType === 'Compact') {
-    return engine.isSuperHeavy ? [0, 1, 2] : [0, 1, 2, 5, 6, 7];
+    return superheavyChassis ? [0, 1, 2] : [0, 1, 2, 5, 6, 7];
   }
   if (gyroType === 'XL') {
-    return engine.isSuperHeavy ? [0, 1, 2] : [0, 1, 2, 9, 10, 11];
+    return superheavyChassis ? [0, 1, 2] : [0, 1, 2, 9, 10, 11];
   }
   // Standard / Heavy Duty / Superheavy gyro
-  return engine.isSuperHeavy ? [0, 1, 2] : [0, 1, 2, 7, 8, 9];
+  return superheavyChassis ? [0, 1, 2] : [0, 1, 2, 7, 8, 9];
 }
 
 /**
  * Compute the side-torso critical slot indices occupied by the engine.
  * Mirrors MegaMek `Engine.getSideTorsoCriticalSlots()`.
  */
-function getEngineSideTorsoSlots(engine: MountedEngine): number[] {
+function getEngineSideTorsoSlots(engine: MountedEngine, superheavyChassis: boolean): number[] {
   const desc = engine.descriptor();
   if (!desc.sideTorsoSlots) return [];
 
-  const count = engine.isSuperHeavy
+  const count = superheavyChassis
     ? (engine.techBase === 'Clan' ? desc.sideTorsoSlots.clanSH : desc.sideTorsoSlots.isSH)
     : engine.techBase === 'Clan'
       ? desc.sideTorsoSlots.clan
@@ -312,9 +309,10 @@ export function getEngineBaseWeight(rating: number): number {
 export function buildCTSystemLayout(
   engine: MountedEngine,
   gyroType: GyroType,
+  superheavyChassis: boolean,
 ): (string | null)[] {
   const layout: (string | null)[] = new Array(MEK_SLOTS_PER_LOCATION).fill(null);
-  const engineSlots = engine.getCTSlots(gyroType);
+  const engineSlots = engine.getCTSlots(gyroType, superheavyChassis);
   const gyroCriticalSlots = GYRO_DATA[gyroType].criticalSlots;
 
   // Place engine slots
@@ -341,9 +339,10 @@ export function buildCTSystemLayout(
  */
 export function buildSideTorsoSystemLayout(
   engine: MountedEngine,
+  superheavyChassis: boolean,
 ): (string | null)[] {
   const layout: (string | null)[] = new Array(MEK_SLOTS_PER_LOCATION).fill(null);
-  const slots = engine.getSideTorsoSlots();
+  const slots = engine.getSideTorsoSlots(superheavyChassis);
   for (const idx of slots) {
     if (idx < MEK_SLOTS_PER_LOCATION) layout[idx] = 'Engine';
   }

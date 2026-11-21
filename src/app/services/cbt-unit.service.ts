@@ -12,6 +12,13 @@ import type { SerializedNonMekUnit } from '../models/runtime/non-mek-unit-persis
 import { isSerializedNonMekUnit } from '../models/runtime/non-mek-unit-persistence';
 
 import type { SerializedCBTUnitV2 } from '../models/runtime/persistence-v2';
+import { rekeyMekHeatSourceId } from '../models/runtime/mek-heat-state-v2';
+import {
+deserializeMekMovementPsrStateV2,
+serializeMekMovementPsrStateV2,
+withoutMekMovementPsrEquipmentV2,
+type SerializedMekMovementPsrStateV2,
+} from '../models/runtime/mek-movement-psr-v2';
 import type { V2StateRestoreWarningCode } from '../models/runtime/runtime-state-codec-v2';
 import {
 DEFAULT_MEK_INITIAL_STATE_PROFILE_ID,
@@ -110,17 +117,18 @@ export class CBTUnitService {
             warnings.push(Object.freeze({ unitName, code, message }));
         };
         if (sourceHashCanaryChanged(saved.sourceHashCanary, nativeSource?.sourceHashCanary)) {
-            warn(
-                'SOURCE_REVISION_CHANGED',
-                'The source file has changed since this unit state was saved.',
-            );
+            saved = withoutEquipmentState(saved);
+            warn('SOURCE_REVISION_CHANGED',
+                'The source file has changed since this unit state was saved, so its equipment state was reset.');
         }
         let unit: CBTUnit;
         if (isSerializedNonMekUnit(saved)) {
             if (loaded.entity instanceof MekEntity) {
                 throw new Error('A persisted non-Mek runtime resolved to a Mek entity');
             }
-            unit = restoreNonMekUnit(saved, loaded.entity, uuid, scenario, nativeSource);
+            unit = restoreNonMekUnit(saved, loaded.entity, uuid, scenario, nativeSource, {
+                onWarning: warning => warn(warning.code, warning.message),
+            });
         } else {
             if (!(loaded.entity instanceof MekEntity)) {
                 throw new Error('A persisted Mek runtime resolved to a non-Mek entity');
@@ -135,4 +143,71 @@ export class CBTUnitService {
         }
         return Object.freeze({ unit, warnings: Object.freeze(warnings) });
     }
+}
+
+/**
+ * Saved state names equipment by mount ID (m1, m2, ... in the source file's row order) or by critical-slot coordinate.
+ * Once the source has changed, one added or removed mount renumbers every later one, so any such key may now name other
+ * equipment. Every fact keyed by a mount, component or critical slot is therefore dropped, for 'Meks and other units
+ * alike: so are a pilot check whose witness names one (a sprint check names its boosters) and the dice a pending
+ * critical hit rolled, which pick a slot. Facts keyed by location, crew position, system or the unit itself stay:
+ * location damage and conditions, system damage tracks, bombs, crew, heat totals, destroyed, conditions, pilot checks
+ * naming only locations, the critical hits still owed to a location, and the rule checks, whose trigger is always a
+ * location.
+ */
+function withoutEquipmentState<T extends SerializedCBTUnitV2 | SerializedNonMekUnit>(saved: T): T {
+    if (isSerializedNonMekUnit(saved)) {
+        const { componentState: _components, ammoState: _ammo, equipmentRowOrder: _order,
+            pendingCombat, turn, ...rest } = saved;
+        const { componentStatus: _status, ...locationPending } = pendingCombat ?? {};
+        return {
+            ...rest,
+            ...(Object.keys(locationPending).length === 0 ? {} : { pendingCombat: locationPending }),
+            ...(turn === undefined ? {} : { turn: withoutEquipmentTurn({
+                ...turn,
+                ...(turn.movement === undefined ? {} : { movement: { ...turn.movement, boosterComponentIds: [] } }),
+            }) }),
+        } as T;
+    }
+    const mek = saved as SerializedCBTUnitV2;
+    const { slotState: _slots, componentState: _components, ammoState: _ammo, equipmentRowOrder: _order,
+        pendingCombat, turn, movementPsr, ...rest } = mek;
+    const { slotHits: _slotHits, componentStatus: _status, shieldDamage: _shield, modularArmorDamage: _modular,
+        ...locationPending } = pendingCombat ?? {};
+    const { pendingCriticalEvents, ...turnRest } = withoutEquipmentTurn(turn);
+    return {
+        ...rest,
+        ...(Object.keys(locationPending).length === 0 ? {} : { pendingCombat: locationPending }),
+        turn: {
+            ...turnRest,
+            ...(pendingCriticalEvents === undefined ? {} : {
+                pendingCriticalEvents: pendingCriticalEvents.map(event => {
+                    if (event.type !== 'critical-hit') return event;
+                    const { roll: _roll, ...owed } = event;
+                    return owed;
+                }),
+            }),
+        },
+        movementPsr: withoutEquipmentMovementPsr(movementPsr),
+    } satisfies SerializedCBTUnitV2 as T;
+}
+
+/** Invalid movement/PSR state is left for the codec to recover. */
+function withoutEquipmentMovementPsr(movementPsr: SerializedMekMovementPsrStateV2): SerializedMekMovementPsrStateV2 {
+    try {
+        return serializeMekMovementPsrStateV2(withoutMekMovementPsrEquipmentV2(
+            deserializeMekMovementPsrStateV2(movementPsr)));
+    } catch {
+        return movementPsr;
+    }
+}
+
+/** The turn without the weapons it fired and the heat it settled for named components (`rekeyMekHeatSourceId`). */
+function withoutEquipmentTurn<Turn extends Readonly<{
+    firedWeapons?: readonly string[];
+    settledHeat?: readonly Readonly<{ sourceId: string; heat: number }>[];
+}>>(turn: Turn): Turn {
+    const { firedWeapons: _fired, settledHeat, ...rest } = turn;
+    const kept = settledHeat?.filter(entry => rekeyMekHeatSourceId(entry.sourceId, () => '') === entry.sourceId);
+    return { ...rest, ...(kept?.length ? { settledHeat: kept } : {}) } as unknown as Turn;
 }

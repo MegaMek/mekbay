@@ -130,7 +130,7 @@ function battleArmorMessages(entity: BattleArmorEntity): EntityValidationMessage
     for (const m of all) {
         const eq = m.equipment;
         if (!eq) continue;
-        const parent = entity.getLinkingMount(m);
+        const [parent] = entity.getLinkingMounts(m);
         if (eq instanceof AmmoEquipment) {
             const limit = eq.ammoType === 'BA_TUBE' ? 8 : 4;
             if ((m.getAmmoShots() ?? 0) > limit) add('BA_AMMO_SHOTS_LIMIT', `Battle armor permits at most ${limit} shots per ammunition slot.`, m.location);

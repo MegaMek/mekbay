@@ -4,6 +4,7 @@
 import { TestBed } from '@angular/core/testing';
 
 import { asComponentId, asLocationId } from '../../models/entity/entity-identifiers';
+import { TestBipedMekEntity } from '../../models/entity/testing/test-entities';
 import type { CBTEquipmentInteraction } from '../../models/cbt-force.types';
 import type { EquipmentPanelComponent, MekPhysicalAttackRow } from '../../models/runtime/equipment-panel';
 import type { EquipmentDialogRuntimeController } from './equipment-dialog-runtime.controller';
@@ -149,6 +150,7 @@ function createRuntime() {
         interactions: () => [interaction],
         member: {
             id: 'unit:1',
+            entity: new TestBipedMekEntity(),
             force: {
                 readOnly: () => false,
                 getMekTurnPanelSnapshot: () => ({ movementState: { movement: null } }),

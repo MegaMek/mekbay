@@ -3,14 +3,10 @@
 
 import type { BaseEntity } from '../../../models/entity/base-entity';
 import type { AeroEntity } from '../../../models/entity/entities/aero/aero-entity';
-import { isChassisSystemEquipment, isVstolEquipment } from '../../../models/chassis-equipment.model';
-import { getBayTransporterType, isQuartersBay } from '../../../models/entity/bays/bay-definitions';
-import { fireControlFeatureFromFlagLookup } from '../../../models/entity/utils/fire-control';
+import { recordSheetFeatures } from '../record-sheet-features';
 import { isAeroEntity } from '../../../models/entity/utils/entity-type-guards';
-import { isSingleHeatSinkEquipment } from '../../../models/heat-equipment.model';
-import { aerospaceAttackValues } from '../../aerospace-range.util';
-import { isRecordSheetInventorySupport, recordSheetInventoryMountName } from '../record-sheet-inventory-equipment';
-import { groupRecordSheetWeaponRows, recordSheetWeaponMountKey, type InventoryWeaponStateKey } from '../record-sheet-weapon-grouping';
+import type { EntityMountedEquipment } from '../../../models/entity/types';
+import { type InventoryWeaponStateKey } from '../record-sheet-weapon-grouping';
 import {
 fullRecordSheetLayoutProfile,
 type RecordSheetLayoutProfile,
@@ -26,8 +22,6 @@ createRoot,
 drawGeneratedFooter,
 drawHeatScale,
 drawPageChrome,
-formatRecordSheetTonnage,
-formatWholeNumber,
 } from '../record-sheet-svg-rendering';
 import {
 drawFighterCriticalPanel,
@@ -35,8 +29,9 @@ drawFighterPilotPanel,
 } from './aero-fighter-record-sheet-controls';
 import {
 type AeroDataInventoryRow,
+aeroInventoryEquipmentRows,
+aeroInventoryWeaponRows,
 aeroPageBox,
-aeroWeaponSheetName,
 drawAeroArtworkRegion,
 drawAeroDataPanel,
 drawAeroDiagramHeader,
@@ -99,11 +94,7 @@ export class AeroFighterRecordSheetLayout implements RecordSheetLayout {
                 showAmmoSummary: true,
                 showQuirks: request.showQuirks,
                 ruleset: request.ruleset,
-                featureText: fighterFeatures(entity).join(', '),
-                ...(entity.entityType === 'FixedWingSupport' ? {
-                    featureText: fixedWingSupportFeatures(entity),
-                    cargoInFeatures: true,
-                } : {}),
+                featureText: recordSheetFeatures(entity).join(', '),
             },
         );
         await drawAeroPaperdoll(
@@ -142,62 +133,9 @@ export class AeroFighterRecordSheetLayout implements RecordSheetLayout {
 
     /** Fighter inventory projection belongs to the fighter family, not to the shared panel renderer. */
     private inventoryRows(entity: AeroEntity, stateKey: InventoryWeaponStateKey | null): readonly AeroDataInventoryRow[] {
-        interface MutableRow {
-            quantity: number;
-            name: string;
-            location: string;
-            heat: string;
-            damageByRange: [string, string, string, string];
-            componentIds: string[];
-        }
-        const ranged = new Set(entity.rangedWeapons());
-        const weapons = groupRecordSheetWeaponRows(entity.rangedWeapons().map(mount => ({
-            name: aeroWeaponSheetName(mount.displayName(), mount.equipment),
-            location: this.inventoryLocation(entity, mount.getOccupiedLocations()),
-            heat: String(mount.equipment.heat),
-            damageByRange: aerospaceAttackValues(mount.equipment, null)
-                .map(value => value > 0 ? String(value) : '—') as [string, string, string, string],
-            componentIds: [mount.mountId],
-            // A fighter always counts weapons that print alike, as MegaMekLab does; a grouped inventory also tells
-            // their mounts and live states apart.
-            mountKey: stateKey === null ? '' : recordSheetWeaponMountKey(mount),
-        })), stateKey ?? (() => ''));
-        const rows = new Map<string, MutableRow>();
-        for (const mount of entity.equipment()) {
-            if (ranged.has(mount as never) || mount.getAmmoShots() !== undefined) continue;
-            const equipment = mount.equipment;
-            if (!equipment) continue;
-            if (equipment.type === 'armor' || equipment.type === 'structure'
-                || isSingleHeatSinkEquipment(equipment)) continue;
-            if (entity.entityType === 'FixedWingSupport' && isRecordSheetInventorySupport(equipment)) continue;
-            if (/engine|cockpit|landing gear|fuel|avionics|life support/iu.test(mount.displayName())) continue;
-            const row: MutableRow = {
-                quantity: 1,
-                name: `${recordSheetInventoryMountName(entity, mount)}${equipment.type === 'misc' ? ' [E]' : ''}`,
-                location: this.inventoryLocation(entity, mount.getOccupiedLocations()),
-                heat: '—',
-                damageByRange: ['—', '—', '—', '—'],
-                componentIds: [mount.mountId],
-            };
-            const key = JSON.stringify({ ...row, quantity: 0, componentIds: undefined });
-            const existing = rows.get(key);
-            if (existing) {
-                existing.quantity++;
-                existing.componentIds.push(mount.mountId);
-            } else {
-                rows.set(key, row);
-            }
-        }
-        return [...weapons, ...rows.values()].map((row, index) => ({
-            id: `generated-aero-inventory-row@${index}`,
-            kind: 'equipment',
-            quantity: row.quantity,
-            nameLines: [row.name],
-            location: row.location,
-            heat: row.heat,
-            damageByRange: row.damageByRange,
-            componentIds: row.componentIds,
-        }));
+        const location = (mount: EntityMountedEquipment) => this.inventoryLocation(entity, mount.getOccupiedLocations());
+        return [...aeroInventoryWeaponRows(entity, stateKey, location),
+            ...aeroInventoryEquipmentRows(entity, stateKey, location)];
     }
 
     private inventoryLocation(entity: AeroEntity, locations: readonly string[]): string {
@@ -220,46 +158,6 @@ export class AeroFighterRecordSheetLayout implements RecordSheetLayout {
             ? '/images/paperdolls/fighter-conventional.svg'
             : '/images/paperdolls/fighter-aerospace.svg';
     }
-}
-
-/** PrintAero lists support chassis modifications and bulk transport in the footer. */
-function fixedWingSupportFeatures(entity: AeroEntity): string {
-    const features = fighterFeatures(entity).filter(feature => !feature.startsWith('Chassis Mod: '));
-    const modifications = entity.equipment()
-        .filter(mount => isChassisSystemEquipment(mount.equipment) && !isVstolEquipment(mount.equipment))
-        .map(mount => mount.equipment!.shortName);
-    if (modifications.length > 0) features.push(`${modifications.join(', ')} Chassis ${modifications.length === 1 ? 'Mod' : 'Mods'}`);
-    const fireControl = fireControlFeatureFromFlagLookup(flag =>
-        entity.equipment().some(mount => mount.equipment?.hasFlag(flag)));
-    if (fireControl) features.push(fireControl);
-    for (const type of ['standard-seats', 'pillion-seats', 'ejection-seats'] as const) {
-        const count = entity.transporters().reduce((sum, transporter) => sum + (transporter.kind === 'bay'
-            && transporter.configuration.type === type ? Math.trunc(transporter.capacity) : 0), 0);
-        if (count === 0) continue;
-        const name = getBayTransporterType({ type });
-        features.push(`${formatWholeNumber(count)} ${count === 1 ? name.replace('Seats', 'Seat') : name}`);
-    }
-    const transport = new Map<string, number>();
-    for (const transporter of entity.transporters()) {
-        const name = transporter.kind === 'troop-space' ? 'Infantry Compartment'
-            : transporter.kind === 'bay' && !isQuartersBay(transporter) ? getBayTransporterType(transporter.configuration) : null;
-        if (name === null) continue;
-        const capacity = transporter.kind === 'troop-space' ? transporter.totalSpace
-            : transporter.kind === 'bay' ? transporter.capacity : 0;
-        transport.set(name, (transport.get(name) ?? 0) + capacity);
-    }
-    for (const [name, capacity] of transport) {
-        const weight = entity.weightClass() === 'Small Support' ? formatRecordSheetTonnage(capacity, true)
-            : `${formatWholeNumber(capacity)} ${capacity === 1 ? 'ton' : 'tons'}`;
-        features.push(`${name} (${weight})`);
-    }
-    return features.join(', ');
-}
-
-/** Cargo is rendered separately; retain the fighter's other construction features. */
-function fighterFeatures(entity: AeroEntity): string[] {
-    return entity.entityFeatures().filter(feature => !feature.startsWith('Bay: ')
-        && feature !== 'Infantry Compartment');
 }
 
 function drawGroundMapStraightMovementTable(svg: SVGSVGElement, box: Box): void {

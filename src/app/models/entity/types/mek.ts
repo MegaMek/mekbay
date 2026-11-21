@@ -73,7 +73,8 @@ export function getMekLocationAbbreviation(location: string): string {
  *
  * `transfersTo`  - next inward location for damage transfer when this
  *                  location's internal structure is destroyed.
- *                  `null` = terminal (CT destroyed → Mek destroyed).
+ *                  `null` = terminal: damage from a destroyed head or center
+ *                  torso does not transfer (TW and Core, Transferring Damage).
  *
  * `dependents`   - locations physically attached to this one that are
  *                  also destroyed when it is destroyed
@@ -99,7 +100,7 @@ export type MekTopology = Readonly<Partial<Record<MekLocation, LocTopology>>>;
  *       LL      RL
  */
 export const BIPED_TOPOLOGY = {
-  HD:  { transfersTo: 'CT',   dependents: [] },
+  HD:  { transfersTo: null,   dependents: [] },
   CT:  { transfersTo: null,   dependents: [] },
   RT:  { transfersTo: 'CT',   dependents: ['RA'] },
   LT:  { transfersTo: 'CT',   dependents: ['LA'] },
@@ -134,7 +135,7 @@ export const TRIPOD_TOPOLOGY = {
  *       RLL     RRL
  */
 export const QUAD_TOPOLOGY = {
-  HD:  { transfersTo: 'CT',   dependents: [] },
+  HD:  { transfersTo: null,   dependents: [] },
   CT:  { transfersTo: null,   dependents: [] },
   RT:  { transfersTo: 'CT',   dependents: ['FRL'] },
   LT:  { transfersTo: 'CT',   dependents: ['FLL'] },

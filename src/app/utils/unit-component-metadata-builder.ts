@@ -28,14 +28,12 @@ import type { CBTUnitQueryPort } from '../models/runtime/cbt-unit-runtime';
 import { ammoLoadoutDisplay } from '../models/runtime/mek-ammo';
 import { componentIdForMount } from '../models/runtime/unit-runtime-index';
 import { formatWeaponDamage } from './weapon-damage.util';
-import { isApolloEquipment } from '../models/apollo-mode.model';
 import { isSingleHexEcmEquipment } from '../models/ecm-mode.model';
 import {
   isBackhoeEquipment,
   isTalonEquipment,
 } from '../models/entity/utils/physical-weapon';
 import { isAnyJumpBoosterEquipment } from '../models/jump-equipment.model';
-import { isArtemisEquipment } from '../models/artemis-equipment.model';
 import {
   isChainDrapeEquipment,
   isEnvironmentalSealingEquipment,
@@ -48,16 +46,11 @@ import {
   isStealthEquipment,
   isVoidSignatureEquipment,
 } from '../models/stealth-equipment.model';
+import { isMastMountEquipment } from '../models/utility-equipment.model';
 import {
-  isBattleArmorStructuralUtility,
-  isMastMountEquipment,
-} from '../models/utility-equipment.model';
-import {
-  isAntiPersonnelMountEquipment,
   isBattleArmorManipulatorEquipment,
-  isDetachableWeaponPackEquipment,
+  isBattleArmorStructuralEquipment,
   isElectronicInterfaceEquipment,
-  isModularWeaponMountEquipment,
 } from '../models/battle-armor-equipment.model';
 import {
   isJumpJetEquipment,
@@ -632,7 +625,7 @@ function criticals(
       ? entity.locationOrder.length
       : equipment.tankSlots);
   }
-  return String(equipment.getNumCriticalSlots(entity, mount?.size ?? 1) ?? 0);
+  return String((mount ? mount.getNumCriticalSlots(entity) : equipment.getNumCriticalSlots(entity)) ?? 0);
 }
 
 function protoMekRequiresSlot(equipment: Equipment): boolean {
@@ -662,14 +655,7 @@ function bayCategory(id: string): ComponentType {
 
 function isStructuralMisc(entity: BaseEntity, equipment: MiscEquipment): boolean {
   if (equipment.isArmorKit) return true;
-  if (!(entity instanceof BattleArmorEntity)) return false;
-  return isApolloEquipment(equipment)
-    || isDetachableWeaponPackEquipment(equipment)
-    || isModularWeaponMountEquipment(equipment)
-    || isBattleArmorStructuralUtility(equipment)
-    || isArtemisEquipment(equipment)
-    || (isAntiPersonnelMountEquipment(equipment)
-      && !isBattleArmorManipulatorEquipment(equipment));
+  return entity instanceof BattleArmorEntity && isBattleArmorStructuralEquipment(equipment);
 }
 
 function physicalDamage(

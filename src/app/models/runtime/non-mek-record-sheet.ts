@@ -21,6 +21,7 @@ import { effectiveEntityPilotingSkill } from '../entity/utils/battle-value/skill
 import { isInfantryEntity, isProtoMekEntity } from '../entity/utils/entity-type-guards';
 import { protoMekMovement } from '../rules/protomek-runtime-rules';
 import type { EquipmentStatus } from '../equipment-status.model';
+import { AmmoEquipment, type Equipment } from '../equipment.model';
 import type { AeroRuntimeRulesProjection } from '../rules/aero-runtime-rules';
 import {
 projectConventionalInfantryCombat,
@@ -64,6 +65,8 @@ export interface NonMekRecordSheetLocation {
 export interface NonMekRecordSheetComponent {
     readonly componentId: ComponentId;
     readonly equipmentId: string;
+    /** The installed equipment, as the Mek equipment panel carries it, for printing a dispenser's payload. */
+    readonly equipment?: Equipment;
     readonly label: string;
     readonly sheetLocations: readonly string[];
     readonly status: EquipmentStatus;
@@ -224,13 +227,15 @@ export function projectNonMekRecordSheet(
         return Object.freeze({
             componentId: component.id,
             equipmentId: mount.equipmentId,
+            ...(mount.equipment === undefined ? {} : { equipment: mount.equipment }),
             label: mount.displayName(),
             sheetLocations: Object.freeze(mount.getOccupiedLocations()
                 .map(location => entity.componentLocationLabel(location))),
             status: query.componentStatus(component.id, 'committed'),
             previewStatus: query.componentStatus(component.id, 'preview'),
-            // The printed ammunition profile; coolant pods are catalogued as ammunition but print as equipment.
-            ...(loadout === null || isCoolantPodEquipment(mount.equipment) ? {} : {
+            // The printed ammunition profile: bins only. Coolant pods are catalogued as ammunition but print as
+            // equipment, and a one-shot launcher's own shots are not printed as ammunition.
+            ...(loadout === null || !(mount.equipment instanceof AmmoEquipment) || isCoolantPodEquipment(mount.equipment) ? {} : {
                 ammo: Object.freeze({
                     displayName: loadout.equipment.shortName || loadout.equipment.name,
                     capacity: loadout.capacity,

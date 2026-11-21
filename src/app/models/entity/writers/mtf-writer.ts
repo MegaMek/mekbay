@@ -14,9 +14,7 @@ import {
   EntityMountedEquipment,
   formatCriticalSlotEquipment,
   MEK_SLOTS_PER_LOCATION,
-  MekLocation,
 } from '../types';
-import { WeaponEquipment } from '../../equipment.model';
 import { isStandardCaseEquipment } from '../../case-equipment.model';
 import { isJumpJetEquipment } from '../../jump-equipment.model';
 import {
@@ -26,6 +24,9 @@ import {
   encodeMtfHeatSinkType,
   encodeMtfRiscHeatSinkOverrideKit,
   encodeMtfStructure,
+  mtfCriticalSectionOrder,
+  mtfListedWeapons,
+  mtfMountKey,
 } from '../parsers/mtf-codec';
 
 // ============================================================================
@@ -47,13 +48,6 @@ const LOC_DISPLAY_NAMES: Record<string, string> = {
   RRL: 'Rear Right Leg',
   CL: 'Center Leg',
 };
-
-/** MTF crit-section output order: biped */
-const CRIT_ORDER_BIPED: MekLocation[] = ['LA', 'RA', 'LT', 'RT', 'CT', 'HD', 'LL', 'RL'];
-/** MTF crit-section output order: quad */
-const CRIT_ORDER_QUAD: MekLocation[] = ['FLL', 'FRL', 'LT', 'RT', 'CT', 'HD', 'RLL', 'RRL'];
-/** MTF crit-section output order: tripod */
-const CRIT_ORDER_TRIPOD: MekLocation[] = ['LA', 'RA', 'LT', 'RT', 'CT', 'HD', 'LL', 'RL', 'CL'];
 
 // ============================================================================
 // Armor output order
@@ -131,7 +125,7 @@ export function writeMtf(entity: MekEntity): string {
   writeMovement(entity, lines);
   writeArmor(entity, lines, isQuad, isTripod);
   writeWeapons(entity, lines);
-  writeCriticals(entity, lines, isQuad, isTripod);
+  writeCriticals(entity, lines);
   writeFluff(entity, lines);
 
   while (lines.at(-1) === '') lines.pop();
@@ -202,13 +196,7 @@ function writePhysical(entity: MekEntity, lines: string[]): void {
   );
   lines.push(`structure:${getStructureString(entity)}`);
   if (entity.hasHybridStructure()) {
-    const order =
-      entity instanceof TripodMekEntity
-        ? CRIT_ORDER_TRIPOD
-        : entity instanceof QuadMekEntity
-          ? CRIT_ORDER_QUAD
-          : CRIT_ORDER_BIPED;
-    for (const location of order) {
+    for (const location of mtfCriticalSectionOrder(entity)) {
       const structure = entity.structureAt(location);
       const structurePrefix = entity.hasMixedStructureMaterials()
         ? `${encodeMtfStructure(
@@ -320,10 +308,9 @@ const WEAPON_LOC_ORDER: Record<string, number> = {
   FRL: 4,
 };
 
+/** The mounts an MTF `Weapons:` block lists. */
 function writeWeapons(entity: MekEntity, lines: string[]): void {
-  const mounts = entity
-    .equipment()
-    .filter((m) => m.allocation.kind === 'location' && m.location !== 'None' && m.equipment instanceof WeaponEquipment);
+  const mounts = mtfListedWeapons(entity);
 
   // Sort by first crit-slot appearance: location order, then slot index
   mounts.sort((a, b) => {
@@ -346,11 +333,11 @@ function writeWeapons(entity: MekEntity, lines: string[]): void {
   lines.push('');
 }
 
-function writeCriticals(entity: MekEntity, lines: string[], isQuad: boolean, isTripod: boolean): void {
-  const critOrder = isTripod ? CRIT_ORDER_TRIPOD : isQuad ? CRIT_ORDER_QUAD : CRIT_ORDER_BIPED;
+function writeCriticals(entity: MekEntity, lines: string[]): void {
   const grid = entity.criticalSlotGrid();
+  const rowTags = mtfRowTags(entity, grid);
 
-  for (const loc of critOrder) {
+  for (const loc of mtfCriticalSectionOrder(entity)) {
     const header = LOC_DISPLAY_NAMES[loc];
     if (!header) continue;
     lines.push(`${header}:`);
@@ -365,7 +352,7 @@ function writeCriticals(entity: MekEntity, lines: string[], isQuad: boolean, isT
         const name = slot.systemType === 'Engine' ? 'Fusion Engine' : slot.systemType!;
         lines.push(slot.armored ? `${name} (ARMORED)` : name);
       } else {
-        lines.push(formatEquipmentSlot(slot));
+        lines.push(formatEquipmentSlot(slot, rowTags));
       }
     }
     const donor = entity.hasHybridStructure() ? entity.structureDonorAt(loc) : null;
@@ -423,10 +410,38 @@ function writeFluff(entity: MekEntity, lines: string[]): void {
 // Formatting helpers
 // ============================================================================
 
-function formatEquipmentSlot(slot: Extract<CriticalSlotView, { type: 'equipment' }>): string {
-  return formatCriticalSlotEquipment(slot, (mount, isLast) =>
-    formatMountedEquipmentSlot(mount, isLast && slot.armored, isLast && slot.omniPod),
-  );
+/**
+ * Rows alone can't tell a split mount from another mount of its equipment in a location they share, so such a split
+ * mount tags its rows (MegaMek MtfFile.mountTags). Tags number them 1..k per equipment in the order they are written.
+ */
+function mtfRowTags(entity: MekEntity, grid: ReturnType<MekEntity['criticalSlotGrid']>):
+  ReadonlyMap<EntityMountedEquipment, number> {
+  const locations = (mount: EntityMountedEquipment) => new Set(mount.placements?.map(placement => placement.location));
+  const placed = entity.equipment().filter(mount => mount.placements?.length);
+  const sharesALocation = (mount: EntityMountedEquipment) => locations(mount).size > 1 && !mount.equipment?.isSpreadable
+    && placed.some(other => other !== mount && mtfMountKey(other) === mtfMountKey(mount)
+      && [...locations(other)].some(location => locations(mount).has(location)));
+  const tags = new Map<EntityMountedEquipment, number>();
+  const counts = new Map<string, number>();
+  for (const location of mtfCriticalSectionOrder(entity)) {
+    for (const slot of grid.get(location) ?? []) {
+      if (slot.type !== 'equipment') continue;
+      for (const mount of slot.mounts) {
+        if (tags.has(mount) || !sharesALocation(mount)) continue;
+        const key = mtfMountKey(mount);
+        counts.set(key, (counts.get(key) ?? 0) + 1);
+        tags.set(mount, counts.get(key)!);
+      }
+    }
+  }
+  return tags;
+}
+
+function formatEquipmentSlot(slot: Extract<CriticalSlotView, { type: 'equipment' }>, rowTags: ReadonlyMap<EntityMountedEquipment, number>): string {
+  return formatCriticalSlotEquipment(slot, (mount, isLast) => {
+    const tag = rowTags.get(mount);
+    return formatMountedEquipmentSlot(mount, isLast && slot.armored, isLast && slot.omniPod) + (tag ? `#${tag}` : '');
+  });
 }
 
 function formatMountedEquipmentSlot(mount: EntityMountedEquipment, armored: boolean, omniPod: boolean): string {

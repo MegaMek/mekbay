@@ -10,6 +10,7 @@ import {
     TestBipedMekEntity as BipedMekEntity,
     TestConvFighterEntity as ConvFighterEntity,
     TestDropShipEntity as DropShipEntity,
+    TestFixedWingSupportEntity as FixedWingSupportEntity,
     TestJumpShipEntity as JumpShipEntity,
     TestProtoMekEntity as ProtoMekEntity,
     TestQuadMekEntity as QuadMekEntity,
@@ -26,6 +27,7 @@ import { calculateEntityCostDetails } from './cost/entity-cost';
 import { amount, buildCostReport, multiplier } from './cost/cost-report';
 import { EquipmentFlag } from '../../equipment-flags.type';
 import { createTestEquipmentRegistry } from '../testing/test-equipment-registry';
+import { addTestEquipment } from '../testing/test-mounted-equipment';
 
 describe('entity cost', () => {
     for (const [scope, expected] of [['Unknown', 140000], ['Clan', 130000]] as const) {
@@ -352,12 +354,15 @@ describe('entity cost', () => {
         ]);
 
         expect(entity.automaticClanCaseLocations().size).toBe(0);
+        // The Clan structure's built-in CASE still covers the arm; only no CASE mount is generated there.
+        expect(entity.implicitClanCaseLocations()).toEqual(new Set(['RA']));
         expect(calculateMountedEquipmentCostBreakdown(entity).total).toBe(175000);
 
         entity.setEquipment([...entity.equipment(), mount(new MiscEquipment({
             id: 'other-explosive', name: 'Other Explosive Equipment', type: 'misc', stats: { explosive: true },
         })).clone({ allocation: { kind: 'location', location: 'LA' } })]);
         expect(entity.automaticClanCaseLocations()).toEqual(new Set(['LA']));
+        expect(entity.implicitClanCaseLocations()).toEqual(new Set(['RA', 'LA']));
         expect(calculateMountedEquipmentCostBreakdown(entity).total).toBe(225000);
     });
 
@@ -498,6 +503,51 @@ describe('entity cost', () => {
         }));
         expect(entity.costDetails().steps.find(step => step.type === 'Heatsinks'))
             .toEqual(jasmine.objectContaining({ amount: 4000 }));
+    });
+
+    it('prices fixed-wing support and ProtoMek heat sinks for a pulse module\'s extra laser heat (IO:AE p. 87)', () => {
+        const laser = new WeaponEquipment({
+            id: 'medium-laser', name: 'Medium Laser', type: 'weapon',
+            flags: ['F_LASER', 'F_ENERGY', 'F_RISC_LASER_PULSE_COMPATIBLE'], stats: { cost: 0 },
+            weapon: { heat: 3, ammoType: 'NA' },
+        });
+        const pulse = new MiscEquipment({
+            id: 'pulse-module', name: 'RISC Laser Pulse Module', type: 'misc',
+            flags: ['F_WEAPON_ENHANCEMENT', 'F_RISC_LASER_PULSE_MODULE'], stats: { cost: 0 },
+        });
+        for (const [entity, location] of [[new FixedWingSupportEntity(), 'Nose'], [new ProtoMekEntity(), 'Torso']] as const) {
+            const weapon = addTestEquipment(entity, laser, { location });
+            entity.linkEquipment(addTestEquipment(entity, pulse, { location }), weapon);
+            // A medium laser's 3 heat and the 2 of its pulse mode.
+            expect(entity.costDetails().steps.find(step => step.type === 'Heatsinks'))
+                .withContext(entity.entityType).toEqual(jasmine.objectContaining({ amount: 2000 * 5 }));
+        }
+    });
+
+    it('prices the turret tonnage the vehicle weight counts (TM pp. 98, 279)', () => {
+        const entity = new TankEntity();
+        entity.setTonnage(50);
+        entity.mountedEngine.set(new MountedEngine({ type: 'Fusion', rating: 200, techBase: 'IS' }));
+        const inTurret = (item: EntityMountedEquipment, location: string) => item.clone({ allocation: { kind: 'location', location } });
+        const weapon = (id: string, location: string, tons: number) => inTurret(weaponMount(id, tons, []), location);
+        const equipment = inTurret(mount(new MiscEquipment({
+            id: 'turret-misc', name: 'Turret Equipment', type: 'misc', stats: { tonnage: 2, cost: 0 },
+        })), 'Turret');
+        const turrets = () => entity.costDetails().steps.find(step => step.type === 'Turrets')?.amount;
+        entity.hasTurret.set(true);
+        // All weapons and equipment in the turret count: (4 + 2) / 10 rounds up to 1 ton.
+        entity.setEquipment([weapon('turret-gun', 'Turret', 4), equipment]);
+        expect(turrets()).toBe(5000);
+        // Each turret of a dual-turret vehicle rounds its own tonnage: 0.5 + 0.5 tons, not 0.5 for the pair.
+        entity.hasDualTurret.set(true);
+        entity.setEquipment([weapon('rear-gun', 'Rear Turret', 2), weapon('front-gun', 'Front Turret', 2)]);
+        expect(turrets()).toBe(5000);
+        // An OmniVehicle's base chassis fixes the turret tonnage.
+        entity.hasDualTurret.set(false);
+        entity.omni.set(true);
+        entity.baseChassisTurretWeight.set(2);
+        entity.setEquipment([weapon('turret-gun', 'Turret', 4)]);
+        expect(turrets()).toBe(10000);
     });
 
     it('includes seating and transport bay door costs', () => {

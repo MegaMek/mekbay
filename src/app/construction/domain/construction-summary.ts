@@ -83,7 +83,10 @@ export function constructionSummary(entity: BaseEntity) {
     }
     const crits = (key: string): number | null => {
         if (!(entity instanceof MekEntity)) return null;
-        if (key === 'engine') return entity.mountedEngine().getCTSlots(entity.gyroType()).length + 2 * entity.mountedEngine().getSideTorsoSlots().length;
+        if (key === 'engine') {
+            const engine = entity.mountedEngine(), superheavy = entity.isSuperHeavy();
+            return engine.getCTSlots(entity.gyroType(), superheavy).length + 2 * engine.getSideTorsoSlots(superheavy).length;
+        }
         if (key === 'gyro') return entity.mountedGyro().criticalSlots;
         if (key === 'cockpit') return [...entity.criticalSlotGrid().values()].flat().filter(slot => slot.type === 'system' && slot.systemType === 'Cockpit').length;
         const equipment = mounts.filter(mount => group(mount) === key);

@@ -888,8 +888,9 @@ export class PaperdollGenerator {
     const pipOptions = this.getPlaceholderPipOptions(group.type, context.options);
     switch (layout) {
       case 'capital-grid':
+        // The capital paperdolls draw MegaMekLab's grids at three quarters of their cell size.
         return group.type === 'armor' || group.type === 'structure'
-          ? CapitalShipPipRenderer.createPips(count, width, height, group.type, group.location, pipOptions)
+          ? CapitalShipPipRenderer.createPips(count, width, height, group.type, group.location, pipOptions, 0.75)
           : null;
       case 'distributed':
         return this.createDistributedRectanglePips(width, height, count, pipOptions, group.type, group.location);

@@ -185,11 +185,11 @@ function calculateMekPowerAmplifierWeight(entity: MekEntity): number {
       isPpcEquipment(equipment) ||
       flamerRequiresPower(equipment);
     if (!requiresPower) return total;
-    const capacitor = entity.getLinkingMount(mount);
+    const capacitor = entity.getLinkingMounts(mount).find(source => isPpcCapacitorEquipment(source.equipment));
     return (
       total +
       requireMountTonnage(entity, mount) +
-      (capacitor && isPpcCapacitorEquipment(capacitor.equipment) ? requireMountTonnage(entity, capacitor) : 0)
+      (capacitor ? requireMountTonnage(entity, capacitor) : 0)
     );
   }, 0);
   return ceilToHalfTon(poweredWeight / 10);

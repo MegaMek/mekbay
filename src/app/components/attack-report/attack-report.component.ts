@@ -34,23 +34,26 @@ export interface AttackReportWeapon {
     readonly toHit: TwoDice;
     readonly hit: boolean;
     readonly jammed?: boolean;
+    /** An insulated laser's failure roll after a to-hit roll of 2, and whether the laser suffers a critical hit. */
+    readonly insulator?: Readonly<{ dice: TwoDice; failed: boolean }>;
     readonly cluster: Readonly<{ dice: TwoDice; modifier: number; projectiles: number; hits: number }> | null;
     /** Each group is one inferno missile rather than damage. */
     readonly inferno?: boolean;
-    /** The groups roll no hit location: Core inferno missiles striking a unit that tracks heat. */
-    readonly noHitLocation?: boolean;
     /**
-     * Outside heat a heat-causing weapon's hit applies, with the heat dice it read (none for a flamer); `cover` when
-     * its first roll strikes partial cover, which drops the heat.
+     * Outside heat a heat-causing weapon's hit applies, with the heat dice it read (none for a flamer); `reduced` when
+     * armor or partial cover reduces the heat.
      */
-    readonly heat?: Readonly<{ dice: readonly number[]; value: number; cover?: true }>;
+    readonly heat?: Readonly<{ dice: readonly number[]; value: number; reduced?: true }>;
     /** An aimed shot's roll, the location it names, and whether the roll strikes it. */
     readonly aim?: Readonly<{ dice: readonly number[]; label: string; strikes: boolean }>;
     readonly groups: readonly AttackReportGroup[];
 }
 
-/** Which roll of a weapon an edit sets: to-hit, cluster, heat dice, aim, or a hit-location group by index. */
-export type AttackReportRoll = 'to-hit' | 'cluster' | 'heat' | 'aim' | number;
+/**
+ * Which roll of a weapon an edit sets: to-hit, a laser insulator's failure, cluster, heat dice, aim, or a hit-location
+ * group by index.
+ */
+export type AttackReportRoll = 'to-hit' | 'insulator' | 'cluster' | 'heat' | 'aim' | number;
 
 /** An aimed shot as the report shows it. */
 export function attackReportAim(aim: AimedShotRoll): NonNullable<AttackReportWeapon['aim']> {

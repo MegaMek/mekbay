@@ -13,11 +13,12 @@ import {
     type RecordSheetPageFormat,
 } from '../record-sheet-layout';
 import {
-    addFrame, addLine, addText, appendBattleValue, createRoot, drawCheckbox, drawGeneratedFooter,
-    drawPageChrome, formatNumber,
+    addFrame, addLine, addText, appendBattleValue, appendDataPanelFacts, condenseDataPanelCaption, createRoot, drawCheckbox,
+    drawGeneratedFooter, drawPageChrome, formatNumber,
     scalePageBox,
-    setAttributes, svgElement, transparentRect, type Box,
+    setAttributes, svgElement, transparentRect, valueXAfterCaptions, type Box,
 } from '../record-sheet-svg-rendering';
+import { RECORD_SHEET_FONT } from '../record-sheet-typography';
 import { buildingInventoryPages, drawBuildingInventory, type BuildingInventoryPage } from './building-sheet-inventory';
 import { buildingTemplatePages } from './building-template';
 import { BUILDING_MAP_KEY as MAP_KEY, buildingMapFeatures, buildingMapDoors, buildingMapFill, buildingDoorPoints, type BuildingMapSymbol as MapSymbol } from '../../building-map-presentation';
@@ -47,7 +48,7 @@ export class StaticEmplacementRecordSheetLayout implements RecordSheetLayout {
         }
         const page = request.page;
         const data = scalePageBox(page, { x: 18, y: 94, width: 224, height: 347 });
-        const inventory = buildingInventoryPages(entity, data.width, data.height - 103);
+        const inventory = buildingInventoryPages(entity, data.width, buildingInventoryHeight(data));
         const protections = entity.coordinates().reduce((sum, hex) => sum + entity.segmentsInHex(hex), 0);
         const count = Math.max(1, Math.ceil(entity.mapLevels().length / 6), inventory.length, Math.ceil(protections / 36));
         const sheets = Array.from({ length: count }, (_, index) => {
@@ -84,34 +85,48 @@ function drawBuildingSheet(svg: SVGSVGElement, entity: StaticEmplacementEntity, 
         catalystY: page.margin + 7 * page.verticalScale, catalystScale: page.horizontalScale });
 }
 
+/** The inventory runs from under the data rows' rule to the Cost and BV row. */
+const BUILDING_INVENTORY_TOP = 65.5;
+const BUILDING_INVENTORY_BOTTOM = 28;
+function buildingInventoryHeight(box: Box): number {
+    return box.height - BUILDING_INVENTORY_TOP - BUILDING_INVENTORY_BOTTOM;
+}
+
 function drawBuildingData(svg: SVGSVGElement, entity: StaticEmplacementEntity, box: Box,
     inventoryPage: BuildingInventoryPage | undefined, ruleset: CBTRuleset): void {
     const group = addFrame(svg, 'STRUCTURE DATA', box, { headerWidth: 112, headerHeight: 12, headerFontSize: 10,
         bottomLeftNotchWidth: box.width * .45, cornerAngleDegrees: { topRight: 45, bottomLeft: 45, bottomRight: 45 } });
-    const right = box.width * .64;
-    const field = (label: string, value: string, x: number, y: number, offset: number, width: number, id?: string) => {
-        addText(group, label, x, y, { size: 6.8, weight: 700 });
-        const text = addText(group, value, x + offset, y, { size: 6.8, maxWidth: width });
-        if (id) text.id = id;
-        return text;
-    };
-    field('Description:', entity.displayName(), 9, 31, 45, right - 60, 'type').setAttribute('data-mekbay-field', 'display-name');
-    field('Levels:', entity.isBridge() ? entity.mapLevels().map(level => entity.levelLabel(level)).join(',') : String(entity.height() ?? 1),
-        right, 31, 27, box.width - right - 34);
-    field('MP:', entity.isMobile() ? formatNumber(entity.originalWalkMP()) : '0', 9, 43, 18, 30);
-    field('Movement Type:', entity.isMobile() ? entity.motiveType() : 'Static', 9, 55, 62, right - 76);
-    field('Powerplant Type:', entity.powerSupply().label, 9, 67, 69, right - 84);
-    addText(group, 'Tech Base:', right, 43, { size: 6.8, weight: 700 });
-    for (const [label, y, checked] of [['Clan', 55, entity.techBase() === 'Clan' || entity.mixedTech()],
-        ['Inner Sphere', 67, entity.techBase() !== 'Clan' || entity.mixedTech()]] as const) {
-        addText(group, label, right + 3, y, { size: 6.8 });
+    const right = box.width * .66;
+    const size = RECORD_SHEET_FONT.body;
+    // The 'Mek data panels' rows: body type nine points apart, condensed captions, values a space after them.
+    const description = condenseDataPanelCaption(addText(group, 'Description:', 9, 31, { size, weight: 700 }));
+    const descriptionX = valueXAfterCaptions([description]);
+    const type = addText(group, entity.displayName(), descriptionX, 31, {
+        size, maxWidth: SvgFrameUtil.innerRight(box.width) - 3 - descriptionX,
+    });
+    type.id = 'type';
+    type.setAttribute('data-mekbay-field', 'display-name');
+    const unscaled = { x: (value: number) => value, y: (value: number) => value, font: (value: number) => value };
+    appendDataPanelFacts(group, [
+        { label: 'MP:', value: entity.isMobile() ? formatNumber(entity.originalWalkMP()) : '0', baseline: 40, labelX: 9, valueX: 0 },
+        { label: 'Movement Type:', value: entity.isMobile() ? entity.motiveType() : 'Static', baseline: 49, labelX: 9, maxWidth: right - 69 },
+        { label: 'Powerplant Type:', value: entity.powerSupply().label, baseline: 58, labelX: 9, maxWidth: right - 69 },
+    ], unscaled);
+    // Levels sits on the MP row, over the values of Movement and Powerplant Type.
+    const levelsX = Number(group.lastElementChild?.getAttribute('x'));
+    const levels = entity.isBridge() ? entity.mapLevels().map(level => entity.levelLabel(level)).join(',') : String(entity.height() ?? 1);
+    appendDataPanelFacts(group, [{ label: 'Levels:', value: levels, baseline: 40, labelX: levelsX, maxWidth: right - levelsX - 30 }], unscaled);
+    condenseDataPanelCaption(addText(group, 'Tech Base:', right, 40, { size, weight: 700 }));
+    for (const [label, y, checked] of [['Clan', 49, entity.techBase() === 'Clan' || entity.mixedTech()],
+        ['Inner Sphere', 58, entity.techBase() !== 'Clan' || entity.mixedTech()]] as const) {
+        addText(group, label, right + 3, y, { size });
         drawCheckbox(group, box.width - 15, y - 6, 6, checked);
     }
-    addLine(group, 7, 74, box.width - 9, 74, '#000', 1.3);
+    addLine(group, 7, BUILDING_INVENTORY_TOP - 1, box.width - 9, BUILDING_INVENTORY_TOP - 1, '#000', 1.3);
     const inventory = svgElement('g');
-    inventory.setAttribute('transform', 'translate(0 75)');
+    inventory.setAttribute('transform', `translate(0 ${BUILDING_INVENTORY_TOP})`);
     group.appendChild(inventory);
-    drawBuildingInventory(inventory, entity, box.width, box.height - 103, inventoryPage);
+    drawBuildingInventory(inventory, entity, box.width, buildingInventoryHeight(box), inventoryPage);
     addLine(group, 7, box.height - 24, box.width - 9, box.height - 24, '#000', 1.3);
     addText(group, 'Cost:', 10, box.height - 12, { size: 7, weight: 700 });
     let cost = '—';

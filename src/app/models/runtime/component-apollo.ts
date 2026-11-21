@@ -7,6 +7,7 @@ APOLLO_FLAG,
 APOLLO_MODES,
 APOLLO_SATURATION_MODE,
 APOLLO_STANDARD_MODE,
+isApolloEquipment,
 isApolloLink,
 isApolloMode,
 supportsApolloSaturationModeForRuleset,
@@ -70,8 +71,7 @@ function resolveComponentApolloDefinition(
     const parent = equipmentForComponent(index, parentId);
     if (source === undefined || parent === undefined) return null;
     if (!isApolloLink(source, parent)
-        || index.relationships.linkedTargetBySource.get(sourceId) !== parentId
-        || index.relationships.linkedSourceByTarget.get(parentId) !== sourceId) {
+        || index.relationships.linkedTargetBySource.get(sourceId) !== parentId) {
         return null;
     }
     return Object.freeze({
@@ -94,7 +94,7 @@ export function componentApolloModes(
     ruleset: CBTRuleset,
 ): Readonly<{ readonly modes: readonly ApolloMode[]; readonly defaultMode: ApolloMode }> | null {
     if (!supportsApolloSaturationModeForRuleset(ruleset)) return null;
-    const sourceId = index.relationships.linkedSourceByTarget.get(parentId);
+    const sourceId = index.relationships.linkedSourcesByTarget.get(parentId)?.find(id => isApolloEquipment(equipmentForComponent(index, id)));
     if (sourceId === undefined
         || resolveComponentApolloDefinition(index, sourceId, parentId, ruleset) === null) return null;
     return Object.freeze({ modes: APOLLO_MODES, defaultMode: APOLLO_STANDARD_MODE });
@@ -119,7 +119,7 @@ export function applyComponentApolloWeaponTypes(
     ruleset: CBTRuleset,
     types: ReadonlySet<WeaponType>,
 ): ReadonlySet<WeaponType> {
-    const sourceId = index.relationships.linkedSourceByTarget.get(parentId);
+    const sourceId = index.relationships.linkedSourcesByTarget.get(parentId)?.find(id => isApolloEquipment(equipmentForComponent(index, id)));
     if (sourceId === undefined) return types;
     const definition = resolveComponentApolloDefinition(index, sourceId, parentId, ruleset);
     if (definition === null) return types;

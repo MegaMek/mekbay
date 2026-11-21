@@ -60,13 +60,13 @@
             <path style="fill:none;stroke:#000000;stroke-width:0.75;stroke-linecap:butt;stroke-linejoin:miter;stroke-miterlimit:10;stroke-dasharray:none;stroke-opacity:1" d="M0 0L-.957-1.914h-.957L-2.87 0h-9.57l-.957-1.914h-.958L-15.312 0-17.226 19.141l1.914 3.828h1.913l.001-3.828 5.742 1.914 5.744-1.914-.002 3.828H.957l.957-3.828z"/>
           </g>
           <g transform="translate(0,13.000223)">
-            <text style="font-variant:normal;font-weight:600;font-stretch:normal;font-size:4.33199406px;font-family:Eurostile;writing-mode:lr-tb;fill:#000000;fill-opacity:1;fill-rule:nonzero;stroke:none" transform="matrix(0.98162644,0,-0.19081282,-0.98162644,488.9417,626.3481)"><tspan x="35.990208" y="9.820631">Torso</tspan><tspan x="38.034908" y="15.885423">Legs</tspan></text>
+            <text style="font-variant:normal;font-weight:600;font-stretch:normal;font-size:4.2524px;font-family:Eurostile;writing-mode:lr-tb;fill:#000000;fill-opacity:1;fill-rule:nonzero;stroke:none" transform="matrix(1,0,-0.19438,-1,488.9417,626.3481)"><tspan x="35.32894" y="9.64019">Torso</tspan><tspan x="37.33607" y="15.59355">Legs</tspan></text>
           </g>
           <g transform="translate(-4.8002987,23.399537)">
-            <text data-protomek-main-gun="1" style="font-variant:normal;font-weight:600;font-stretch:normal;font-size:3.58099556px;font-family:Eurostile;writing-mode:lr-tb;fill:#000000;fill-opacity:1;fill-rule:nonzero;stroke:none" transform="matrix(0.98162643,0,-0.19081285,-0.98162643,523.5285,662.6363)"><tspan y="0" x="8.023" text-anchor="middle">Main Gun</tspan></text>
+            <text data-protomek-main-gun="1" style="font-variant:normal;font-weight:600;font-stretch:normal;font-size:3.5152px;font-family:Eurostile;writing-mode:lr-tb;fill:#000000;fill-opacity:1;fill-rule:nonzero;stroke:none" transform="matrix(1,0,-0.19438,-1,523.5285,662.6363)"><tspan y="0" x="7.87559" text-anchor="middle">Main Gun</tspan></text>
           </g>
           <g transform="translate(6.1999059,16.600156)">
-            <text style="font-variant:normal;font-weight:600;font-stretch:normal;font-size:4.33199406px;font-family:Eurostile;writing-mode:lr-tb;fill:#000000;fill-opacity:1;fill-rule:nonzero;stroke:none" transform="matrix(0.98162644,0,-0.19081282,-0.98162644,533.5791,653.47)"><tspan x="0" y="0">Head</tspan></text>
+            <text style="font-variant:normal;font-weight:600;font-stretch:normal;font-size:4.2524px;font-family:Eurostile;writing-mode:lr-tb;fill:#000000;fill-opacity:1;fill-rule:nonzero;stroke:none" transform="matrix(1,0,-0.19438,-1,533.5791,653.47)"><tspan x="0" y="0">Head</tspan></text>
           </g>
         </g>
         <g fill="none" id="armorPips">

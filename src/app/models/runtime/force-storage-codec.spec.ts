@@ -61,6 +61,15 @@ describe('force storage codec', () => {
         expect(() => load(stored)).toThrowError(/converted Mek mode/u);
     });
 
+    it('round-trips the takeoff depth and number of jets fired alongside a sparse booster field', () => {
+        const unit = createDirectMekRuntimeFixture('total-warfare').instance.serialize() as SerializedCBTUnitV2;
+        const movement = { mode: 'jump', distance: 2, boosterComponentIds: [], jumpJetsFired: 5, jumpFromDepth: 1 } as const;
+        const saved = { ...unit, movementPsr: { ...unit.movementPsr, movement } };
+        const stored = JSON.parse(JSON.stringify(encodeForceForStorage(forceWithUnit(saved, 'force:donor-jets', 'Donor jets'))));
+        const restored = decodeForceFromStorage(stored).cbt!.units[0].unit as SerializedCBTUnitV2;
+        expect(restored.movementPsr?.movement).toEqual(movement);
+    });
+
     it('stores whether a check is immediate, and loads a row saved without it as an end-of-phase check', () => {
         const fixture = createDirectMekRuntimeFixture('total-warfare');
         const gyro = [...fixture.index.slots.values()].find(candidate => candidate.componentIds.some(componentId => {

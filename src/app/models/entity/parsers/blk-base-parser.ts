@@ -406,9 +406,6 @@ export function getBlkEngineIsClan(bb: BuildingBlock): EntityTechBase {
  * blocks themselves.
  */
 export interface BlkEngineOpts {
-  /** Mark the engine as super-heavy (tonnage > 100).  Default: `false`. */
-  isSuperHeavy?: boolean;
-
   /** Entity-family-specific derived engine rating. Default: walk MP x tonnage. */
   rating?: number;
 
@@ -458,7 +455,6 @@ export function parseBlkEngine(
   opts: BlkEngineOpts = {},
 ): BlkEngineResult | undefined {
   const {
-    isSuperHeavy = false,
     rating = entity.walkMP() * entity.tonnage(),
     includeHeatSinks = true,
     defaultTotalHeatSinks = 10,
@@ -491,7 +487,6 @@ export function parseBlkEngine(
     type: engineType,
     rating,
     techBase: engineTechBase,
-    isSuperHeavy,
   });
 
   return { mountedEngine, heatSinkType, totalHeatSinks };

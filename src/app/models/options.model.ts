@@ -23,6 +23,7 @@ export const OPTION_VALUES = {
     forceViewerBVPVDisplayDamage: ['damaged', 'pristine'],
     recordSheetDoubleTapZoomReset: ['disabled', 'fit-to-screen', 'full-width', 'contextual'],
     recordSheetPipLayout: ['classic', 'distributed', 'rail'],
+    recordSheetGroupWeapons: ['disabled', 'previews', 'enabled'],
     unitSearchExpandedViewLayout: ['panel-list-filters', 'filters-list-panel'],
     unitSearchViewMode: ['list', 'card', 'chassis', 'table'],
     factionAvailabilityViewMode: ['list', 'grid'],
@@ -47,6 +48,7 @@ export type MouseWheelAction = OptionValue<'mouseWheelAction'>;
 export type AvailabilitySource = OptionValue<'availabilitySource'>;
 export type RecordSheetDoubleTapZoomResetMode = OptionValue<'recordSheetDoubleTapZoomReset'>;
 export type RecordSheetPipLayout = OptionValue<'recordSheetPipLayout'>;
+export type RecordSheetGroupWeapons = OptionValue<'recordSheetGroupWeapons'>;
 export type ColorScheme = OptionValue<'colorScheme'>;
 export type LinearPickerLayout = OptionValue<'linearPickerLayout'>;
 export type UnitSearchViewMode = OptionValue<'unitSearchViewMode'>;
@@ -165,8 +167,11 @@ export interface Options {
     printAllOptions: PrintAllOptions;
     recordSheetDoubleTapZoomReset: RecordSheetDoubleTapZoomResetMode;
     recordSheetPipLayout: RecordSheetPipLayout;
-    /** Record sheets count identical weapons on one inventory row, which splits as their states diverge. */
-    recordSheetGroupWeapons: boolean;
+    /**
+     * Record sheets count identical weapons on one inventory row, which splits as their states diverge. `previews`
+     * groups only the unit details sheet preview.
+     */
+    recordSheetGroupWeapons: RecordSheetGroupWeapons;
     lastCanvasState?: {
         brushSize: number;
         eraserSize: number;

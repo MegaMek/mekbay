@@ -2,13 +2,16 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 // Author: Drake
 
-import { ArmorEquipment } from '../../equipment.model';
+import { ArmorEquipment, WeaponEquipment } from '../../equipment.model';
 import { EquipmentRegistry } from '../../equipment-lookup';
 import { writeBlkVehicle } from '../writers/blk-vehicle-writer';
 import { BuildingBlock } from './building-block';
 import { parseBlkVehicle } from './blk-vehicle-parser';
 import { parseEntity } from '../parse-entity';
 import { ParseContext } from './parse-context';
+import { encodeNativeEntity } from '../write-entity';
+import { buildEquipmentRegistry } from '../../../services/catalogs/equipment-catalog-builder';
+import { calculateHeatNeutralRequirement } from '../utils/cost/common';
 
 describe('BLK vehicle parser', () => {
   const standardArmor = new ArmorEquipment({
@@ -54,6 +57,30 @@ describe('BLK vehicle parser', () => {
     expect(entity.extraSeats()).toBe(2);
     expect(written).toContain('<extra_seats>\n2\n</extra_seats>');
     expect(written).not.toContain('<extraSeats>');
+  });
+
+  describe('weapon enhancements', () => {
+    let catalog: EquipmentRegistry;
+    beforeAll(async () => {
+      catalog = buildEquipmentRegistry(await (await fetch('/online-assets/static/equipment.json')).json());
+    });
+    const load = (lines: readonly string[]) => parseEntity(vehicleBlk(`<Front Equipment>\n${lines.join('\n')}\n</Front Equipment>\n`),
+      'enhanced.blk', catalog).entity;
+    const carried = (entity: ReturnType<typeof load>) => entity.equipment().filter((mount) => mount.equipment instanceof WeaponEquipment)
+      .map((weapon) => entity.getLinkingMounts(weapon).length);
+
+    it('gives each enhancement the weapon listed above it, and keeps that through a save', () => {
+      const entity = load(['Medium Laser', 'ISLaserInsulator', 'ISLaserInsulator', 'Medium Laser', 'ISLaserInsulator',
+        'ISRISCLaserPulseModule', 'Medium Laser']);
+      expect(carried(entity)).toEqual([2, 2, 0]);
+      expect(carried(parseEntity(encodeNativeEntity(entity), 'again.blk', catalog).entity)).toEqual([2, 2, 0]);
+    });
+
+    it('sinks the pulse-mode heat of the laser a pulse module modifies, and nothing for a module without one', () => {
+      // IO:AE p. 87: a vehicle mounts heat sinks for the modified laser's extra 2 heat.
+      expect(calculateHeatNeutralRequirement(load(['Medium Laser', 'ISRISCLaserPulseModule']))).toBe(5);
+      expect(calculateHeatNeutralRequirement(load(['ISRISCLaserPulseModule']))).toBe(0);
+    });
   });
 
   it('drops a weapon quirk whose weapon is missing from the file', () => {

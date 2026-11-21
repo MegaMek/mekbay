@@ -21,6 +21,7 @@ import { addTestEquipment, addTestEquipmentWithFlags } from '../../testing/test-
 import { EquipmentRegistry } from '../../../equipment-lookup';
 import { TEST_EQUIPMENT_REGISTRY } from '../../testing/test-equipment-registry';
 import { EquipmentFlag } from '../../../equipment-flags.type';
+import { wholeJumpJetMp } from '../../../jump-equipment.model';
 
 const TEST_IS_ENDO_STRUCTURE = new StructureEquipment({
   id: 'IS Endo Steel',
@@ -449,6 +450,26 @@ describe('MekEntity jumpMP', () => {
 
     expect(entity.installedJumpJetMP()).toBe(1);
     expect(entity.jumpMP()).toBe(1);
+  });
+
+  it('drops a FrankenMek\'s fractional Jumping MP as the game does for its surviving jets (CO p. 213)', () => {
+    // CO p. 213: six half-ton jets give a 60-ton FrankenMek 3 Jumping MP; with five, the half MP is dropped.
+    const entity = new BipedMekEntity();
+    entity.setTonnage(60);
+    entity.originalWalkMP.set(5);
+    entity.setStructureAt('CT', standardStructure(60));
+    entity.setStructureAt('LT', standardStructure(55));
+    const jumpJet = new MiscEquipment({
+      id: 'FrankenJumpJet', name: 'Jump Jet', type: 'misc',
+      stats: { tonnage: 'variable' }, flags: ['F_JUMP_JET'],
+    });
+    for (let count = 0; count < 5; count++) addTestEquipment(entity, jumpJet, { location: 'LT' });
+    const jets = entity.equipment().filter(mount => mount.equipment === jumpJet)
+      .map(mount => ({ mpContribution: entity.jumpJetMpContribution(mount) }));
+
+    expect(jets.map(jet => jet.mpContribution)).toEqual(Array(5).fill(0.5));
+    expect(entity.installedJumpJetMP()).toBe(2);
+    expect(wholeJumpJetMp(jets)).toBe(entity.installedJumpJetMP());
   });
 
   it('calculates maximum jump directly when modular armor reduces normal jump to zero', () => {

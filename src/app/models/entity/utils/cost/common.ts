@@ -5,7 +5,8 @@
 import type { BaseEntity } from '../../base-entity';
 import { MiscEquipment } from '../../../equipment.model';
 import { EquipmentFlag } from '../../../equipment-flags.type';
-import { laserInsulatorAdjustedHeat } from '../../../laser-insulator.model';
+import { riscLaserPulseHeat } from '../../../risc-laser-mode.model';
+import { isLaserInsulatorEquipment, laserInsulatorAdjustedHeat } from '../../../laser-insulator.model';
 import { flamerRequiresPower } from '../../../flamer-mode.model';
 import {
   PPC_CAPACITOR_HEAT_BONUS,
@@ -85,9 +86,10 @@ export function calculateHeatNeutralRequirement(entity: BaseEntity): number {
       || weapon.hasFlag('F_PLASMA') || weapon.hasFlag('F_PLASMA_MFUK')
       || flamerRequiresPower(weapon);
     if (!producesHeat) return total;
-    const enhancement = entity.getLinkingMount(mount)?.equipment;
-    const heat = laserInsulatorAdjustedHeat(weapon.heat, enhancement, weapon);
-    return total + heat;
+    const attachments = entity.getLinkingMounts(mount);
+    const insulated = attachments.some(source => isLaserInsulatorEquipment(source.equipment));
+    // IO:AE p. 87: vehicles and other heat-neutral units sink the extra pulse-mode heat.
+    return total + laserInsulatorAdjustedHeat(weapon.heat + riscLaserPulseHeat(attachments), insulated);
   }, 0);
   const capacitorHeat = entity.equipment().reduce((total, mount) => {
     const equipment = mount.equipment;

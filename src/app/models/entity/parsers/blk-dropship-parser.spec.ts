@@ -1,10 +1,34 @@
 // Copyright (C) 2026 The MegaMek Team
 // SPDX-License-Identifier: GPL-3.0-or-later
 
+import { buildEquipmentRegistry } from '../../../services/catalogs/equipment-catalog-builder';
+import type { EquipmentRegistry } from '../../equipment-lookup';
 import { DropShipEntity } from '../entities/aero/dropship-entity';
 import { TestDropShipEntity } from '../testing/test-entities';
 import { parseEntity } from '../parse-entity';
 import { encodeNativeEntity } from '../write-entity';
+
+describe('DropShip weapon bay enhancements', () => {
+  let catalog: EquipmentRegistry;
+  beforeAll(async () => {
+    catalog = buildEquipmentRegistry(await (await fetch('/online-assets/static/equipment.json')).json());
+  });
+
+  it('writes each enhancement right after its weapon, which it links to again on reading', () => {
+    const bay = '<Nose Equipment>\n(B) LRM 15\nISArtemisIV\nLRM 20\n</Nose Equipment>\n';
+    const artemisWeapon = (source: string) => {
+      const entity = parseEntity(source, 'bay.blk', catalog).entity;
+      const artemis = entity.equipment().find(mount => mount.equipment?.id === 'ISArtemisIV')!;
+      return entity.getLinkedMount(artemis)?.equipment?.id;
+    };
+    const source = encodeNativeEntity(new TestDropShipEntity(catalog)) + bay;
+    expect(artemisWeapon(source)).toBe('LRM 15');
+
+    const written = encodeNativeEntity(parseEntity(source, 'bay.blk', catalog).entity);
+    expect(written).toContain('(B) LRM 15\nISArtemisIV\nLRM 20');
+    expect(artemisWeapon(written)).toBe('LRM 15');
+  });
+});
 
 describe('DropShip native collar round trip', () => {
   for (const collar of ['Unspecified', 'Standard', 'Prototype', 'No Boom'] as const) {

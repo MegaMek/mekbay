@@ -20,8 +20,8 @@ import { activeCrewController } from '../models/crew-member.model';
 import type { MekEntity } from '../models/entity/entities/mek/mek-entity';
 import type { ComponentId,CrewPositionId,LocationId } from '../models/entity/entity-identifiers';
 import { getMekLocationLabel,getTopologyFor,MEK_TORSO_LOCATIONS } from '../models/entity/types';
-import { isModularArmorEquipment } from '../models/modular-armor.model';
-import { gameRulesFor,type MekExplosionProtection } from '../models/rules/game-rules';
+import { modularArmorAt } from '../models/runtime/attack-hit-location';
+import { gameRulesFor } from '../models/rules/game-rules';
 import {
 heatAmmoExplosionCandidates,
 mekHeatAutomationChecks,
@@ -39,6 +39,7 @@ resolveMekCriticalChance,
 type MekCriticalChanceModifier,
 type MekCriticalChanceResult,
 type MekCriticalRollPlanV2,
+type MekInstalledExplosionProtection,
 } from '../models/runtime/mek-critical-hit-v2';
 import {
 MEK_TORSO_CRIPPLING_RULE_CHECK_KEY,
@@ -49,6 +50,7 @@ resolveMekFallDamage,
 resolveMekFallOrientation,
 resolveMekHitLocation,
 resolveMekStructureDamage,
+compositeStructurePipCarries,
 } from '../models/runtime/mek-fall-rules';
 import { mekHeadHitPilotHits, projectMekLifeSupportPilotDamage } from '../models/runtime/mek-life-support';
 import type { MekRuntimeIndex } from '../models/runtime/mek-runtime-index';
@@ -64,7 +66,6 @@ import type { MekUnitRuntimeState } from '../models/runtime/runtime-state';
 import type { MekHitArcV2,MekUnitQueryPort } from '../models/runtime/unit-instance';
 import { mekHitLocationTable } from '../utils/record-sheet-reference-table';
 import { FALL_DAMAGE, resolveArmorDamage, rifleHitDamage, type DamageSource } from '../models/rules/armor-damage-rules';
-import { infernoEffect, type InfernoMissile } from '../models/rules/inferno-rules';
 import { uuidv4 } from '../utils/uuid.util';
 import type { SwarmShakeOffCause } from '../models/rules/anti-mek-attack-rules';
 import { loadSwarmService } from './swarm-service-loader';
@@ -123,7 +124,16 @@ export interface MekDamageGroup {
     readonly arc: MekHitArcV2;
     readonly throughArmorCritical: boolean;
     readonly source: DamageSource;
+    /** Outside heat this hit delivers where it strikes; a heat-only hit carries no damage. */
+    readonly outsideHeat?: number;
 }
+
+/** Outside heat that strikes no location (a Core inferno), taken at its place in the attack. */
+export interface MekLocationlessHeat {
+    readonly outsideHeat: number;
+}
+
+export type MekWeaponHit = MekDamageGroup | MekLocationlessHeat;
 
 export interface DirectMekEndTurnAutomationRequest {
     readonly instanceId: string;
@@ -156,7 +166,7 @@ interface DirectCriticalChanceContext {
     /** Exact armor-facing decision captured when this hit reached structure. */
     readonly hardenedArmorApplies?: boolean;
     /** Internal-explosion protection carried into the resulting critical sequence. */
-    readonly explosionProtection?: MekExplosionProtection;
+    readonly explosionProtection?: MekInstalledExplosionProtection;
     /** A hit that consumed this location's last structure pip. */
     readonly locationDestroyed?: boolean;
 }
@@ -387,6 +397,9 @@ export class DirectMekAutomationService {
             hotLoadExplosion = { dice, ...(ammoComponentId ? { ammoComponentId } : {}) };
             plan = snapshot.query.mekCriticalRoll(command.locationId, command.results, command.target, hotLoadExplosion);
         }
+        const prototypeCase = withPrototypeCaseRoll(plan, command.prototypeCaseRoll, roll =>
+            snapshot.query.mekCriticalRoll(command.locationId, command.results, command.target, hotLoadExplosion, roll));
+        plan = prototypeCase.plan;
         if (plan.kind !== 'applied' || (!plan.explosion && !plan.pendingExplosion)) {
             return Object.freeze({ command, deferredPilotHits: 0 });
         }
@@ -397,7 +410,8 @@ export class DirectMekAutomationService {
             subject: this.subject(snapshot),
             event: `${plan.equipment} Explosion`,
             description: `Apply ${rawDamage} points of internal explosion damage.`
-                + (hotLoadExplosion ? ` Hot-load check: ${hotLoadExplosion.dice.join(' + ')}.` : ''),
+                + (hotLoadExplosion ? ` Hot-load check: ${hotLoadExplosion.dice.join(' + ')}.` : '')
+                + prototypeCaseDescription(prototypeCase.roll),
             delta: rawDamage,
             effects: Object.freeze(plan.explosion?.locations.map(location =>
                 `${getMekLocationLabel(location.locationCode) ?? location.locationCode}: `
@@ -426,6 +440,7 @@ export class DirectMekAutomationService {
                 applyPilotHits: false,
                 settlePendingExplosion: true,
                 ...(hotLoadExplosion === undefined ? {} : { hotLoadExplosion }),
+                ...(prototypeCase.roll === undefined ? {} : { prototypeCaseRoll: prototypeCase.roll }),
             },
             deferredPilotHits: reviewedPilotHits,
             criticalPlan: plan,
@@ -1437,6 +1452,7 @@ export class DirectMekAutomationService {
                 ? before.index.slots.get(plan.slotId)
                 : undefined;
             const protection = planned?.protection ?? mekExplosionProtection(
+                before.entity,
                 before.index,
                 before.ruleset,
                 before.query,
@@ -2052,26 +2068,33 @@ export class DirectMekAutomationService {
 
     /**
      * Applies accepted weapon hits as one damage group each, with the same armor, transfer and critical
-     * rules as falls; their head hits wound the crew through the shared crew-hit rules.
+     * rules as falls; their head hits wound the crew through the shared crew-hit rules. Inferno missiles and
+     * heat-causing weapons heat the Mek in this turn's Heat Phase (TW pp. 141, 159): a hit's heat is recorded just
+     * before its damage, where the attack's earlier hits leave it to strike, through the armor there as it is then
+     * (Core p. 201).
      */
     async applyWeaponHits(
         force: CBTForce,
         instanceId: string,
-        hits: readonly MekDamageGroup[],
+        hits: readonly MekWeaponHit[],
         target: 'committed' | 'pending',
         dispatch: CBTForceUnitCommandDispatch,
-        inferno: readonly InfernoMissile[] = [],
-        weaponHeat = 0,
     ): Promise<boolean> {
+        const addHeat = async (amount: number, located?: Readonly<{ location: Readonly<{ code: string; rear: boolean }>; source: DamageSource }>) =>
+            amount <= 0 || (await dispatch({ type: 'add-outside-heat', amount, target, ...located }, false)).accepted;
         let headHits = 0;
-        for (const hit of hits) headHits += await this.applyDamageGroup(force, instanceId, hit, target, dispatch, true);
+        for (const hit of hits) {
+            // Heat strikes past the locations the attack's earlier hits destroyed, as MegaMek resolves attacks in turn.
+            if (!('location' in hit)) {
+                if (!await addHeat(hit.outsideHeat)) return false;
+                continue;
+            }
+            if (hit.outsideHeat && !await addHeat(hit.outsideHeat,
+                { location: { code: hit.location, rear: hit.rear }, source: hit.source })) return false;
+            if (hit.damage > 0) headHits += await this.applyDamageGroup(force, instanceId, hit, target, dispatch, true);
+        }
         const snapshot = this.snapshot(force, instanceId);
         if (!snapshot) return false;
-        // Inferno missiles and heat-causing weapons heat the Mek in this turn's Heat Phase (TW pp. 142, 159).
-        const infernoHeat = infernoEffect(snapshot.entity, inferno);
-        const outsideHeat = weaponHeat + (infernoHeat.kind === 'heat' ? infernoHeat.heat : 0);
-        if (outsideHeat > 0
-            && !(await dispatch({ type: 'add-outside-heat', amount: outsideHeat, target }, false)).accepted) return false;
         const pilotHits = await this.reviewPilotHits(snapshot, headHits,
             `weapon-hits:${instanceId}:${snapshot.query.stateRevision}:head`, false, true);
         // A declined review leaves the pilot unhurt; the damage itself is already applied.
@@ -2125,14 +2148,7 @@ export class DirectMekAutomationService {
             if (!face) break;
             let modularDamage = 0;
             if (damage > 0) {
-                const modular = [...snapshot.index.components.entries()]
-                    .filter(([, component]) => component.kind === 'equipment'
-                        && isModularArmorEquipment(component.mount.equipment))
-                    .filter(([componentId]) => [...snapshot!.index.slots.values()].some(slot =>
-                        slot.locationId === location.id && slot.componentIds.includes(componentId)))
-                    .reduce((sum, [componentId]) =>
-                        sum + snapshot!.query.modularArmorRemaining(componentId, perspective), 0);
-                modularDamage = Math.min(damage, modular);
+                modularDamage = Math.min(damage, modularArmorAt(snapshot, location.id, perspective));
                 damage -= modularDamage;
             }
             const remainingArmor = snapshot.query.remainingArmor(face.id, perspective);
@@ -2164,13 +2180,9 @@ export class DirectMekAutomationService {
             const sharedInternalDamage: number = receivedSharedCompositePip && remainingInternal > 0 ? 1 : 0;
             sharedCompositePip = false;
             const construction = structureConstructionKind(location.structure.structure);
+            const kind = construction === 'composite' || construction === 'reinforced' ? construction : 'standard';
             const structureIncomingDamage = damage;
-            const structure = resolveMekStructureDamage(
-                damage,
-                Math.max(0, remainingInternal - sharedInternalDamage),
-                construction === 'composite' ? 'composite'
-                    : construction === 'reinforced' ? 'reinforced' : 'standard',
-            );
+            const structure = resolveMekStructureDamage(damage, Math.max(0, remainingInternal - sharedInternalDamage), kind);
             const internalDamage: number = sharedInternalDamage + structure.internalDamage;
             if (internalDamage > 0) {
                 const result = await dispatch({
@@ -2197,11 +2209,7 @@ export class DirectMekAutomationService {
             }
             damage = structure.overflowDamage;
             sharedCompositePip = !receivedSharedCompositePip
-                && snapshot.ruleset === 'core-2026'
-                && structureIncomingDamage > 0
-                && remainingInternal % 2 === 1
-                && construction === 'composite'
-                && internalDamage === remainingInternal
+                && compositeStructurePipCarries(snapshot.ruleset, kind, structureIncomingDamage, remainingInternal, internalDamage)
                 && this.canShareCompositePip(force, instanceId, nextCode, rearArc, perspective);
             code = nextCode;
         }
@@ -2248,12 +2256,7 @@ export class DirectMekAutomationService {
             .find(candidate => candidate?.face === (rear ? 'rear' : 'front'));
         if (!face || snapshot.query.remainingArmor(face.id, perspective) > 0
             || snapshot.query.remainingInternal(location.id, perspective) <= 0) return false;
-        return [...snapshot.index.components.entries()]
-            .filter(([, component]) => component.kind === 'equipment'
-                && isModularArmorEquipment(component.mount.equipment))
-            .filter(([componentId]) => [...snapshot.index.slots.values()].some(slot =>
-                slot.locationId === location.id && slot.componentIds.includes(componentId)))
-            .every(([componentId]) => snapshot.query.modularArmorRemaining(componentId, perspective) === 0);
+        return modularArmorAt(snapshot, location.id, perspective) === 0;
     }
 
     private async reviewPilotHits(
@@ -2431,7 +2434,9 @@ export class DirectMekAutomationService {
             return plan.kind === 'applied' && plan.slotId === slot.id;
         });
         if (!results) return 'no eligible ammunition remains; no explosion applied';
-        const plan = initial.query.mekCriticalRoll(slot.locationId, results, 'committed');
+        const { plan, roll: prototypeCaseRoll } = withPrototypeCaseRoll(
+            initial.query.mekCriticalRoll(slot.locationId, results, 'committed'), undefined,
+            roll => initial.query.mekCriticalRoll(slot.locationId, results, 'committed', undefined, roll));
         if (plan.kind !== 'applied' || (!plan.explosion && !plan.pendingExplosion)) {
             return 'no ammunition explosion applied';
         }
@@ -2457,6 +2462,7 @@ export class DirectMekAutomationService {
             applyExplosion: true,
             applyPilotHits: false,
             settlePendingExplosion: true,
+            ...(prototypeCaseRoll === undefined ? {} : { prototypeCaseRoll }),
         }, false);
         if (!result.accepted) return null;
         if (!await this.crewHitAutomation.applyResolvedHits(
@@ -2625,4 +2631,25 @@ function explosiveCriticalRolls(
         const plan = snapshot.query.mekCriticalRoll(locationId, results, target);
         return plan.kind === 'applied' && (plan.explosion !== undefined || plan.pendingExplosion !== undefined);
     });
+}
+
+/**
+ * An explosion meeting prototype CASE rolls 1D6 for its vent (IO:AE p. 65); the plan is made again with that roll. A
+ * roll the command already carries is kept.
+ */
+function withPrototypeCaseRoll(
+    plan: MekCriticalRollPlanV2,
+    roll: number | undefined,
+    project: (roll: number) => MekCriticalRollPlanV2,
+): Readonly<{ plan: MekCriticalRollPlanV2; roll?: number }> {
+    if (roll !== undefined || plan.kind !== 'applied' || plan.explosion?.prototypeCaseRoll !== null) {
+        return Object.freeze({ plan, ...(roll === undefined ? {} : { roll }) });
+    }
+    const rolled = rollD6();
+    return Object.freeze({ plan: project(rolled), roll: rolled });
+}
+
+function prototypeCaseDescription(roll: number | undefined): string {
+    if (roll === undefined) return '';
+    return ` CASE-P check: ${roll}, ${roll <= 2 ? 'it fails to vent the explosion' : 'it vents the explosion'}.`;
 }

@@ -736,14 +736,15 @@
                   [value]="optionsService.options().recordSheetGroupWeapons"
                   (change)="onRecordSheetGroupWeaponsChange($event)"
                 >
-                  <option value="false">Disabled (default)</option>
-                  <option value="true">Enabled</option>
+                  <option value="disabled">Disabled</option>
+                  <option value="previews">Only previews (default)</option>
+                  <option value="enabled">Enabled</option>
                 </select>
               </div>
               <div class="description">
                 <p>
                   Record sheets count identical weapons on one inventory row. The row splits when you select, target or
-                  damage only some of them.
+                  damage only some of them. Only previews groups just the Sheet tab of unit details.
                 </p>
               </div>
             </div>

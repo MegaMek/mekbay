@@ -13,6 +13,7 @@ import { isImprovedJumpJetEquipment } from '../../models/jump-equipment.model';
 import { standardWeaponBayDamage, weaponBayDamageLimit, weaponBayGroupingKey } from '../../models/entity/utils/weapon-bay-grouping';
 import { constructionBattleArmorChassisApplies, constructionEngineApplies, constructionGyroApplies } from './construction-system-rules';
 import { ceilToHalfTon } from '../../models/entity/utils/weight/weight-rounding';
+import { isVehicleTurretPayload } from '../../models/entity/utils/weight/vehicle-weight';
 
 const MISC_PLATFORM: Partial<Record<EntityType, EquipmentFlag>> = {
   Mek: 'F_MEK_EQUIPMENT', ProtoMek: 'F_PROTOMEK_EQUIPMENT', BattleArmor: 'F_BA_EQUIPMENT',
@@ -203,7 +204,10 @@ export function constructionFamilyMessages(entity: BaseEntity): EntityValidation
     const engine = entity.mountedEngine();
     if (!engine.installed || engine.type() === 'None') add('MEK_ENGINE_REQUIRED', 'Meks require an installed engine.', 'engine');
     if (engine.rating < 10 || engine.rating > 500 || engine.rating % 5 !== 0) add('MEK_ENGINE_RATING', 'Mek engine rating must be 10–500 in increments of five.', 'engine');
-    if (engine.rating !== entity.calculateEngineRating()) add('MEK_ENGINE_MOVEMENT', entity.mountedCockpit().isPrimitive
+    if (entity.hasHybridStructure()) {
+      if (entity.frankenMekWalkMP() < 1 || entity.originalWalkMP() !== entity.frankenMekWalkMP())
+        add('MEK_ENGINE_MOVEMENT', 'FrankenMek Walking MP must match its retained engine and provide at least 1 MP.', 'engine');
+    } else if (engine.rating !== entity.calculateEngineRating()) add('MEK_ENGINE_MOVEMENT', entity.mountedCockpit().isPrimitive
       ? 'Primitive engine rating must equal chassis tonnage × walk MP × 1.2, rounded up to the next five.'
       : 'Engine rating must equal chassis tonnage × walk MP.', 'engine');
     if (!constructionGyroApplies(entity, entity.gyroType())) add('MEK_GYRO_CLASS', 'This gyro is incompatible with the Mek chassis and cockpit.', 'structure');
@@ -232,7 +236,7 @@ export function constructionFamilyMessages(entity: BaseEntity): EntityValidation
         [['Front Turret'], entity.baseChassisTurret2Weight()],
       ] as const) {
         if (base < 0) continue;
-        const tons = entity.equipment().filter(mount => locations.some(location => location === mount.location) && !(mount.equipment instanceof AmmoEquipment))
+        const tons = entity.equipment().filter(mount => locations.some(location => location === mount.location) && isVehicleTurretPayload(mount.equipment))
           .reduce((sum, mount) => sum + (mount.getTonnage(entity) ?? 0), 0) / 10;
         const required = entity.isSupportVehicle() && entity.tonnage() < 5 ? Math.ceil((tons - 1e-9) * 1000) / 1000 : ceilToHalfTon(tons);
         if (required > base + 1e-9) add('VEHICLE_OMNI_TURRET_CAPACITY', `Turret equipment requires ${required} t of turret structure; the base chassis provides ${base} t.`, 'weight', locations[0]);
@@ -376,6 +380,6 @@ export function constructionFamilyMessages(entity: BaseEntity): EntityValidation
 
 function baCriticalSlots(entity: BattleArmorEntity, mount: EntityMountedEquipment): number {
   const eq = mount.equipment;
-  if (!eq || eq.hasFlag('F_BA_MANIPULATOR') || mount.isAPM && entity.getLinkingMount(mount)?.equipment?.hasFlag('F_AP_MOUNT')) return 0;
+  if (!eq || eq.hasFlag('F_BA_MANIPULATOR') || mount.isAPM && entity.getLinkingMounts(mount).some(source => source.equipment?.hasFlag('F_AP_MOUNT'))) return 0;
   return eq.isSpreadable ? 1 : getNumCriticalSlots(entity, eq, mount.size ?? 1) ?? 0;
 }

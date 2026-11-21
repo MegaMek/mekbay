@@ -1,10 +1,12 @@
 // Copyright (C) 2026 The MegaMek Team
 // SPDX-License-Identifier: GPL-3.0-or-later
 
+import type { CBTRuntimeArmorFace, CBTRuntimeLocation, CBTUnitRuntimeIndex } from '../runtime/cbt-unit-runtime';
 import type { CBTRuleset } from '../cbt-ruleset.model';
 import type { BaseEntity } from '../entity/base-entity';
 import { supportVehicleBarRating } from '../entity/entities/support-vehicle';
-import type { ArmorType } from '../entity/types';
+import { getTopologyFor, type ArmorType } from '../entity/types';
+import type { LocationId } from '../entity/entity-identifiers';
 import {
     isAeroEntity,
     isBattleArmorEntity,
@@ -34,12 +36,75 @@ export function attackDamageSource(
         : Object.freeze({ kind: 'weapon', types: attack.types, ...(attack.rifle ? { rifle: true as const } : {}) });
 }
 
-/** Armors whose pips absorb two points from these weapon types (Core p.202; TacOps, IntOps). */
+/**
+ * Armors whose pips absorb two points from these weapon types (Core p.202; TacOps, IntOps). Battle armor's laser-
+ * reflective armor keeps the benefit without the drawbacks (TO:AUE p. 93).
+ */
 const WEAPON_HALVING_ARMOR: Partial<Record<ArmorType, readonly WeaponType[]>> = {
     REFLECTIVE: ['DE', 'P'],
+    BA_REFLECTIVE: ['DE', 'P'],
     REACTIVE: ['M', 'AE'],
     BALLISTIC_REINFORCED: ['DB', 'M'],
 };
+
+/**
+ * Laser-reflective armor halves the heat of the flamers, lasers, PPCs and plasma weapons it reflects (BattleMech Manual
+ * p. 114; TO:AUE p. 93), to a minimum of 1, while the struck location keeps armor. Core p. 202 has no heat effect.
+ */
+export function reflectedHeat(ruleset: CBTRuleset, armorType: ArmorType, source: DamageSource | undefined, heat: number): number {
+    return heat > 0 && ruleset !== 'core-2026' && armorType === 'REFLECTIVE' && source?.kind === 'weapon'
+        && WEAPON_HALVING_ARMOR.REFLECTIVE!.some(type => source.types.includes(type)) ? Math.max(1, Math.floor(heat / 2)) : heat;
+}
+
+type ArmorReadingUnit = Readonly<{ entity: BaseEntity; ruleset: CBTRuleset; index: CBTUnitRuntimeIndex }>;
+
+/**
+ * A Mek's outside heat as it strikes, through the armor of the face it strikes as that face is when the hit is applied,
+ * before the hit's own damage: armor with special effects acts while the location has armor then (Core p. 201).
+ * Laser-reflective armor halves some weapons' heat (`reflectedHeat`); heat-dissipating armor reduces any outside heat to
+ * 0 (Core p. 202) or halves it, rounding down (IO:AE p. 81). A located hit strikes where its damage lands: past a
+ * destroyed location, the next one inward (Core, Transferring Damage); a rear-arc hit on a location without rear armor
+ * strikes its front armor. Heat without a hit location, such as fire, meets heat-dissipating armor while the Mek has
+ * any of it (Core p. 202) or, under TW, while every location keeps that front armor, as MegaMek's
+ * Mek.hasIntactHeatDissipatingArmor reads it.
+ */
+export function struckOutsideHeat(
+    unit: ArmorReadingUnit,
+    heat: number,
+    location: Readonly<{ code: string; rear: boolean }> | null,
+    armor: (face: CBTRuntimeArmorFace) => number,
+    destroyed: (locationId: LocationId) => boolean,
+    source?: DamageSource,
+): number {
+    if (!isMekEntity(unit.entity)) return heat;
+    const dissipated = (amount: number) => unit.ruleset === 'core-2026' ? 0 : Math.floor(amount / 2);
+    const sections = [...unit.index.locations.values()];
+    if (!location) {
+        const keeps = (section: CBTRuntimeLocation, front: boolean) =>
+            unit.entity.armorAt(section.code).type === 'HEAT_DISSIPATING' && !destroyed(section.id)
+            && section.armorFaceIds.some(id => {
+                const face = unit.index.armorFaces.get(id)!;
+                return (!front || face.face === 'front') && armor(face) > 0;
+            });
+        const dissipates = unit.ruleset === 'core-2026'
+            ? sections.some(section => keeps(section, false))
+            : sections.every(section => keeps(section, true));
+        return dissipates ? dissipated(heat) : heat;
+    }
+    const topology = getTopologyFor(sections.map(section => section.code));
+    let struck = sections.find(section => section.code === location.code);
+    while (struck && destroyed(struck.id)) {
+        const next = topology[struck.code as keyof typeof topology]?.transfersTo;
+        struck = next ? sections.find(section => section.code === next) : undefined;
+    }
+    const faces = struck?.armorFaceIds.map(id => unit.index.armorFaces.get(id)!) ?? [];
+    const face = faces.find(candidate => candidate.face === 'rear' && location.rear)
+        ?? faces.find(candidate => candidate.face === 'front');
+    if (!struck || !face || armor(face) <= 0) return heat;
+    const armorType = unit.entity.armorAt(struck.code).type;
+    const reflected = reflectedHeat(unit.ruleset, armorType, source, heat);
+    return armorType === 'HEAT_DISSIPATING' ? dissipated(reflected) : reflected;
+}
 
 export interface ArmorDamageResolution {
     /** Armor marks removed (one mark per damage point; Hardened pips hold two). */
@@ -62,7 +127,8 @@ export function resolveArmorDamage(
     const fall = source.kind === 'fall';
     const physical = source.kind === 'physical';
     const weaponTypes = source.kind === 'weapon' ? source.types : [];
-    if (WEAPON_HALVING_ARMOR[armorType ?? 'STANDARD']?.some(type => weaponTypes.includes(type))) {
+    if ((ruleset === 'core-2026' && armorType === 'HEAT_DISSIPATING' && weaponTypes.includes('H'))
+        || WEAPON_HALVING_ARMOR[armorType ?? 'STANDARD']?.some(type => weaponTypes.includes(type))) {
         // Total Warfare halves the damage (rounding down, minimum 1); Core lets a leftover point destroy a pip.
         const pips = ruleset === 'core-2026' ? Math.ceil(incoming / 2) : Math.max(1, Math.floor(incoming / 2));
         const armorDamage = Math.min(armor, pips);

@@ -10,12 +10,14 @@ import {
   VehicleEntity,
   StaticEmplacementEntity,
 } from '../../models/entity/entities';
-import { AmmoEquipment, ArmorEquipment, Equipment } from '../../models/equipment.model';
+import { AmmoEquipment, ArmorEquipment, Equipment, MiscEquipment } from '../../models/equipment.model';
 import type { EquipmentFlag } from '../../models/equipment-flags.type';
 import type { EntityMountedEquipment, EntityValidationMessage } from '../../models/entity/types';
 import { chassisEquipmentKind } from '../../models/chassis-equipment.model';
 import { isSimpleCamoEquipment } from '../../models/stealth-equipment.model';
 import { buildingHexKey, parseBuildingLocation } from '../../models/entity/types/building';
+import { isJumpJetEquipment, jumpJetKind } from '../../models/jump-equipment.model';
+import { conflictingMekHeatSinkTypes } from '../../models/entity/types/heat-sink';
 
 type Matches = (equipment: Equipment) => boolean;
 const flags =
@@ -121,6 +123,15 @@ export function constructionEquipmentConflictMessages(
     add('ARTEMIS_GENERATION', 'All Artemis systems must be of the same generation.');
 
   if (entity instanceof MekEntity) {
+    if ((!candidate || candidate instanceof MiscEquipment && candidate.isHeatSink)
+        && conflictingMekHeatSinkTypes([entity.heatSinkEquipment(), ...installed]).length) {
+      add('MEK_MIXED_HEAT_SINKS', 'A Mek must use one heat-sink type. Prototype double heat sinks may be combined with single heat sinks.');
+    }
+    // TechManual p. 225 permits one jump jet type per unit.
+    if ((!candidate || isJumpJetEquipment(candidate))
+        && new Set(installed.filter(isJumpJetEquipment).map(jumpJetKind)).size > 1) {
+      add('MEK_MIXED_JUMP_JETS', 'A Mek must use one type of jump jet.');
+    }
     const advanced = has(myomer);
     pair('MEK_MASC_MYOMER', 'MASC cannot be combined with advanced myomers.', myomer, masc, advanced);
     pair(

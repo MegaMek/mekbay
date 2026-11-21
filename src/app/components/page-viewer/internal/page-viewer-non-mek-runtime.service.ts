@@ -187,7 +187,7 @@ export class PageViewerNonMekRuntimeService {
         if (interaction.kind === 'heat-sinks-off') {
             if (!snapshot.heat.tracked) return;
             this.overlays.openActiveHeatSinksPicker(member.id, event, snapshot.heat.heatSinkCount,
-                snapshot.heat.heatsinksOff, heatsinksOff => void this.overlays.dispatch(member,
+                snapshot.heat.heatsinksOffNext ?? snapshot.heat.heatsinksOff, heatsinksOff => void this.overlays.dispatch(member,
                     { type: 'set-heatsinks-off', heatsinksOff }, snapshot.editContext));
             return;
         }

@@ -201,7 +201,7 @@ describe('Mek printed equipment and movement alternatives', () => {
         const svg = await RecordSheetSvgGenerator.generate(entity, { ruleset: 'total-warfare' });
         const linked = svg.querySelector(`.inventoryEntry.linked[data-mekbay-component-ids="${capacitor.mountId}"]`)!;
         const row = linked.parentElement!;
-        expect(linked.querySelector('.name')?.textContent).toBe('PPC Capacitor');
+        expect(linked.querySelector('.name')?.textContent).toBe('w/Capacitor');
         expect(row.querySelector('.alternativeMode')).toBeNull();
         expect(row.querySelector(':scope > .damage')?.textContent).toContain('10');
         expect(row.querySelector(':scope > .range_long')?.textContent).toBe('23');
@@ -218,7 +218,7 @@ describe('Mek printed equipment and movement alternatives', () => {
             weapon: { heat: 5, damage: 1, ranges: [7, 14, 21], minRange: 6, ammoType: 'LRM' },
         }), { location: 'Left Torso' });
         const laser = addTestEquipment(entity, new WeaponEquipment({
-            id: 'ISLargeLaser', name: 'Large Laser', type: 'weapon', flags: ['F_LASER', 'F_DIRECT_FIRE', 'F_ENERGY'],
+            id: 'ISLargeLaser', name: 'Large Laser', type: 'weapon', flags: ['F_LASER', 'F_DIRECT_FIRE', 'F_ENERGY', 'F_RISC_LASER_PULSE_COMPATIBLE'],
             weapon: { heat: 8, damage: 8, ranges: [5, 10, 15] },
         }), { location: 'Right Arm' });
         addTestEquipment(entity, new WeaponEquipment({
@@ -231,14 +231,23 @@ describe('Mek printed equipment and movement alternatives', () => {
         entity.linkEquipment(addTestEquipment(entity, new MiscEquipment({
             id: 'ISLaserInsulator', name: 'Laser Insulator', type: 'misc', flags: ['F_WEAPON_ENHANCEMENT', 'F_LASER_INSULATOR'],
         }), { location: 'Right Arm' }), laser);
+        const pulse = addTestEquipment(entity, new MiscEquipment({
+            id: 'ISRISCLaserPulseModule', name: 'RISC Laser Pulse Module', type: 'misc',
+            flags: ['F_WEAPON_ENHANCEMENT', 'F_RISC_LASER_PULSE_MODULE'],
+        }), { location: 'Right Arm' });
+        entity.linkEquipment(pulse, laser);
         const svg = await RecordSheetSvgGenerator.generate(entity, { ruleset: 'total-warfare' });
         const rows = new Map([...svg.querySelectorAll('.inventoryEntry')].map(row =>
             [row.querySelector(':scope > .name')?.textContent, row] as const));
         const linked = (name: string) => rows.get(name)?.querySelector(':scope > .inventoryEntry.linked');
-        expect(linked('LRM 15')?.querySelector('.name')?.textContent).toBe('Artemis IV FCS');
-        expect(linked('LRM 15')?.querySelector('.heat')?.textContent).toBe('—');
-        expect(linked('Large Laser')?.querySelector('.name')?.textContent).toBe('Laser Insulator');
-        expect(rows.get('Large Laser')?.querySelector(':scope > .heat')?.textContent).toBe('7');
+        // MegaMekLab's labels; an enhancement that makes no heat leaves the heat cell empty
+        expect(linked('LRM 15')?.querySelector('.name')?.textContent).toBe('w/Artemis IV');
+        expect(linked('LRM 15')?.querySelector('.heat')?.textContent).toBe('');
+        expect(linked('Large Laser')?.querySelector('.name')?.textContent).toBe('w/Laser Insulator');
+        expect(rows.get('Large Laser')?.querySelector(':scope > .heat')?.textContent).toBe('7*');
+        const pulseRow = rows.get('Large Laser')?.querySelector(`.linked[data-mekbay-component-ids="${pulse.mountId}"]`);
+        expect(pulseRow?.querySelector('.heat')?.textContent).toBe('9*');
+        expect(rows.get('Large Laser')?.querySelectorAll(':scope > .linked').length).toBe(2);
         expect(linked('Medium Laser')).toBeNull();
     });
 

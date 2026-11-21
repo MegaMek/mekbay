@@ -13,7 +13,6 @@ import type { EntityMountedEquipment } from '../entity/types';
 import { WeaponEquipment, type AmmoType, type InfantryWeaponEquipment } from '../equipment.model';
 import type { EquipmentFlag } from '../equipment-flags.type';
 import { platoonAttack } from '../rules/conventional-infantry-combat-rules';
-import { gameRulesFor, TW_GAME_RULES, type CBTGameRules } from '../rules/game-rules';
 import { platoonAttackProfile, resolveWeaponAttack } from '../rules/weapon-attack-resolution';
 import { FLAMER_HEAT_MODE } from '../flamer-mode.model';
 import { historyTargetLabel } from './cbt-force-runtime-history';
@@ -243,20 +242,33 @@ describe('conventional platoon attacks', () => {
         const profile = platoonAttackProfile({
             componentId: asComponentId('platoon'), name: 'Platoon', targetNumber: 7, types: [], partialCover: false,
             attack: platoonAttack(entity, 28),
-        }, TW_GAME_RULES);
+        });
         // Roll 7 on the 28 column: 17 troopers hit, 17 x 0.6 = 10 damage.
         expect(resolveWeaponAttack(profile, [4, 4], [3, 4])).toEqual({
             hit: true, jammed: false, hits: 17, groups: [2, 2, 2, 2, 2], heat: 0
         });
         entity.infernoSrmsDeclared.set(true);
-        const inferno = (partialCover: boolean, rules: CBTGameRules) => platoonAttackProfile({
+        const inferno = (partialCover: boolean) => platoonAttackProfile({
             componentId: asComponentId('platoon'), name: 'Platoon', targetNumber: 7, types: [], partialCover,
             attack: platoonAttack(entity, 28),
-        }, rules);
-        expect(resolveWeaponAttack(inferno(false, TW_GAME_RULES), [4, 4], [3, 4]).groups).toEqual([1, 1, 1, 1, 1]);
-        // Core infernos roll no hit location, so partial cover cannot stop them (Core p. 192).
-        expect(inferno(true, TW_GAME_RULES).partialCover).toBeTrue();
-        expect(inferno(true, gameRulesFor(CORE_2026_RULESET)).partialCover).toBeFalse();
+        });
+        expect(resolveWeaponAttack(inferno(false), [4, 4], [3, 4]).groups).toEqual([1, 1, 1, 1, 1]);
+        // Inferno missiles roll their locations in either ruleset, so partial cover can stop them (Xotl, Core forum
+        // ruling, 19 Oct 2026)
+        expect(inferno(true).partialCover).toBeTrue();
+    });
+
+    it('strikes a heat-only attack in 2-point groups, each rolling its own location (TW p. 215)', () => {
+        const profile = platoonAttackProfile({
+            componentId: asComponentId('platoon'), name: 'Platoon', targetNumber: 7, types: [], partialCover: false,
+            attack: platoonAttack(platoon(false).entity, 28),
+            heatWeapon: { weapon: { kind: 'heat-or-damage' }, mode: 'heat', ruleset: TOTAL_WARFARE_RULESET,
+                target: { tracksHeat: true, fireResistant: false } },
+        });
+        // Roll 7 on the 28 column: 10 damage declared as 10 heat, in five groups.
+        expect(resolveWeaponAttack(profile, [4, 4], [3, 4])).toEqual({
+            hit: true, jammed: false, hits: 17, groups: [0, 0, 0, 0, 0], heat: 10,
+        });
     });
 
     it('declares heat for the whole attack on its row when the secondary weapon is a flamer', () => {
@@ -274,10 +286,10 @@ describe('conventional platoon attacks', () => {
         const primary = asComponentId(entity.equipment().find(mount => mount.platoonWeapon === 'primary')!.mountId);
 
         expect(platoonAttack(entity, 28).heatOrDamageWeapon).toBe(flamer);
-        expect(nonMekComponentModes(entity, rifle, TOTAL_WARFARE_RULESET).modes).toEqual(['Damage', 'Heat']);
-        expect(nonMekComponentModes(entity, flamer, TOTAL_WARFARE_RULESET).modes).toEqual([]);
+        expect(nonMekComponentModes(entity, entity.equipment().find(mount => mount.equipment === rifle), TOTAL_WARFARE_RULESET).modes).toEqual(['Damage', 'Heat']);
+        expect(nonMekComponentModes(entity, entity.equipment().find(mount => mount.equipment === flamer), TOTAL_WARFARE_RULESET).modes).toEqual([]);
         // Core flamers always deal both, so there is nothing to declare.
-        expect(nonMekComponentModes(entity, rifle, CORE_2026_RULESET).modes).toEqual([]);
+        expect(nonMekComponentModes(entity, entity.equipment().find(mount => mount.equipment === rifle), CORE_2026_RULESET).modes).toEqual([]);
 
         const choices = projectNonMekEquipmentInteractions(unit, {}, false)
             .find(row => row.componentId === primary)!.choices;

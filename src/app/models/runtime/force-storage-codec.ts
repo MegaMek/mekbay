@@ -899,7 +899,8 @@ function packMekUnit(unit: SerializedCBTUnitV2, c3Position: C3UnitPosition | und
     const heatIsPristine = unit.heat?.heat === pristineHeat
         && unit.heat.previous === undefined
         && unit.heat.pendingOverride === undefined
-        && unit.heat.heatsinksOff === undefined;
+        && unit.heat.heatsinksOff === undefined
+        && unit.heat.heatsinksOffNext === undefined;
     return compactObject({
         [CBT_UNIT_FIELD.deployment]: packDeployment(unit.deployment.values),
         [CBT_UNIT_FIELD.stateRevision]: unit.stateRevision === 0 ? undefined : unit.stateRevision,
@@ -1686,6 +1687,7 @@ function packHeat(value: SerializedCBTUnitV2['heat']): unknown {
         [CBT_HEAT_FIELD.pendingOverride]: value.pendingOverride,
         [CBT_HEAT_FIELD.pendingOffset]: value.pendingOffset,
         [CBT_HEAT_FIELD.heatsinksOff]: value.heatsinksOff,
+        [CBT_HEAT_FIELD.heatsinksOffNext]: value.heatsinksOffNext,
     });
 }
 
@@ -1697,6 +1699,7 @@ function packNonMekHeat(value: SerializedNonMekUnit['heat']): unknown {
         [CBT_HEAT_FIELD.pendingOverride]: value.pendingOverride,
         [CBT_HEAT_FIELD.pendingOffset]: value.pendingOffset,
         [CBT_HEAT_FIELD.heatsinksOff]: value.heatsinksOff || undefined,
+        [CBT_HEAT_FIELD.heatsinksOffNext]: value.heatsinksOffNext,
     });
 }
 
@@ -1729,6 +1732,9 @@ function unpackNonMekHeat(
             heat[CBT_HEAT_FIELD.heatsinksOff],
             `${path}.${CBT_HEAT_FIELD.heatsinksOff}`,
         ) ?? 0,
+        ...(heat[CBT_HEAT_FIELD.heatsinksOffNext] === undefined ? {} : {
+            heatsinksOffNext: integer(heat[CBT_HEAT_FIELD.heatsinksOffNext], `${path}.${CBT_HEAT_FIELD.heatsinksOffNext}`),
+        }),
     };
 }
 
@@ -1756,6 +1762,9 @@ function unpackHeat(value: unknown, path: string): NonNullable<SerializedCBTUnit
                 heat[CBT_HEAT_FIELD.heatsinksOff],
                 `${path}.${CBT_HEAT_FIELD.heatsinksOff}`,
             ),
+        }),
+        ...(heat[CBT_HEAT_FIELD.heatsinksOffNext] === undefined ? {} : {
+            heatsinksOffNext: integer(heat[CBT_HEAT_FIELD.heatsinksOffNext], `${path}.${CBT_HEAT_FIELD.heatsinksOffNext}`),
         }),
     };
 }
@@ -1890,15 +1899,17 @@ function packMekMovementDeclaration(
         value.mode,
         value.distance,
         value.boosterComponentIds.length === 0 ? undefined : [...value.boosterComponentIds],
+        value.jumpJetsFired,
+        value.jumpFromDepth,
     );
 }
 
 function unpackMekMovementDeclaration(value: unknown, path: string): unknown {
     const declaration = array(value, path);
-    if (declaration.length < 2 || declaration.length > 3) {
+    if (declaration.length < 2 || declaration.length > 5) {
         throw new Error(`${path} is not a compact Mek movement declaration`);
     }
-    const boosters = declaration[CBT_MOVEMENT_DECLARATION_INDEX.boosterComponentIds] === undefined
+    const boosters = declaration[CBT_MOVEMENT_DECLARATION_INDEX.boosterComponentIds] == null
         ? []
         : unpackTextArray(
             declaration[CBT_MOVEMENT_DECLARATION_INDEX.boosterComponentIds],
@@ -1908,6 +1919,8 @@ function unpackMekMovementDeclaration(value: unknown, path: string): unknown {
         mode: rowText(declaration, CBT_MOVEMENT_DECLARATION_INDEX.mode, path),
         distance: rowInteger(declaration, CBT_MOVEMENT_DECLARATION_INDEX.distance, path),
         boosterComponentIds: boosters,
+        ...(declaration[CBT_MOVEMENT_DECLARATION_INDEX.jumpJetsFired] == null ? {} : { jumpJetsFired: rowInteger(declaration, CBT_MOVEMENT_DECLARATION_INDEX.jumpJetsFired, path) }),
+        ...(declaration[CBT_MOVEMENT_DECLARATION_INDEX.jumpFromDepth] == null ? {} : { jumpFromDepth: rowInteger(declaration, CBT_MOVEMENT_DECLARATION_INDEX.jumpFromDepth, path) }),
     };
 }
 

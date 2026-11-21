@@ -4,6 +4,9 @@
 import type { Equipment } from './equipment.model';
 import type { EquipmentFlag } from './equipment-flags.type';
 import { isSneakCamoArmorKit } from './infantry-equipment.model';
+import { isApolloEquipment } from './apollo-mode.model';
+import { isArtemisEquipment } from './artemis-equipment.model';
+import { isBattleArmorStructuralUtility } from './utility-equipment.model';
 
 export function battleArmorMinesweeperToolFlags(): readonly EquipmentFlag[] {
   return Object.freeze(['F_TOOLS', 'S_MINESWEEPER']);
@@ -57,6 +60,24 @@ export function isDetachableWeaponPackEquipment(
   equipment: Equipment | null | undefined,
 ): boolean {
   return equipment?.hasFlag('F_DETACHABLE_WEAPON_PACK') === true;
+}
+
+/**
+ * Battle armor equipment that is part of the suit rather than an item of its own: weapon packs and mounts, armor
+ * treatments and the fire control its weapons already name. The record sheet leaves these off the inventory.
+ */
+export function isBattleArmorStructuralEquipment(equipment: Equipment | null | undefined): boolean {
+  return isApolloEquipment(equipment)
+    || isDetachableWeaponPackEquipment(equipment)
+    || isModularWeaponMountEquipment(equipment)
+    || isBattleArmorStructuralUtility(equipment)
+    || isArtemisEquipment(equipment)
+    || (isAntiPersonnelMountEquipment(equipment) && !isBattleArmorManipulatorEquipment(equipment));
+}
+
+/** Extended life support seals a suit for hostile environments (TM p. 257). */
+export function isExtendedLifeSupportEquipment(equipment: Equipment | null | undefined): boolean {
+  return equipment?.hasFlag('F_EXTENDED_LIFE_SUPPORT') === true;
 }
 
 export function isModularWeaponMountEquipment(

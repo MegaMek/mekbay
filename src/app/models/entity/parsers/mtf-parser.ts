@@ -30,6 +30,7 @@ import {
   MekLocation,
   MekSystemType,
   MotiveType,
+  MountId,
   factionFromAbbr,
   areMekSplitLocationsAdjacent,
   getMekSplitPrimaryLocation,
@@ -50,10 +51,14 @@ import {
   decodeMtfRiscHeatSinkOverrideKit,
   decodeMtfStructure,
   resolveMtfArmorEquipment,
+  mtfCriticalSectionOrder,
+  mtfListedWeapons,
+  splitMtfMountTag,
 } from './mtf-codec';
 import { decodeMotiveType } from './motive-type-codec';
 import { installedMaterialSlotName } from './material-slot-name';
 import { asUnitUuid } from '../../../services/unit-catalog/unit-catalog.types';
+import { weaponQuirkAddress } from '../utils/weapon-quirks';
 
 // ============================================================================
 // Location normalization - raw MTF strings → canonical location IDs
@@ -258,14 +263,12 @@ export function parseMtf(content: string, ctx: ParseContext): MekEntity {
     const engineInfo = header.engine
       ? decodeMtfEngine(header.engine)
       : { rating: 0, type: 'Fusion' as const, techBase: 'IS' as const };
-    const isSuperHeavy = header.mass > 100;
 
     entity.configureEngine(
       new MountedEngine({
         type: engineInfo.type,
         rating: engineInfo.rating,
         techBase: engineInfo.techBase,
-        isSuperHeavy,
       }),
     );
     const heatSinkEquipment = ctx.resolveEquipment(hsInfo.equipmentId, 'heat sinks');
@@ -284,7 +287,14 @@ export function parseMtf(content: string, ctx: ParseContext): MekEntity {
     structure ??
     getStructureByName('Standard', entity.techBase(), ctx.equipmentRegistry) ??
     STANDARD_STRUCTURE_EQUIPMENT;
-  const defaultStructureTonnage = header.isFrankenMek ? Math.max(10, Math.ceil(header.mass)) : header.mass;
+  // MegaMek ignores bare tonnage lines when the global marker is Hybrid.
+  const donorLine = (location: MekLocation) => {
+    const data = header.frankenMekLocations.get(location);
+    return structureInfo.hybrid && !data?.structureName ? undefined : data;
+  };
+  const defaultStructureTonnage = header.isFrankenMek
+    ? Math.max(10, donorLine('CT')?.tonnage ?? Math.ceil(header.mass))
+    : header.mass;
   const globalStructure = new MountedStructure({
     tonnage: defaultStructureTonnage,
     structure: resolvedGlobalStructure,
@@ -295,9 +305,7 @@ export function parseMtf(content: string, ctx: ParseContext): MekEntity {
     entity.enableHybridStructure();
     for (const rawLocation of entity.locationOrder) {
       const location = rawLocation as MekLocation;
-      const locationData = header.frankenMekLocations.get(location);
-      // MegaMek ignores bare tonnage lines when the global marker is Hybrid.
-      const parsed = structureInfo.hybrid && !locationData?.structureName ? undefined : locationData;
+      const parsed = donorLine(location);
       const loadoutTonnage = Math.max(10, parsed?.tonnage ?? defaultStructureTonnage);
       let mounted = globalStructure;
       if (parsed?.structureName) {
@@ -413,7 +421,6 @@ export function parseMtf(content: string, ctx: ParseContext): MekEntity {
 
   // ── Quirks ──
   entity.quirks.set(header.quirks);
-  entity.weaponQuirks.set(header.weaponQuirks);
 
   // ── Critical slots → equipment with placements ──
   const locationMap = mtfLocationMap(header.config);
@@ -425,9 +432,25 @@ export function parseMtf(content: string, ctx: ParseContext): MekEntity {
   // Track armored system slots: "LOC:INDEX" keys
   const armoredSystemSlots = new Set<string>();
 
-  for (const [locHeader, slotLines] of header.locationSlots) {
-    const locCode = locationMap[locHeader];
+  // Tagged rows ("type#N") form their own mounts; untagged rows never join them.
+  const taggedMounts = new Map<string, MountId>();
+  const taggedIds = new Set<MountId>();
+  // Components already warned about rows that disagree on armor.
+  const partlyArmored = new Set<MountId>();
+  const typeKey = (name: string) => ctx.equipmentRegistry.findForTechBase(name, entity.techBase())?.id ?? name;
+  // As in MtfFile, only equipment that splits over critical slots reads tags; other rows load as untagged.
+  const readsTag = (name: string) => {
+    const equipment = ctx.equipmentRegistry.findForTechBase(name, entity.techBase());
+    return equipment?.canSplit() === true && !equipment.isSpreadable;
+  };
+
+  // Sections are read in MTF order whatever order the file lists them in, since split weapons claim rows in read order.
+  const sectionOrder = mtfCriticalSectionOrder(entity);
+  const sections = [...header.locationSlots].map(([locHeader, fileLines]) => [locationMap[locHeader], fileLines] as const)
+    .sort(([left], [right]) => sectionOrder.indexOf(left) - sectionOrder.indexOf(right));
+  for (const [locCode, fileLines] of sections) {
     if (!locCode) continue;
+    const slotLines = mtfLocationRows(entity, locCode, fileLines, armoredSystemSlots);
 
     for (let slotIdx = 0; slotIdx < slotLines.length; slotIdx++) {
       const raw = slotLines[slotIdx];
@@ -442,11 +465,26 @@ export function parseMtf(content: string, ctx: ParseContext): MekEntity {
           continue;
         }
         const parsed = { ...listed, name: installedMaterialSlotName(entity, locCode, listed.name, ctx) };
+        if (parsed.malformedTag) {
+          ctx.warn('crits', `"${raw}" has an unreadable mount tag "${parsed.malformedTag}"; the row loads without it.`, 'MTF_MOUNT_TAG');
+        }
+
+        const tagKey = parsed.tag === undefined || !readsTag(parsed.name) ? undefined : `${typeKey(parsed.name)}#${parsed.tag}`;
+        const isTagged = tagKey !== undefined;
+        const taggedId = tagKey && taggedMounts.get(tagKey);
+        const taggedIndex = taggedId ? mountedEquipment.findIndex((m) => m.mountId === taggedId) : -1;
+        if (taggedIndex >= 0) {
+          const tagged = mountedEquipment[taggedIndex];
+          const primaryLocation = tagged.location === locCode ? locCode : getMekSplitPrimaryLocation(tagged.location, locCode);
+          mountedEquipment[taggedIndex] = armorWholeComponent(
+            tagged.withAddedPlacement({ location: locCode, slotIndex: slotIdx }, primaryLocation), parsed.armored, ctx, partlyArmored);
+          continue;
+        }
 
         // The pair position distinguishes two same-named mounts sharing a
         // superheavy slot while still merging their later critical entries.
         const dedupKey = `${parsed.name}@${locCode}@${memberIndex}`;
-        const existingId = parsed.isSplit ? undefined : multiCritMap.get(dedupKey);
+        const existingId = parsed.isSplit || isTagged ? undefined : multiCritMap.get(dedupKey);
 
         let addedToExisting = false;
         if (existingId) {
@@ -458,7 +496,7 @@ export function parseMtf(content: string, ctx: ParseContext): MekEntity {
             const lastPlacement = mount.placements?.[mount.placements.length - 1];
             const isConsecutive = lastPlacement?.location === locCode && lastPlacement.slotIndex === slotIdx - 1;
             if (mount.placedCriticalSlotCount < criticalSlots && isConsecutive) {
-              mountedEquipment[mountIndex] = mount.withAddedPlacement({ location: locCode, slotIndex: slotIdx });
+              mountedEquipment[mountIndex] = armorWholeComponent(mount.withAddedPlacement({ location: locCode, slotIndex: slotIdx }), parsed.armored, ctx, partlyArmored);
               addedToExisting = true;
             }
           }
@@ -467,16 +505,17 @@ export function parseMtf(content: string, ctx: ParseContext): MekEntity {
         // MegaMek loads targeting computers like spreadable equipment even
         // though the equipment definition itself is not spreadable: one mount
         // per targeting-computer type owns every critical across all locations.
-        if (!addedToExisting) {
+        if (!addedToExisting && !isTagged) {
           const targetingComputerIndex = mountedEquipment.findIndex(
-            (mount) => mount.equipmentId === parsed.name && isTargetingComputerEquipment(mount.equipment),
+            (mount) => mount.equipmentId === parsed.name && isTargetingComputerEquipment(mount.equipment)
+              && !taggedIds.has(mount.mountId),
           );
           if (targetingComputerIndex >= 0) {
             const targetingComputer = mountedEquipment[targetingComputerIndex];
-            mountedEquipment[targetingComputerIndex] = targetingComputer.withAddedPlacement({
+            mountedEquipment[targetingComputerIndex] = armorWholeComponent(targetingComputer.withAddedPlacement({
               location: locCode,
               slotIndex: slotIdx,
-            });
+            }), parsed.armored, ctx, partlyArmored);
             addedToExisting = true;
           }
         }
@@ -485,29 +524,30 @@ export function parseMtf(content: string, ctx: ParseContext): MekEntity {
         // Fuel Cell Power Generator have crits spread across multiple
         // (possibly non-adjacent) locations.  All crits merge into one mount
         // as long as it hasn't reached its expected crit count yet.
-        if (!addedToExisting) {
+        if (!addedToExisting && !isTagged) {
           const existingSpreadableIndex = mountedEquipment.findIndex((m) => {
-            if (m.equipmentId !== parsed.name) return false;
+            if (m.equipmentId !== parsed.name || taggedIds.has(m.mountId)) return false;
             const eq = m.equipment;
             if (!eq?.isSpreadable) return false;
+            if (eq.type === 'structure' || eq.type === 'armor') return true;
             const expectedCrits = numericCriticalSlotRequirement(m, entity);
             return m.placedCriticalSlotCount < expectedCrits;
           });
           if (existingSpreadableIndex >= 0) {
             const existingSpreadable = mountedEquipment[existingSpreadableIndex];
-            mountedEquipment[existingSpreadableIndex] = existingSpreadable.withAddedPlacement({
+            mountedEquipment[existingSpreadableIndex] = armorWholeComponent(existingSpreadable.withAddedPlacement({
               location: locCode,
               slotIndex: slotIdx,
-            });
+            }), parsed.armored, ctx, partlyArmored);
             addedToExisting = true;
           }
         }
 
         // Cross-location split: weapons with 8+ crit slots and explicitly
         // splittable miscellaneous equipment may span adjacent locations.
-        if (!addedToExisting) {
+        if (!addedToExisting && !isTagged) {
           const incompleteIndex = mountedEquipment.findIndex((m) => {
-            if (m.equipmentId !== parsed.name) return false;
+            if (m.equipmentId !== parsed.name || taggedIds.has(m.mountId)) return false;
             if (!m.equipment?.canSplit()) return false;
             const criticalSlots = numericCriticalSlotRequirement(m, entity);
             return (
@@ -520,7 +560,7 @@ export function parseMtf(content: string, ctx: ParseContext): MekEntity {
             const incomplete = mountedEquipment[incompleteIndex];
             // Primary location is the more restrictive one (torso > arm)
             const primaryLocation = getMekSplitPrimaryLocation(incomplete.location, locCode);
-            const updated = incomplete.withAddedPlacement({ location: locCode, slotIndex: slotIdx }, primaryLocation);
+            const updated = armorWholeComponent(incomplete.withAddedPlacement({ location: locCode, slotIndex: slotIdx }, primaryLocation), parsed.armored, ctx, partlyArmored);
             mountedEquipment[incompleteIndex] = updated;
             // Update multiCritMap so further crits in the new primary location
             // can find this mount (e.g. AC/20 split RT+CT: after merging the
@@ -557,13 +597,40 @@ export function parseMtf(content: string, ctx: ParseContext): MekEntity {
           });
 
           mountedEquipment.push(mount);
-          multiCritMap.set(dedupKey, mount.mountId);
+          if (tagKey) {
+            taggedMounts.set(tagKey, mount.mountId);
+            taggedIds.add(mount.mountId);
+          } else {
+            multiCritMap.set(dedupKey, mount.mountId);
+          }
         }
       }
     }
   }
 
+  // Rows are grouped in MTF section order, but the mounts keep the file order and IDs that reading the sections as listed
+  // gives, so saved state still finds its weapon in a file that lists its sections in another order.
+  const fileSection = new Map<string, number>([...header.locationSlots.keys()].map((locHeader, index) => [locationMap[locHeader], index]));
+  const firstFileRow = (mount: EntityMountedEquipment) => Math.min(...(mount.placements ?? [])
+    .map((placement) => (fileSection.get(placement.location) ?? 0) * 100 + placement.slotIndex));
+  const createdIds = mountedEquipment.map((mount) => mount.mountId);
+  const inFileOrder = mountedEquipment.map((mount, created) => ({ mount, created, row: firstFileRow(mount) }))
+    .sort((left, right) => left.row - right.row || left.created - right.created)
+    .map(({ mount }, index) => mount.mountId === createdIds[index] ? mount : mount.clone({ mountId: createdIds[index] }));
+  mountedEquipment.splice(0, mountedEquipment.length, ...inFileOrder);
+
   entity.setEquipment(mountedEquipment);
+  // The file's structure rows are its donor design's distribution (CO p. 213).
+  entity.retainLoadedStructureRows();
+  // MtfFile finds a weapon quirk's weapon in whatever mount fills its slot once the rows are packed, which may be any of
+  // the weapon's slots; address the quirk by that weapon.
+  const locationByLabel = new Map(entity.locationOrder.map(code => [entity.componentLocationLabel(code), code]));
+  entity.weaponQuirks.set(header.weaponQuirks.map(entry => {
+    const location = locationByLabel.get(entry.location);
+    const mount = location && mountedEquipment.find(candidate =>
+      candidate.placements?.some(placement => placement.location === location && placement.slotIndex === entry.slot));
+    return mount ? { ...entry, ...weaponQuirkAddress(entity, mount), weaponName: entry.weaponName } : entry;
+  }));
   if (armoredSystemSlots.size > 0) entity.armoredSystemSlots.set(armoredSystemSlots);
 
   // ── Nocrit equipment ──
@@ -578,6 +645,12 @@ export function parseMtf(content: string, ctx: ParseContext): MekEntity {
       omniPodMounted: false,
       armored: false,
     });
+  }
+  // Rows are read at the chassis slot scale, so a donor of another class can merge or split its weapons.
+  const inferredWeapons = mtfListedWeapons(entity).length;
+  if (header.listedWeapons !== undefined && header.listedWeapons !== inferredWeapons) {
+    ctx.warn('weapons', `The Weapons list names ${header.listedWeapons} weapons, but the critical slots hold ${inferredWeapons}.`,
+      'MTF_WEAPON_COUNT_MISMATCH');
   }
   entity.initializeParsedHeatSinkMounts(hsInfo.count, header.baseChassisHeatSinks);
 
@@ -663,6 +736,8 @@ interface DecodedMtfSource {
   locationSlots: Map<string, string[]>;
   nocritEquipment: { name: string; location: string }[];
   weaponsList: string[];
+  /** The `Weapons:` count, when the file states one. */
+  listedWeapons?: number;
   faction: FactionCode;
   clanCaseOptOut: string;
   fluff: EntityFluff;
@@ -966,6 +1041,7 @@ function parseHeader(lines: string[], ctx: ParseContext): DecodedMtfSource {
         break;
       case 'weapons':
         inWeaponsSection = true;
+        if (/^\d+$/u.test(value)) h.listedWeapons = Number(value);
         break;
       case 'clanname':
         h.clanName = value;
@@ -1062,6 +1138,10 @@ interface DecodedMtfCriticalSlot {
   isSplit: boolean;
   facing?: number;
   variableSize?: number;
+  /** `#N`: every row of this equipment type with the same N belongs to one mount. */
+  tag?: number;
+  /** A `#` suffix that is not a valid tag; the row loads as if it had none. */
+  malformedTag?: string;
 }
 
 function decodeMtfCriticalSlotLine(raw: string): DecodedMtfCriticalSlot[] {
@@ -1074,7 +1154,9 @@ function decodeMtfCriticalSlotLine(raw: string): DecodedMtfCriticalSlot[] {
 }
 
 function parseMountedCritSlot(raw: string): DecodedMtfCriticalSlot {
-  let name = raw;
+  // The mount tag follows every modifier: `Autocannon/20 (R)#2`.
+  const { text, tag, malformed: malformedTag } = splitMtfMountTag(raw);
+  let name = text;
   let omniPod = false,
     armored = false,
     rearMounted = false;
@@ -1129,15 +1211,62 @@ function parseMountedCritSlot(raw: string): DecodedMtfCriticalSlot {
     name = name.substring(0, name.indexOf(':SIZE:'));
   }
 
-  return { name, omniPod, armored, rearMounted, turretMounted, isSplit, facing, variableSize };
+  return { name, omniPod, armored, rearMounted, turretMounted, isSplit, facing, variableSize, tag, malformedTag };
 }
 
 function isEngineSlot(name: string): boolean {
-  return ENGINE_SLOT_NAMES.some((e) => name.startsWith(e)) || name === 'Engine';
+  const lower = name.toLowerCase();
+  return ENGINE_SLOT_NAMES.some((e) => lower.startsWith(e.toLowerCase())) || lower === 'engine';
 }
 
+/** MtfFile matches system rows whatever their case (`isRelocatedSystemCritEntry`). */
+const SYSTEM_NAMES_BY_LOWER_CASE = new Map(Object.entries(SYSTEM_NAMES).map(([name, system]) => [name.toLowerCase(), system]));
+
 function decodeMtfSystemSlot(name: string): MekSystemType | undefined {
-  return SYSTEM_NAMES[name] ?? (isEngineSlot(name) ? 'Engine' : undefined);
+  return SYSTEM_NAMES_BY_LOWER_CASE.get(name.toLowerCase()) ?? (isEngineSlot(name) ? 'Engine' : undefined);
+}
+
+/** The systems MegaMek's MtfFile places itself, whatever rows the file gives them (`isRelocatedSystemSlot`). */
+const PLACED_SYSTEMS: ReadonlySet<MekSystemType> = new Set(['Engine', 'Gyro', 'Cockpit', 'Life Support', 'Sensors']);
+
+/**
+ * A location's rows as MegaMek's MtfFile reads them (`remapCritDataAroundSystemSlots`): the engine, gyro, cockpit,
+ * sensors and life support take their own slots, and every other row fills the remaining slots in file order, so an
+ * empty row between them closes up. An armored row of a placed system armors that system's slots in the location.
+ */
+function mtfLocationRows(entity: MekEntity, location: MekLocation, lines: readonly string[], armored: Set<string>): string[] {
+  const placedSystem = (line: string) => decodeMtfCriticalSlotLine(line)
+    .map(member => ({ system: decodeMtfSystemSlot(member.name), armored: member.armored }))
+    .find(member => member.system && PLACED_SYSTEMS.has(member.system));
+  const systems = entity.getSystemSlotsForLocation(location);
+  // MegaMek armors every slot of a placed system in the location when any of its rows is armored.
+  const armoredSystems = new Set(lines.flatMap(line => { const member = placedSystem(line); return member?.armored ? [member.system!] : []; }));
+  systems.forEach((slot, index) => {
+    if (slot.type === 'system' && armoredSystems.has(slot.systemType)) armored.add(`${location}:${index}`);
+  });
+  const capacity = Math.max(lines.length, entity.criticalSlotCapacity(location));
+  const open = Array.from({ length: capacity }, (_, index) => index)
+    .filter(index => { const slot = systems[index]; return slot?.type !== 'system' || !PLACED_SYSTEMS.has(slot.systemType); });
+  const kept = lines.flatMap((line, index) => line !== '-Empty-' && !placedSystem(line) ? [index] : []);
+  if (kept.length > open.length) return [...lines];
+  const rows: string[] = Array.from({ length: capacity }, () => '-Empty-');
+  kept.forEach((fileRow, index) => { rows[open[index]] = lines[fileRow]; });
+  return rows;
+}
+
+/**
+ * Component armor covers the whole component (TO:AUE p. 95): rows that disagree armor all of it, with one warning per
+ * component in `partlyArmored`.
+ */
+function armorWholeComponent(mount: EntityMountedEquipment, rowArmored: boolean, ctx: ParseContext,
+  partlyArmored: Set<MountId>): EntityMountedEquipment {
+  if (rowArmored === mount.armored) return mount;
+  if (!partlyArmored.has(mount.mountId)) {
+    partlyArmored.add(mount.mountId);
+    ctx.warn('crits', `Only some critical slots of ${mount.equipment?.name ?? mount.equipmentId} are armored; the whole component is armored.`,
+      'MTF_PARTIAL_COMPONENT_ARMOR');
+  }
+  return mount.armored ? mount : mount.clone({ armored: true });
 }
 
 function mtfLocationMap(config: string): Readonly<Record<string, MekLocation>> {

@@ -142,7 +142,10 @@ describe('force Omni design boundary', () => {
       removeConstructionEquipment(entity, moved);
       expect(constructionOmniBaseSource(entity)).toBe(baseline);
     }
-    installConstructionEquipment(entity, double, 'RT');
+    expect(() => installConstructionEquipment(entity, double, 'RT')).toThrowError(/one heat-sink type/);
+    // An imported design can already contain the incompatible pod.
+    entity.addEquipment({ equipmentId: double.id, equipment: double, allocation: { kind: 'location', location: 'RT' },
+      rearMounted: false, turretMounted: false, armored: false, omniPodMounted: true });
     expect(constructionReconfigurationIssues(entity)).toContain(
       'Pod heat sinks must use the fixed chassis heat-sink type.',
     );

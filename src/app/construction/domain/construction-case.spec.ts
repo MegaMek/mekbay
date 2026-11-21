@@ -48,7 +48,7 @@ describe('construction automatic Clan CASE', () => {
         expect(calculateMountedEquipmentCostBreakdown(entity).total).toBe(50000);
         entity.setClanCaseOptOutLocations(new Set(['RT']));
         expect(entity.automaticClanCaseLocations().size).toBe(0);
-        expect(entity.locationHasCaseProtection('RT')).toBeFalse();
+        expect(entity.ammoCaseProtection('RT')).toBeNull();
         expect(calculateMountedEquipmentCostBreakdown(entity).total).toBe(0);
         expect(slots()).toEqual(before);
         expect(entity.equipment()).toEqual([mount]);
@@ -90,7 +90,7 @@ describe('construction automatic Clan CASE', () => {
         expect(source).toContain('nocrit:CLCASE:RT');
         const restored = parseEntity(source, 'mixed-clan.mtf', registry).entity;
         expect(restored.techBase()).toBe('Clan');
-        expect(restored.locationHasCaseProtection('RT')).toBeTrue();
+        expect(restored.ammoCaseProtection('RT')).toBe('case');
     });
 
     it('resolves hybrid structure technology per location', () => {

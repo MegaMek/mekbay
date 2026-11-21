@@ -154,7 +154,7 @@ function nonMekEquipmentChoiceBindings(
     });
     const entity = unit.getUnit();
     const flamerModes = [...index.components.values()].flatMap(component => {
-        const { modes } = nonMekComponentModes(entity, component.mount.equipment, unit.ruleset());
+        const { modes } = nonMekComponentModes(entity, component.mount, unit.ruleset());
         if (!hasFlamerModes(modes) || unit.query().componentStatus(component.id) !== 'available') return [];
         // A platoon declares for the flame-based weapon of its one attack.
         const weapon = nonMekHeatOrDamageWeapon(entity, component.mount.equipment);

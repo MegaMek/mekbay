@@ -23,7 +23,7 @@ import {
     isTalonEquipment,
     physicalEquipmentCriticalSlots,
 } from "./physical-weapon";
-import { jumpBoosterCriticalSlots } from "../../jump-equipment.model";
+import { isJumpBoosterEquipment } from "../../jump-equipment.model";
 import { isTracksEquipment } from "../../chassis-equipment.model";
 import { supportEquipmentCriticalSlots } from "../../support-equipment.model";
 
@@ -67,7 +67,9 @@ export function getNumCriticalSlots(entity: BaseEntity, eq: Equipment, size: num
     const armorKind = armorConstructionKind(eq);
     const structureKind = structureConstructionKind(eq);
     const physicalSlots = physicalEquipmentCriticalSlots(eq, weight);
-    const boosterSlots = jumpBoosterCriticalSlots(eq, isQuad);
+    // TO:AUE pp. 104-105: 2 slots in every leg, which a superheavy leg holds in 1 (IO:AE p. 157).
+    const legSlots = isMekEntity(entity) && (isJumpBoosterEquipment(eq) || isTalonEquipment(eq))
+        ? entity.locationOrder.filter(leg => entity.locationIsLeg(leg)).length * (isSuperHeavyMek ? 1 : 2) : null;
     const targetingComputerSlots = targetingComputerCriticalSlots(
         eq,
         () => getTargetingComputerRelevantWeight(entity),
@@ -160,7 +162,7 @@ export function getNumCriticalSlots(entity: BaseEntity, eq: Equipment, size: num
     }
 
     // ── Jump Booster / Talons ───────────────────────────────────────
-    if (boosterSlots !== null || isTalonEquipment(eq)) return boosterSlots ?? (isQuad ? 8 : 4);
+    if (legSlots !== null) return legSlots;
 
     // ── Tracks ──────────────────────────────────────────────────────
     if (isTracksEquipment(eq)) {
@@ -226,13 +228,12 @@ function getPatchworkArmorSlots(
 ): number | undefined {
     if (!entity.hasPatchworkArmor()) return undefined;
 
-    const slots = entity.armorLocations.reduce((total, location) => {
-        const locationArmor = entity.armorAt(location);
-        if (!armorTypes.includes(locationArmor.type)) return total;
-        return total + slotsPerLocation(locationArmor.techBase);
+    // TO:AUE p. 189: each armored location holds its own slots, so a superheavy rounds up per location.
+    const superheavy = isMekEntity(entity) && entity.isSuperHeavy();
+    return entity.armorLocations.reduce((total, location) => {
+        const armor = entity.armorAt(location);
+        if (!armorTypes.includes(armor.type)) return total;
+        const slots = slotsPerLocation(armor.techBase);
+        return total + (superheavy ? Math.ceil(slots / 2) : slots);
     }, 0);
-
-    return isMekEntity(entity) && entity.isSuperHeavy()
-        ? Math.ceil(slots / 2)
-        : slots;
 }

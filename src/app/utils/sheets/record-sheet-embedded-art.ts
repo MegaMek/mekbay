@@ -2,11 +2,15 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 
 import {
+    addLine,
+    appendBattleValue,
     type Box,
     setAttributes,
     svgElement,
 } from './record-sheet-svg-rendering';
 import { RECORD_SHEET_ERA_ART } from './record-sheet-era-art.generated';
+import { RECORD_SHEET_CAP_HEIGHT } from './record-sheet-typography';
+import { type SVGFrameOptions, SvgFrameUtil } from './svg-frame.util';
 
 export interface EmbeddedRecordSheetRaster {
     readonly id: string;
@@ -71,15 +75,31 @@ export function appendRecordSheetEraIcon(
         : appendEmbeddedRasterUse(svg, parent, asset, box, 'record-sheet-era-icon');
 }
 
-/** Every data-panel template prints its 20-point era icon in the 158.563 column, at its own top. */
-export function appendDataPanelEraIcon(
+/** The Mek template's rule, centred this far above the border of its frame's notch. */
+const DATA_PANEL_RULE_ABOVE_NOTCH = 14.583;
+const DATA_PANEL_RULE_WIDTH = 1.932;
+const DATA_PANEL_BV_SIZE = 9.67;
+
+/**
+ * The row closing the Mek, vehicle and aero data panels, alike on each: a rule, the BV centred between it and the
+ * border of the frame's bottom-left notch, and the 20-point era icon in the 158.563 column. `font` scales sizes and
+ * the row's height with the panel's width, as every panel scales its type.
+ */
+export function appendDataPanelFooter(
     svg: SVGSVGElement,
     parent: SVGElement,
-    year: number,
-    { x, y }: { readonly x: (value: number) => number; readonly y: (value: number) => number },
-    top: number,
+    unit: { readonly battleValue: number; readonly year: number },
+    frame: { readonly height: number; readonly options: SVGFrameOptions },
+    { x, font }: { readonly x: (value: number) => number; readonly font: (value: number) => number },
+    ruleRight: number,
 ): void {
-    appendRecordSheetEraIcon(svg, parent, year, { x: x(158.563), y: y(top), width: x(20), height: y(20) });
+    const notch = SvgFrameUtil.innerNotchBottom(frame.height, frame.options);
+    const ruleY = notch - font(DATA_PANEL_RULE_ABOVE_NOTCH);
+    addLine(parent, x(3), ruleY, ruleRight, ruleY, '#111', font(DATA_PANEL_RULE_WIDTH));
+    const size = font(DATA_PANEL_BV_SIZE);
+    const baseline = (ruleY + font(DATA_PANEL_RULE_WIDTH) / 2 + notch + RECORD_SHEET_CAP_HEIGHT * size) / 2;
+    appendBattleValue(parent, unit.battleValue, { x: x(13.845), valueX: x(32.79), y: baseline, size });
+    appendRecordSheetEraIcon(svg, parent, unit.year, { x: x(158.563), y: ruleY + font(3.107), width: x(20), height: font(20) });
 }
 
 function recordSheetEraArt(year: number): EmbeddedRecordSheetRaster | null {

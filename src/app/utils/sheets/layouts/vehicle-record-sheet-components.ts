@@ -4,11 +4,10 @@ import { addInventoryText, appendInventoryBadges, appendInventoryRowButtons, INV
 import { RECORD_SHEET_FONT } from '../record-sheet-typography';
 import { systemDamageControls,systemDamageLocationControls,systemDamagePresentation } from '../../../models/runtime/system-damage-presentation';
 
-import { fireControlFeatureFromFlagLookup } from '../../../models/entity/utils/fire-control';
+import { recordSheetFeatures } from '../record-sheet-features';
 import type { BaseEntity } from '../../../models/entity/base-entity';
 import type { CBTRuleset } from '../../../models/cbt-ruleset.model';
 import { vehicleHasChargeAttack } from '../../../models/rules/vehicle-runtime-rules';
-import { getBayTransporterType } from '../../../models/entity/bays/bay-definitions';
 import { projectRecordSheetBays } from '../../../models/entity/bays/record-sheet-bay-projection';
 import { isVehicleEntity } from '../../../models/entity/utils/entity-type-guards';
 import { intrinsicActionBaseDamageText } from '../../../models/entity/utils/mek-intrinsic-actions';
@@ -21,10 +20,9 @@ import { SvgFrameUtil } from '../svg-frame.util';
 import {
     appendRecordSheetAmmoProfile,
     markAmmoBefore,
-    markAmmoInventory,
     measureRecordSheetAmmoProfile,
 } from '../record-sheet-ammo-rendering';
-import { appendDataPanelEraIcon } from '../record-sheet-embedded-art';
+import { appendDataPanelFooter } from '../record-sheet-embedded-art';
 import { recordSheetQuirksText } from '../record-sheet-quirks';
 import { createBattleTechLogo,createCatalystGameLabsLogo } from '../record-sheet-brand';
 import {
@@ -44,13 +42,12 @@ addFrame,
 addLine,
 addText,
 addWrappedText,
-appendBattleValue,
-appendLegacyIdentityAnchors,
 circle,
 armorDiagramSubtitle,
 decoratePaperdollPips,
-addTemplateCaption,
 appendDataPanelFacts,
+condenseDataPanelCaption,
+valueXAfterCaptions,
 appendDataPanelType,
 drawCriticalDamageBox,
 drawDamageLocationGrid,
@@ -62,8 +59,8 @@ formatTechBase,
 paperdollPipOptions,
 readViewBox,
 recordSheetAmmoProfile,
+recordSheetBodyLast,
 recordSheetInventoryWeapons,
-recordSheetNonMekAmmoPrefix,
 setAttributes,
 setInventoryComponentIds,
 svgElement,
@@ -86,7 +83,6 @@ export interface CompactVehicleInventoryPresentation {
     readonly lastDetailBaseline: number;
     /** MML's full-height naval template compresses unit-data content vertically. */
     readonly verticalContentScale?: number;
-    readonly footerBaselineOffset?: number;
 }
 
 export interface CompactVehicleCrewPresentation {
@@ -100,8 +96,8 @@ export interface CompactVehicleDiagramPresentation {
     /** Replaces the source artwork's authored root transform for a template variant. */
     readonly authoredRootTransform?: string;
     readonly catalystY?: number;
-    /** The top of a label in the logo's row at the lower left; the random hit button sits just above it instead. */
-    readonly randomHitAbove?: number;
+    /** Where the random hit button's square starts when the logo's row at the lower left is taken by a label. */
+    readonly randomHitAt?: { readonly x: number; readonly y: number };
 }
 
 /** MML's vehicle title uses the support size, motive family and vessel designation. */
@@ -147,10 +143,8 @@ export function drawCompactVehicleDataPanel(
     box: Box,
     presentation: CompactVehicleInventoryPresentation,
 ): SVGGElement {
-    const group = addFrame(svg, 'VEHICLE DATA', box, {
-        bottomLeftNotchWidth: box.width * 0.48,
-        cornerAngleDegrees: { topRight: 45, bottomLeft: 45 },
-    });
+    const frameOptions = { bottomLeftNotchWidth: box.width * 0.48, cornerAngleDegrees: { topRight: 45, bottomLeft: 45 } };
+    const group = addFrame(svg, 'VEHICLE DATA', box, frameOptions);
     const content = svgElement('g');
     content.setAttribute('class', 'compact-vehicle-data-content');
     const verticalContentScale = presentation.verticalContentScale ?? 1;
@@ -163,22 +157,14 @@ export function drawCompactVehicleDataPanel(
     const y = (value: number): number => value * sy * verticalContentScale;
     const font = (value: number): number => value * fontScale;
     appendDataPanelType(content, entity, { x, y, font }, 3);
-    addText(content, 'Movement Points:', x(6), y(38), { size: font(RECORD_SHEET_FONT.body), weight: 700 }).id = 'movementPointsLabel';
-    appendDataPanelFacts(content, [
-        { label: 'Cruising:', value: String(entity.walkMP()), baseline: 47, id: 'mpWalk', field: 'walk',
-            labelX: 6, valueX: 56, anchor: 'middle' },
-        { label: 'Flanking:', value: formatMovementWithMaximum(entity.runMP(), entity.maxRunMP()), baseline: 56,
-            id: 'mpRun', field: 'run', labelX: 6, valueX: 56, anchor: 'middle' },
-    ], { x, y, font });
-    if (entity.jumpMP() > 0) {
-        addText(content, 'Jumping:', x(74), y(56), { size: font(7), weight: 700, maxWidth: x(29) });
-        const jump = addText(content, String(entity.jumpMP()), x(108), y(56), { size: font(RECORD_SHEET_FONT.body), anchor: 'middle' });
-        jump.id = 'mpJump';
-        jump.setAttribute('data-mekbay-field', 'jump');
-    }
+    condenseDataPanelCaption(addText(content, 'Movement Points:', x(6), y(38), { size: font(RECORD_SHEET_FONT.body), weight: 700 })).id = 'movementPointsLabel';
     const engine = entity.mountedEngine();
     const weightInKilograms = entity.weightClass() === 'Small Support';
+    // One call, so the left column's captions (Cruising, Flanking, Movement Type) share their squeeze.
     appendDataPanelFacts(content, [
+        { label: 'Cruising:', value: String(entity.walkMP()), baseline: 47, id: 'mpWalk', field: 'walk', labelX: 6, valueX: 56 },
+        { label: 'Flanking:', value: formatMovementWithMaximum(entity.runMP(), entity.maxRunMP()), baseline: 56,
+            id: 'mpRun', field: 'run', labelX: 6, valueX: 56 },
         { label: 'Tonnage:', value: formatRecordSheetTonnage(entity.tonnage(), weightInKilograms), baseline: 38,
             id: 'tonnage', field: 'tonnage', ...(weightInKilograms ? { weightUnit: 'kg' as const } : {}) },
         { label: 'Tech Base:', value: formatTechBase(entity.techBase(), entity.mixedTech()), baseline: 47, id: 'techBase', field: 'tech-base' },
@@ -188,8 +174,14 @@ export function drawCompactVehicleDataPanel(
         { label: 'Movement Type:', value: entity.getMotiveTypeAsString() ?? entity.entityType, baseline: 65,
             id: 'movementType', labelX: 6, valueX: 64.129, maxWidth: 47 },
     ], { x, y, font });
+    if (entity.jumpMP() > 0) {
+        const jumpCaption = condenseDataPanelCaption(addText(content, 'Jumping:', x(74), y(56), { size: font(7), weight: 700 }));
+        const jump = addText(content, String(entity.jumpMP()), valueXAfterCaptions([jumpCaption]), y(56), { size: font(RECORD_SHEET_FONT.body) });
+        jump.id = 'mpJump';
+        jump.setAttribute('data-mekbay-field', 'jump');
+    }
     addLine(content, x(3), y(71.462), box.width - x(3), y(71.462), '#111', 0.8 * fontScale);
-    addTemplateCaption(content, 'Weapons & Equipment Inventory', x(3), y(80.462), { size: font(RECORD_SHEET_FONT.section), weight: 700 });
+    addText(content, 'Weapons & Equipment Inventory', x(3), y(80.462), { size: font(RECORD_SHEET_FONT.section), weight: 700 });
     addText(content, '(hexes)', x(171.132), y(80.462), { size: font(RECORD_SHEET_FONT.inventory) });
     const groupWeapons = presentation.groupWeapons === true;
     const headings: readonly (readonly [string, number, 'start' | 'middle'])[] = [
@@ -203,13 +195,8 @@ export function drawCompactVehicleDataPanel(
     }));
     drawRecordSheetInventory(content, groupWeapons, (parent, stateKey) =>
         appendCompactVehicleInventory(parent, entity, { x, y, font }, box, presentation, stateKey));
-    const footerOffset = presentation.footerBaselineOffset ?? 0;
-    addLine(content, x(3), y(257.643 + footerOffset), box.width - x(3), y(257.643 + footerOffset), '#111', 0.8 * fontScale);
-    appendBattleValue(content, entity.battleValue(presentation.ruleset), {
-        x: x(13.845), valueX: x(28.927), y: y(268.143 + footerOffset), size: font(RECORD_SHEET_FONT.body),
-    });
-    appendDataPanelEraIcon(svg, content, entity.year(), { x, y }, 260 + footerOffset);
-    appendLegacyIdentityAnchors(content, entity, box, presentation.ruleset);
+    appendDataPanelFooter(svg, content, { battleValue: entity.battleValue(presentation.ruleset), year: entity.year() },
+        { height: box.height, options: frameOptions }, { x, font }, box.width - x(3));
     return group;
 }
 
@@ -251,12 +238,12 @@ function appendCompactVehicleInventory(
     }));
     const ammo = recordSheetAmmoProfile(entity);
     const quirks = recordSheetQuirksText(entity, presentation.showQuirks);
-    const features = compactVehicleFeatureText(entity);
+    const features = recordSheetFeatures(entity).join(', ');
     const detailRows = [
         ...(features ? [{
             text: `Features ${features}`,
             size: RECORD_SHEET_FONT.inventory,
-            maxLines: 1,
+            maxLines: Number.POSITIVE_INFINITY,
             italic: false,
         }] : []),
         ...(quirks ? [{
@@ -287,25 +274,24 @@ function appendCompactVehicleInventory(
     const rowLines = (row: { name: string; location?: string; damage: string; minimumRange: string; ranges: readonly string[] }, size: number, left = nameX) =>
         inventoryRowLineCount([[row.name, x(100.38 - 9 - 3 - left)], [row.location ?? '', x(18)],
             [row.damage, x(54)], [row.minimumRange, x(12)], ...row.ranges.map(value => [value, x(12)] as const)], font(size));
-    const ammoPrefix = recordSheetNonMekAmmoPrefix(entity);
     // Like the Mek footer, half a row separates the physical attacks from the ammo profile under them.
     const ammoGap = ammo.length > 0 && physical.length > 0 ? 0.5 : 0;
     const metrics = fitInventoryText(y(firstDetailBaseline - (detailRows.length ? 13.689 : 0) - 101.162)
         / (box.width / 220.4), fontSize => {
         const rows = weapons.map(row => [rowLines(row, fontSize),
-            ...(row.linkedEquipment ? [rowLines(vehicleLinkedEquipmentFields(row.linkedEquipment), fontSize, subrowX)] : []),
+            ...row.linkedEquipment.map(linked => rowLines(vehicleLinkedEquipmentFields(linked), fontSize, subrowX)),
             ...row.alternativeModes.map(mode => rowLines(mode, fontSize, subrowX))]);
         const physicalRows = physical.map(row => rowLines(row, fontSize));
         const cargoRows = cargoLabels.map(label => inventoryRowLineCount([[label, box.width - x(15)]], font(fontSize)));
         // The ammo profile prints at the fitted row size and lifts the physical rows by its lines.
         const ammoLines = ammo.length === 0 ? 0 : measureRecordSheetAmmoProfile(ammo, {
-            width: box.width - x(17), fontSize: font(fontSize), prefix: ammoPrefix,
+            width: box.width - x(17), fontSize: font(fontSize),
         }).lines.length;
         return { lineCount: rows.flat().reduce((a, b) => a + b, 0) + physicalRows.reduce((a, b) => a + b, 0)
             + cargoRows.reduce((a, b) => a + b, cargoRows.length ? 1 : 0) + ammoLines + ammoGap,
             badgeRows: rows.flat(), content: { rows, physicalRows, cargoRows } };
     });
-    const rowSpans = metrics.content.rows.map(rows => rows.map(lines => inventoryRowSpan(lines, metrics.lineStep)));
+    const rowSpans = metrics.content.rows.map(rows => rows.map(lines => inventoryRowSpan(lines, metrics.lineStep, metrics.badgeHeight)));
     const weaponStep = metrics.lineStep * box.width / 220.4;
     const inventoryFont = (size: number) => font(size * metrics.fontSize / RECORD_SHEET_FONT.inventory);
     const physicalStart = y(firstDetailBaseline - (detailRows.length ? 13.689 : 0))
@@ -329,23 +315,23 @@ function appendCompactVehicleInventory(
             });
         }
         drawCompactVehicleInventoryFields(entry, row, baseline, x, inventoryFont, nameX, weaponStep);
-        if (row.linkedEquipment) {
+        row.linkedEquipment.forEach((attachment, attachmentIndex) => {
             const linked = svgElement('g');
-            setAttributes(linked, { class: 'inventoryEntry linked', id: `generated-vehicle-linked-row@${index}` });
-            setInventoryComponentIds(linked, row.linkedEquipment.componentIds);
-            const linkedBaseline = baseline + rowSpans[index][0] * weaponStep;
-            appendInventoryRowButtons(linked, linkedBaseline, badgeScale, weaponStep, rowSpans[index][1], buttons.band);
-            drawCompactVehicleInventoryFields(linked, vehicleLinkedEquipmentFields(row.linkedEquipment), linkedBaseline,
+            setAttributes(linked, { class: 'inventoryEntry linked', id: `generated-vehicle-linked-row@${index}-${attachmentIndex}` });
+            setInventoryComponentIds(linked, attachment.componentIds);
+            const linkedBaseline = baseline + rowSpans[index].slice(0, attachmentIndex + 1).reduce((a, b) => a + b, 0) * weaponStep;
+            appendInventoryRowButtons(linked, linkedBaseline, badgeScale, weaponStep, rowSpans[index][attachmentIndex + 1], buttons.band);
+            drawCompactVehicleInventoryFields(linked, vehicleLinkedEquipmentFields(attachment), linkedBaseline,
                 x, inventoryFont, subrowX, weaponStep);
             entry.appendChild(linked);
-        }
+        });
         row.alternativeModes.forEach((mode, modeIndex) => {
-            const modeBaseline = baseline + rowSpans[index].slice(0, modeIndex + 1 + (row.linkedEquipment ? 1 : 0)).reduce((a, b) => a + b, 0) * weaponStep;
+            const modeBaseline = baseline + rowSpans[index].slice(0, modeIndex + 1 + row.linkedEquipment.length).reduce((a, b) => a + b, 0) * weaponStep;
             const alternative = svgElement('g');
             alternative.setAttribute('class', 'alternativeMode');
             alternative.setAttribute('data-mekbay-mode', mode.name);
             appendInventoryRowButtons(alternative, modeBaseline, badgeScale, weaponStep,
-                rowSpans[index][modeIndex + 1 + (row.linkedEquipment ? 1 : 0)], buttons.band, buttons.ranges,
+                rowSpans[index][modeIndex + 1 + row.linkedEquipment.length], buttons.band, buttons.ranges,
                 'alternativeModeButton');
             drawCompactVehicleInventoryFields(alternative, {
                 name: mode.name,
@@ -371,11 +357,6 @@ function appendCompactVehicleInventory(
         });
         inventory.appendChild(cargo);
     }
-    markAmmoInventory(inventory, {
-        top: y(101.162) - weaponStep * 0.82,
-        bottom: physical.length > 0 ? physicalStart - weaponStep : y(firstDetailBaseline - (detailRows.length > 0 ? 9.126 : 0)),
-        contentBottom: y(101.162) + Math.max(0, displayLine - 1) * weaponStep,
-    });
     const physicalRows = svgElement('g');
     markAmmoBefore(physicalRows);
     group.appendChild(physicalRows);
@@ -402,7 +383,6 @@ function appendCompactVehicleInventory(
         width: box.width - x(17),
         fontSize: inventoryFont(RECORD_SHEET_FONT.inventory),
         lineHeight: weaponStep,
-        prefix: ammoPrefix,
     });
 }
 
@@ -446,46 +426,16 @@ function drawCompactVehicleInventoryFields(
     }));
 }
 
-function compactVehicleFeatureText(entity: BaseEntity): string {
-    const features: string[] = [];
-    const fireControl = fireControlFeatureFromFlagLookup(flag =>
-        entity.equipment().some(mount => mount.equipment?.hasFlag(flag)));
-    if (fireControl) features.push(fireControl);
-    for (const seatType of ['standard-seats', 'pillion-seats', 'ejection-seats'] as const) {
-        const seats = entity.transporters().reduce((sum, transporter) => sum + (transporter.kind === 'bay'
-            && transporter.configuration.type === seatType ? Math.trunc(transporter.capacity) : 0), 0);
-        if (seats === 0) continue;
-        const name = getBayTransporterType({ type: seatType });
-        features.push(`${formatWholeNumber(seats)} ${seats === 1 ? name.replace('Seats', 'Seat') : name}`);
-    }
-    const troopSpace = entity.transporters()
-        .filter(transporter => transporter.kind === 'troop-space')
-        .reduce((sum, transporter) => sum + transporter.totalSpace, 0);
-    if (troopSpace > 0) {
-        features.push(`Infantry Compartment (${formatNumber(troopSpace)} ${troopSpace === 1 ? 'ton' : 'tons'})`);
-    }
-    for (const feature of entity.entityFeatures()) {
-        if (feature === 'Infantry Compartment' || feature.startsWith('Bay: ')) continue;
-        features.push(feature.startsWith('Chassis Mod: ')
-            ? `${feature.slice('Chassis Mod: '.length)} Chassis Mod`
-            : feature);
-    }
-    return [...new Set(features)].join(', ');
-}
 
 /** MML prints usable misc equipment in the same interactive inventory as weapons. */
 function compactVehicleInventoryRows(entity: BaseEntity, stateKey: InventoryWeaponStateKey | null) {
-    const mountsById = new Map(entity.equipment().map(mount => [String(mount.mountId), mount]));
-    const weaponRows = recordSheetInventoryWeapons(entity).map(row => {
-        const mount = mountsById.get(row.componentIds[0]);
-        return Object.freeze({
-            ...row,
-            name: compactVehicleWeaponName(mount ? recordSheetInventoryMountName(entity, mount) : row.name),
-            location: compactVehicleLocation(row.location),
-        });
-    });
+    const weaponRows = recordSheetInventoryWeapons(entity).map(row => Object.freeze({
+        ...row,
+        name: compactVehicleWeaponName(row.name),
+        location: compactVehicleLocation(row.location),
+    }));
     const weaponMountIds = new Set(entity.rangedWeapons().map(mount => mount.mountId));
-    const miscRows = entity.equipment().flatMap(mount => {
+    const miscRows = [...entity.equipment()].sort(recordSheetBodyLast).flatMap(mount => {
             const equipment = mount.equipment;
             if (weaponMountIds.has(mount.mountId)
                 || equipment === undefined
@@ -506,7 +456,7 @@ function compactVehicleInventoryRows(entity: BaseEntity, stateKey: InventoryWeap
                 componentIds: Object.freeze([mount.mountId]),
                 ...(mount.isPhysicalWeapon() ? { mountKey: recordSheetWeaponMountKey(mount) } : {}),
                 alternativeModes: Object.freeze([]),
-                linkedEquipment: null,
+                linkedEquipment: [],
             });
         });
     const rows: readonly ((typeof weaponRows[number] | typeof miscRows[number]) & { readonly quantity?: number })[]
@@ -757,9 +707,9 @@ export async function drawCompactVehicleDiagram(
                 pipLayout: presentation.pipLayout,
                 // At the left edge, in reach below the viewer's toolbar, level with the Catalyst logo's middle.
                 randomHit: {
-                    transform: `translate(0 ${formatNumber(presentation.randomHitAbove === undefined
-                        ? catalystY + CATALYST_LOGO_MIDDLE - RANDOM_HIT_BUTTON_SIZE / 2
-                        : presentation.randomHitAbove - RANDOM_HIT_BUTTON_SIZE)})`,
+                    transform: presentation.randomHitAt === undefined
+                        ? `translate(0 ${formatNumber(catalystY + CATALYST_LOGO_MIDDLE - RANDOM_HIT_BUTTON_SIZE / 2)})`
+                        : `translate(${formatNumber(presentation.randomHitAt.x)} ${formatNumber(presentation.randomHitAt.y)})`,
                 },
                 pipOptions: {
                     ...paperdollPipOptions(presentation.pipLayout, 4, 0.72),

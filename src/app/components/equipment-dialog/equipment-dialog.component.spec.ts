@@ -212,7 +212,7 @@ function createDialog(data: EquipmentDialogData) {
             } },
             { provide: ToastService, useValue: toast },
             { provide: KeyboardShortcutService, useValue: keyboardShortcuts },
-            { provide: AttackResolutionService, useValue: { resolveFired: async () => undefined, resolvesAttacks: () => false, inPhysicalPhase: () => false } },
+            { provide: AttackResolutionService, useValue: { resolveFired: async () => undefined, rollAttacks: async () => null, settleAttacks: async () => undefined, resolvesAttacks: () => false, inPhysicalPhase: () => false } },
         ],
     });
     const fixture = TestBed.createComponent(EquipmentDialogComponent);

@@ -27,6 +27,7 @@ export { isPpcCapacitorCompatibleWeapon } from '../../ppc-capacitor.model';
 
 export interface EquipmentLinkContext {
   readonly year: number;
+  readonly tonnage?: number;
 }
 
 export { isArtemisCompatibleWeapon, isArtemisVEquipment } from '../../artemis-equipment.model';
@@ -63,10 +64,22 @@ export function canLinkEquipment(
   source: EntityMountedEquipment,
   target: EntityMountedEquipment,
   context: EquipmentLinkContext,
+  attached: readonly EntityMountedEquipment[] = [],
 ): boolean {
   const enhancement = source.equipment;
   const weapon = target.equipment;
-  if (source.mountId === target.mountId || source.location !== target.location) return false;
+  // An enhancement may sit in either location of a weapon split over two (TM pp. 57, 207)
+  const sharesLocation = source.location === target.location
+    || (target.isSplitAcrossLocations && target.getOccupiedLocations().includes(source.location));
+  if (source.mountId === target.mountId || !sharesLocation) return false;
+  // TO:AUE p. 134 allows redundant insulators. IO:AE p. 87 limits each laser to one pulse module.
+  for (const other of attached) {
+    if (other.mountId === source.mountId) continue;
+    if (isLaserInsulatorEquipment(other.equipment)
+        && (isLaserInsulatorEquipment(enhancement) || isRiscLaserPulseModule(enhancement))) continue;
+    if (isRiscLaserPulseModule(other.equipment) && isLaserInsulatorEquipment(enhancement)) continue;
+    return false;
+  }
   if (enhancement instanceof WeaponEquipment && weapon instanceof AmmoEquipment) {
     return source.isDWP === true && target.isDWP === true && ammoMatchesWeapon(enhancement, weapon);
   }
@@ -82,6 +95,8 @@ export function canLinkEquipment(
   if (isRiscLaserPulseModule(enhancement)) {
     return isRiscLaserPulseCompatibleWeapon(weapon);
   }
-  if (isLaserInsulatorEquipment(enhancement)) return isLaserInsulatorCompatibleWeapon(weapon);
+  if (isLaserInsulatorEquipment(enhancement)) {
+    return (context.tonnage === undefined || context.tonnage <= 200) && isLaserInsulatorCompatibleWeapon(weapon);
+  }
   return false;
 }

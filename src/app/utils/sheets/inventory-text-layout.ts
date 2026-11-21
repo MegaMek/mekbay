@@ -7,20 +7,34 @@ import { INVENTORY_BADGE, RECORD_SHEET_FONT } from './record-sheet-typography';
 
 export const MIN_INVENTORY_FONT = 4.5;
 export const MIN_INVENTORY_LINE_RATIO = 0.93;
+export const MAX_INVENTORY_LINE_RATIO = 1.35;
+/**
+ * How far a fitted inventory's first row rises toward its headings: by as much as its rows tightened, less the
+ * room its smaller type gives up, because the headings keep their full size.
+ */
+export function inventoryHeadingLift(lineStep: number, fontSize: number): number {
+    return Math.max(0, RECORD_SHEET_FONT.inventory * MAX_INVENTORY_LINE_RATIO - lineStep
+        - (RECORD_SHEET_FONT.inventory - fontSize));
+}
 /** The wrap width addInventoryText laid a cell out at. */
 export const INVENTORY_TEXT_WIDTH_ATTRIBUTE = 'data-mekbay-max-width';
 
-/** Match MegaMekLab: tighten line spacing, then reduce type, preserving a readable minimum. */
+/**
+ * Match MegaMekLab: tighten line spacing, then reduce type, preserving a readable minimum. At that minimum a row
+ * gives up its badge's minimum height before rows would overlap; only then does the result not fit.
+ */
 export function fitInventoryText<T>(height: number,
     measure: (fontSize: number) => { lineCount: number; content: T; badgeRows?: readonly number[] }) {
     let fontSize: number = RECORD_SHEET_FONT.inventory;
     while (true) {
         const { lineCount, content, badgeRows = [] } = measure(fontSize);
         const minimumStep = fontSize * MIN_INVENTORY_LINE_RATIO;
-        const maximumStep = fontSize * 1.35;
-        const requiredHeight = (step: number) => lineCount * step
+        const maximumStep = fontSize * MAX_INVENTORY_LINE_RATIO;
+        const withBadges = (step: number) => lineCount * step
             + badgeRows.reduce((extra, lines) => extra + Math.max(0, INVENTORY_BADGE.minimumHeight - lines * step), 0);
-        if (requiredHeight(minimumStep) <= height || fontSize <= MIN_INVENTORY_FONT) {
+        const atMinimum = fontSize <= MIN_INVENTORY_FONT;
+        const requiredHeight = atMinimum && withBadges(minimumStep) > height ? (step: number) => lineCount * step : withBadges;
+        if (requiredHeight(minimumStep) <= height || atMinimum) {
             let lineStep = maximumStep;
             if (requiredHeight(maximumStep) > height) {
                 let low = minimumStep;
@@ -32,15 +46,20 @@ export function fitInventoryText<T>(height: number,
                 }
                 lineStep = low;
             }
-            return { fontSize, lineStep, content, fits: requiredHeight(lineStep) <= height };
+            // The badge height the rows were fitted with, which inventoryRowSpan must space them by.
+            const badgeHeight = requiredHeight === withBadges ? INVENTORY_BADGE.minimumHeight : 0;
+            return { fontSize, lineStep, content, fits: requiredHeight(lineStep) <= height, badgeHeight };
         }
         fontSize = Math.max(MIN_INVENTORY_FONT, Number((fontSize - 0.05).toFixed(2)));
     }
 }
 
-/** Keep enough leading for a row's badge to stay legible as it shrinks with dense leading. */
-export function inventoryRowSpan(lines: number, lineStep: number): number {
-    return Math.max(lines, INVENTORY_BADGE.minimumHeight / lineStep);
+/**
+ * Keep enough leading for a row's badge to stay legible as it shrinks with dense leading: the fit's `badgeHeight`
+ * (`fitInventoryText`), so rows are spaced as they were fitted.
+ */
+export function inventoryRowSpan(lines: number, lineStep: number, badgeHeight: number): number {
+    return Math.max(lines, badgeHeight / lineStep);
 }
 
 /** Wrap at word boundaries, splitting a long identifier only when it cannot fit by itself. */
@@ -52,7 +71,8 @@ export function inventoryCellLines(value: string, width: number, fontSize: numbe
     const fits = (text: string) => measureSvgTextCanvas(probe, text) <= width;
     const lines: string[] = [];
     let line = '';
-    for (const word of value.trim().split(/\s+/u)) {
+    // No-break spaces (U+00A0, U+202F) join their words, so they never become line breaks.
+    for (const word of value.trim().split(/[^\S  ]+/u)) {
         if (fits(line ? `${line} ${word}` : word)) { line = line ? `${line} ${word}` : word; continue; }
         if (line) { lines.push(line); line = ''; }
         for (const character of word) {
@@ -79,7 +99,7 @@ export function addInventoryText(parent: SVGElement, value: string, x: number, y
     if (lines.length === 1) text.textContent = lines[0];
     else {
         let sourceOffset = 0;
-        const source = value.trim().replace(/\s+/gu, ' ');
+        const source = value.trim().replace(/[^\S  ]+/gu, ' ');
         lines.forEach((line, index) => {
             const span = svgElement('tspan');
             setAttributes(span, { x, y: y + index * lineHeight, 'font-size': style.size ?? RECORD_SHEET_FONT.inventory });

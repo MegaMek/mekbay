@@ -23,6 +23,7 @@ import {
 } from '../../models/unit-status-presentation';
 import {
   addText,
+  condenseDataPanelCaption,
   CREW_STATE_MENU_SPACE,
   readViewBox,
   setAttributes,
@@ -280,7 +281,7 @@ function appendMovementPresentation(svg: SVGSVGElement, entity: BaseEntity): voi
   // A mode heading selects its mode; the binder mutes the columns of the other modes.
   svg.querySelectorAll<SVGTextElement>(`[${CONVERSION_MODE_ATTRIBUTE}]`).forEach(heading => {
     const fontSize = Number(heading.getAttribute('font-size')) || RECORD_SHEET_FONT.body;
-    const width = measureSvgTextCanvas(heading, heading.textContent ?? '');
+    const width = Number(heading.getAttribute('textLength')) || measureSvgTextCanvas(heading, heading.textContent ?? '');
     const x = Number(heading.getAttribute('x')) - (heading.getAttribute('text-anchor') === 'middle' ? width / 2 : 0);
     const control = svgElement('g');
     control.setAttribute('class', 'movementControl screen-only');
@@ -297,6 +298,15 @@ function appendMovementPresentation(svg: SVGSVGElement, entity: BaseEntity): voi
     stationary.textContent = 'Stationary';
     stationary.removeAttribute('textLength');
     stationary.removeAttribute('lengthAdjust');
+    // It takes the place of the heading, so it condenses as the heading does.
+    const headingLength = Number(caption.getAttribute('textLength'));
+    if (headingLength) condenseDataPanelCaption(stationary, headingLength / measureSvgTextCanvas(caption as SVGTextElement, caption.textContent ?? ''));
+    // Over a column of modes it lines up with them, not with the heading; a heading on the modes' own row keeps its spot.
+    const walkLabel = svg.getElementById('mpWalk')?.previousElementSibling;
+    if (walkLabel?.tagName === 'text' && walkLabel.parentNode === caption.parentNode
+      && Number(walkLabel.getAttribute('y')) > Number(caption.getAttribute('y'))) {
+      stationary.setAttribute('x', walkLabel.getAttribute('x') ?? '0');
+    }
     stationary.setAttribute('class', 'movementStationary screen-only');
     stationary.setAttribute('display', 'none');
     caption.after(stationary);

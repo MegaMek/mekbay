@@ -600,6 +600,10 @@ tech-base-badge {
   --location-border: var(--bt-yellow);
 }
 
+.location-card.invalid-donor {
+  --location-border: var(--danger);
+}
+
 .location-title {
   display: flex;
   flex-wrap: wrap;

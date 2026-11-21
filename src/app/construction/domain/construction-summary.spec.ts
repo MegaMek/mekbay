@@ -7,6 +7,7 @@ import { addTestEquipment } from '../../models/entity/testing/test-mounted-equip
 import { MiscEquipment } from '../../models/equipment.model';
 import { getConstructionFields } from './construction-fields';
 import { MekEntity } from '../../models/entity/entities/mek/mek-entity';
+import { MountedEngine } from '../../models/entity/components';
 import { encodeNativeEntity } from '../../models/entity/write-entity';
 import { parseEntity } from '../../models/entity/parse-entity';
 
@@ -38,6 +39,17 @@ describe('construction chassis summary', () => {
         expect(rows.find(row => row.key === 'cockpit')?.criticals).toBe(1);
         expect(rows.find(row => row.key === 'gyro')?.criticals).toBe(4);
         expect(rows.find(row => row.key === 'engine')?.criticals).toBe(6);
+    });
+    it('counts every engine slot at the chassis scale, as the critical grid does, whatever a donor weighs', () => {
+        const entity = createConstructionEntity('Biped', registry) as MekEntity;
+        entity.setTonnage(105);
+        entity.configureEngine(new MountedEngine({ type: 'XL', rating: 315, techBase: 'IS' }));
+        entity.enableHybridStructure();
+        entity.setStructureAt('LT', entity.structureAt('LT').withTonnage(70));
+        const grid = [...entity.criticalSlotGrid().values()].flat()
+            .filter(slot => slot.type === 'system' && slot.systemType === 'Engine').length;
+        expect(grid).toBe(7);
+        expect(constructionSummary(entity).rows.find(row => row.key === 'engine')?.criticals).toBe(grid);
     });
     it('exposes native design metadata through the chassis fields', () => {
         const entity = createConstructionEntity('Biped', registry);

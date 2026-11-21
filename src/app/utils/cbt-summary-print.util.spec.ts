@@ -108,7 +108,7 @@ describe('CBTSummaryPrintUtil', () => {
         ];
         const entity = {
             equipment: () => mounts,
-            locationHasCaseProtection: (location: string) => location !== 'RT',
+            ammoCaseProtection: (location: string) => location !== 'RT' ? 'case' : null,
         } as unknown as BaseEntity;
 
         const summary = formatEquipmentSummary(entity);

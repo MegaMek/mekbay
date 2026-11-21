@@ -197,9 +197,8 @@ function appendCompactBlocks(
     let previousStride = 0;
     let previousKind: CompactRecordSheetKind | null = null;
     blocks.forEach((block, index) => {
-        const viewBox = readViewBox(block);
-        const scale = viewBox.width > 0 ? profile.contentWidth / viewBox.width : 1;
-        const height = viewBox.height * scale;
+        // Blocks are drawn at this page format's content width, so they are only moved into place.
+        const { height } = readViewBox(block);
         const kind = block.getAttribute('data-mekbay-compact') as CompactRecordSheetKind | null;
         if (index > 0) {
             y = kind !== null && kind === previousKind
@@ -209,10 +208,7 @@ function appendCompactBlocks(
         const group = document.createElementNS('http://www.w3.org/2000/svg', 'g');
         group.setAttribute('class', 'compact-sheet-block');
         group.setAttribute('data-sheet-index', String(index));
-        group.setAttribute(
-            'transform',
-            `translate(${formatNumber(profile.margin)} ${formatNumber(y)}) scale(${formatNumber(scale)}) translate(${-viewBox.x} ${-viewBox.y})`,
-        );
+        group.setAttribute('transform', `translate(${formatNumber(profile.margin)} ${formatNumber(y)})`);
         appendSheetContent(group, block, {
             omitVehicleChrome,
             definitionsTarget: page,

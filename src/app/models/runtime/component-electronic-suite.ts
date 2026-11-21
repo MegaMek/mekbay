@@ -1,6 +1,7 @@
 // Copyright (C) 2026 The MegaMek Team
 // SPDX-License-Identifier: GPL-3.0-or-later
 
+import { isPrototypeDoubleHeatSinkEquipment } from '../heat-equipment.model';
 import { ECMMode } from '../common.model';
 import {
     ecmModes,
@@ -8,6 +9,8 @@ import {
     isECMMode,
     isEcmEquipment,
 } from '../ecm-mode.model';
+import type { EntityType } from '../entity/types';
+import type { MekEntity } from '../entity/entities/mek/mek-entity';
 import type { Equipment } from '../equipment.model';
 import type { ComponentId } from '../entity/entity-identifiers';
 import { isBapEquipment } from '../bap-equipment.model';
@@ -100,20 +103,30 @@ export function isGenericEndPhasePowerEquipment(
 
 export function isPowerControlledEquipment(
     equipment: Equipment | null | undefined,
-    protoMek = false,
+    entityType: EntityType = 'Mek',
 ): boolean {
-    return isNovaCewsEquipment(equipment)
+    return (entityType === 'Mek' && isPrototypeDoubleHeatSinkEquipment(equipment))
+        || isNovaCewsEquipment(equipment)
         || isStandaloneBapEquipment(equipment)
         || isSearchlightEquipment(equipment)
-        || isGenericEndPhasePowerEquipment(equipment, protoMek);
+        || isGenericEndPhasePowerEquipment(equipment, entityType === 'ProtoMek');
+}
+
+/**
+ * A prototype double heat sink beside other heat sinks switches at its own mount; when every heat sink is a prototype
+ * double the bulk heat-sink switch covers them all (`MekEntity.bulkHeatSinkCount`), and the sink has no switch of its
+ * own. Each heat sink thus has exactly one switch.
+ */
+export function isBulkSwitchedPrototypeHeatSink(entity: MekEntity, equipment: Equipment | null | undefined): boolean {
+    return isPrototypeDoubleHeatSinkEquipment(equipment) && entity.bulkHeatSinkCount() === entity.totalHeatSinks();
 }
 
 /** Canonical user-facing modes and pristine default for shared electronic behavior. */
 export function electronicComponentModes(
     equipment: Equipment | null | undefined,
-    protoMek = false,
+    entityType: EntityType = 'Mek',
 ): ElectronicComponentModeDefinition | null {
-    if (isPowerControlledEquipment(equipment, protoMek)) {
+    if (isPowerControlledEquipment(equipment, entityType)) {
         return Object.freeze({ modes: EQUIPMENT_POWER_MODES, defaultMode: POWER_ENABLED_MODE });
     }
     if (equipment && isEcmEquipment(equipment) && !isNovaCewsEquipment(equipment)) {
@@ -128,9 +141,9 @@ export function electronicComponentModes(
 /** Modes accepted by persistence, including the sparse tagged ECM transition state. */
 export function electronicRuntimeModes(
     equipment: Equipment | null | undefined,
-    protoMek = false,
+    entityType: EntityType = 'Mek',
 ): readonly string[] {
-    if (isPowerControlledEquipment(equipment, protoMek)) return EQUIPMENT_POWER_MODES;
+    if (isPowerControlledEquipment(equipment, entityType)) return EQUIPMENT_POWER_MODES;
     return equipment ? ecmRuntimeModes(equipment) : Object.freeze([]);
 }
 
@@ -337,11 +350,11 @@ export function planElectronicModeRequest(
     facts: readonly ElectronicComponentFact[],
     componentId: ComponentId,
     requestedMode: string,
-    protoMek = false,
+    entityType: EntityType = 'Mek',
 ): ElectronicModeRequestPlan {
     const selected = facts.find(fact => fact.componentId === componentId);
     if (!selected) return Object.freeze({ kind: 'not-electronic' });
-    const powerControlled = isPowerControlledEquipment(selected.equipment, protoMek);
+    const powerControlled = isPowerControlledEquipment(selected.equipment, entityType);
     const ecmControlled = isEcmEquipment(selected.equipment)
         && !isNovaCewsEquipment(selected.equipment);
     if (!powerControlled && !ecmControlled) return Object.freeze({ kind: 'not-electronic' });
@@ -392,14 +405,14 @@ export function planElectronicModeRequest(
 /** Complete queued power/ECM transitions and deactivate suites displaced by a startup. */
 export function planElectronicSettlement(
     facts: readonly ElectronicComponentFact[],
-    protoMek = false,
+    entityType: EntityType = 'Mek',
 ): readonly ElectronicModeUpdate[] {
     const activating = facts.filter(hasPendingElectronicActivation);
     const updates = new Map<ComponentId, string>();
     for (const fact of facts) {
-        if (!isPowerControlledEquipment(fact.equipment, protoMek)
+        if (!isPowerControlledEquipment(fact.equipment, entityType)
             && !isEcmEquipment(fact.equipment)) continue;
-        const mode = isPowerControlledEquipment(fact.equipment, protoMek)
+        const mode = isPowerControlledEquipment(fact.equipment, entityType)
             ? settlePowerMode(fact.mode)
             : settleElectronicMode(fact.equipment, fact.mode);
         if (mode !== undefined && mode !== fact.mode) updates.set(fact.componentId, mode);
@@ -411,7 +424,7 @@ export function planElectronicSettlement(
             const otherClaims = electronicClaims(other.equipment);
             if ((!selectedClaims.ecm || !otherClaims.ecm)
                 && (!selectedClaims.probe || !otherClaims.probe)) continue;
-            updates.set(other.componentId, isPowerControlledEquipment(other.equipment, protoMek)
+            updates.set(other.componentId, isPowerControlledEquipment(other.equipment, entityType)
                 ? POWER_DISABLED_MODE
                 : ECMMode.OFF);
         }

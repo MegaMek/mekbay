@@ -191,7 +191,7 @@ import {
 } from '../components/set-bombs-dialog/set-bombs.dialog.component';
 import { bombAmmo, carriedBombs } from '../models/aerospace-bomb.model';
 import { reconcileConstructionEquipmentRelationships } from './domain/construction-relationships';
-import { constructionSystemSlotKeys, reconcileConstructionSystemSlots } from './domain/construction-system-rules';
+import { constructionSystemComponents, constructionSystemSlotKeys, packConstructionMekLocations, reconcileConstructionSystemSlots } from './domain/construction-system-rules';
 import {
   CONSTRUCTION_UNIT_TYPES,
   createConstructionEntity,
@@ -1177,7 +1177,12 @@ export class UnitConstructionComponent {
   ];
 
   readonly locations = computed(() => {
-    const locations = getConstructionLocations(this.entity()).map((location) => ({
+    const entity = this.entity();
+    const donorIssues = entity instanceof MekEntity && entity.hasHybridStructure()
+      ? this.validation().messages.filter(issue => issue.severity === 'error' && issue.location && issue.code.startsWith('FRANKEN_'))
+      : [];
+    const locations = getConstructionLocations(entity).map((location) => ({
+      donorIssue: donorIssues.find(issue => issue.location === location.id)?.message,
       ...location,
       rows: this.slotRows(location.slots),
     }));
@@ -1455,7 +1460,14 @@ export class UnitConstructionComponent {
         };
       });
   });
-  readonly validation = computed(() => validateConstruction(this.entity()));
+  /** Source diagnostics from loading the file are listed with the design checks, which the import notice points to. */
+  readonly validation = computed(() => {
+    const entity = this.entity();
+    const result = validateConstruction(entity);
+    const source = entity.loadIssues().map((issue): EntityValidationMessage =>
+      ({ severity: issue.severity, category: 'general', code: issue.code, message: issue.message }));
+    return source.length ? { ...result, messages: [...result.messages, ...source] } : result;
+  });
   readonly errors = computed(() => this.validation().messages.filter((message) => message.severity === 'error'));
   readonly warnings = computed(() => this.validation().messages.filter((message) => message.severity === 'warning'));
   readonly notices = computed(() => this.validation().messages.filter((message) => message.severity === 'info'));
@@ -1990,6 +2002,7 @@ export class UnitConstructionComponent {
       withWeaponQuirkReconciliation(entity, () => {
         action();
         reconcileConstructionSystemSlots(entity, systemSlots);
+        packConstructionMekLocations(entity);
         ensureConstructionMaterialEquipment(entity);
         reconcileConstructionEquipmentRelationships(entity);
       });
@@ -2349,6 +2362,8 @@ export class UnitConstructionComponent {
         )
       : [];
   });
+  /** Component armor covers every slot of the selected system (TO:AUE p. 95); imports may arrive partly armored. */
+  readonly selectedSystemArmoredSlots = computed(() => this.selectedSystemSlots().filter((slot) => slot.armored).length);
   componentArmorIssue(component: EntityMountedEquipment | MekSystemType): string | null {
     return constructionComponentArmorIssue(this.entity(), component)?.message ?? null;
   }
@@ -2366,11 +2381,17 @@ export class UnitConstructionComponent {
     if (!(entity instanceof MekEntity) || !isMekLocation(location)) return;
     const slot = entity.criticalSlotGrid().get(location)?.[index];
     if (armored && (slot?.type !== 'system' || this.componentArmorIssue(slot.systemType))) return;
+    // Component armor covers every slot of the component (TO:AUE p. 95).
+    const key = `${location}:${index}`;
+    const component = [...constructionSystemComponents(constructionSystemSlotKeys(entity)).values()]
+      .find((keys) => keys.includes(key)) ?? [key];
     this.change(() =>
       entity.armoredSystemSlots.update((previous) => {
         const next = new Set(previous);
-        if (armored) next.add(`${location}:${index}`);
-        else next.delete(`${location}:${index}`);
+        for (const slotKey of component) {
+          if (armored) next.add(slotKey);
+          else next.delete(slotKey);
+        }
         return next;
       }),
     );
@@ -2387,22 +2408,8 @@ export class UnitConstructionComponent {
     event?.stopPropagation();
     const field = this.fields().find((field) => field.id === this.actuatorFieldId(location, system));
     if (!field || !this.canEditField(field)) return;
-    this.change(() => {
-      field.set(false);
-      const entity = this.entity();
-      if (entity instanceof MekEntity) {
-        entity.armoredSystemSlots.update(
-          (slots) =>
-            new Set(
-              [...slots].filter((key) => {
-                const [loc, index] = key.split(':');
-                return entity.getSystemSlotsForLocation(loc)[Number(index)]?.type === 'system';
-              }),
-            ),
-        );
-        entity.arrangeEquipment(location);
-      }
-    }, this.canEditField(field));
+    // change() drops the removed slots' armor and moves the location's equipment up.
+    this.change(() => field.set(false), this.canEditField(field));
     this.inspector.close();
   }
   applySplit(): void {
@@ -2898,6 +2905,9 @@ export class UnitConstructionComponent {
     entity.addEquipmentBatch(unallocated);
     entity.weaponQuirks.update((entries) => [...entries, ...unallocatedWeaponQuirks]);
     if (entity instanceof MekEntity) entity.initializeParsedHeatSinkMounts(heatSinkCount);
+    // A snapshot's structure rows include this session's allocations; the donor rows stay those of the opened design.
+    const current = this.entity();
+    if (entity instanceof MekEntity && current instanceof MekEntity) entity.loadedStructureRows.set(current.loadedStructureRows());
     ensureConstructionMaterialEquipment(entity);
     return entity;
   }

@@ -6,12 +6,13 @@ import { type AmmoEquipment, type WeaponDamage, WeaponEquipment } from '../equip
 import { isHagEquipment } from '../hag-mode.model';
 import { rapidFireAutocannonJamRoll, rapidFireAutocannonShotCount } from '../runtime/component-rapid-fire-autocannon';
 import type { ComponentId } from '../entity/entity-identifiers';
+import { isFusilladeLauncher } from '../entity/utils/weapon-damage-kernel';
 import type { WeaponType } from '../weapon-types.model';
 import type { CBTGameRules } from './game-rules';
 import type { MekHitArc } from '../../utils/record-sheet-reference-table';
 import type { TnTargetUnitType } from '../target-number-calculator.model';
 import { physicalDamageGroupSize, type HitTable, type PhysicalAttackKind } from './physical-attack-rules';
-import { infernoMeetsCover, infernoRollsHitLocation, isInfernoAmmo, platoonInfernoMissiles } from './inferno-rules';
+import { isInfernoAmmo, platoonInfernoMissiles } from './inferno-rules';
 import type { PlatoonAttackFacts } from './conventional-infantry-combat-rules';
 import type { CBTRuleset } from '../cbt-ruleset.model';
 import { FLAMER_HEAT_MODE } from '../flamer-mode.model';
@@ -52,6 +53,10 @@ export interface WeaponAttackProfile {
     readonly partialCover: boolean;
     /** The to-hit roll at or below which this rapid-fire attack jams the weapon. */
     readonly jamRoll: number | null;
+    /** The Cluster Hits Table modifier the attack starts with, which the player may change (hostile ECM); 0 if absent. */
+    readonly clusterModifier?: number;
+    /** A laser with a working laser insulator, which a to-hit roll of 2 can damage (`LASER_INSULATOR_FAILURE_TARGET`). */
+    readonly insulated?: true;
     /** The table each group is read on: the punch and kick tables roll 1D6. */
     readonly table: HitTable;
     /** A physical attack, whose hit or miss also forces Piloting Skill Rolls. */
@@ -62,8 +67,6 @@ export interface WeaponAttackProfile {
     readonly randomSide?: true;
     /** Inferno missiles: each group is one missile whose effect the struck unit decides (TW pp. 141-142). */
     readonly inferno?: true;
-    /** The missiles roll no hit location: Core infernos striking a unit that tracks heat (Core p. 192). */
-    readonly noHitLocation?: true;
     /** A platoon's damage when that many troopers hit, indexed by troopers hitting; replaces damage per hit. */
     readonly damageByHits?: readonly number[];
     /** A heat-causing weapon: its hit may deliver heat as well as, or instead of, damage. */
@@ -140,10 +143,10 @@ export interface WeaponAttackFacts {
     readonly targetNumber: number;
     readonly partialCover: boolean;
     readonly heatWeapon?: AttackHeatWeapon;
-    /** Whether the struck unit tracks heat; absent while it is unknown. */
-    readonly targetTracksHeat?: boolean;
     /** The location an aimed shot names, and the dice of its roll (`aimedShotDice`). */
     readonly aim?: Readonly<{ location: string; dice: 1 | 2 }>;
+    /** The laser has a working laser insulator. */
+    readonly insulated?: boolean;
 }
 
 export interface WeaponAttackOutcome {
@@ -157,6 +160,24 @@ export interface WeaponAttackOutcome {
     /** Outside heat a heat-causing weapon's hit applies to the target. */
     readonly heat: number;
 }
+
+/**
+ * A Streak launcher, or an iATM fired directly, locks on: on a hit every missile strikes, and a missed lock fires
+ * nothing and makes no heat (TW p. 138; IO:AE p. 60). MekBay has no indirect fire, the iATM's other mode.
+ * The Fusillade, the ProtoMek launcher that fires iATM munitions, does not: "Fusillade launchers lack the Streak-like
+ * features ... will fire even if the attack roll fails, and must roll on the 3 column of the Cluster Hits Table"
+ * (IO:AE p. 59).
+ */
+export function locksOnTarget(equipment: WeaponEquipment): boolean {
+    return equipment.ammoType === 'SRM_STREAK' || equipment.ammoType === 'LRM_STREAK'
+        || (equipment.ammoType === 'IATM' && !isFusilladeLauncher(equipment));
+}
+
+/**
+ * The Fusillade's integral Artemis IV: "A +2 modifier applies to the Cluster Hits Table roll result, to account for the
+ * integral Artemis, unless hostile ECM interferes" (IO:AE p. 59).
+ */
+const FUSILLADE_ARTEMIS_CLUSTER_MODIFIER = 2;
 
 /**
  * Profiles a fired weapon from the exact damage the equipment table shows. Weapons without damage
@@ -176,18 +197,16 @@ export function weaponAttackProfile(facts: WeaponAttackFacts, rules: CBTGameRule
             partialCover: facts.partialCover,
             damagePerHit,
             projectiles: Math.max(1, projectiles),
-            allHit: equipment.ammoType === 'SRM_STREAK' || equipment.ammoType === 'LRM_STREAK',
+            allHit: locksOnTarget(equipment),
             groupSize: Math.max(damagePerHit, groupSize),
             ...(equipment.ammoType === 'RIFLE' ? { rifle: true as const } : {}),
+            ...(facts.insulated ? { insulated: true as const } : {}),
+            ...(isFusilladeLauncher(equipment) ? { clusterModifier: FUSILLADE_ARTEMIS_CLUSTER_MODIFIER } : {}),
         });
-    // Each inferno missile that hits is its own group: one hit-location roll, no damage.
+    // Each inferno missile that hits is its own group: one hit-location roll, no damage. Core p. 192 skips the roll, but
+    // partial cover and heat-dissipating armor can depend on it (Xotl, Core Rulebook forum ruling, 19 Oct 2026).
     if (isInfernoAmmo(ammo)) {
-        return Object.freeze({
-            ...profile(1, equipment.rackSize, 1),
-            partialCover: facts.partialCover && infernoMeetsCover(rules.id),
-            inferno: true as const,
-            ...(infernoRollsHitLocation(rules.id, facts.targetTracksHeat) ? {} : { noHitLocation: true as const }),
-        });
+        return Object.freeze({ ...profile(1, equipment.rackSize, 1), inferno: true as const });
     }
     const standard = (): WeaponAttackProfile | null => {
         if (perHit <= 0) return null;
@@ -227,15 +246,16 @@ export interface PlatoonAttackProfileFacts {
     readonly attack: PlatoonAttackFacts;
     /** Flamer platoons may declare heat in place of damage (TW p. 215, infantry table). */
     readonly heatWeapon?: AttackHeatWeapon;
-    /** Whether the struck unit tracks heat; absent while it is unknown. */
-    readonly targetTracksHeat?: boolean;
 }
+
+/** A platoon's damage, and its heat, strike in groups of this many points (TW p. 215). */
+export const PLATOON_DAMAGE_GROUP = 2;
 
 /**
  * A platoon rolls the Cluster Hits Table on its troopers and deals the damage those troopers hitting deal, in
  * 2-point groups (TW p. 217; MegaMek InfantryWeaponHandler).
  */
-export function platoonAttackProfile(facts: PlatoonAttackProfileFacts, rules: CBTGameRules): WeaponAttackProfile {
+export function platoonAttackProfile(facts: PlatoonAttackProfileFacts): WeaponAttackProfile {
     return Object.freeze({
         componentId: facts.componentId,
         name: facts.name,
@@ -243,15 +263,13 @@ export function platoonAttackProfile(facts: PlatoonAttackProfileFacts, rules: CB
         damagePerHit: 2,
         projectiles: Math.max(1, facts.attack.troopers),
         allHit: false,
-        groupSize: 2,
+        groupSize: PLATOON_DAMAGE_GROUP,
         types: Object.freeze([...facts.types]),
-        partialCover: facts.partialCover && (!facts.attack.inferno || infernoMeetsCover(rules.id)),
+        partialCover: facts.partialCover,
         jamRoll: null,
         table: 'standard',
         damageByHits: facts.attack.damageByTroopers,
         ...(facts.attack.inferno ? { inferno: true as const } : {}),
-        ...(facts.attack.inferno && !infernoRollsHitLocation(rules.id, facts.targetTracksHeat)
-            ? { noHitLocation: true as const } : {}),
         ...(facts.heatWeapon === undefined ? {} : { heatWeapon: facts.heatWeapon }),
     });
 }
@@ -278,7 +296,9 @@ export function attackEffect(
     // A platoon keeps its 2-point groups; a weapon groups its damage as its heat rules say. A hit that only heats
     // still rolls one location: heat striking partial cover is lost (TW p. 102).
     const groupSize = profile.damageByHits === undefined ? hit.groupSize : profile.groupSize;
-    const groups = hit.damage > 0 || hit.heat === 0 ? damageGroups(hit.damage, groupSize) : Object.freeze([0]);
+    // A platoon's heat-only attack still strikes in its 2-point groups, each rolling a location (TW p. 215).
+    const heatOnlyGroups = profile.damageByHits === undefined ? [0] : damageGroups(hit.heat, groupSize).map(() => 0);
+    const groups = hit.damage > 0 || hit.heat === 0 ? damageGroups(hit.damage, groupSize) : Object.freeze(heatOnlyGroups);
     return Object.freeze({ groups, heat: hit.heat });
 }
 
@@ -323,7 +343,7 @@ export function resolveWeaponAttack(
     profile: WeaponAttackProfile,
     toHit: TwoDice,
     cluster: TwoDice | null,
-    clusterModifier = 0,
+    clusterModifier = profile.clusterModifier ?? 0,
     heatDice: readonly number[] = MAXIMUM_HEAT_DICE,
 ): WeaponAttackOutcome {
     const jammed = profile.jamRoll !== null && toHit[0] + toHit[1] <= profile.jamRoll;

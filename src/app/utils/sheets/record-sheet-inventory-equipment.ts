@@ -1,24 +1,25 @@
 // Copyright (C) 2026 The MegaMek Team
 // SPDX-License-Identifier: GPL-3.0-or-later
 
-import type { Equipment } from '../../models/equipment.model';
+import { WeaponEquipment, type Equipment } from '../../models/equipment.model';
 import type { BaseEntity } from '../../models/entity/base-entity';
 import type { EntityMountedEquipment } from '../../models/entity/types/equipment';
-import { isCargoEquipment, supportEquipmentKind } from '../../models/support-equipment.model';
+import { isCargoEquipment, supportEquipmentKind, supportVariableSizeSuffix } from '../../models/support-equipment.model';
 import { isApolloEquipment } from '../../models/apollo-mode.model';
 import { isArtemisEquipment } from '../../models/artemis-equipment.model';
-import { isExternalStoresHardpointEquipment } from '../../models/aerospace-support-equipment.model';
+import { aerospaceSupportEquipmentKind, isExternalStoresHardpointEquipment } from '../../models/aerospace-support-equipment.model';
 import { isCaseEquipment } from '../../models/case-equipment.model';
-import { isChassisSystemEquipment } from '../../models/chassis-equipment.model';
+import { isChassisSystemEquipment, isMagneticClampEquipment } from '../../models/chassis-equipment.model';
 import { isMascEquipment } from '../../models/escalating-equipment.model';
 import { isLaserInsulatorEquipment } from '../../models/laser-insulator.model';
 import { isPpcCapacitorEquipment } from '../../models/ppc-capacitor.model';
 import { isRiscLaserPulseModule } from '../../models/risc-laser-mode.model';
 import { isSponsonTurretEquipment } from '../../models/turret-equipment.model';
-import { isHarJelEquipment, isMassEquipment } from '../../models/utility-equipment.model';
+import { isHarJelEquipment, isMassEquipment, utilityEquipmentKind } from '../../models/utility-equipment.model';
 import { isFireControlEquipment } from '../../models/entity/utils/fire-control';
 import { isTalonEquipment } from '../../models/entity/utils/physical-weapon';
 import { isBapEquipment } from '../../models/bap-equipment.model';
+import { isBattleArmorManipulatorEquipment } from '../../models/battle-armor-equipment.model';
 import { isNovaC3Equipment } from '../../models/c3-network.model';
 import { isAngelEcmEquipment, isEcmEquipment, isSingleHexEcmEquipment } from '../../models/ecm-mode.model';
 import { isEquipmentForPlatform } from '../../models/equipment-platform.model';
@@ -69,10 +70,21 @@ export function isPrintableMekInventoryEquipment(
     return !isMekRecordSheetInventorySupport(equipment);
 }
 
-/** The damage column of a non-weapon inventory row: its special codes, physical damage, or [E] for equipment. */
+/**
+ * The damage column of a non-weapon inventory row: its special codes, physical damage, or [E] for equipment. E marks
+ * electronics (TW p. 114), so a manipulator prints no type. Mine dispensers and the minesweeper print their own, PE
+ * (TO:AUE p. 220), as does the ProtoMek magnetic clamp system (the IO:AE equipment table's "Magnetic Clamp System PE");
+ * battle armor magnetic clamps print no type, as no book gives them one.
+ */
 export function recordSheetEquipmentDamage(mount: EntityMountedEquipment): string {
     const equipment = mount.equipment;
     if (!equipment) return '—';
+    const magneticClamp = isMagneticClampEquipment(equipment);
+    const support = aerospaceSupportEquipmentKind(equipment);
+    if (support === 'vehicle-mine-dispenser' || support === 'space-mine-dispenser'
+        || utilityEquipmentKind(equipment) === 'minesweeper'
+        || (magneticClamp && isEquipmentForPlatform(equipment, 'protomek'))) return '[PE]';
+    if (isBattleArmorManipulatorEquipment(equipment) || magneticClamp) return '';
     if (equipment.hasFlag('F_AP_POD')) return '[PB,OS,AI]';
     if (isCoolantPodEquipment(equipment)) return '[PE,OS,X]';
     const physicalDamage = mount.getPhysicalWeaponDamage();
@@ -95,15 +107,22 @@ export function recordSheetElectronicWarfareRange(equipment: Equipment): number 
     return equipment.techBase === 'Clan' ? 5 : 4;
 }
 
-/** Inventory names share construction sizes and MML's mixed-tech disambiguation. */
+/**
+ * Inventory names share construction sizes and MML's mixed-tech disambiguation. Only a battle armor weapon says it is
+ * body-mounted, as MegaMekLab prints it.
+ */
 export function recordSheetInventoryMountName(entity: BaseEntity, mount: EntityMountedEquipment): string {
     const equipment = mount.equipment;
-    let name = mount.displayName();
+    let name = mount.displayName(false, equipment instanceof WeaponEquipment);
     const supportKind = supportEquipmentKind(equipment);
     if ((isCargoEquipment(equipment) || supportKind === 'communications' || supportKind === 'power-generator')
         && mount.size !== undefined) {
         const size = new Intl.NumberFormat('en-US', { maximumFractionDigits: 3 }).format(mount.size);
         name = insertInventoryNameSuffix(name, `(${size} ${mount.size === 1 ? 'ton' : 'tons'})`);
+    } else if (mount.size !== undefined) {
+        // MASH theaters, drones and the like print as large-craft features do
+        const supportSize = supportVariableSizeSuffix(equipment, mount.size);
+        if (supportSize !== null) name = insertInventoryNameSuffix(name, supportSize);
     }
     if (!equipment || !entity.mixedTech() || equipment.techBase === 'All') return name;
     const ambiguous = Object.values(entity.getEquipmentRegistry().equipment).some(candidate =>

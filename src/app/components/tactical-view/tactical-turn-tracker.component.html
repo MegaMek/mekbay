@@ -86,6 +86,13 @@
                     </div>
                 }
 
+                @if (jumpJetChoice(); as jets) {
+                    <label class="summary-row">Jump jets fired
+                        <input type="number" [min]="jets.minimum" [max]="jets.maximum" step="1"
+                            [value]="jets.fired" (change)="setJumpJetsFired($event)" />
+                    </label>
+                }
+
                 @if (prone() && canStandUp()) {
                     <div class="button-row">
                         <button type="button" class="bt-button move-button" [class.danger]="standUpRequiresPSR()"

@@ -88,6 +88,7 @@ describe('bulk record sheet pagination and printing', () => {
                 const force: CBTForce = Object.assign(Object.create(CBTForce.prototype), {
                     unitStore: { mekUnit: () => runtime, nonMekUnit: () => runtime },
                     memberRegistry: { member: () => null },
+                    getEquipmentPanelSnapshot: () => null,
                     getUnitSnapshot: () => ({
                         entity, ruleset, index: runtime.getIndex(), state: runtime.snapshot(), query: runtime.query(),
                         editContext: { owner: runtime, state: runtime.snapshot() },
@@ -163,6 +164,7 @@ describe('bulk record sheet pagination and printing', () => {
         expect(runtime.dispatch({ type: 'set-component-status', componentId: ids[2], status: 'destroyed', target: 'committed' })
             .accepted).toBeTrue();
         const force = {
+            getEquipmentPanelSnapshot: () => null,
             getUnitSnapshot: () => ({ entity, ruleset: CORE_2026_RULESET }),
             getNonMekRecordSheetSnapshot: () => ({
                 ...projectNonMekRecordSheet(entity, runtime.getIndex(), runtime.snapshot(), CORE_2026_RULESET, runtime.query(), 100, 100),
@@ -195,6 +197,7 @@ describe('bulk record sheet pagination and printing', () => {
                     initialStateProfile: { profileId: 'pristine-non-mek' },
                 }, entity, CORE_2026_RULESET);
                 const force = {
+                    getEquipmentPanelSnapshot: () => null,
                     getUnitSnapshot: () => ({ entity, ruleset: CORE_2026_RULESET }),
                     getNonMekRecordSheetSnapshot: () => ({
                         ...projectNonMekRecordSheet(entity, runtime.getIndex(), runtime.snapshot(),

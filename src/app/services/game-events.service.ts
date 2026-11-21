@@ -71,8 +71,6 @@ export interface AttackWeaponReport {
     readonly arc?: MekHitArc;
     /** Inferno missiles: each group is one missile whose effect the struck unit decides. */
     readonly inferno?: true;
-    /** Inferno missiles that roll no hit location (Core p. 192), as the attacker resolved them. */
-    readonly noHitLocation?: true;
     /** Outside heat the weapon's hit applies to the struck unit. */
     readonly heat?: number;
     /** The hit was an aimed shot: its one group strikes the named location when the aim roll says so. */
@@ -185,7 +183,7 @@ export function parseGameEvent(value: unknown): GameEvent | null {
 function parseWeaponReport(value: unknown): AttackWeaponReport | null {
     if (value === null || typeof value !== 'object' || Array.isArray(value)) return null;
     const {
-        name, types, partialCover, targetNumber, toHit, cluster, table, physical, arc, inferno, noHitLocation, heat, aim,
+        name, types, partialCover, targetNumber, toHit, cluster, table, physical, arc, inferno, heat, aim,
         critical, rifle, swarmRelease, swarmStrike, groups,
     } = value as Record<string, unknown>;
     if (!isId(name) || !isInteger(targetNumber, -100, 100) || !isTwoDice(toHit)
@@ -193,7 +191,6 @@ function parseWeaponReport(value: unknown): AttackWeaponReport | null {
         || !types.every(type => WEAPON_TYPES.includes(type as WeaponType))
         || (partialCover !== undefined && partialCover !== true)
         || (inferno !== undefined && inferno !== true)
-        || (noHitLocation !== undefined && (noHitLocation !== true || inferno !== true))
         || (heat !== undefined && !isInteger(heat, 1, MAX_DAMAGE))
         || (table !== undefined && table !== 'punch' && table !== 'kick' && table !== 'swarm')
         || (critical !== undefined && critical !== true)
@@ -252,7 +249,6 @@ function parseWeaponReport(value: unknown): AttackWeaponReport | null {
         ...(physical === undefined ? {} : { physical: physical as PhysicalAttackKind }),
         ...(arc === undefined ? {} : { arc: arc as MekHitArc }),
         ...(inferno ? { inferno: true as const } : {}),
-        ...(noHitLocation ? { noHitLocation: true as const } : {}),
         ...(heat === undefined ? {} : { heat: heat as number }),
         ...(parsedAim === undefined ? {} : { aim: parsedAim }),
         groups: Object.freeze(parsedGroups as AttackHitGroup[]),

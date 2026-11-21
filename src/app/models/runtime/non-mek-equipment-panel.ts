@@ -10,7 +10,7 @@ effectiveAerospaceMaximumBracket,
 } from '../../utils/aerospace-range.util';
 import { compareText } from '../../utils/string.util';
 import { resolveAmmoWeaponProfile } from '../ammo-weapon-profile.model';
-import { artemisVToHitAdjustment } from '../artemis-equipment.model';
+import { activeArtemisKind, artemisVToHitAdjustment, type ArtemisKind } from '../artemis-equipment.model';
 import { apolloToHitAdjustment } from '../apollo-mode.model';
 import { bombastLaserEquipmentProfile } from '../bombast-laser-mode.model';
 import type { CBTRuleset } from '../cbt-ruleset.model';
@@ -44,13 +44,13 @@ import {
 } from '../rules/conventional-infantry-combat-rules';
 import { INFERNO_LABEL, platoonInfernoMissiles } from '../rules/inferno-rules';
 import { physicalAttackMeetsBuildingCover, physicalAttackMeetsWaterCover } from '../rules/physical-attack-rules';
-import { isWeaponEnhancementEquipment } from '../entity/utils/equipment-link-rules';
+import { isRiscLaserPulseModule, RISC_LASER_PULSE_MODE, RISC_LASER_PULSE_HEAT_BONUS, riscLaserPulseToHitAdjustment } from '../risc-laser-mode.model';
 import { isTargetingComputerEquipment } from '../entity/utils/targeting-computer';
 import { AmmoEquipment,WeaponEquipment,ammoMatchesWeapon } from '../equipment.model';
 import { applyFlamerWeaponTypes, flamerDisplayLabel } from '../flamer-mode.model';
 import type { OptionalRules } from '../options.model';
 import type { WeaponType } from '../weapon-types.model';
-import { isLaserInsulatorEquipment,laserInsulatorAdjustedHeat } from '../laser-insulator.model';
+import { laserInsulatorWeakened, laserInsulatorAdjustedHeat } from '../laser-insulator.model';
 import { prototypeLaserMaximumExtraHeat } from '../prototype-laser-heat.model';
 import {
 gameRulesFor,
@@ -74,6 +74,7 @@ EquipmentPanelAmmoSource,
 EquipmentPanelComponent,
 EquipmentPanelSnapshot,
 equipmentPanelWeaponTypes,
+equipmentPanelAttachments,
 projectEquipmentPanelHit,
 projectEquipmentPanelWeaponDamage,
 projectEquipmentTargets,
@@ -82,6 +83,8 @@ type EquipmentPanelTarget,
 type MekPhysicalAttackRow,
 } from './equipment-panel';
 import {
+ammoSourceFeedsWeapon,
+entityAmmoDefaultMunitionKey,
 entityAmmoLoadout,
 entityAmmoLoadouts,
 entityAmmoSelectionCompatibilityFacts,
@@ -397,7 +400,7 @@ function projectComponent(
     const { vehicle: vehicleRules, infantry: infantryRules, protoMek: protoMekRules, aero: aeroRules } = query.projection();
     const status = query.componentStatus(componentId, 'committed');
     const previewStatus = query.componentStatus(componentId, 'preview');
-    const modeDefinition = nonMekComponentModes(entity, equipment, ruleset);
+    const modeDefinition = nonMekComponentModes(entity, mount, ruleset);
     const mode = effectiveNonMekComponentMode(entity, index, state, ruleset, componentId);
     const heatOrDamageWeapon = nonMekHeatOrDamageWeapon(entity, equipment);
     const locations = mount.getOccupiedLocations().map(code => {
@@ -421,9 +424,11 @@ function projectComponent(
         ? undefined
         : projectAmmo(entity, mount, ruleset, state, query, componentId, loadouts);
     const targeting = state.attackerTargeting.components.get(componentId);
+    const feedingSources = ammoSourceCandidates.filter(candidate => ammoSourceFeedsWeapon(
+        candidate.source.componentId, index.components.get(candidate.source.componentId)?.mount, componentId));
     const ammoSources = equipment instanceof WeaponEquipment && !mount.isPhysicalWeapon()
         ? compatibleAmmoSources(
-            ammoSourceCandidates,
+            feedingSources,
             equipment,
             mode,
         )
@@ -439,11 +444,6 @@ function projectComponent(
     );
     const selectedAmmo = targetSubject?.selectedAmmo ?? null;
     const ammoProfile = resolveAmmoWeaponProfile(selectedAmmo);
-    const aerospace = equipment instanceof WeaponEquipment
-        && !mount.isPhysicalWeapon()
-        && entity.unitType() === 'Aero'
-        ? projectAerospaceWeapon(equipment, selectedAmmo, ruleset, mode)
-        : undefined;
     const stateModifiers = Object.freeze([
         ...(aeroRules?.modifiers.ranged ?? []),
         ...(protoMekRules === null ? [] : protoMekCriticalModifiers(protoMekRules.criticalHits, mount.getOccupiedLocations())),
@@ -459,19 +459,24 @@ function projectComponent(
         ]),
     ] satisfies readonly ToHitModifierBreakdownEntry[]);
     const rules = gameRulesFor(ruleset);
-    const linkedEnhancement = entity.getLinkingMount(mount);
-    const linkedEnhancementId = linkedEnhancement === undefined
-        ? undefined
-        : asComponentId(linkedEnhancement.mountId);
-    const linkedEnhancementStatus = linkedEnhancementId === undefined
-        ? 'available'
-        : query.componentStatus(linkedEnhancementId, 'committed');
-    const linkedEnhancementEquipment = linkedEnhancement?.equipment;
+    const attachments = entity.getLinkingMounts(mount);
+    const statusOf = (source: EntityMountedEquipment) => query.componentStatus(asComponentId(source.mountId), 'committed');
+    const { modifiers, fireControl, fireControlStatus } = equipmentPanelAttachments(attachments, statusOf);
+    const insulationWeakened = laserInsulatorWeakened(attachments, source => statusOf(source) === 'available');
+    const pulseModule = attachments.find(source => isRiscLaserPulseModule(source.equipment));
+    const pulsed = !!pulseModule && statusOf(pulseModule) === 'available'
+        && status === 'available' && mode === RISC_LASER_PULSE_MODE;
     const artemisVToHit = artemisVToHitAdjustment(
-        linkedEnhancementEquipment, equipment, linkedEnhancementStatus,
+        fireControl, equipment, fireControlStatus,
         selectedAmmo, query.hasCondition('jammed'), false,
     );
-    const apolloToHit = apolloToHitAdjustment(linkedEnhancementEquipment, equipment, linkedEnhancementStatus, ruleset);
+    const aerospace = equipment instanceof WeaponEquipment
+        && !mount.isPhysicalWeapon()
+        && entity.unitType() === 'Aero'
+        ? projectAerospaceWeapon(equipment, selectedAmmo, ruleset, mode,
+            activeArtemisKind(fireControl, fireControlStatus, selectedAmmo, query.hasCondition('jammed')))
+        : undefined;
+    const apolloToHit = apolloToHitAdjustment(fireControl, equipment, fireControlStatus, ruleset);
     const bombast = bombastLaserEquipmentProfile(equipment, ruleset, mode);
     const indirectAdjustments = [
         ...(bombast === null ? [] : [{
@@ -480,6 +485,7 @@ function projectComponent(
             label: 'Bombast Laser',
         }]),
         ...(apolloToHit === null ? [] : [apolloToHit]),
+        ...(pulseModule ? [riscLaserPulseToHitAdjustment(pulseModule.displayName(), pulsed)] : []),
     ];
     const adjustments = artemisVToHit === null ? indirectAdjustments : [...indirectAdjustments, artemisVToHit];
     const hit = equipment instanceof WeaponEquipment && !mount.isPhysicalWeapon()
@@ -501,12 +507,13 @@ function projectComponent(
     const weaponTypes = equipment instanceof WeaponEquipment
         ? new Set(equipmentPanelWeaponTypes(equipment, selectedAmmo))
         : new Set<WeaponType>();
+    if (pulsed) weaponTypes.add('P');
     const effectiveWeaponTypes = equipment instanceof WeaponEquipment
         ? Object.freeze([...new Set([
             ...(heatOrDamageWeapon
                 ? applyFlamerWeaponTypes(heatOrDamageWeapon, mode, weaponTypes, ruleset, optionalRules)
                 : weaponTypes),
-            ...(ammoSourceCandidates.some(candidate => candidate.source.hotLoaded
+            ...(feedingSources.some(candidate => candidate.source.hotLoaded
                 && candidate.source.status !== 'destroyed'
                 && candidate.source.capacity - (state.ammo.get(candidate.source.componentId)?.shotsSpent ?? 0) > 0
                 && ammoMatchesWeapon(equipment, candidate.loadouts.find(loadout =>
@@ -523,24 +530,13 @@ function projectComponent(
             effectiveWeaponTypes,
         )
         : null;
-    const modifiers = linkedEnhancementEquipment !== undefined
-        && isWeaponEnhancementEquipment(linkedEnhancementEquipment)
-        ? Object.freeze([Object.freeze({
-            name: linkedEnhancementEquipment.shortName || linkedEnhancementEquipment.name,
-            ...(linkedEnhancementStatus === 'available'
-                ? {}
-                : { status: linkedEnhancementStatus as 'destroyed' | 'disabled' }),
-        })])
-        : Object.freeze([]);
     const prototypeMaximumHeat = equipment instanceof WeaponEquipment
         ? prototypeLaserMaximumExtraHeat(equipment.internalName)
         : 0;
     const displayedHeat = equipment instanceof WeaponEquipment
         ? laserInsulatorAdjustedHeat(
-            bombast?.heat ?? equipment.heat,
-            linkedEnhancementEquipment,
-            equipment,
-            linkedEnhancementStatus === 'available',
+            (bombast?.heat ?? equipment.heat) + (pulsed ? RISC_LASER_PULSE_HEAT_BONUS : 0),
+            insulationWeakened === false,
         ) + (entity.unitType() === 'Aero' ? prototypeMaximumHeat : 0)
         : 0;
     const weapon = equipment instanceof WeaponEquipment && !mount.isPhysicalWeapon()
@@ -599,9 +595,7 @@ function projectComponent(
         ...(modeDefinition.defaultMode === undefined ? {} : { defaultMode: modeDefinition.defaultMode }),
         ...(mode === undefined ? {} : { mode }),
         jammed: componentState?.jammed === true,
-        ...(isLaserInsulatorEquipment(linkedEnhancement?.equipment)
-            ? { heatWeakened: linkedEnhancementStatus !== 'available' }
-            : {}),
+        ...(insulationWeakened === undefined ? {} : { heatWeakened: insulationWeakened }),
         ...(modifiers.length === 0 ? {} : { modifiers }),
         ...(weapon === undefined ? {} : { weapon }),
         ...(ammo === undefined ? {} : { ammo }),
@@ -613,10 +607,11 @@ function projectAerospaceWeapon(
     selectedAmmo: AmmoEquipment | null,
     ruleset: CBTRuleset,
     mode: string | undefined,
+    artemis: ArtemisKind | null,
 ): NonNullable<EquipmentPanelComponent['weapon']>['aerospace'] {
     const ammoProfile = resolveAmmoWeaponProfile(selectedAmmo);
     const maximumBracket = effectiveAerospaceMaximumBracket(equipment, ammoProfile);
-    const baseValues = aerospaceAttackValues(equipment, ammoProfile);
+    const baseValues = aerospaceAttackValues(equipment, ammoProfile, artemis);
     const bombast = ruleset === 'total-warfare'
         ? bombastLaserEquipmentProfile(equipment, ruleset, mode)
         : null;
@@ -1006,13 +1001,13 @@ function projectAmmo(
     componentId: ComponentId,
     loadouts: readonly AmmoLoadout[],
 ): NonNullable<EquipmentPanelComponent['ammo']> {
-    if (!(component.equipment instanceof AmmoEquipment)) {
-        throw new Error(`Non-Mek ammunition source ${componentId} is unavailable`);
-    }
+    const defaultMunitionKey = entityAmmoDefaultMunitionKey(entity, component);
     const current = entityAmmoLoadout(entity, component, ruleset, state.ammo.get(componentId)?.munitionOverride);
-    if (!current) throw new Error(`Non-Mek ammunition source ${componentId} has no valid loadout`);
+    if (defaultMunitionKey === null || !current) {
+        throw new Error(`Non-Mek ammunition source ${componentId} has no valid loadout`);
+    }
     return Object.freeze({
-        defaultMunitionKey: component.equipment.internalName,
+        defaultMunitionKey,
         munitionKey: current.munitionKey,
         displayName: current.equipment.shortName || current.equipment.name,
         remaining: query.remainingAmmo(componentId),

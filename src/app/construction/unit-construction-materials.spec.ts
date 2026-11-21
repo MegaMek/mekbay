@@ -34,7 +34,7 @@ import { UnitNameService } from '../services/unit-name.service';
 import { formatUnitChassis } from '../utils/unit-display-name.util';
 import { UnitSearchIndexService } from '../services/unit-search-index.service';
 import type { UnitSummary } from '../models/unit-summary.model';
-import { createConstructionEntity } from './domain';
+import { createConstructionEntity, validateConstruction } from './domain';
 import { MekEntity } from '../models/entity/entities/mek/mek-entity';
 
 describe('construction material selections and CASE controls', () => {
@@ -91,6 +91,15 @@ describe('construction material selections and CASE controls', () => {
     flags: ['F_COMPOSITE'],
     structure: { typeId: 4 },
   });
+  const isEndo = new StructureEquipment({
+    id: 'IS Endo Steel',
+    name: 'Endo Steel',
+    type: 'structure',
+    tech: { ...tech, base: 'IS' },
+    flags: ['F_ENDO_STEEL'],
+    structure: { typeId: 2 },
+    stats: { criticalSlots: 14, spreadable: true },
+  });
   const laser = (base: 'IS' | 'Clan') =>
     new WeaponEquipment({
       id: `${base} Test Laser`,
@@ -117,7 +126,7 @@ describe('construction material selections and CASE controls', () => {
     [caseII.id]: caseII,
     [isCase.id]: isCase,
     ...Object.fromEntries(
-      [isFerro, clanFerro, lightFerro, composite, isLaser, clanLaser, doubleSink].map((item) => [item.id, item]),
+      [isFerro, clanFerro, lightFerro, composite, isEndo, isLaser, clanLaser, doubleSink].map((item) => [item.id, item]),
     ),
   });
   let fixture: ComponentFixture<UnitConstructionComponent>;
@@ -247,6 +256,25 @@ describe('construction material selections and CASE controls', () => {
     expect(hint()).toBeNull();
   });
 
+  it('marks each incompatible donor card and clears the border as donors are corrected', async () => {
+    await render();
+    await choose('Structure', 'hybrid');
+    // Two donor arms keep their tonnage when the chassis turns superheavy; the other locations follow it.
+    editor.setStructure(STANDARD_STRUCTURE_EQUIPMENT.id, 'LA', 40);
+    editor.setStructure(STANDARD_STRUCTURE_EQUIPMENT.id, 'RA', 40);
+    editor.setStructure(STANDARD_STRUCTURE_EQUIPMENT.id, 'CT', 105);
+    editor.panel.set('loadout');
+    await render();
+    const invalid = root().querySelectorAll<HTMLElement>('.location-card.invalid-donor');
+    expect([...invalid].map(card => card.dataset['location'])).toEqual(['LA', 'RA']);
+    expect(getComputedStyle(invalid[0]).backgroundColor).toBe('rgb(255, 0, 0)');
+    expect(root().querySelector('.location-card[data-location="CT"]')!.classList).not.toContain('invalid-donor');
+    editor.setStructure(STANDARD_STRUCTURE_EQUIPMENT.id, 'RA', 110);
+    await render();
+    expect(root().querySelectorAll('.location-card.invalid-donor').length).toBe(1);
+    expect(root().querySelector('.location-card[data-location="RA"]')!.classList).not.toContain('invalid-donor');
+  });
+
   it('selects hybrid even with matching materials and can return to uniform structure or undo donor removal', async () => {
     await render();
     await choose('Structure', 'hybrid');
@@ -269,6 +297,23 @@ describe('construction material selections and CASE controls', () => {
     expect(editor.donorAt('RA')?.name).toBe('Shadow Hawk');
     expect(editor.entity().structureAt('RA').tonnage).toBe(55);
     expect(hint()).not.toBeNull();
+  });
+
+  it('keeps the opened design\'s donor structure rows through undo, never the rows the editor allocated', async () => {
+    const entity = editor.entity() as MekEntity;
+    const empty = entity.criticalSlotGrid().get('RA')!.flatMap((slot, index) => (slot.type === 'empty' ? [index] : []));
+    for (const slotIndex of empty.slice(0, -1))
+      addTestEquipment(entity, isLaser, { allocation: { kind: 'location', location: 'RA', placements: [{ location: 'RA', slotIndex }] } });
+    await render();
+    await choose('Structure', 'hybrid');
+    // The arm's one free slot takes one of the two rows the table requires (CO p. 212).
+    editor.setStructure(isEndo.id, 'RA', 50);
+    expect(editor.entity().equipment().find((mount) => mount.equipmentId === isEndo.id)?.placements?.length).toBe(1);
+    editor.setStructure(STANDARD_STRUCTURE_EQUIPMENT.id, 'LA', 40);
+    editor.undo();
+    expect(editor.entity().structureAt('RA').structure.id).toBe(isEndo.id);
+    expect(validateConstruction(editor.entity()).messages.filter((message) => message.code === 'CRIT_DISTRIBUTION')
+      .map((message) => message.message)).toEqual(['Endo Steel requires 2 critical slots in RA.']);
   });
 
   it('keeps the hint until both materials have returned to uniform selections', async () => {

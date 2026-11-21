@@ -29,7 +29,10 @@ export class SvgViewerLiteComponent {
     private optionsService = inject(OptionsService);
     private readonly pipLayout = computed(() => this.optionsService.options().recordSheetPipLayout);
     private readonly showQuirks = computed(() => this.optionsService.options().CBTOptionalRules?.quirks !== false);
-    private readonly groupWeapons = computed(() => this.optionsService.options().recordSheetGroupWeapons);
+    private readonly groupWeapons = computed(() => {
+        const grouping = this.optionsService.options().recordSheetGroupWeapons;
+        return grouping === 'enabled' || (grouping === 'previews' && this.previewGrouping());
+    });
     private fluffImages = inject(UnitFluffImageService);
     private nativeEntities = inject(NativeEntityService);
     private recordSheets = inject(RecordSheetSourceService);
@@ -45,6 +48,8 @@ export class SvgViewerLiteComponent {
     fitMode = input<'width' | 'page'>('width');
     /** Show the printable sheet, including when its pages are cloned for export. */
     printPreview = input(false);
+    /** The unit details sheet preview, which "Only previews" weapon grouping groups. */
+    previewGrouping = input(false);
 
     private readonly loadingState = signal(false);
     private readonly loadErrorState = signal<string | null>(null);

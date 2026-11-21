@@ -44,13 +44,25 @@ export function hotLoadedAmmoForWeapon(
     if (!(weapon instanceof WeaponEquipment)) return [];
     const result: AmmoEquipment[] = [];
     for (const [sourceId, source] of index.components) {
-        if (!(source.mount?.equipment instanceof AmmoEquipment) && sourceId !== weaponId) continue;
+        if (!ammoSourceFeedsWeapon(sourceId, source.mount, weaponId)) continue;
         if (!query.ammoHotLoaded(sourceId) || query.remainingAmmo(sourceId) <= 0
             || query.componentStatus(sourceId, perspective) === 'destroyed') continue;
         const ammo = query.ammoEquipment(sourceId);
         if (ammo && ammoMatchesWeapon(weapon, ammo)) result.push(ammo);
     }
     return result;
+}
+
+/**
+ * An ammunition bin feeds any matching weapon; a one-shot launcher's own shots feed only that launcher, as a
+ * Fusillade owns its two (IO:AE p. 59).
+ */
+export function ammoSourceFeedsWeapon(
+    sourceId: ComponentId,
+    source: EntityMountedEquipment | undefined,
+    weaponId: ComponentId,
+): boolean {
+    return source?.equipment instanceof AmmoEquipment || sourceId === weaponId;
 }
 
 /** Shared label and changed-loadout marker for runtime ammo displays. */
@@ -89,7 +101,7 @@ export function entityAmmoSelectionCompatibilityFacts(
     const guidedWeapons = entity.equipment().flatMap(mount => {
         const weapon = mount.equipment;
         if (!(weapon instanceof WeaponEquipment)) return [];
-        const kind = artemisKind(entity.getLinkingMount(mount)?.equipment);
+        const kind = entity.getLinkingMounts(mount).map(source => artemisKind(source.equipment)).find(kind => kind !== null) ?? null;
         return kind === null ? [] : [{ weapon, kind }];
     });
     return Object.freeze({
@@ -102,13 +114,13 @@ export function entityAmmoSelectionCompatibilityFacts(
     });
 }
 
-/** Compatible loadouts for one ordinary Entity ammunition mount. */
+/** Compatible loadouts for one Entity ammunition source: a bin, or a one-shot launcher's own shots. */
 export function entityAmmoLoadouts(
     entity: BaseEntity,
     mount: EntityMountedEquipment,
     ruleset: CBTRuleset,
 ): readonly AmmoLoadout[] {
-    const source = mount.equipment instanceof AmmoEquipment ? ammoLoadoutSource(entity, mount) : null;
+    const source = ammoLoadoutSource(entity, mount);
     return source === null ? Object.freeze([]) : compatibleLoadouts(entity, source, ruleset);
 }
 
@@ -118,8 +130,13 @@ export function entityAmmoLoadout(
     ruleset: CBTRuleset,
     munitionOverride?: string,
 ): AmmoLoadout | null {
-    const source = mount.equipment instanceof AmmoEquipment ? ammoLoadoutSource(entity, mount) : null;
+    const source = ammoLoadoutSource(entity, mount);
     return source === null ? null : selectAmmoLoadout(entity, source, ruleset, munitionOverride);
+}
+
+/** The munition an ammunition source holds as built. */
+export function entityAmmoDefaultMunitionKey(entity: BaseEntity, mount: EntityMountedEquipment): string | null {
+    return ammoLoadoutSource(entity, mount)?.equipment.internalName ?? null;
 }
 
 export function weaponAcceptsAmmo(
@@ -207,9 +224,7 @@ export function mekAmmoDefaultMunitionKey(
     componentId: ComponentId,
 ): string | null {
     const component = index.components.get(componentId);
-    return component?.kind === 'equipment'
-        ? ammoLoadoutSource(entity, component.mount)?.equipment.internalName ?? null
-        : null;
+    return component?.kind === 'equipment' ? entityAmmoDefaultMunitionKey(entity, component.mount) : null;
 }
 
 export function mekIntrinsicMagazine(

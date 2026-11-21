@@ -196,7 +196,7 @@ export class CBTSummaryPrintUtil {
             const equipment = mount.equipment;
             if (equipment instanceof AmmoEquipment) {
                 const name = equipment.shortName || equipment.name || mount.equipmentId;
-                const protectedByCase = entity.locationHasCaseProtection(mount.location);
+                const protectedByCase = entity.ammoCaseProtection(mount.location) !== null;
                 const key = `${name}\u0000${protectedByCase}`;
                 const existing = ammo.get(key);
                 if (existing) {

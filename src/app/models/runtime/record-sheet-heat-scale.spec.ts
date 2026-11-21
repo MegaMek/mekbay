@@ -9,7 +9,7 @@ import { PRISTINE_TURN_HEAT_LEDGER } from './turn-heat-ledger';
 
 function snapshot(policy: 'manual' | 'automatic' = 'automatic') {
     const projection: MekHeatProjectionV2 = {
-        current: 10, sources: [], committedSources: [], capacity: 10, underwaterBonus: 0,
+        current: 10, sources: [], committedSources: [], capacity: 10, underwaterBonus: 0, disabledSinkUnits: 0,
         ledger: PRISTINE_TURN_HEAT_LEDGER, dissipationBalance: 10, remainingDissipation: 10, generated: 0,
         dissipated: 10, projected: 0, delta: -10, hasPendingResolution: true, hasPendingSettlement: true,
     };

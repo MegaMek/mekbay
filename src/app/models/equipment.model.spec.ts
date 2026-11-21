@@ -1,7 +1,7 @@
 // Copyright (C) 2026 The MegaMek Team
 // SPDX-License-Identifier: GPL-3.0-or-later
 
-import { createEquipment, formatEquipmentName, formatEquipmentRulesRefs } from './equipment.model';
+import { createEquipment, formatEquipmentName, formatEquipmentRulesRefs, WeaponEquipment } from './equipment.model';
 
 describe('equipment model', () => {
     it('formats ammo labels with optional counts without duplicating Ammo', () => {
@@ -37,5 +37,13 @@ describe('equipment model', () => {
 
         expect(equipment.rulesRefs).toEqual([]);
         expect(formatEquipmentRulesRefs(equipment.rulesRefs)).toBe('');
+    });
+
+    it('types a light autocannon as switchable, as Total Warfare lists it (DB, S, TW p. 303)', () => {
+        const lightAc = new WeaponEquipment({
+            id: 'Light Auto Cannon/2', name: 'Light AC/2', type: 'weapon', flags: ['F_BALLISTIC', 'F_DIRECT_FIRE'],
+            weapon: { damage: 2, ammoType: 'LAC', ranges: [6, 12, 18] },
+        });
+        expect(lightAc.getWeaponTypes()).toContain('S');
     });
 });

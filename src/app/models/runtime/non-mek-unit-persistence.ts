@@ -139,6 +139,8 @@ export interface SerializedNonMekUnit {
         readonly pendingOverride?: number;
         readonly pendingOffset?: number;
         readonly heatsinksOff: number;
+        /** The switch set during the turn, which holds from its End Phase. */
+        readonly heatsinksOffNext?: number;
     }>;
     readonly turn?: Readonly<{
         readonly turnCounter?: number;
@@ -329,7 +331,9 @@ export function restoreNonMekRuntime(
     entity: BaseEntity,
     ruleset: CBTRuleset,
     rules: BoundOptionalRules,
-): Readonly<{ binding: NonMekRuntimeBinding; state: NonMekUnitRuntimeState; baselineRef: InstanceBaselineRef }> {
+): Readonly<{ binding: NonMekRuntimeBinding; state: NonMekUnitRuntimeState; baselineRef: InstanceBaselineRef; skipped: number }> {
+    // State of a component or ammunition bin the design no longer has is dropped rather than failing the whole unit.
+    let skipped = 0;
     if (entity.entityType === 'Mek' || saved.family.kind !== 'non-mek'
         || saved.family.entityType !== entity.entityType) {
         throw new Error('Persisted runtime family does not match the entity');
@@ -360,9 +364,11 @@ export function restoreNonMekRuntime(
         if (seenComponents.has(componentId)) throw new Error(`Duplicate persisted component ${componentId}`);
         seenComponents.add(componentId);
         const component = index.components.get(componentId);
-        const modes = component === undefined
-            ? null
-            : nonMekComponentStateModes(entity, component.mount.equipment, ruleset);
+        if (component === undefined) {
+            skipped++;
+            continue;
+        }
+        const modes = nonMekComponentStateModes(entity, component.mount, ruleset);
         const mode = entry.mode !== undefined
             && modes?.modes.includes(entry.mode) === true
             && entry.mode !== modes.defaultMode
@@ -398,11 +404,13 @@ export function restoreNonMekRuntime(
         if (ammo.has(componentId)) throw new Error(`Duplicate persisted ammunition ${componentId}`);
         const mount = index.components.get(componentId)?.mount;
         // Rulesets size some munitions differently; spent shots never exceed the bin.
-        const capacity = mount === undefined
-            ? undefined
-            : entityAmmoLoadout(entity, mount, ruleset, entry.munitionOverride)?.capacity;
+        const capacity = mount === undefined ? undefined : entityAmmoLoadout(entity, mount, ruleset, entry.munitionOverride)?.capacity;
+        if (capacity === undefined) {
+            skipped++;
+            continue;
+        }
         ammo.set(componentId, Object.freeze({
-            shotsSpent: capacity === undefined ? entry.shotsSpent : Math.min(entry.shotsSpent, capacity),
+            shotsSpent: Math.min(entry.shotsSpent, capacity),
             ...(entry.munitionOverride === undefined ? {} : { munitionOverride: entry.munitionOverride }),
             ...(entry.hotLoaded === undefined ? {} : { hotLoaded: entry.hotLoaded }),
         }));
@@ -448,6 +456,7 @@ export function restoreNonMekRuntime(
                 : { pendingOverride: saved.heat.pendingOverride }),
             ...(saved.heat?.pendingOffset === undefined ? {} : { pendingOffset: saved.heat.pendingOffset }),
             heatsinksOff: saved.heat?.heatsinksOff ?? 0,
+            ...(saved.heat?.heatsinksOffNext === undefined ? {} : { heatsinksOffNext: saved.heat.heatsinksOffNext }),
         }),
         turn: restoreNonMekTurn(saved),
         attackerTargeting: createPristineAttackerTargetingState(),
@@ -456,9 +465,14 @@ export function restoreNonMekRuntime(
         ...(velocityRecord.length === 0 ? {} : { velocityRecord }),
         ...(saved.swarming === undefined ? {} : { swarming: requireString(saved.swarming, 'swarming') }),
         ...(saved.elevationRecord === undefined ? {} : { elevationRecord: restoreElevationRecord(entity, saved.elevationRecord) }),
-        pendingCombat: restorePendingCombat(saved),
+        pendingCombat: restorePendingCombat(saved, componentId => {
+            if (index.components.has(componentId)) return true;
+            skipped++;
+            return false;
+        }),
     });
     return Object.freeze({
+        skipped,
         baselineRef: Object.freeze({
             ...saved.baselineRefAtSave,
             ruleset,
@@ -529,7 +543,8 @@ function isPristineHeat(state: NonMekUnitRuntimeState['heat']): boolean {
     return state.current === 0
         && state.previous === 0
         && state.pendingOverride === undefined
-        && state.heatsinksOff === 0;
+        && state.heatsinksOff === 0
+        && state.heatsinksOffNext === undefined;
 }
 
 function restoreNonMekTurn(saved: SerializedNonMekUnit): NonMekUnitRuntimeState['turn'] {
@@ -679,7 +694,7 @@ function serializePendingCombat(state: NonMekUnitRuntimeState): SerializedNonMek
     });
 }
 
-function restorePendingCombat(saved: SerializedNonMekUnit): NonMekUnitRuntimeState['pendingCombat'] {
+function restorePendingCombat(saved: SerializedNonMekUnit, installed: (componentId: ComponentId) => boolean): NonMekUnitRuntimeState['pendingCombat'] {
     return Object.freeze({
         locationInternalDamage: new Map((saved.pendingCombat?.internalDamage ?? []).map(entry => [
             asLocationId(entry.locationId), entry.damage,
@@ -687,9 +702,9 @@ function restorePendingCombat(saved: SerializedNonMekUnit): NonMekUnitRuntimeSta
         armorDamage: new Map((saved.pendingCombat?.armorDamage ?? []).map(entry => [
             asArmorFaceId(entry.faceId), entry.damage,
         ])),
-        componentStatus: new Map((saved.pendingCombat?.componentStatus ?? []).map(entry => [
-            asComponentId(entry.componentId), entry.status,
-        ])),
+        componentStatus: new Map((saved.pendingCombat?.componentStatus ?? [])
+            .map(entry => [asComponentId(entry.componentId), entry.status] as const)
+            .filter(([componentId]) => installed(componentId))),
         damageTrackHits: new Map((saved.pendingCombat?.damageTrackHits ?? []).map(entry => [
             asSystemDamageTrackId(entry.damageTrackId), Object.freeze({
                 hitDelta: entry.hitDelta,

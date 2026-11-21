@@ -7,6 +7,7 @@ import { merge } from 'rxjs';
 import type { CBTUnitCommand } from '../../../models/runtime/unit-command';
 
 import type { CBTEquipmentChoice } from '../../../models/cbt-force.types';
+import { hasMekRuntime } from '../../../models/cbt-unit-snapshot';
 import type { CBTMekForceMember } from '../../../models/force-member.model';
 import { selectedWeaponHeat } from '../../../models/runtime/equipment-panel';
 import {
@@ -147,15 +148,24 @@ export class MekTurnSummaryRuntimeController {
         });
     }
 
+    public async setJumpJetsFired(jumpJetsFired: number): Promise<void> {
+        const current = this.currentMovement();
+        if (current?.mode === 'jump') await this.dispatch({
+            type: 'declare-mek-movement', declaration: { ...current, jumpJetsFired },
+        });
+    }
+
     public async setMovementDistance(value: number): Promise<void> {
         const current = this.currentMovement();
         if (!current || !Number.isSafeInteger(value)) return;
         const preview = this.previewMovementDistance(value);
         if (!preview) return;
         try {
+            const { jumpJetsFired, ...movement } = current;
             await this.dispatch({
                 type: 'declare-mek-movement',
-                declaration: { ...current, distance: preview.value },
+                declaration: { ...movement, distance: preview.value,
+                    ...(current.distance === preview.value && jumpJetsFired !== undefined ? { jumpJetsFired } : {}) },
             });
         } finally {
             if (this.movementDistancePreview() === preview) this.movementDistancePreview.set(null);
@@ -289,8 +299,9 @@ export class MekTurnSummaryRuntimeController {
     }
 
     public async setHeatsinksOff(value: number): Promise<void> {
-        const projection = this.snapshot().heatProjection;
-        const maximum = projection.kind === 'supported' ? projection.projection.capacity : 0;
+        const unit = this.member.force.getUnitSnapshot(this.member.id);
+        if (!unit || !hasMekRuntime(unit)) return;
+        const maximum = unit.entity.bulkHeatSinkCount();
         await this.dispatch({
             type: 'set-heatsinks-off',
             heatsinksOff: Math.max(0, Math.min(maximum, Number(value) || 0)),

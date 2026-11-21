@@ -90,7 +90,7 @@ export function battleForceDamageForMount(
   range: AlphaStrikeRangeIndex,
 ): number {
   assertRangeIndex(range);
-  return battleForceDamage(mount.equipment, range, entity.getLinkingMount(mount)?.equipment);
+  return battleForceDamage(mount.equipment, range, entity.getLinkingMounts(mount).find(source => hasDynamicFireControl(source.equipment))?.equipment);
 }
 
 /** Returns the unlinked base profile used by MegaMek's long-range heat filter. */

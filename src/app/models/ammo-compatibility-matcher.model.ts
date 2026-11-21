@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 
 import { AmmoEquipment, WeaponEquipment } from './equipment.model';
-import { resolveAmmoWeaponProfile } from './ammo-weapon-profile.model';
+import { ATM_IMPROVED_MAGNETIC_PULSE_PROFILE, resolveAmmoWeaponProfile } from './ammo-weapon-profile.model';
 
 /**
  * Detached input for the inventory ammo compatibility rules.  The selected mode
@@ -51,6 +51,9 @@ function atmMunitionForMode(mode: string | undefined) {
       return 'M_HIGH_EXPLOSIVE' as const;
     case 'Extended Range':
       return 'M_EXTENDED_RANGE' as const;
+    // Only iATM ammunition carries it, so no plain ATM fires it (IO:AE p. 61).
+    case ATM_IMPROVED_MAGNETIC_PULSE_PROFILE.displayName:
+      return 'M_IATM_IMP' as const;
     case 'Standard':
     default:
       return 'M_STANDARD' as const;

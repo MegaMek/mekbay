@@ -128,7 +128,7 @@ export class PageViewerComponent implements AfterViewInit {
     private optionsService = inject(OptionsService);
     private readonly pipLayout = computed(() => this.optionsService.options().recordSheetPipLayout);
     private readonly showQuirks = computed(() => this.optionsService.options().CBTOptionalRules?.quirks !== false);
-    private readonly groupWeapons = computed(() => this.optionsService.options().recordSheetGroupWeapons);
+    private readonly groupWeapons = computed(() => this.optionsService.options().recordSheetGroupWeapons === 'enabled');
     protected readonly pageFormat = computed(() => this.optionsService.options().printAllOptions.paperSize);
     private dbService = inject(DbService);
     private pageViewerState = inject(PageViewerStateService);

@@ -1,20 +1,22 @@
 // Copyright (C) 2026 The MegaMek Team
 // SPDX-License-Identifier: GPL-3.0-or-later
-import { addInventoryText, appendInventoryBadges, appendInventoryRowButtons, fitInventoryText, inventoryCellLines, inventoryRowLineCount, inventoryRowSpan } from '../inventory-text-layout';
+import { appendInventoryBadges, appendInventoryRowButtons, fitInventoryText, inventoryRowSpan } from '../inventory-text-layout';
+import { aeroValueColumns, fitAeroValueColumns } from './aero-inventory-columns';
 import { RECORD_SHEET_FONT } from '../record-sheet-typography';
+import { measureSvgTextCanvas } from '../../svg-text.util';
 import type { SystemDamageKind } from '../../../models/rules/system-damage-rules';
 import { systemDamageControls } from '../../../models/runtime/system-damage-presentation';
 
 import { isMobileHpgEquipment } from '../../../models/aerospace-support-equipment.model';
 import { isApolloEquipment } from '../../../models/apollo-mode.model';
+import { isLaserInsulatorEquipment, laserInsulatorAdjustedHeat } from '../../../models/laser-insulator.model';
 import { artemisKind } from '../../../models/artemis-equipment.model';
 import type { BaseEntity } from '../../../models/entity/base-entity';
 import type { CBTRuleset } from '../../../models/cbt-ruleset.model';
-import { projectRecordSheetBays } from '../../../models/entity/bays/record-sheet-bay-projection';
 import type { AeroEntity } from '../../../models/entity/entities/aero/aero-entity';
 import { SmallCraftEntity } from '../../../models/entity/entities/aero/small-craft-entity';
 import { JumpShipEntity } from '../../../models/entity/entities/largecraft/jumpship-entity';
-import type { EntityMountedEquipment,EntityMountedWeapon,EquipmentBay } from '../../../models/entity/types';
+import type { EntityMountedEquipment, EntityMountedWeapon } from '../../../models/entity/types';
 import { heatSinkTypeDissipation } from '../../../models/entity/types';
 import { isAeroEntity } from '../../../models/entity/utils/entity-type-guards';
 import { AmmoEquipment, MiscEquipment, ammoMatchesWeapon } from '../../../models/equipment.model';
@@ -24,8 +26,16 @@ isPpcCapacitorEquipment,
 PPC_CAPACITOR_DAMAGE_BONUS,
 PPC_CAPACITOR_HEAT_BONUS,
 } from '../../../models/ppc-capacitor.model';
+import {
+ATM_AMMO_PROFILES,
+ATM_IMPROVED_MAGNETIC_PULSE_PROFILE,
+ATM_STANDARD_PROFILE,
+MML_AMMO_PROFILES,
+resolveAmmoWeaponProfile,
+type AmmoWeaponProfile,
+} from '../../../models/ammo-weapon-profile.model';
 import { aerospaceAttackValues } from '../../aerospace-range.util';
-import { appendDataPanelEraIcon } from '../record-sheet-embedded-art';
+import { appendDataPanelFooter } from '../record-sheet-embedded-art';
 import { recordSheetQuirksText } from '../record-sheet-quirks';
 import {
 fullRecordSheetLayoutProfile,
@@ -37,11 +47,10 @@ import {
 drawCrewHitGrid,
 addFrame,
 addLine,
-addTemplateCaption,
 addText,
-appendBattleValue,
+condenseDataPanelCaption,
+valueXAfterCaptions,
 drawCriticalDamageBox,
-appendLegacyIdentityAnchors,
 createRoot,
 drawGeneratedFooter,
 drawHeatScale,
@@ -49,6 +58,8 @@ drawNotesPanel,
 drawPageChrome,
 formatNumber,
 formatWholeNumber,
+recordSheetAmmoProfiles,
+recordSheetWeaponArtemis,
 scalePageBox,
 setInventoryComponentIds,
 svgElement,
@@ -56,6 +67,10 @@ wrapRecordSheetText,
 type Box,
 } from '../record-sheet-svg-rendering';
 import {
+aeroBayRowLines,
+aeroCargoLines,
+aeroRowRangeValues,
+appendAeroBayRowText,
 appendAeroDataPanelHeader,
 drawAeroDiagramHeader,
 appendAeroSkillRows,
@@ -67,6 +82,11 @@ aeroPageBox,
 AERO_LOWER_PANEL_BOX,
 AERO_LOWER_PANEL_TAB_NOTCH,
 drawAeroVelocityPanel,
+AERO_BAY_CONTINUATION_X,
+AERO_BAY_NAME_X,
+type AeroBayColumns,
+type AeroBayMunitionLine,
+type AeroBayRow,
 type AeroDataInventoryRow,
 } from './aero-record-sheet-components';
 import {
@@ -231,219 +251,66 @@ export abstract class LargeAeroRecordSheetLayout implements RecordSheetLayout {
         return svg;
     }
 
-    /**
-     * Standard-scale large-craft rows are weapon bays, not fighter-style mount rows.
-     * This deliberately mirrors MegaMekLab's per-weapon-type rounding and symmetric
-     * side-bay condensation while leaving the shared component responsible only for drawing.
-     */
+    /** The single-page DropShip panel prints the same bay rows as the capital panel. */
     private standardBayInventoryRows(entity: AeroEntity): readonly AeroDataInventoryRow[] {
-        interface ProjectedBay {
-            row: AeroDataInventoryRow;
-            configurationKey: string;
-            sortOrder: number;
-            locationCode: string;
-            rearMounted: boolean;
-        }
-        const projected: ProjectedBay[] = [];
-        for (const bay of entity.equipmentBays()) {
-            const weapons = bay.weapons.filter(mount => !mount.equipment.capital && !mount.equipment.subCapital);
-            if (weapons.length === 0) continue;
-            const row = this.standardBayRow(entity, bay, weapons);
-            const locationCode = entity.componentLocationLabel(
-                weapons[0].getOccupiedLocations()[0] ?? weapons[0].location,
-            ).toUpperCase();
-            projected.push({
-                row,
-                configurationKey: largeAeroBayConfigurationKey(entity, bay, weapons),
-                sortOrder: this.largeAeroBaySortOrder(locationCode, weapons[0].rearMounted),
-                locationCode,
-                rearMounted: weapons[0].rearMounted,
-            });
-        }
-        const sorted = projected.sort((left, right) => left.sortOrder - right.sortOrder);
-        const rows = entity.entityType === 'DropShip'
-            ? condenseSymmetricAeroBays(sorted)
-            : sorted;
-        return rows.map((projection, index) => ({ ...projection.row, id: `bay_${index + 1}` }));
-    }
-
-    private standardBayRow(
-        entity: AeroEntity,
-        bay: EquipmentBay,
-        weapons: readonly EntityMountedWeapon[],
-    ): AeroDataInventoryRow {
-        interface WeaponGroup {
-            readonly equipment: EntityMountedWeapon['equipment'];
-            readonly mounts: EntityMountedWeapon[];
-        }
-        const groups = new Map<string, WeaponGroup>();
-        for (const mount of weapons) {
-            const key = mount.equipment.id;
-            const existing = groups.get(key);
-            if (existing) existing.mounts.push(mount);
-            else groups.set(key, { equipment: mount.equipment, mounts: [mount] });
-        }
-        const orderedGroups = [...groups.values()].sort((left, right) =>
-            right.equipment.shortName.localeCompare(left.equipment.shortName));
-        const allEnhancements = weapons.map(mount => entity.getLinkingMount(mount)?.equipment);
-        const marker = allEnhancements.some(equipment => artemisKind(equipment) === 'iv') ? '*'
-            : allEnhancements.length > 0 && allEnhancements.every(equipment => artemisKind(equipment) === 'v') ? '†'
-                : allEnhancements.length > 0 && allEnhancements.every(isApolloEquipment) ? '‡'
-                    : '';
-        const nameLines = orderedGroups.map((group, index) => {
-            const matchingAmmo = bay.ammo.filter(mount =>
-                mount.equipment instanceof AmmoEquipment
-                && ammoMatchesWeapon(group.equipment, mount.equipment));
-            let ammoText = '';
-            if (matchingAmmo.length > 0) {
-                if (group.equipment.ammoType === 'AR10') {
-                    const details = matchingAmmo.map(mount =>
-                        `${formatWholeNumber(mount.getAmmoShots() ?? 0)} ${mount.equipment?.shortName ?? mount.displayName()}`);
-                    ammoText = ` (${details.join(', ')})`;
-                } else {
-                    const unit = group.equipment.capital && group.equipment.hasFlag('F_MISSILE')
-                        ? 'missiles'
-                        : 'rounds';
-                    ammoText = ` (${formatWholeNumber(matchingAmmo[0].getAmmoShots() ?? 0)} ${unit})`;
-                }
-            }
-            const capacitorCount = group.mounts.filter(mount =>
-                isPpcCapacitorEquipment(entity.getLinkingMount(mount)?.equipment)).length;
-            const capacitorText = capacitorCount === group.mounts.length && capacitorCount > 0
-                ? ' w/Capacitor'
-                : capacitorCount > 0
-                    ? ` w/${capacitorCount} ${capacitorCount === 1 ? 'Capacitor' : 'Capacitors'}`
-                    : '';
-            const punctuation = index === 0
-                ? `${marker}${orderedGroups.length > 1 ? ',' : ''}`
-                : '';
-            const rear = weapons[0].rearMounted && entity.entityType === 'DropShip'
-                && entity.motiveType() !== 'Spheroid' && index === 0 ? ' (R)' : '';
-            return `${group.mounts.length} ${group.equipment.shortName}${ammoText}${capacitorText}${punctuation}${rear}`;
-        });
-
-        const standardDamage = [0, 0, 0, 0];
-        const bayDamage = [0, 0, 0, 0];
-        for (const group of orderedGroups) {
-            const values = aerospaceAttackValues(group.equipment, null);
-            if (group.equipment.ammoType === 'ATM' || group.equipment.ammoType === 'IATM') {
-                const base = Math.ceil(values[0] * group.mounts.length
-                    * (group.equipment.ammoType === 'IATM' ? 1 : 0.5));
-                const totals = [Math.ceil(base * 1.5), base, Math.ceil(base * 0.5), Math.ceil(base * 0.5)];
-                totals.forEach((total, rangeIndex) => {
-                    standardDamage[rangeIndex] += total;
-                    bayDamage[rangeIndex] += Math.round(total / 10);
-                });
-                continue;
-            }
-            values.forEach((value, rangeIndex) => {
-                if (value <= 0) return;
-                let total = value * group.mounts.length;
-                if (group.equipment.ammoType === 'MML' && rangeIndex === 0) total *= 2;
-                const capacitorCount = group.mounts.filter(mount =>
-                    isPpcCapacitorEquipment(entity.getLinkingMount(mount)?.equipment)).length;
-                total += capacitorCount * PPC_CAPACITOR_DAMAGE_BONUS;
-                standardDamage[rangeIndex] += total;
-                bayDamage[rangeIndex] += Math.round(total / 10);
-            });
-        }
-        const locationCode = entity.componentLocationLabel(
-            weapons[0].getOccupiedLocations()[0] ?? weapons[0].location,
-        ).toUpperCase();
-        const heat = weapons.reduce((total, mount) => total + mount.equipment.heat
-            + (isPpcCapacitorEquipment(entity.getLinkingMount(mount)?.equipment)
-                ? PPC_CAPACITOR_HEAT_BONUS : 0), 0);
-        return {
-            id: '',
+        return largeAeroBayRows(entity, 'standard').map((row, index) => ({
+            id: `bay_${index + 1}`,
             kind: 'bay',
-            nameLines,
-            location: this.singleLargeAeroLocation(entity, locationCode, weapons[0].rearMounted),
-            heat: String(heat),
-            damageByRange: bayDamage.map((value, rangeIndex) => value + standardDamage[rangeIndex] > 0
-                ? `${value} (${formatWholeNumber(standardDamage[rangeIndex])})`
-                : '—') as [string, string, string, string],
-            componentIds: bay.mounts.map(mount => mount.mountId),
-        };
-    }
-
-    private singleLargeAeroLocation(entity: AeroEntity, code: string, rear: boolean): string {
-        if (entity.entityType !== 'DropShip' || (code !== 'LS' && code !== 'RS')) return code || '—';
-        if (entity.motiveType() === 'Spheroid') {
-            if (code === 'LS') return rear ? 'ALS' : 'FLS';
-            return rear ? 'ARS' : 'FRS';
-        }
-        return code === 'LS' ? 'LW' : 'RW';
-    }
-
-    private largeAeroBaySortOrder(code: string, rear: boolean): number {
-        const base: Readonly<Record<string, number>> = { NOS: 0, LS: 1, RS: 3, AFT: 9 };
-        return (base[code] ?? 8) + ((code === 'LS' || code === 'RS') && rear ? 1 : 0);
+            nameLines: row.nameLines,
+            location: row.location,
+            heat: row.heat,
+            damageByRange: row.damageByRange,
+            componentIds: row.componentIds,
+            munitionLines: row.munitionLines,
+            ...(row.footnote === undefined ? {} : { footnote: row.footnote }),
+        }));
     }
 }
 
-interface CapitalAeroInventoryRow {
+interface CapitalAeroInventoryRow extends AeroBayRow {
     readonly configurationKey: string;
-    readonly nameLines: readonly string[];
-    readonly location: string;
-    readonly heat: number;
-    readonly damageByRange: readonly [string, string, string, string];
+    readonly munitionLines: readonly AeroBayMunitionLine[];
     readonly componentIds: readonly string[];
     readonly sortOrder: number;
+    readonly rearMounted: boolean;
     readonly footnote?: string;
 }
 
 /** One printed row represents equal opposite bays, retaining both sets of mount controls. */
-function condenseSymmetricAeroBays<T extends Readonly<{
-    row: Readonly<{
-        nameLines: readonly string[];
-        location: string;
-        heat: string | number;
-        damageByRange: readonly string[];
-        componentIds: readonly string[];
-        footnote?: string;
-    }>;
-    sortOrder: number;
-    locationCode: string;
-    rearMounted: boolean;
-    configurationKey: string;
-}>>(bays: readonly T[]): readonly T[] {
+function condenseSymmetricAeroBays(bays: readonly CapitalAeroInventoryRow[]): readonly CapitalAeroInventoryRow[] {
     const opposites: Readonly<Record<string, string>> = {
-        LS: 'RS', RS: 'LS', FLS: 'FRS', FRS: 'FLS',
+        LS: 'RS', RS: 'LS', FLS: 'FRS', FRS: 'FLS', LW: 'RW', RW: 'LW',
         LBS: 'RBS', RBS: 'LBS', ALS: 'ARS', ARS: 'ALS',
     };
-    const signature = (bay: T): string => JSON.stringify({
-        nameLines: bay.row.nameLines,
-        heat: bay.row.heat,
-        damageByRange: bay.row.damageByRange,
+    const signature = (bay: CapitalAeroInventoryRow): string => JSON.stringify({
+        nameLines: bay.nameLines,
+        heat: bay.heat,
+        damageByRange: bay.damageByRange,
+        munitionLines: bay.munitionLines,
         rearMounted: bay.rearMounted,
-        footnote: bay.row.footnote,
+        footnote: bay.footnote,
         configurationKey: bay.configurationKey,
     });
     const consumed = new Set<number>();
-    const result: T[] = [];
+    const result: CapitalAeroInventoryRow[] = [];
     for (let index = 0; index < bays.length; index++) {
         if (consumed.has(index)) continue;
         const bay = bays[index];
-        const opposite = opposites[bay.locationCode];
+        const opposite = opposites[bay.location];
         const match = opposite ? bays.findIndex((candidate, candidateIndex) =>
             candidateIndex > index && !consumed.has(candidateIndex)
-            && candidate.locationCode === opposite && signature(candidate) === signature(bay)) : -1;
+            && candidate.location === opposite && signature(candidate) === signature(bay)) : -1;
         if (match < 0) {
             result.push(bay);
             continue;
         }
         consumed.add(match);
-        const counterpart = bays[match];
-        const left = bay.locationCode.includes('L') ? bay : counterpart;
-        const right = left === bay ? counterpart : bay;
+        // The shared row names its arcs in inventory order (FLS/FRS) and takes the first one's place
+        const [first, second] = [bay, bays[match]].sort((left, right) => left.sortOrder - right.sortOrder);
         result.push({
-            ...left,
-            row: {
-                ...left.row,
-                location: `${left.row.location}/${right.row.location}`,
-                componentIds: [...left.row.componentIds, ...right.row.componentIds],
-            },
-            sortOrder: Math.min(left.sortOrder, right.sortOrder),
+            ...first,
+            location: `${first.location}/${second.location}`,
+            componentIds: [...first.componentIds, ...second.componentIds],
         });
     }
     return result.sort((left, right) => left.sortOrder - right.sortOrder);
@@ -459,13 +326,13 @@ interface LargeAeroPageContent {
 }
 
 function largeAeroPageContent(entity: AeroEntity, showQuirks: boolean | undefined): LargeAeroPageContent {
-    const capitalRows = capitalAeroInventoryRows(entity, 'capital');
-    const standardRows = capitalAeroInventoryRows(entity, 'standard');
+    const capitalRows = largeAeroBayRows(entity, 'capital');
+    const standardRows = largeAeroBayRows(entity, 'standard');
     const gravDecks = entity instanceof JumpShipEntity ? entity.gravDecks() : [];
-    const cargoLines = capitalAeroCargoLines(entity);
+    const cargoLines = aeroCargoLines(entity);
     const plan = planLargeAeroRecordSheetPages({
-        capitalWeaponLines: inventoryLineCount(capitalRows, false),
-        standardWeaponLines: inventoryLineCount(standardRows, true),
+        capitalWeaponLines: plannedBayLines(capitalRows, false),
+        standardWeaponLines: plannedBayLines(standardRows, true),
         hasAr10: entity.rangedWeapons().some(mount => mount.equipment.ammoType === 'AR10'),
         gravDeckCount: gravDecks.length,
         transportBayLines: cargoLines.length,
@@ -479,14 +346,27 @@ function largeAeroPageContent(entity: AeroEntity, showQuirks: boolean | undefine
     return Object.freeze({ capitalRows, standardRows, gravDecks, cargoLines, footerText, plan });
 }
 
+/** Each bay row's lines, its munition lines included, at `fontSize` in column units. */
 function inventoryRowLines(rows: readonly CapitalAeroInventoryRow[], fontSize: number,
     columns: LargeAeroInventoryColumns): readonly number[] {
-    return rows.map(row => Math.max(row.nameLines.flatMap(name => inventoryCellLines(name, columns.nameMaxWidth, fontSize)).length,
-        inventoryRowLineCount([[row.location, columns.locationMaxWidth], [String(row.heat), 12],
-            ...row.damageByRange.map(value => [value, columns.rangeMaxWidth] as const)], fontSize)));
+    return rows.map(row => aeroBayRowLines(row, columns, fontSize, width => width).lines);
 }
 
-/** Weapon rows carrying to-hit badges in the given blocks, for the fit's badge leading. */
+/** A page's inventory columns, widened so its printed locations, heat and damage fit on one line at `fontSize`. */
+function fittedInventoryColumns(columns: LargeAeroInventoryColumns, content: LargeAeroPageContent,
+    blocks: ReadonlySet<LargeAeroRecordSheetBlock>, fontSize: number): LargeAeroInventoryColumns {
+    const rows = [
+        ...(blocks.has('capital-weapons') ? content.capitalRows : []),
+        ...(blocks.has('standard-weapons') ? content.standardRows : []),
+    ];
+    return fitAeroValueColumns(columns, {
+        locations: rows.map(row => row.location),
+        heats: rows.map(row => row.heat),
+        damage: rows.flatMap(aeroRowRangeValues),
+    }, fontSize);
+}
+
+/** Weapon rows carrying to-hit badges in the given blocks, for the fit's badge leading: one per bay row. */
 function largeAeroBadgeRows(content: LargeAeroPageContent, blocks: ReadonlySet<LargeAeroRecordSheetBlock>,
     fontSize: number, columns: LargeAeroInventoryColumns): readonly number[] {
     return [
@@ -495,11 +375,24 @@ function largeAeroBadgeRows(content: LargeAeroPageContent, blocks: ReadonlySet<L
     ];
 }
 
-function inventoryLineCount(rows: readonly CapitalAeroInventoryRow[], includeFootnotes: boolean,
-    fontSize: number = RECORD_SHEET_FONT.inventory, columns: LargeAeroInventoryColumns = FRONT_INVENTORY_COLUMNS): number {
+function inventoryLineCount(rows: readonly CapitalAeroInventoryRow[], includeFootnotes: boolean, fontSize: number,
+    columns: LargeAeroInventoryColumns): number {
     const entries = inventoryRowLines(rows, fontSize, columns).reduce((sum, lines) => sum + lines, 0);
-    if (!includeFootnotes) return entries;
-    return entries + new Set(rows.map(row => row.footnote).filter((note): note is string => Boolean(note))).size;
+    return entries + (includeFootnotes ? bayFootnoteCount(rows) : 0);
+}
+
+/**
+ * A bay table's lines as MegaMekLab plans its pages (`InventoryWriter.standardBayLines`): one per weapon name and
+ * munition line, before wrapping. The font fit then absorbs the wrapped lines, so a sheet MegaMekLab prints on one page
+ * stays on one.
+ */
+function plannedBayLines(rows: readonly CapitalAeroInventoryRow[], includeFootnotes: boolean): number {
+    return rows.reduce((sum, row) => sum + row.nameLines.length + row.munitionLines.length, 0)
+        + (includeFootnotes ? bayFootnoteCount(rows) : 0);
+}
+
+function bayFootnoteCount(rows: readonly CapitalAeroInventoryRow[]): number {
+    return new Set(rows.map(row => row.footnote).filter((note): note is string => Boolean(note))).size;
 }
 
 function drawCapitalAeroDataPanel(
@@ -509,10 +402,8 @@ function drawCapitalAeroDataPanel(
     content: LargeAeroPageContent,
     ruleset: CBTRuleset,
 ): SVGGElement {
-    const group = addFrame(svg, capitalAeroDataPanelTitle(entity), box, {
-        bottomLeftNotchWidth: box.width * 0.36,
-        cornerAngleDegrees: { topRight: 0, bottomLeft: 45 },
-    });
+    const frameOptions = { bottomLeftNotchWidth: box.width * 0.36, cornerAngleDegrees: { topRight: 0, bottomLeft: 45 } };
+    const group = addFrame(svg, capitalAeroDataPanelTitle(entity), box, frameOptions);
     group.setAttribute('data-mekbay-region', 'aero-data');
     const firstScale = content.plan.front.has('capital-weapons') ? 'capital' : 'standard';
     group.setAttribute('data-mekbay-aero-scale', firstScale);
@@ -529,16 +420,25 @@ function drawCapitalAeroDataPanel(
     const inventoryOffset = stationary ? -7.339 : 0;
     const inventoryY = (value: number): number => y(value + inventoryOffset);
     addLine(group, x(3), inventoryY(69), x(219.4), inventoryY(69), '#000', 1.932 * Math.min(sx, sy));
-    addTemplateCaption(group, 'Weapons & Equipment Inventory', x(3), inventoryY(79), {
+    addText(group, 'Weapons & Equipment Inventory', x(3), inventoryY(79), {
         size: font(RECORD_SHEET_FONT.section), weight: 700,
     });
+    // Sized at the largest inventory font, in column units, so the values also fit at any smaller fitted font.
+    const columns = fittedInventoryColumns(FRONT_INVENTORY_COLUMNS, content, content.plan.front,
+        RECORD_SHEET_FONT.inventory * font(1) / x(1));
+    // Text is measured at the font it is drawn with against the column widths it is drawn in, so no cell wraps unseen
+    const drawnFont = (fontSize: number) => fontSize * font(1) / x(1);
     const metrics = fitInventoryText(282, fontSize => ({
-        lineCount: largeAeroBlockLineCount(content, content.plan.front, fontSize, FRONT_INVENTORY_COLUMNS)
+        lineCount: largeAeroBlockLineCount(content, content.plan.front, drawnFont(fontSize), columns)
             + (content.plan.reverse.has('standard-weapons') ? 2 : 0),
-        badgeRows: largeAeroBadgeRows(content, content.plan.front, fontSize, FRONT_INVENTORY_COLUMNS), content: undefined }));
+        badgeRows: largeAeroBadgeRows(content, content.plan.front, drawnFont(fontSize), columns), content: undefined }));
     const rowStep = metrics.lineStep;
     const inventoryFont = (size: number) => font(size * metrics.fontSize / RECORD_SHEET_FONT.inventory);
-    const geometry = largeAeroInventoryGeometry(group, x, inventoryY, inventoryFont, rowStep, metrics.fontSize, font(1));
+    const geometry: LargeAeroInventoryGeometry = {
+        group, x, y: inventoryY, font: inventoryFont, rowStep, lineHeight: y(rowStep),
+        fontSize: drawnFont(metrics.fontSize), badgeScale: font(1), badgeHeight: metrics.badgeHeight,
+        headingOffset: rowStep, firstRowOffset: rowStep * 2, columns,
+    };
     let detailY = 89.8;
     detailY = drawLargeAeroBlocks(geometry, content, content.plan.front, detailY, 'front');
     if (content.plan.reverse.has('standard-weapons')) {
@@ -553,44 +453,31 @@ function drawCapitalAeroDataPanel(
         // Bottom-anchored like MegaMekLab's footer block: quirk rows lift fuel and features.
         drawLargeAeroFooter(geometry, footer, fuelBaseline - Math.max(0, footer.length - 2) * rowStep);
     }
-    addLine(group, x(3), y(392.543), x(219.4), y(392.543), '#000', 1.932 * Math.min(sx, sy));
-    appendBattleValue(group, entity.battleValue(ruleset), { x: x(13.845), valueX: x(32.79), y: y(404.543), size: font(9.67) });
-    appendDataPanelEraIcon(svg, group, entity.year(), { x, y }, 395.65);
-    appendLegacyIdentityAnchors(group, entity, box, ruleset);
+    appendDataPanelFooter(svg, group, { battleValue: entity.battleValue(ruleset), year: entity.year() },
+        { height: box.height, options: frameOptions }, { x, font }, x(219.4));
     return group;
 }
 
-interface LargeAeroInventoryColumns {
+interface LargeAeroInventoryColumns extends AeroBayColumns {
     readonly sectionX: number;
     readonly quantityHeaderX: number;
     readonly typeHeaderX: number;
-    readonly nameX: number;
-    readonly continuationX: number;
-    readonly locationX: number;
-    readonly heatX: number;
-    readonly rangeX: readonly [number, number, number, number];
-    readonly nameMaxWidth: number;
-    readonly locationMaxWidth: number;
-    readonly rangeMaxWidth: number;
     readonly mainButtonWidth: number;
     readonly gravDeckSecondColumnX: number;
     readonly gravDeckColumnWidth: number;
     readonly cargoMaxWidth: number;
 }
 
+const FRONT_VALUE_COLUMNS = aeroValueColumns(AERO_BAY_NAME_X);
 const FRONT_INVENTORY_COLUMNS: LargeAeroInventoryColumns = Object.freeze({
+    ...FRONT_VALUE_COLUMNS,
     sectionX: 7.328,
     quantityHeaderX: 8.41,
     typeHeaderX: 13.82,
-    nameX: 7.328,
-    continuationX: 11.656,
-    locationX: 109.036,
-    heatX: 132.84,
-    rangeX: [152.316, 169.628, 186.94, 204.252] as const,
-    nameMaxWidth: 84,
-    locationMaxWidth: 21,
-    rangeMaxWidth: 16.312,
-    mainButtonWidth: 134,
+    nameX: AERO_BAY_NAME_X,
+    continuationX: AERO_BAY_CONTINUATION_X,
+    // The row's main target spans name, location and heat, up to the range brackets.
+    mainButtonWidth: FRONT_VALUE_COLUMNS.heatX + FRONT_VALUE_COLUMNS.heatMaxWidth / 2 - 3,
     gravDeckSecondColumnX: 110.328,
     gravDeckColumnWidth: 99,
     cargoMaxWidth: 205,
@@ -607,6 +494,7 @@ const REVERSE_INVENTORY_COLUMNS: LargeAeroInventoryColumns = Object.freeze({
     rangeX: [189.99, 211.67, 233.35, 255.03] as const,
     nameMaxWidth: 105,
     locationMaxWidth: 28,
+    heatMaxWidth: 12,
     rangeMaxWidth: 20.68,
     mainButtonWidth: 177,
     gravDeckSecondColumnX: 143.92,
@@ -620,27 +508,16 @@ interface LargeAeroInventoryGeometry {
     readonly y: (value: number) => number;
     readonly font: (value: number) => number;
     readonly rowStep: number;
-    /** Fitted inventory type size in reference units. */
+    /** `rowStep` on the sheet; `y` places lines, and on a station's front page also shifts them. */
+    readonly lineHeight: number;
+    /** The fitted inventory type size in column units, as its text is drawn, so the footer wraps as the fit did. */
     readonly fontSize: number;
     readonly badgeScale: number;
+    /** The badge height the rows were fitted with (`fitInventoryText`), which spaces them. */
+    readonly badgeHeight: number;
     readonly headingOffset: number;
     readonly firstRowOffset: number;
     readonly columns: LargeAeroInventoryColumns;
-}
-
-function largeAeroInventoryGeometry(
-    group: SVGGElement,
-    x: (value: number) => number,
-    y: (value: number) => number,
-    font: (value: number) => number,
-    rowStep: number,
-    fontSize: number,
-    badgeScale: number,
-    columns: LargeAeroInventoryColumns = FRONT_INVENTORY_COLUMNS,
-    headingOffset = rowStep,
-    firstRowOffset = rowStep * 2,
-): LargeAeroInventoryGeometry {
-    return { group, x, y, font, rowStep, fontSize, badgeScale, headingOffset, firstRowOffset, columns };
 }
 
 function drawLargeAeroBlocks(
@@ -676,7 +553,7 @@ function drawLargeAeroInventoryTable(
     pageRole: 'front' | 'reverse',
 ): number {
     if (rows.length === 0) return startY;
-    const { group, x, y, font, rowStep, headingOffset, firstRowOffset, columns } = geometry;
+    const { group, x, y, font, rowStep, lineHeight, headingOffset, firstRowOffset, columns } = geometry;
     const textSize = RECORD_SHEET_FONT.inventory;
     addText(group, scale === 'capital' ? 'Capital Scale' : 'Standard Scale', x(columns.sectionX), y(startY), {
         size: font(textSize), weight: 700,
@@ -700,43 +577,24 @@ function drawLargeAeroInventoryTable(
     }));
     let displayLine = 0;
     rows.forEach((row, index) => {
-        const addCell = (parent: SVGElement, value: string, x: number, yPos: number, options: Parameters<typeof addText>[4] = {}) =>
-            addInventoryText(parent, value, x, yPos, { ...options, lineHeight: y(rowStep) });
-        const nameLines = row.nameLines.flatMap(name => inventoryCellLines(name, x(columns.nameMaxWidth), font(textSize)));
-        const lineCount = Math.max(nameLines.length, inventoryRowLineCount([[row.location, x(columns.locationMaxWidth)],
-            [String(row.heat), x(12)], ...row.damageByRange.map(value => [value, x(columns.rangeMaxWidth)] as const)], font(textSize)));
-        const baseline = startY + firstRowOffset + displayLine * rowStep;
+        const lines = aeroBayRowLines(row, columns, font(textSize), x);
+        // The row is one block under one badge, as the fit counts it; its buttons span the munition lines too
+        const span = inventoryRowSpan(lines.lines, rowStep, geometry.badgeHeight);
+        const baseline = y(startY + firstRowOffset + displayLine * rowStep);
         const entry = svgElement('g');
         entry.setAttribute('class', 'inventoryEntry bay');
         entry.id = `${pageRole}_${scale}_bay_${index + 1}`;
         setInventoryComponentIds(entry, row.componentIds);
-        appendInventoryRowButtons(entry, y(baseline), geometry.badgeScale, y(rowStep), lineCount,
+        appendInventoryRowButtons(entry, baseline, geometry.badgeScale, lineHeight, span,
             [x(3), x(columns.mainButtonWidth)],
             columns.rangeX.map((position, rangeIndex) => [
                 ['shrButton', 'medButton', 'lngButton', 'extButton'][rangeIndex],
                 x(position - columns.rangeMaxWidth / 2), x(columns.rangeMaxWidth),
             ] as const));
-        appendInventoryBadges(entry, y(baseline), geometry.badgeScale, y(rowStep));
-        nameLines.forEach((name, lineIndex) => {
-            addCell(entry, name, x(lineIndex === 0 ? columns.nameX : columns.continuationX),
-                y(baseline + lineIndex * rowStep), {
-                    class: lineIndex === 0 ? 'name' : 'name continuation',
-                    size: font(textSize), maxWidth: x(columns.nameMaxWidth),
-                });
-        });
-        addCell(entry, row.location, x(columns.locationX), y(baseline), {
-            class: 'location', size: font(textSize), anchor: 'middle', maxWidth: x(columns.locationMaxWidth),
-        });
-        addCell(entry, String(row.heat), x(columns.heatX), y(baseline), {
-            class: 'heat', size: font(textSize), anchor: 'middle',
-        });
-        row.damageByRange.forEach((value, rangeIndex) => addCell(entry, value,
-            x(columns.rangeX[rangeIndex]), y(baseline), {
-                class: ['range_short', 'range_medium', 'range_long', 'range_extreme'][rangeIndex],
-                size: font(textSize), anchor: 'middle', maxWidth: x(columns.rangeMaxWidth),
-            }));
+        appendInventoryBadges(entry, baseline, geometry.badgeScale, lineHeight);
+        appendAeroBayRowText(entry, row, columns, lines, { x, baseline, lineHeight, fontSize: font(textSize) });
         group.appendChild(entry);
-        displayLine += inventoryRowSpan(lineCount, rowStep);
+        displayLine += span;
     });
     let nextY = startY + firstRowOffset + displayLine * rowStep;
     if (scale === 'standard') {
@@ -810,7 +668,10 @@ function drawCargo(
     return startY + rowStep * (cargoLines.length + 2);
 }
 
-/** MegaMekLab's footer block: fuel, features, then italic quirks at 90% type; fuel and features keep two rows. */
+/**
+ * MegaMekLab's footer block: fuel, features, then italic quirks at 90% type; fuel and features keep two rows. The fit
+ * and the drawing wrap the quirks alike, at the type size the footer prints in (`fontSize`, in column units).
+ */
 function largeAeroFooterLines(
     content: LargeAeroPageContent,
     { fontSize, columns }: Pick<LargeAeroInventoryGeometry, 'fontSize' | 'columns'>,
@@ -843,8 +704,8 @@ function drawLargeAeroFooter(
 function largeAeroBlockLineCount(
     content: LargeAeroPageContent,
     blocks: ReadonlySet<LargeAeroRecordSheetBlock>,
-    fontSize: number = RECORD_SHEET_FONT.inventory,
-    columns = FRONT_INVENTORY_COLUMNS,
+    fontSize: number,
+    columns: LargeAeroInventoryColumns,
 ): number {
     let count = 0;
     if (blocks.has('capital-weapons')) count += inventoryLineCount(content.capitalRows, false, fontSize, columns) + 3;
@@ -901,37 +762,33 @@ function drawLargeAeroReverseDataPanel(
     const x = (value: number): number => value * sx;
     const y = (value: number): number => value * sy;
     const font = (value: number): number => value * Math.min(sx, sy);
-    addTemplateCaption(group, 'Type:', x(6), y(28), { size: font(9.67), weight: 700 });
-    const type = addText(group, entity.displayName(), x(32.229), y(28), {
+    const typeCaption = condenseDataPanelCaption(addText(group, 'Type:', x(6), y(28), { size: font(9.67), weight: 700 }));
+    const type = addText(group, entity.displayName(), valueXAfterCaptions([typeCaption]), y(28), {
         size: font(9.67), weight: 700, maxWidth: x(238),
     });
     type.id = 'type';
-    addTemplateCaption(group, 'Name:', x(3), y(38), { size: font(9.67), weight: 700 });
-    const fluffName = addText(group, '', x(34.798), y(38), { size: font(9.67), maxWidth: x(92.115) });
+    const name = valueXAfterCaptions([condenseDataPanelCaption(addText(group, 'Name:', x(3), y(38), { size: font(9.67), weight: 700 }))]);
+    const fluffName = addText(group, '', name, y(38), { size: font(9.67), maxWidth: x(126.913) - name });
     fluffName.id = 'fluffName';
-    addLine(group, x(34.798), y(39), x(126.913), y(39), '#000', 0.72 * Math.min(sx, sy));
+    addLine(group, name, y(39), x(126.913), y(39), '#000', 0.72 * Math.min(sx, sy));
     addLine(group, x(3), y(43), x(274), y(43), '#000', 1.932 * Math.min(sx, sy));
-    addTemplateCaption(group, 'Weapons & Equipment Inventory', x(3), y(53), {
+    addText(group, 'Weapons & Equipment Inventory', x(3), y(53), {
         size: font(RECORD_SHEET_FONT.section), weight: 700,
     });
+    const columns = fittedInventoryColumns(REVERSE_INVENTORY_COLUMNS, content, content.plan.reverse,
+        RECORD_SHEET_FONT.inventory * font(1) / x(1));
+    const drawnFont = (fontSize: number) => fontSize * font(1) / x(1);
     const metrics = fitInventoryText(570, fontSize => ({
-        lineCount: largeAeroBlockLineCount(content, content.plan.reverse, fontSize, REVERSE_INVENTORY_COLUMNS),
-        badgeRows: largeAeroBadgeRows(content, content.plan.reverse, fontSize, REVERSE_INVENTORY_COLUMNS), content: undefined }));
+        lineCount: largeAeroBlockLineCount(content, content.plan.reverse, drawnFont(fontSize), columns),
+        badgeRows: largeAeroBadgeRows(content, content.plan.reverse, drawnFont(fontSize), columns), content: undefined }));
     const rowStep = metrics.lineStep;
     const inventoryFont = (size: number) => font(size * metrics.fontSize / RECORD_SHEET_FONT.inventory);
     const compressed = rowStep / 9.126;
-    const geometry = largeAeroInventoryGeometry(
-        group,
-        x,
-        y,
-        inventoryFont,
-        rowStep,
-        metrics.fontSize,
-        Math.min(sx, sy),
-        REVERSE_INVENTORY_COLUMNS,
-        10.8 * compressed,
-        20.7 * compressed,
-    );
+    const geometry: LargeAeroInventoryGeometry = {
+        group, x, y, font: inventoryFont, rowStep, lineHeight: y(rowStep), fontSize: drawnFont(metrics.fontSize),
+        badgeScale: Math.min(sx, sy), badgeHeight: metrics.badgeHeight, headingOffset: 10.8 * compressed,
+        firstRowOffset: 20.7 * compressed, columns,
+    };
     drawLargeAeroBlocks(geometry, content, content.plan.reverse, 63.8, 'reverse');
 }
 
@@ -977,7 +834,11 @@ function appendLargeAeroReverseReferenceArt(
     svg.appendChild(wrapper);
 }
 
-function capitalAeroInventoryRows(
+/**
+ * One row per weapon bay, its weapons in unit-file order, each with its ammo; equal opposite bays share a row.
+ * Both large-craft panels print these rows.
+ */
+function largeAeroBayRows(
     entity: AeroEntity,
     scale: 'capital' | 'standard',
 ): readonly CapitalAeroInventoryRow[] {
@@ -988,16 +849,13 @@ function capitalAeroInventoryRows(
         const weapons = bay.weapons.filter(mount =>
             (mount.equipment.capital || mount.equipment.subCapital) === capitalScale);
         if (weapons.length === 0) continue;
-        const groups = new Map<string, {
-            readonly equipment: EntityMountedWeapon['equipment'];
-            readonly mounts: EntityMountedWeapon[];
-        }>();
+        const groups = new Map<string, BayWeaponGroup>();
         weapons.forEach(mount => {
             const existing = groups.get(mount.equipment.id);
             if (existing) existing.mounts.push(mount);
             else groups.set(mount.equipment.id, { equipment: mount.equipment, mounts: [mount] });
         });
-        const enhancements = weapons.map(mount => entity.getLinkingMount(mount)?.equipment);
+        const enhancements = weapons.map(mount => entity.getLinkingMounts(mount).find(source => artemisKind(source.equipment) !== null || isApolloEquipment(source.equipment))?.equipment);
         const marker = enhancements.some(equipment => artemisKind(equipment) === 'iv') ? '*'
             : enhancements.length > 0 && enhancements.every(equipment => artemisKind(equipment) === 'v') ? '†'
                 : enhancements.length > 0 && enhancements.every(isApolloEquipment) ? '‡'
@@ -1006,157 +864,256 @@ function capitalAeroInventoryRows(
             : marker === '†' ? '† w/Artemis V (-1 to hit)'
                 : marker === '‡' ? '‡ w/Apollo (ignore +1 to hit)'
                     : undefined;
-        const nameLines = [...groups.values()].map((group, index) => {
-            const matchingAmmo = bay.ammo.filter(mount =>
-                mount.equipment instanceof AmmoEquipment
-                && ammoMatchesWeapon(group.equipment, mount.equipment));
-            let ammoText = '';
-            if (matchingAmmo.length > 0) {
-                if (group.equipment.ammoType === 'AR10') {
-                    const details = matchingAmmo.map(mount =>
-                        `${formatWholeNumber(mount.getAmmoShots() ?? 0)} ${mount.equipment?.shortName ?? mount.displayName()}`);
-                    ammoText = ` (${details.join(', ')})`;
-                } else {
-                    const unit = group.equipment.capital && group.equipment.hasFlag('F_MISSILE')
-                        ? 'missiles'
-                        : 'rounds';
-                    ammoText = ` (${formatWholeNumber(matchingAmmo[0].getAmmoShots() ?? 0)} ${unit})`;
-                }
-            }
+        const rear = weapons[0].rearMounted;
+        // An aerodyne's rear wing bays carry "(R)"; a spheroid's print as aft sides instead
+        const rearSuffix = rear && entity.entityType === 'DropShip' && entity.motiveType() !== 'Spheroid' ? ' (R)' : '';
+        const groupList = [...groups.values()];
+        const ammo = claimBayAmmo(groupList, bay.ammo);
+        // Each weapon's rounds of each munition, which its name and the munition lines print alike
+        const totals = new Map(groupList.map(group => [group, bayAmmoTotals(ammo.get(group)!, bayMunitionName)] as const));
+        const lines: readonly BayDamageLine[] = capitalScale
+            ? [{ name: '', values: [0, 1, 2, 3].map(rangeIndex => groupList.reduce((total, group) =>
+                total + Math.max(0, group.equipment.weapon.av[rangeIndex] ?? 0) * group.mounts.length, 0)) }]
+            : standardBayDamageLines(entity, groupList, ammo, totals);
+        const bayLine = lines.find(line => line.munition === undefined);
+        const munitionLines = lines.filter(line => line.munition !== undefined);
+        const nameLines = groupList.map((group, index) => {
             const capacitorCount = group.mounts.filter(mount =>
-                isPpcCapacitorEquipment(entity.getLinkingMount(mount)?.equipment)).length;
+                entity.getLinkingMounts(mount).some(source => isPpcCapacitorEquipment(source.equipment))).length;
             const capacitorText = capacitorCount === group.mounts.length && capacitorCount > 0
                 ? ' w/Capacitor'
                 : capacitorCount > 0
                     ? ` w/${capacitorCount} ${capacitorCount === 1 ? 'Capacitor' : 'Capacitors'}`
                     : '';
             const suffix = index === 0
-                ? `${marker}${groups.size > 1 ? ',' : ''}`
+                ? `${marker}${groups.size > 1 ? ',' : ''}${rearSuffix}`
                 : '';
+            // A munition printing a line of its own carries its rounds there
+            const ammoText = bayAmmoText(group.equipment, new Map([...totals.get(group)!]
+                .filter(([name]) => !munitionLines.some(line => line.munition?.displayName === name))));
             return `${group.mounts.length} ${group.equipment.shortName}${ammoText}${capacitorText}${suffix}`;
         });
-        const location = capitalAeroInventoryLocation(entity, weapons[0].getOccupiedLocations());
-        const capitalDamage = [0, 0, 0, 0];
-        const bayDamage = [0, 0, 0, 0];
-        const standardDamage = [0, 0, 0, 0];
-        for (const group of groups.values()) {
-            const values = capitalScale ? group.equipment.weapon.av : aerospaceAttackValues(group.equipment, null);
-            if (capitalScale) {
-                values.forEach((value, rangeIndex) => {
-                    capitalDamage[rangeIndex] += Math.max(0, value) * group.mounts.length;
-                });
-                continue;
-            }
-            if (group.equipment.ammoType === 'ATM' || group.equipment.ammoType === 'IATM') {
-                const base = Math.ceil(Math.max(0, values[0] ?? 0) * group.mounts.length
-                    * (group.equipment.ammoType === 'IATM' ? 1 : 0.5));
-                const totals = [Math.ceil(base * 1.5), base, Math.ceil(base * 0.5), Math.ceil(base * 0.5)];
-                totals.forEach((total, rangeIndex) => {
-                    standardDamage[rangeIndex] += total;
-                    bayDamage[rangeIndex] += Math.round(total / 10);
-                });
-                continue;
-            }
-            const bonus = group.mounts.reduce((total, mount) => total
-                + capitalAeroEnhancementBonus(group.equipment, entity.getLinkingMount(mount)?.equipment), 0);
-            values.forEach((value, rangeIndex) => {
-                if (value <= 0) return;
-                const standardValue = value * group.mounts.length + bonus;
-                const capitalValue = rangeIndex === 0 && group.equipment.ammoType === 'MML'
-                    ? standardValue * 2
-                    : standardValue;
-                standardDamage[rangeIndex] += standardValue;
-                bayDamage[rangeIndex] += Math.round(capitalValue / 10);
-            });
-        }
-        const damage = (capitalScale ? capitalDamage : standardDamage).map((value, rangeIndex) => {
-            if (value <= 0) return '—';
-            return capitalScale
-                ? formatWholeNumber(Math.round(value))
-                : `${formatWholeNumber(bayDamage[rangeIndex])} (${formatWholeNumber(value)})`;
-        }) as [string, string, string, string];
-        const row: CapitalAeroInventoryRow = {
-            configurationKey: largeAeroBayConfigurationKey(entity, bay, weapons),
+        const location = capitalAeroInventoryLocation(entity, weapons[0]);
+        // An AR10's heat and values depend on the missile it fires (TW p. 304); the AR10 table prints them
+        const ar10 = weapons.some(mount => mount.equipment.ammoType === 'AR10');
+        // Each value is the bay's combined value: a capital total rounds normally, .5 up (SO p. 88); a standard bay
+        // prints its capital value, the standard value over 10 rounded normally, then the standard value (SO p. 10).
+        // A narrow no-break space (half a Roboto space) keeps the pair compact and on one line.
+        const damageText = (values: readonly number[]) => values.map(value => ar10 ? '*'
+            : value <= 0 ? '—'
+                : capitalScale ? formatWholeNumber(Math.round(value))
+                    : `${formatWholeNumber(Math.round(value / 10))}\u202F(${formatWholeNumber(value)})`) as [string, string, string, string];
+        rows.push({
+            configurationKey: largeAeroBayConfigurationKey(entity, groupList, ammo),
             nameLines,
             location: location.label,
-            heat: weapons.reduce((total, mount) => total + mount.equipment.heat
-                + (isPpcCapacitorEquipment(entity.getLinkingMount(mount)?.equipment)
-                    ? PPC_CAPACITOR_HEAT_BONUS : 0), 0),
-            damageByRange: damage,
+            // Each weapon's heat with its laser insulator (TO:AUE p. 134), and a PPC capacitor's, which a bay counts
+            // as always charged (TO:AUE p. 149)
+            heat: ar10 ? '*' : String(weapons.reduce((total, mount) => {
+                const attachments = entity.getLinkingMounts(mount);
+                return total + laserInsulatorAdjustedHeat(mount.equipment.heat,
+                    attachments.some(source => isLaserInsulatorEquipment(source.equipment)))
+                    + (attachments.some(source => isPpcCapacitorEquipment(source.equipment)) ? PPC_CAPACITOR_HEAT_BONUS : 0);
+            }, 0)),
+            damageByRange: bayLine ? damageText(bayLine.values) : ['', '', '', ''],
+            munitionLines: munitionLines.map(line => ({ name: line.name, damageByRange: damageText(line.values) })),
             componentIds: weapons.map(mount => mount.mountId),
             sortOrder: location.sortOrder,
+            rearMounted: rear,
             footnote,
-        };
-        rows.push(row);
+        });
     }
-    return condenseSymmetricAeroBays(rows.map(row => ({
-        row,
-        locationCode: row.location,
-        sortOrder: row.sortOrder,
-        rearMounted: false,
-        configurationKey: row.configurationKey,
-    }))).map(({ row }) => row);
+    return condenseSymmetricAeroBays(rows);
 }
 
-/** Printed rounds omit munition identity; symmetric bays must still carry equal loads. */
+interface BayWeaponGroup {
+    readonly equipment: EntityMountedWeapon['equipment'];
+    readonly mounts: EntityMountedWeapon[];
+}
+
+interface BayAmmo {
+    readonly equipment: AmmoEquipment;
+    readonly shots: number;
+}
+
+/** Each loaded bin of the bay feeds the first of its weapon types that can fire it, so no bin prints twice. */
+function claimBayAmmo(
+    groups: readonly BayWeaponGroup[],
+    ammo: readonly EntityMountedEquipment[],
+): ReadonlyMap<BayWeaponGroup, readonly BayAmmo[]> {
+    const claimed = new Map(groups.map(group => [group, [] as BayAmmo[]]));
+    for (const bin of ammo) {
+        const equipment = bin.equipment;
+        const shots = bin.getAmmoShots() ?? 0;
+        if (!(equipment instanceof AmmoEquipment) || shots <= 0) continue;
+        const group = groups.find(candidate => ammoMatchesWeapon(candidate.equipment, equipment));
+        if (group) claimed.get(group)!.push({ equipment, shots });
+    }
+    return claimed;
+}
+
+/** The shots of each munition, as `munition` names a bin's, in the order the bay lists them; bins of one add up. */
+function bayAmmoTotals(ammo: readonly BayAmmo[], munition: (equipment: AmmoEquipment) => string): ReadonlyMap<string, number> {
+    const totals = new Map<string, number>();
+    for (const bin of ammo) {
+        const name = munition(bin.equipment);
+        totals.set(name, (totals.get(name) ?? 0) + bin.shots);
+    }
+    return totals;
+}
+
+/** The munition a bin prints as: an MML or ATM munition by the name its line prints, any other ammo by its short name. */
+function bayMunitionName(ammo: AmmoEquipment): string {
+    return resolveAmmoWeaponProfile(ammo)?.displayName ?? ammo.shortName;
+}
+
+/**
+ * A bay weapon's ammo: one total per munition, as a weapon line carries its rounds (SO p. 142). Several munitions
+ * print each total under the words their names don't share: an LB-X's slugs and cluster as (10 Standard, 10 Cluster),
+ * an AR10's missiles as (15 KW, 15 B), an ATM's as (10 Standard, 10 Extended Range). An MML's or ATM's only munition
+ * prints by name unless it is the launcher's first (LRM, Standard): (10 Extended Range).
+ */
+function bayAmmoText(weapon: EntityMountedWeapon['equipment'], shots: ReadonlyMap<string, number>): string {
+    if (shots.size === 0) return '';
+    const totals = [...shots];
+    if (totals.length === 1 && weapon.ammoType !== 'AR10') {
+        const [[name, count]] = totals;
+        const munition = BAY_MUNITIONS.find(profile => profile.displayName === name);
+        const unit = munition !== undefined && munition !== recordSheetAmmoProfiles(weapon)[0] ? name
+            : weapon.capital && weapon.hasFlag('F_MISSILE') ? 'missiles' : 'rounds';
+        return ` (${formatWholeNumber(count)} ${unit})`;
+    }
+    const words = totals.map(([name]) => name.split(/[ /]/u));
+    const shortest = Math.min(...words.map(name => name.length));
+    const shared = (word: (name: readonly string[]) => string) => words.length > 1
+        && words.every(name => word(name) === word(words[0]));
+    let head = 0;
+    while (head < shortest && shared(name => name[head])) head++;
+    let tail = 0;
+    while (head + tail < shortest && shared(name => name[name.length - 1 - tail])) tail++;
+    return ` (${totals.map(([, count], index) => `${formatWholeNumber(count)} ${
+        words[index].slice(head, words[index].length - tail).join(' ') || 'Standard'}`).join(', ')})`;
+}
+
+/** Printed rounds omit munition identity; symmetric bays must still carry the same total of each munition. */
 function largeAeroBayConfigurationKey(
     entity: AeroEntity,
-    bay: EquipmentBay,
-    weapons: readonly EntityMountedWeapon[],
+    groups: readonly BayWeaponGroup[],
+    ammo: ReadonlyMap<BayWeaponGroup, readonly BayAmmo[]>,
 ): string {
-    const weaponTypes = [...new Set(weapons.map(mount => mount.equipment))];
-    return JSON.stringify(weaponTypes.map(weapon => ({
-        weapon: weapon.id,
-        enhancements: weapons.filter(mount => mount.equipment === weapon)
-            .map(mount => entity.getLinkingMount(mount)?.equipment?.id ?? '').sort(),
-        ammo: bay.ammo.filter(mount => mount.equipment instanceof AmmoEquipment
-            && ammoMatchesWeapon(weapon, mount.equipment) && (mount.getAmmoShots() ?? 0) > 0)
-            .map(mount => JSON.stringify([mount.equipment!.id, mount.getAmmoShots()])).sort(),
+    return JSON.stringify(groups.map(group => ({
+        weapon: group.equipment.id,
+        enhancements: group.mounts
+            .map(mount => JSON.stringify(entity.getLinkingMounts(mount).map(source => source.equipmentId).sort())).sort(),
+        ammo: [...bayAmmoTotals(ammo.get(group)!, equipment => equipment.shortName)]
+            .sort(([left], [right]) => left.localeCompare(right)),
     })).sort((left, right) => left.weapon.localeCompare(right.weapon)));
 }
 
-function capitalAeroEnhancementBonus(
-    weapon: EntityMountedWeapon['equipment'],
-    enhancement: EntityMountedEquipment['equipment'] | undefined,
-): number {
-    if (!enhancement) return 0;
-    const kind = artemisKind(enhancement);
-    if (kind === 'iv' || kind === 'v') {
-        if (weapon.ammoType === 'MML') {
-            if (weapon.rackSize >= 7) return 2;
-            if (weapon.rackSize >= 5 || kind === 'v') return 1;
-        } else if (weapon.hasFlag('F_LRM')) {
-            return Math.floor(weapon.rackSize / 5);
-        } else if (weapon.hasFlag('F_SRM')) {
-            return 2;
-        }
-    } else if (kind === 'prototype' && weapon.rackSize === 2) {
-        return 2;
-    } else if (isPpcCapacitorEquipment(enhancement)) {
-        return PPC_CAPACITOR_DAMAGE_BONUS;
-    }
-    return 0;
+/** The munitions a bay prints a line for, in the order of TW p. 303, then the iATM's (IO:AE p. 61). */
+const BAY_MUNITIONS: readonly AmmoWeaponProfile[] = [
+    ...MML_AMMO_PROFILES,
+    ...ATM_AMMO_PROFILES,
+    ATM_IMPROVED_MAGNETIC_PULSE_PROFILE,
+];
+
+/**
+ * Whether a bay weapon fires the munition: an MML its LRM and SRM missiles, an ATM its Standard, Extended Range and High
+ * Explosive missiles, and an iATM also its Improved Magnetic Pulse missiles (IO:AE p. 61).
+ */
+function bayWeaponFires(weapon: EntityMountedWeapon['equipment'], profile: AmmoWeaponProfile): boolean {
+    return recordSheetAmmoProfiles(weapon).includes(profile)
+        || (profile === ATM_IMPROVED_MAGNETIC_PULSE_PROFILE && weapon.ammoType === 'IATM');
 }
 
+/** A bay's attack values: its own, printed on its first row, or one munition's, on a line named with its rounds. */
+interface BayDamageLine {
+    readonly munition?: AmmoWeaponProfile;
+    readonly name: string;
+    readonly values: readonly number[];
+}
+
+/**
+ * A standard bay's attack values, each weapon with the Artemis linked to it. An MML or ATM bay whose munitions give
+ * different values prints a line for each munition it carries, with its rounds; an ATM bay where every launcher carries
+ * at least a ton each of Standard, Extended Range and High Explosive missiles prints the bay profile of TW p. 304
+ * instead. Improved Magnetic Pulse missiles do not count toward the profile, so they print a line of their own under it.
+ */
+function standardBayDamageLines(
+    entity: AeroEntity,
+    groups: readonly BayWeaponGroup[],
+    ammo: ReadonlyMap<BayWeaponGroup, readonly BayAmmo[]>,
+    totals: ReadonlyMap<BayWeaponGroup, ReadonlyMap<string, number>>,
+): readonly BayDamageLine[] {
+    // The munitions a weapon carries and fires, and its rounds of one
+    const munitions = (group: BayWeaponGroup) => BAY_MUNITIONS.filter(profile =>
+        bayWeaponFires(group.equipment, profile) && totals.get(group)!.has(profile.displayName));
+    const rounds = (group: BayWeaponGroup, profile: AmmoWeaponProfile) =>
+        bayWeaponFires(group.equipment, profile) ? totals.get(group)!.get(profile.displayName) ?? 0 : 0;
+    const tons = (group: BayWeaponGroup, profile: AmmoWeaponProfile) => ammo.get(group)!
+        .filter(bin => resolveAmmoWeaponProfile(bin.equipment) === profile)
+        .reduce((total, bin) => total + bin.shots / bin.equipment.shots, 0);
+    const values = (profile: AmmoWeaponProfile | null) => [0, 1, 2, 3].map(rangeIndex => groups.reduce((total, group) => {
+        const carried = munitions(group);
+        const fired = profile !== null && bayWeaponFires(group.equipment, profile) ? profile : null;
+        // An MML or ATM fires only a munition it can fire and carries; one without ammo keeps its listed values
+        if (profile !== null && recordSheetAmmoProfiles(group.equipment).length > 0
+            && (fired === null || (carried.length > 0 && !carried.includes(fired)))) return total;
+        return total + group.mounts.reduce((sum, mount) => {
+            const value = aerospaceAttackValues(group.equipment, fired, recordSheetWeaponArtemis(entity, mount))[rangeIndex];
+            // A bay's PPC capacitors count as charged (TO:AUE p. 149)
+            const capacitor = entity.getLinkingMounts(mount).some(source => isPpcCapacitorEquipment(source.equipment));
+            return sum + (value > 0 ? value + (capacitor ? PPC_CAPACITOR_DAMAGE_BONUS : 0) : 0);
+        }, 0);
+    }, 0));
+    const carried = BAY_MUNITIONS.filter(profile => groups.some(group => munitions(group).includes(profile)));
+    // Each munition's line carries its rounds: LRM (78 rounds)
+    const line = (profile: AmmoWeaponProfile): BayDamageLine => ({
+        munition: profile,
+        name: `${profile.displayName} (${formatWholeNumber(groups.reduce((total, group) =>
+            total + rounds(group, profile), 0))} rounds)`,
+        values: values(profile),
+    });
+    const atm = groups.filter(group => group.equipment.ammoType === 'ATM' || group.equipment.ammoType === 'IATM');
+    if (atm.length > 0 && atm.every(group => ATM_AMMO_PROFILES.every(profile => tons(group, profile) >= group.mounts.length))) {
+        // Short range times 1.5, medium unchanged, long and extreme half the standard value, each rounded up
+        const [short, medium] = values(ATM_STANDARD_PROFILE);
+        return [{ name: '', values: [Math.ceil(short * 1.5), medium, Math.ceil(medium / 2), Math.ceil(medium / 2)] },
+            ...carried.filter(profile => profile === ATM_IMPROVED_MAGNETIC_PULSE_PROFILE).map(line)];
+    }
+    if (carried.length <= 1) return [{ name: '', values: values(carried[0] ?? null) }];
+    return carried.map(line);
+}
+
+/** A bay location's place in the inventory (MegaMekLab's `WeaponBayText.getLocWeight`); any other prints last. */
+const BAY_LOCATION_ORDER: Readonly<Record<string, number>> = {
+    NOS: 0, LS: 1, FLS: 1, RS: 3, FRS: 3, LBS: 5, RBS: 6, ALS: 7, ARS: 8,
+};
+
+/**
+ * A bay's printed arc and its place in the inventory, by its location before a DropShip's side arcs are relabeled: the
+ * nose, the left side's front then rear bays, the right side's front then rear, the broadsides, the aft sides, then
+ * the aft. A spheroid's sides print FLS, ALS, FRS, ARS; an aerodyne's LW, LW (R), RW, RW (R).
+ */
 function capitalAeroInventoryLocation(
     entity: AeroEntity,
-    locations: readonly string[],
+    mount: EntityMountedWeapon,
 ): { readonly label: string; readonly sortOrder: number } {
-    const code = entity.componentLocationLabel(locations[0] ?? '').toUpperCase();
-    const orderByLocation: Readonly<Record<string, number>> = {
-        NOS: 0, NOSE: 0, FLS: 1, FRS: 1, LBS: 2, RBS: 2, ALS: 3, ARS: 3, AFT: 4,
-    };
-    const order = orderByLocation[code] ?? 5;
-    return { label: code || '—', sortOrder: order };
+    const code = entity.componentLocationLabel(mount.getOccupiedLocations()[0] ?? '').toUpperCase();
+    const order = BAY_LOCATION_ORDER[code] ?? 9;
+    // A side's rear bays follow its front ones
+    const rear = mount.rearMounted && (order === 1 || order === 3) ? 1 : 0;
+    return { label: largeAeroArcLabel(entity, code, mount.rearMounted), sortOrder: order + rear };
 }
 
-function capitalAeroCargoLines(entity: AeroEntity): readonly string[] {
-    return projectRecordSheetBays(entity.transporters()).map(group => {
-        const members = group.members
-            .map(member => `${member.typeName} (${formatWholeNumber(member.capacity)})`)
-            .join(' + ');
-        return `Bay ${group.bayNumber}: ${members} (${group.doors} ${group.doors === 1 ? 'Door' : 'Doors'})`;
-    }).slice(0, 9);
+/** A DropShip's side arcs: front and aft sides on a spheroid, wings on an aerodyne. */
+function largeAeroArcLabel(entity: AeroEntity, code: string, rear: boolean): string {
+    if (entity.entityType !== 'DropShip' || (code !== 'LS' && code !== 'RS')) return code || '—';
+    if (entity.motiveType() === 'Spheroid') {
+        if (code === 'LS') return rear ? 'ALS' : 'FLS';
+        return rear ? 'ARS' : 'FRS';
+    }
+    return code === 'LS' ? 'LW' : 'RW';
 }
 
 function capitalAeroFeatures(entity: AeroEntity): string {
@@ -1385,17 +1342,21 @@ function drawLargeAeroHeatPanel(svg: SVGSVGElement, entity: AeroEntity, box: Box
                 ['Aft:', heat.aft, 'aftHeat'],
             ] as const;
     const start = rows.length === 5 ? 39.816 : 41.285;
-    rows.forEach(([label, value, id], index) => {
-        const baseline = start + index * 8;
-        addText(group, label, x(65.3), y(baseline), {
-            size: font(RECORD_SHEET_FONT.inventory), maxWidth: x(75),
-        });
-        const valueX = entity.entityType === 'JumpShip' || entity.entityType === 'SpaceStation' ? 145.4 : 154.3;
-        const node = addText(group, String(value), x(valueX), y(baseline), {
-            size: font(RECORD_SHEET_FONT.inventory), anchor: 'middle', maxWidth: x(28),
-        });
-        node.id = id;
+    const size = font(RECORD_SHEET_FONT.inventory);
+    const cells = rows.map(([label, value, id], index) => {
+        const labelNode = addText(group, label, x(65.3), y(start + index * 8), { size });
+        const valueNode = addText(group, String(value), 0, y(start + index * 8), { size, anchor: 'middle' });
+        valueNode.id = id;
+        return [labelNode, valueNode] as const;
     });
+    const labels = cells.map(([label]) => label);
+    const values = cells.map(([, value]) => value);
+    // MegaMekLab's value column, moved right only as far as the widest label and value need to stay unsqueezed.
+    const labelsEnd = x(65.3) + Math.max(...labels.map(label => measureSvgTextCanvas(label, label.textContent ?? '')));
+    const valueWidth = Math.max(...values.map(value => measureSvgTextCanvas(value, value.textContent ?? '')));
+    const authoredX = entity.entityType === 'JumpShip' || entity.entityType === 'SpaceStation' ? 145.4 : 154.3;
+    const valueX = formatNumber(Math.max(x(authoredX), labelsEnd + size * 0.5 + valueWidth / 2));
+    values.forEach(value => value.setAttribute('x', valueX));
 }
 
 function largeAeroHeatByArc(entity: AeroEntity): {
@@ -1412,9 +1373,9 @@ function largeAeroHeatByArc(entity: AeroEntity): {
     entity.rangedWeapons().forEach(mount => {
         const locations = mount.getOccupiedLocations();
         const divisor = Math.max(1, locations.length);
-        const enhancement = entity.getLinkingMount(mount)?.equipment;
+        const capacitated = entity.getLinkingMounts(mount).some(source => isPpcCapacitorEquipment(source.equipment));
         const heat = mount.equipment.heat * (mount.equipment.getRapidFireCount() || 1)
-            + (isPpcCapacitorEquipment(enhancement) ? PPC_CAPACITOR_HEAT_BONUS : 0);
+            + (capacitated ? PPC_CAPACITOR_HEAT_BONUS : 0);
         locations.forEach(location => {
             let code = entity.componentLocationLabel(location).toUpperCase().replaceAll(/[^A-Z]/gu, '');
             if (mount.rearMounted && ['LS', 'LW', 'LWG', 'RS', 'RW', 'RWG'].includes(code)) code += 'R';

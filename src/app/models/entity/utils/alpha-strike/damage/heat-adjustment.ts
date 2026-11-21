@@ -4,9 +4,10 @@
 
 import { alphaStrikeRoundUp, dualRoundedUpDamage, roundUpToTenth } from './damage-rounding';
 import type { WeaponEquipment } from '../../../../equipment.model';
+import type { JumpJetKind } from '../../../../jump-equipment.model';
 import type { RawDamageVector } from './damage-types';
 
-export type AlphaStrikeJumpSystem = 'none' | 'standard' | 'improved' | 'prototype-improved';
+export type AlphaStrikeJumpSystem = 'none' | JumpJetKind;
 
 export interface AlphaStrikeMovementHeatInput {
   readonly jumpMove: number;

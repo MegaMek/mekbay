@@ -776,7 +776,8 @@ describe('construction component blocks', () => {
     const f = await create({ material: 'endo', missingMaterial: true });
     f.editor.selectMount(f.editor.unallocated()[0]);
     f.editor.clickSlot('RA', 10);
-    expect(f.editor.selectedMount()?.placements).toEqual([{ location: 'RA', slotIndex: 10 }]);
+    // The arm stays packed from its first free slot, as MegaMek reads it.
+    expect(f.editor.selectedMount()?.placements).toEqual([{ location: 'RA', slotIndex: 4 }]);
     expect(f.editor.canPlaceSelectedEquipment()).toBeFalse();
     f.editor.selectMount(f.editor.unallocated()[0]);
     f.editor.clickSlot('LT', 8);
@@ -789,7 +790,7 @@ describe('construction component blocks', () => {
     expect(TestBed.inject(ToastService).showToast).not.toHaveBeenCalledWith(jasmine.any(String), 'error');
   });
 
-  it('uninstalls only the clicked spread block, including a fragment separated by system slots', async () => {
+  it('uninstalls only the clicked spread block', async () => {
     const f = await create({ material: 'endo', missingMaterial: true, gyro: 'Compact' });
     f.editor.selectMount(f.editor.unallocated()[0]);
     f.editor.setSpreadSlots('LT', 3);
@@ -800,20 +801,23 @@ describe('construction component blocks', () => {
     f.view.detectChanges();
     const mountId = f.editor.selectedMount()!.mountId;
     const torso = f.editor.selectedMount()!.placements!.filter((p) => p.location === 'LT');
+    // The three slots fill the center torso's free slots below the compact gyro's engine in order.
+    expect(f.editor.selectedMount()!.placements!.filter((p) => p.location === 'CT').map((p) => p.slotIndex).sort((a, b) => a - b))
+      .toEqual([8, 9, 10]);
     const block = f.root.querySelector<HTMLElement>(
-      `[data-location="CT"] [data-slot-index="10"] [data-mount-id="${mountId}"]`,
+      `[data-location="CT"] [data-slot-index="8"] [data-mount-id="${mountId}"]`,
     )!;
-    expect(block.querySelector('.spread-block-count')?.textContent).toContain('2 slots');
+    expect(block.querySelector('.spread-block-count')?.textContent).toContain('3 slots');
     block.querySelector<HTMLButtonElement>('.uninstall-mount')!.click();
     f.view.detectChanges();
     expect(f.editor.canPlaceSelectedEquipment()).toBeFalse();
     expect(f.root.querySelector('.placement-ready, .placement-hint, .placement-selected')).toBeNull();
     expect(f.root.querySelector('.unallocated-name')?.getAttribute('aria-pressed')).toBe('false');
     expect(f.editor.selectedMount()?.mountId).toBe(mountId);
-    expect(f.editor.selectedMount()?.placements?.filter((p) => p.location === 'CT').length).toBe(1);
+    expect(f.editor.selectedMount()?.placements?.filter((p) => p.location === 'CT').length).toBe(0);
     expect(f.editor.selectedMount()?.placements?.filter((p) => p.location === 'LT')).toEqual(torso);
-    expect(f.editor.selectedSpread()?.remaining).toBe(10);
-    expect(f.root.querySelector('.unallocated-slot-count')?.textContent).toContain('10 slots unallocated');
+    expect(f.editor.selectedSpread()?.remaining).toBe(11);
+    expect(f.root.querySelector('.unallocated-slot-count')?.textContent).toContain('11 slots unallocated');
     expect(TestBed.inject(ToastService).showToast).not.toHaveBeenCalledWith(jasmine.any(String), 'error');
   });
 
@@ -1750,7 +1754,9 @@ describe('construction component blocks', () => {
     ['gyro', 'XL', srm.id, 'CT'],
     ['engineType', 'XL', ac.id, 'LT'],
   ] as const) {
-    it(`unallocates equipment displaced by ${fieldId} changes and restores the layout on undo`, async () => {
+    // An XL gyro fills the center torso, so its weapon has no room left; an XL engine moves the left torso down 3 rows.
+    const displaced = fieldId === 'gyro';
+    it(`${displaced ? 'unallocates' : 'moves down'} equipment on ${fieldId} changes and restores the layout on undo`, async () => {
       const f = await create();
       f.editor.setField(
         f.editor.fields().find((field) => field.id === 'walkMP')!,
@@ -1770,17 +1776,15 @@ describe('construction component blocks', () => {
       f.view.detectChanges();
       await f.view.whenStable();
       expect(f.editor.entity().mountedEngine().rating).toBe(300);
-      expect(f.editor.unallocated().find((item) => item.mountId === mount.mountId)?.equipmentId).toBe(equipmentId);
-      expect(f.root.querySelector('.unallocated-equipment')?.textContent).toContain(mount.equipment!.name);
-      expect(f.root.querySelector(`[data-location="${location}"] .mounted-name`)).toBeNull();
-      expect(
-        placements.every(
-          (placement) =>
-            (f.editor.entity() as MekEntity).criticalSlotGrid().get(placement.location as MekLocation)![
-              placement.slotIndex
-            ].type === 'system',
-        ),
-      ).toBeTrue();
+      const after = () => f.editor.entity().equipment().find((item) => item.mountId === mount.mountId)!;
+      if (displaced) {
+        expect(f.editor.unallocated().find((item) => item.mountId === mount.mountId)?.equipmentId).toBe(equipmentId);
+        expect(f.root.querySelector('.unallocated-equipment')?.textContent).toContain(mount.equipment!.name);
+        expect(f.root.querySelector(`[data-location="${location}"] .mounted-name`)).toBeNull();
+      } else {
+        expect(after().placements).toEqual(placements.map((placement) => ({ ...placement, slotIndex: placement.slotIndex + 3 })));
+        expect(f.editor.unallocated()).toEqual([]);
+      }
       expect(
         f.editor
           .entity()
@@ -1789,15 +1793,10 @@ describe('construction component blocks', () => {
       ).toBeFalse();
       f.editor.undo();
       expect(f.editor.entity().mountedEngine().rating).toBe(300);
-      expect(
-        f.editor
-          .entity()
-          .equipment()
-          .find((item) => item.equipmentId === equipmentId)?.placements,
-      ).toEqual(placements);
+      expect(f.editor.entity().equipment().find((item) => item.equipmentId === equipmentId)?.placements).toEqual(placements);
       expect(f.editor.unallocated()).toEqual([]);
       f.editor.redo();
-      expect(f.editor.unallocated().map((item) => item.equipmentId)).toContain(equipmentId);
+      expect(f.editor.unallocated().some((item) => item.equipmentId === equipmentId)).toBe(displaced);
     });
   }
 
@@ -1860,10 +1859,12 @@ describe('construction component blocks', () => {
     f.systems('Engine')[0].querySelector<HTMLElement>('.system-name')!.click();
     f.view.detectChanges();
     expect(f.root.querySelector('.installed-inspector')?.textContent).toContain('Engine rating');
-    expect(f.root.querySelectorAll('.system-armor-controls input').length).toBe(6);
+    // TO:AUE p. 95: one control armors every slot of the engine.
+    expect(f.root.querySelectorAll('.system-armor-controls input').length).toBe(1);
     f.editor.setSystemArmored('CT', 0, true);
     f.view.detectChanges();
-    expect(f.systems('Engine')[0].querySelector('.armored-badge')?.textContent).toContain('1/3');
+    expect(f.systems('Engine').map((row) => row.querySelector('.armored-badge')?.textContent?.trim()))
+      .toEqual(f.systems('Engine').map(() => jasmine.stringContaining('3/3')));
     f.editor.closeInstalledInspector();
     f.view.detectChanges();
     await f.view.whenStable();

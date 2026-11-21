@@ -28,7 +28,7 @@ EquipmentPanelSnapshot,
 MekPhysicalAttackRow,
 } from '../../models/runtime/equipment-panel';
 import type { BombLoad, BombLoadChoice } from '../../models/aerospace-bomb.model';
-import { selectedWeaponHeat, selectedWeaponRows } from '../../models/runtime/equipment-panel';
+import { equipmentPanelWeapons, selectedWeaponHeat, selectedWeaponRows } from '../../models/runtime/equipment-panel';
 import { projectTurnHeatIfFired, type TurnHeatBasis } from '../../models/runtime/turn-heat-ledger';
 
 import { isBoobyTrapEquipment } from '../../models/aerospace-support-equipment.model';
@@ -49,7 +49,7 @@ import type { TargetingTarget } from '../../models/runtime/targeting-target';
 
 /** What the panel needs of attack resolution; aimed shots exist only where the app can show their picker. */
 export type AttackResolutionPort =
-    Pick<AttackResolutionService, 'resolveFired' | 'resolvesAttacks' | 'inPhysicalPhase'>
+    Pick<AttackResolutionService, 'resolveFired' | 'rollAttacks' | 'settleAttacks' | 'resolvesAttacks' | 'inPhysicalPhase'>
     & Partial<Pick<AttackResolutionService, 'declaresAimedShots' | 'pickAim'>>;
 import type { DialogsService } from '../../services/dialogs.service';
 import type { OptionsService } from '../../services/options.service';
@@ -136,7 +136,7 @@ export class EquipmentDialogRuntimeController {
         this.attacks = attacks;
         this.snapshot = signal(this.requiredSnapshot());
         this.interactions = signal(this.interactionRows());
-        this.weapons = computed(() => this.snapshot().components.filter(row => row.weapon !== undefined));
+        this.weapons = computed(() => equipmentPanelWeapons(this.snapshot()));
         this.equipment = computed(() => {
             const actionable = new Set(this.interactions().map(row => row.componentId));
             return this.snapshot().components.filter(row => row.weapon === undefined
@@ -425,6 +425,10 @@ export class EquipmentDialogRuntimeController {
         }
         const phaseAttacks = !this.options.options().realPhases ? undefined
             : this.attacks?.inPhysicalPhase(this.member) === true ? 'physical' as const : 'weapons' as const;
+        // The attacks are rolled before they fire: a Streak or iATM that fails to lock fires nothing (TW p. 138).
+        // Dismissing the dialog takes the attack back: nothing fires, spends ammo or makes heat.
+        const resolution = await this.attacks?.rollAttacks(this.member, current, attack) ?? null;
+        if (resolution === 'dismissed') return;
         this.busy.set(true);
         let fired = false;
         try {
@@ -433,6 +437,7 @@ export class EquipmentDialogRuntimeController {
                 type: 'fire-selected-weapons',
                 ...(phaseAttacks === undefined ? {} : { attacks: phaseAttacks }),
                 ...(prototypeHeatRolls.length === 0 ? {} : { prototypeHeatRolls }),
+                ...(resolution?.noLock.length ? { noLock: resolution.noLock } : {}),
             });
             // Only what the unit recorded is resolved: a fire the rules refuse changes nothing.
             fired = result.accepted && result.changed;
@@ -442,7 +447,7 @@ export class EquipmentDialogRuntimeController {
             this.busy.set(false);
             this.refresh();
         }
-        if (fired) await this.attacks?.resolveFired(this.member, current, attack);
+        if (fired && resolution) await this.attacks?.settleAttacks(this.member, resolution);
     }
 
     private prototypeHeatRolls(snapshot: EquipmentPanelSnapshot): readonly PrototypeLaserHeatRoll[] {

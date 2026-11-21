@@ -209,10 +209,6 @@ export function isHardenedArmor(equipment: Equipment | null | undefined): boolea
     return armorConstructionKind(equipment) === 'hardened';
 }
 
-export function isHeatDissipatingArmor(equipment: Equipment | null | undefined): boolean {
-    return armorConstructionKind(equipment) === 'heat-dissipating';
-}
-
 export function isIndustrialStructureEquipment(
     equipment: Equipment | null | undefined,
 ): boolean {

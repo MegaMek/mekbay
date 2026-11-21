@@ -191,18 +191,16 @@ export function supportEquipmentAlphaStrikeFacts(
   });
 }
 
-export function supportVariableSizeLabel(
+/** The size a variable-size support item prints after its name, as in "MASH Equipment (1 theater)". */
+export function supportVariableSizeSuffix(
   equipment: Equipment | null | undefined,
   size: number,
 ): string | null {
   const kind = supportEquipmentKind(equipment);
-  const name = equipment?.shortName ?? '';
-  if (kind === 'drone-carrier-control') {
-    return `${name} (${Math.trunc(size)} ${size > 1 ? 'drones' : 'drone'})`;
-  }
-  if (kind === 'mash') return `${name} (${Math.trunc(size)} ${size > 1 ? 'theaters' : 'theater'})`;
-  if (kind === 'ladder') return `${name} (${Math.trunc(size)} m)`;
-  if (kind === 'battle-armor-mission-equipment') return `${name} (${Math.trunc(size)} kg)`;
+  if (kind === 'drone-carrier-control') return `(${Math.trunc(size)} ${size > 1 ? 'drones' : 'drone'})`;
+  if (kind === 'mash') return `(${Math.trunc(size)} ${size > 1 ? 'theaters' : 'theater'})`;
+  if (kind === 'ladder') return `(${Math.trunc(size)} m)`;
+  if (kind === 'battle-armor-mission-equipment') return `(${Math.trunc(size)} kg)`;
   return null;
 }
 

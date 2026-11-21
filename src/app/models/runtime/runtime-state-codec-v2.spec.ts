@@ -5,6 +5,7 @@ import { ImmutableIndex } from '../entity/immutable-collections';
 import { freezeRuntimeState } from './runtime-state';
 import { canonicalizeMekTurnStateV2 } from './mek-turn-state-v2';
 import { rekeyMekHeatSourceMap } from './mek-heat-state-v2';
+import { createSavedTargetRef } from './persistence-v2';
 import {
 restoreSerializedCBTUnitV2,
 serializeCBTUnitStateV2,
@@ -110,6 +111,40 @@ describe('direct Mek V2 state codec', () => {
         );
         expect(serialize(fixture, fromNative.state)).toEqual(serialize(fixture, restored.state));
         expect(fromNative.warnings).toEqual(restored.warnings);
+    });
+
+    it('skips compact slot damage whose slot the loaded design no longer fills', async () => {
+        const fixture = createDirectMekRuntimeFixture();
+        // A design re-read with its rows packed upward can leave a saved coordinate empty.
+        const occupied = new Set([...fixture.index.slots.values()].map(slot =>
+            `${fixture.index.locations.get(slot.locationId)!.code.toLowerCase()}:${slot.slotIndex}`));
+        const empty = Array.from({ length: 12 }, (_, index) => `lt:${index}`).find(key => !occupied.has(key))!;
+        const target = createSavedTargetRef('slot', empty);
+        // Merged or renumbered mounts can also leave a component or ammunition bin the design no longer numbers.
+        const bin = createSavedTargetRef('ammo', 'm999');
+        const component = createSavedTargetRef('component', 'm998');
+        const shield = createSavedTargetRef('component', 'm997');
+        const modular = createSavedTargetRef('component', 'm996');
+        const compact = {
+            ...JSON.parse(JSON.stringify(serialize(fixture))),
+            slotState: [{ target, hits: 1 }],
+            ammoState: [{ target: bin, shotsSpent: 1 }],
+            componentState: [{ target: component, status: 'destroyed' }],
+            pendingCombat: {
+                shieldDamage: [{ target: shield, absorptionDamage: 1 }],
+                modularArmorDamage: [{ target: modular, damage: 1 }],
+            },
+            blueprintReferences: { targets: {} },
+        };
+        const restored = await restoreSerializedCBTUnitV2(compact, fixture.entity, fixture.index, fixture.initialized, 'current');
+        expect(restored.state.slots.size).toBe(0);
+        expect(restored.state.ammo.size).toBe(0);
+        for (const ref of [target, bin, component, shield, modular]) {
+            expect(restored.warnings).toContain(jasmine.objectContaining({ code: 'STATE_SKIPPED', sourceTargetRef: ref }));
+        }
+        // A full save carries its own witness table, so the same gap there is still a corrupt save.
+        await expectAsync(restoreSerializedCBTUnitV2({ ...compact, blueprintReferences: serialize(fixture).blueprintReferences },
+            fixture.entity, fixture.index, fixture.initialized)).toBeRejectedWithError(/missing witness/);
     });
 
     it('restores under the current application rules without persisting a ruleset', async () => {

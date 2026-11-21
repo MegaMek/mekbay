@@ -80,7 +80,7 @@ import {
     type MekTurnStateV2,
 } from './mek-turn-state-v2';
 import { withFiredWeapons } from './cbt-unit-runtime';
-import { canonicalizeMekHeatStateV2, rekeyMekHeatSourceId, rekeyMekHeatSourceMap, type MekHeatStateV2 } from './mek-heat-state-v2';
+import { canonicalizeMekHeatStateV2, rekeyMekHeatSourceId, rekeyMekHeatSourceMap, splitLegacyHeatsinksOff, type MekHeatStateV2 } from './mek-heat-state-v2';
 import {
     deserializeMekMovementPsrStateV2,
     remapMekMovementPsrStateIdsV2,
@@ -232,6 +232,8 @@ interface RestoreAccumulator {
     readonly currentIdentity: UnitUuid;
     readonly current: CurrentTargetIndex;
     readonly sourceTargets: Readonly<Record<SavedTargetRef, SavedStateTargetV2>>;
+    /** Compact storage: `sourceTargets` is the loaded design's own table. */
+    readonly boundToCurrentDesign: boolean;
     readonly translations: Map<SavedTargetRef, SavedTargetRef>;
     readonly warnings: V2StateRestoreWarning[];
     readonly warningKeys: Set<string>;
@@ -488,6 +490,7 @@ export function serializeCBTUnitStateV2(
             ...(heat.pendingOverride === undefined ? {} : { pendingOverride: heat.pendingOverride }),
             ...(heat.pendingOffset === undefined ? {} : { pendingOffset: heat.pendingOffset }),
             ...(heat.heatsinksOff === 0 ? {} : { heatsinksOff: heat.heatsinksOff }),
+            ...(heat.heatsinksOffNext === undefined ? {} : { heatsinksOffNext: heat.heatsinksOffNext }),
         },
         family: { kind: 'mek' },
         ruleChecks,
@@ -754,6 +757,7 @@ export async function restoreSerializedCBTUnitV2(
         currentIdentity: initialized.baselineRef.entity,
         current,
         sourceTargets,
+        boundToCurrentDesign: blueprint === 'current',
         translations: new Map(),
         warnings,
         warningKeys,
@@ -828,7 +832,8 @@ export async function restoreSerializedCBTUnitV2(
     });
 
     forEachUnique(saved.slotState, '$.slotState', entry => {
-        const target = sourceTarget(accumulator, entry.target, 'critical-slot', '$.slotState');
+        const target = designTarget(accumulator, entry.target, 'critical-slot', '$.slotState');
+        if (!target) return warnSkippedState(accumulator, entry.target, 'CRITICAL_SLOT_NOT_FOUND');
         const destroyedTurn = entry.destroyedTurn === undefined
             ? undefined
             : requirePositiveSerializedInteger(entry.destroyedTurn, '$.slotState.destroyedTurn');
@@ -861,7 +866,8 @@ export async function restoreSerializedCBTUnitV2(
     });
 
     forEachUnique(saved.componentState, '$.componentState', entry => {
-        const target = sourceTarget(accumulator, entry.target, ['component', 'intrinsic-system'], '$.componentState');
+        const target = designTarget(accumulator, entry.target, ['component', 'intrinsic-system'], '$.componentState');
+        if (!target) return warnSkippedState(accumulator, entry.target, 'COMPONENT_NOT_FOUND');
         const savedState = translateSavedComponentRuntimeIds(
             deserializeComponentState(entry, '$.componentState'),
             accumulator,
@@ -910,7 +916,8 @@ export async function restoreSerializedCBTUnitV2(
     lowerExtraCoreShields(components, accumulator);
 
     forEachUnique(saved.ammoState, '$.ammoState', entry => {
-        const target = sourceTarget(accumulator, entry.target, 'ammo-source', '$.ammoState');
+        const target = designTarget(accumulator, entry.target, 'ammo-source', '$.ammoState');
+        if (!target) return warnSkippedState(accumulator, entry.target, 'AMMO_SOURCE_NOT_FOUND');
         const requested = requireNonnegativeInteger(entry.shotsSpent, '$.ammoState.shotsSpent');
         const munitionOverride = optionalBoundedText(entry.munitionOverride, '$.ammoState.munitionOverride');
         const hasSpentShots = requested !== 0;
@@ -1105,12 +1112,26 @@ export async function restoreSerializedCBTUnitV2(
         const pendingOffset = saved.heat.pendingOffset === undefined
             ? undefined
             : requireSignedIntegerOrZero(saved.heat.pendingOffset, '$.heat.pendingOffset');
-        const heatsinksOff = saved.heat.heatsinksOff === undefined
+        const savedHeatsinksOff = saved.heat.heatsinksOff === undefined
             ? 0
             : requireNonnegativeInteger(saved.heat.heatsinksOff, '$.heat.heatsinksOff');
-        if (saved.heat.heatsinksOff !== undefined && heatsinksOff === 0) {
+        if (saved.heat.heatsinksOff !== undefined && savedHeatsinksOff === 0) {
             codecFail('INVALID_SERIALIZED_STATE', '$.heat.heatsinksOff', 'sparse heatsinks-off count must be positive');
         }
+        // Saves converted from V1 before prototype doubles switched one by one may count them in the bulk switch.
+        const split = splitLegacyHeatsinksOff(entity, index, components, savedHeatsinksOff);
+        const heatsinksOff = split.heatsinksOff;
+        if (split.unrepresented) {
+            warn(accumulator, {
+                code: 'DAMAGE_CLAMPED',
+                message: 'Saved disabled heat sinks exceed the heat sinks the unit has.',
+                saved: { heatsinksOff: savedHeatsinksOff },
+                current: { heatsinksOff },
+            });
+        }
+        const heatsinksOffNext = saved.heat.heatsinksOffNext === undefined
+            ? undefined
+            : requireNonnegativeInteger(saved.heat.heatsinksOffNext, '$.heat.heatsinksOffNext');
         try {
             heat = canonicalizeMekHeatStateV2({
                 current,
@@ -1118,6 +1139,7 @@ export async function restoreSerializedCBTUnitV2(
                 ...(pendingOverride === undefined ? {} : { pendingOverride }),
                 ...(pendingOffset === undefined ? {} : { pendingOffset }),
                 heatsinksOff,
+                ...(heatsinksOffNext === undefined ? {} : { heatsinksOffNext }),
             });
         } catch (error) {
             codecFail(
@@ -1991,7 +2013,8 @@ function restorePending(
         },
     );
     forEachUnique(pending.slotHits, '$.pendingCombat.slotHits', entry => {
-        const target = sourceTarget(accumulator, entry.target, 'critical-slot', '$.pendingCombat.slotHits');
+        const target = designTarget(accumulator, entry.target, 'critical-slot', '$.pendingCombat.slotHits');
+        if (!target) return warnSkippedState(accumulator, entry.target, 'PENDING_CRITICAL_SLOT_NOT_FOUND');
         const hits = requireSignedNonzeroInteger(entry.hits, '$.pendingCombat.slotHits.hits');
         const current = resolveSlotTarget(target, accumulator);
         if (!current) return warnSkippedState(accumulator, entry.target, 'PENDING_CRITICAL_SLOT_NOT_FOUND');
@@ -2015,7 +2038,8 @@ function restorePending(
         translated(accumulator, entry.target, current.ref, warned);
     });
     forEachUnique(pending.componentStatus, '$.pendingCombat.componentStatus', entry => {
-        const target = sourceTarget(accumulator, entry.target, ['component', 'intrinsic-system'], '$.pendingCombat.componentStatus');
+        const target = designTarget(accumulator, entry.target, ['component', 'intrinsic-system'], '$.pendingCombat.componentStatus');
+        if (!target) return warnSkippedState(accumulator, entry.target, 'PENDING_COMPONENT_NOT_FOUND');
         if (!isEquipmentStatus(entry.status)) {
             codecFail('INVALID_SERIALIZED_STATE', '$.pendingCombat.componentStatus.status', `invalid status ${entry.status}`);
         }
@@ -2034,12 +2058,8 @@ function restorePending(
         translated(accumulator, entry.target, current.ref, rekeyed);
     });
     forEachUnique(pending.shieldDamage, '$.pendingCombat.shieldDamage', entry => {
-        const target = sourceTarget(
-            accumulator,
-            entry.target,
-            'component',
-            '$.pendingCombat.shieldDamage',
-        );
+        const target = designTarget(accumulator, entry.target, 'component', '$.pendingCombat.shieldDamage');
+        if (!target) return warnSkippedState(accumulator, entry.target, 'PENDING_SHIELD_NOT_FOUND');
         const requested = readPendingShieldDamage(entry, '$.pendingCombat.shieldDamage');
         const current = resolveComponentTarget(target, accumulator);
         if (!current || current.target.kind !== 'component' || !current.supportsShieldDamage) {
@@ -2078,12 +2098,8 @@ function restorePending(
         pending.modularArmorDamage,
         '$.pendingCombat.modularArmorDamage',
         entry => {
-            const target = sourceTarget(
-                accumulator,
-                entry.target,
-                'component',
-                '$.pendingCombat.modularArmorDamage',
-            );
+            const target = designTarget(accumulator, entry.target, 'component', '$.pendingCombat.modularArmorDamage');
+            if (!target) return warnSkippedState(accumulator, entry.target, 'PENDING_MODULAR_ARMOR_NOT_FOUND');
             const requested = requireSignedNonzeroInteger(
                 entry.damage,
                 '$.pendingCombat.modularArmorDamage.damage',
@@ -2294,6 +2310,21 @@ function sourceTarget<K extends SavedStateTargetV2['kind']>(
         codecFail('TARGET_KIND_MISMATCH', `${path}.${ref}`, `state cannot consume a ${target.kind} witness`);
     }
     return target as Extract<SavedStateTargetV2, { kind: K }>;
+}
+
+/**
+ * Compact storage names slots, components and ammunition bins as the loaded design numbers them. A design read
+ * differently since (the MTF reader packing a location can merge or renumber mounts) may lack one, whose state is then
+ * skipped rather than failing the whole unit.
+ */
+function designTarget<K extends 'critical-slot' | 'component' | 'intrinsic-system' | 'ammo-source'>(
+    accumulator: RestoreAccumulator,
+    ref: SavedTargetRef,
+    allowed: K | readonly K[],
+    path: string,
+): Extract<SavedStateTargetV2, { kind: K }> | undefined {
+    if (accumulator.boundToCurrentDesign && !accumulator.sourceTargets[ref]) return undefined;
+    return sourceTarget(accumulator, ref, allowed, path);
 }
 
 function warnForSlotOccupantMismatch(

@@ -30,6 +30,30 @@ describe('CBTNonMekUnit', () => {
         expect(ready.query().crewState(seat).effectiveState()).toBe('vacant');
     });
 
+    it('skips saved state of equipment the design no longer has instead of failing the unit', () => {
+        const entity = new TestTankEntity();
+        const uuid = asUnitUuid('019f6767-0dcb-7bb8-992f-aef08202f5e8');
+        entity.uuid.set(uuid);
+        const scenario = { id: 'megamek', ruleset: 'core-2026' as const };
+        const unit = createNonMekUnit(entity, {
+            instanceId: 'edited', uuid, deployment: { id: 'default' }, scenario, initialStateProfileId: 'pristine',
+        });
+        // The design was edited after the save: these mounts are gone.
+        const saved = {
+            ...unit.serialize(),
+            componentState: [{ componentId: 'm999', status: 'destroyed' }],
+            ammoState: [{ componentId: 'm998', shotsSpent: 1 }],
+            pendingCombat: { componentStatus: [{ componentId: 'm997', status: 'destroyed' }] },
+        } as unknown as Parameters<typeof restoreNonMekUnit>[0];
+        const warnings: string[] = [];
+        const restored = restoreNonMekUnit(saved, entity, uuid, scenario, undefined, {
+            onWarning: warning => warnings.push(`${warning.code}: ${warning.message}`),
+        });
+        expect(restored.snapshot().components.size).toBe(0);
+        expect(restored.snapshot().ammo.size).toBe(0);
+        expect(warnings).toEqual(['STATE_SKIPPED: Saved state was skipped: 3 entries name equipment the unit no longer has.']);
+    });
+
     it('preserves explicit vacancies through restore, repair and redeployment for each crewed family', () => {
         for (const entity of [new TestTankEntity(), new TestProtoMekEntity(), new TestAeroSpaceFighterEntity()]) {
             const uuid = asUnitUuid('019f6767-0dcb-7bb8-992f-aef08202f5e8');

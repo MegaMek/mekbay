@@ -9,7 +9,7 @@ export interface EquipmentRowOrderState {
     readonly physical?: readonly number[];
 }
 
-/** Returns no state for canonical order; non-canonical order is one compact permutation. */
+/** Stores the user's order as given: the default order differs from Entity order, so even Entity order is a choice. */
 export function setEquipmentRowOrder(
     current: EquipmentRowOrderState | undefined,
     group: EquipmentRowOrderGroup,
@@ -17,7 +17,7 @@ export function setEquipmentRowOrder(
     rowCount: number,
 ): EquipmentRowOrderState | undefined {
     assertPermutation(permutation, rowCount);
-    const normalized = isIdentity(permutation) ? undefined : Object.freeze([...permutation]);
+    const normalized = Object.freeze([...permutation]);
     if (sameOrder(current?.[group], normalized)) return current;
     const ranged = group === 'ranged' ? normalized : current?.ranged;
     const physical = group === 'physical' ? normalized : current?.physical;
@@ -28,12 +28,16 @@ export function setEquipmentRowOrder(
     });
 }
 
-/** Applies a valid saved permutation; topology drift safely falls back to Entity order. */
+/**
+ * Applies a valid saved permutation of the rows in Entity order; without one (or after topology drift) the rows take
+ * their default order. The permutation always indexes the Entity order, so a new default never moves a saved row.
+ */
 export function applyEquipmentRowOrder<T>(
     rows: readonly T[],
     permutation: readonly number[] | undefined,
+    defaultOrder: (rows: readonly T[]) => T[] = defaultRows => [...defaultRows],
 ): T[] {
-    if (permutation === undefined || !isPermutation(permutation, rows.length)) return [...rows];
+    if (permutation === undefined || !isPermutation(permutation, rows.length)) return defaultOrder(rows);
     return permutation.map(index => rows[index]!);
 }
 
@@ -58,7 +62,7 @@ export function freezeEquipmentRowOrder(
 function normalizePermutation(value: readonly number[] | undefined): readonly number[] | undefined {
     if (value === undefined) return undefined;
     assertPermutation(value, value.length);
-    return isIdentity(value) ? undefined : Object.freeze([...value]);
+    return Object.freeze([...value]);
 }
 
 function assertPermutation(value: readonly number[], rowCount: number): void {
@@ -75,10 +79,6 @@ function isPermutation(value: readonly number[], rowCount: number): boolean {
         seen.add(index);
     }
     return true;
-}
-
-function isIdentity(value: readonly number[]): boolean {
-    return value.every((index, position) => index === position);
 }
 
 function sameOrder(

@@ -132,20 +132,18 @@ describe('ForceEntryPreviewDialogComponent', () => {
         const reserves = scroll.querySelector('force-reserves-preview')!;
 
         expect(scroll.lastElementChild).toBe(reserves);
-        expect(reserves.querySelector('.group-name')?.textContent).toBe('Reserves');
-        expect(reserves.querySelector('.reserve-count')?.textContent?.trim()).toBe('3');
-        expect(reserves.querySelector('.reserve-count')?.getAttribute('aria-label')).toBe('3 people in reserve');
+        expect(reserves.textContent?.trim()).toBe('3 in reserve');
         expect(reserves.querySelectorAll('img').length).toBe(1);
         expect(reserves.querySelectorAll('button, input, unit-icon').length).toBe(0);
         expect(scroll.querySelectorAll('.unit-square').length).toBe(2);
         expect(force.groups.length).toBe(1);
     });
 
-    it('shows reserves for a force with no units and uses a singular accessible label', async () => {
+    it('shows reserves for a force with no units, with a decorative icon', async () => {
         const { fixture } = await render(createForceEntry({ reserveCount: 1 }));
         const reserves = fixture.nativeElement.querySelector('force-reserves-preview') as HTMLElement;
 
-        expect(reserves.querySelector('.reserve-count')?.getAttribute('aria-label')).toBe('1 person in reserve');
+        expect(reserves.textContent?.trim()).toBe('1 in reserve');
         expect(reserves.querySelector('img')?.getAttribute('alt')).toBe('');
         expect(fixture.nativeElement.querySelectorAll('.unit-square').length).toBe(0);
     });

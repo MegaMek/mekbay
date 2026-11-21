@@ -27,6 +27,7 @@ describe('manual BV sheet authority', () => {
                     initialStateProfile: { profileId: 'pristine-non-mek' },
                 }, entity, ruleset);
                 const force = {
+                    getEquipmentPanelSnapshot: () => null,
                     getUnitSnapshot: () => ({ entity, ruleset }),
                     getNonMekRecordSheetSnapshot: () => ({
                         ...projectNonMekRecordSheet(entity, runtime.getIndex(), runtime.snapshot(), ruleset, runtime.query(),

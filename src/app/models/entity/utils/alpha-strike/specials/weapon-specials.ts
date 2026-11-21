@@ -256,7 +256,7 @@ function sumSpecialDamage(
     );
     for (let range = 0; range < 4; range++) {
       const mmlMultiplier = mmlDamageMultiplier(weapon, range as AlphaStrikeRangeIndex, kind);
-      const linked = kind === 'TOR' ? entity.getLinkingMount(mount)?.equipment : undefined;
+      const linked = kind === 'TOR' ? entity.getLinkingMounts(mount).find(source => isArtemisEquipment(source.equipment))?.equipment : undefined;
       const damage = baseBattleForceDamageForWeapon(weapon, range as AlphaStrikeRangeIndex, linked);
       result[range] += damage * multiplier * mmlMultiplier;
     }
@@ -265,7 +265,7 @@ function sumSpecialDamage(
 }
 
 function hasArtemis(entity: BaseEntity, mount: EntityMountedWeapon): boolean {
-  const linked = entity.getLinkingMount(mount)?.equipment;
+  const linked = entity.getLinkingMounts(mount).find(source => isArtemisEquipment(source.equipment))?.equipment;
   return isArtemisEquipment(linked);
 }
 

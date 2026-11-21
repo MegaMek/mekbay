@@ -6,7 +6,6 @@ import type { CBTUnitCommand } from '../models/runtime/unit-command';
 
 import type { AutomationCheck,AutomationCheckResolution } from '../models/automation-check.model';
 import type { AutomationReviewEvent } from '../models/automation-review.model';
-import { isCaseEquipment } from '../models/case-equipment.model';
 import type { CBTForce } from '../models/cbt-force.model';
 import type { CBTForceUnitCommandDispatch,CBTForceUnitCommandResult } from '../models/cbt-force.types';
 import {
@@ -19,6 +18,7 @@ import { isDroneOperatingSystemEquipment } from '../models/drone-operating-syste
 import type { BaseEntity } from '../models/entity/base-entity';
 import type { AeroEntity } from '../models/entity/entities/aero/aero-entity';
 import type { CrewPositionId, LocationId } from '../models/entity/entity-identifiers';
+import { asComponentId } from '../models/entity/entity-identifiers';
 import { isAeroEntity, isProtoMekEntity, isVehicleEntity } from '../models/entity/utils/entity-type-guards';
 import { resolveArmorDamage, rifleHitDamage, type DamageSource } from '../models/rules/armor-damage-rules';
 import {
@@ -876,11 +876,15 @@ export class DirectNonMekAutomationService {
             || snapshot.query.componentStatus(ammo.componentId, 'committed') !== 'available') {
             return snapshot !== null;
         }
-        const caseProtected = [...snapshot.index.components.values()].some(component =>
-            isCaseEquipment(component.mount.equipment)
-            && snapshot!.query.componentStatus(component.id, 'committed') === 'available');
+        const ammoMount = snapshot.index.components.get(ammo.componentId)?.mount;
+        const protection = ammoMount === undefined ? null : snapshot.entity.ammoCaseProtection(ammoMount.location, mount =>
+            snapshot!.query.componentStatus(asComponentId(mount.mountId), 'committed') === 'available');
         const rawDamage = ammo.shots * ammo.damagePerShot;
-        const siDamage = Math.max(1, Math.floor(rawDamage / (caseProtected ? 20 : 10)));
+        // TW p.161: damage / 10 to SI, / 20 with CASE (round down, minimum 1). TO:AUE p.111: "For fighters, CASE II
+        // reduces ammunition explosion effects against such units ... to 1 point against the unit's SI."
+        const siDamage = protection === 'case-ii'
+            ? 1
+            : Math.max(1, Math.floor(rawDamage / (protection !== null ? 20 : 10)));
 
         const destroyed = await dispatch({
             type: 'set-component-status',

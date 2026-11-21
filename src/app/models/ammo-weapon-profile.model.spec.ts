@@ -6,6 +6,7 @@ import { AmmoEquipment } from './equipment.model';
 import {
     ATM_EXTENDED_RANGE_PROFILE,
     ATM_HIGH_EXPLOSIVE_PROFILE,
+    ATM_IMPROVED_MAGNETIC_PULSE_PROFILE,
     ATM_STANDARD_PROFILE,
     MML_LRM_PROFILE,
     MML_SRM_PROFILE,
@@ -45,7 +46,17 @@ describe('ammo weapon profiles', () => {
         expect(resolveAmmoWeaponProfile(ammo('Standard', 'ATM', { munitionType: ['M_STANDARD'] }))).toBe(ATM_STANDARD_PROFILE);
         expect(resolveAmmoWeaponProfile(ammo('ER', 'ATM', { munitionType: ['M_EXTENDED_RANGE'] }))).toBe(ATM_EXTENDED_RANGE_PROFILE);
         expect(resolveAmmoWeaponProfile(ammo('HE', 'IATM', { munitionType: ['M_HIGH_EXPLOSIVE'] }))).toBe(ATM_HIGH_EXPLOSIVE_PROFILE);
-        expect(resolveAmmoWeaponProfile(ammo('IMP', 'IATM', { munitionType: ['M_IATM_IMP'] }))).toBe(ATM_HIGH_EXPLOSIVE_PROFILE);
+    });
+
+    it('gives Improved Magnetic Pulse missiles their own profile with the High Explosive range (IO:AE p. 61)', () => {
+        const profile = resolveAmmoWeaponProfile(ammo('IMP', 'IATM', { munitionType: ['M_IATM_IMP'] }));
+        expect(profile).toBe(ATM_IMPROVED_MAGNETIC_PULSE_PROFILE);
+        expect(profile).not.toBe(ATM_HIGH_EXPLOSIVE_PROFILE);
+        expect(profile).toEqual(jasmine.objectContaining({
+            minimumRange: ATM_HIGH_EXPLOSIVE_PROFILE.minimumRange,
+            ranges: ATM_HIGH_EXPLOSIVE_PROFILE.ranges,
+            maximumAerospaceBracket: ATM_HIGH_EXPLOSIVE_PROFILE.maximumAerospaceBracket,
+        }));
     });
 
     it('does not invent profiles for unsupported or unclassified ammunition', () => {

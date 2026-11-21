@@ -3,14 +3,20 @@
 import { RECORD_SHEET_CAP_HEIGHT, RECORD_SHEET_FONT } from './record-sheet-typography';
 
 import { ATM_AMMO_PROFILES, MML_AMMO_PROFILES, type AmmoWeaponProfile } from '../../models/ammo-weapon-profile.model';
-import { isCaseEquipment } from '../../models/case-equipment.model';
+import { artemisKind, isArtemisEquipment, type ArtemisKind } from '../../models/artemis-equipment.model';
+import { aerospaceMineDispenserCapacity } from '../../models/aerospace-support-equipment.model';
+import { sensorEquipmentKind } from '../../models/sensor-equipment.model';
+import { isApolloEquipment } from '../../models/apollo-mode.model';
+import { aerospaceAttackValues, type AerospaceAttackValues } from '../aerospace-range.util';
+import { isMekEntity } from '../../models/entity/utils/entity-type-guards';
+import type { RecordSheetAmmoSection } from './record-sheet-ammo-rendering';
 import type { BaseEntity, HeatDissipationBoost } from '../../models/entity/base-entity';
 import type { CBTRuleset } from '../../models/cbt-ruleset.model';
 import { asComponentId } from '../../models/entity/entity-identifiers';
 import type { EntityDamageLocation, EntityMountedEquipment, EntityMountedWeapon, EntityTechBase } from '../../models/entity/types';
-import type { WeaponEquipment } from '../../models/equipment.model';
+import type { Equipment, WeaponEquipment } from '../../models/equipment.model';
 import { isPpcCapacitorEquipment, PPC_CAPACITOR_HEAT_BONUS } from '../../models/ppc-capacitor.model';
-import { laserInsulatorAdjustedHeat } from '../../models/laser-insulator.model';
+import { isLaserInsulatorEquipment, laserInsulatorAdjustedHeat } from '../../models/laser-insulator.model';
 import { isRiscLaserPulseModule, RISC_LASER_PULSE_HEAT_BONUS } from '../../models/risc-laser-mode.model';
 import { isWeaponEnhancementEquipment } from '../../models/weapon-enhancement.model';
 import { ppcCapacitorWeaponDamage, ppcCapacitorWeaponTypes } from '../../models/runtime/component-ppc-capacitor';
@@ -40,6 +46,7 @@ import {
 } from './record-sheet-layout';
 import { SvgFrameUtil } from './svg-frame.util';
 import { adoptRecordSheetInventoryBlocks, recordSheetWeaponMountKey } from './record-sheet-weapon-grouping';
+import { recordSheetInventoryMountName } from './record-sheet-inventory-equipment';
 import { measureSvgTextCanvas } from '../svg-text.util';
 import recordSheetIntrinsicStyle from './styles/record-sheet-intrinsic.css' with { loader: 'text' };
 
@@ -342,22 +349,31 @@ export function recordSheetHeatText(heat: number): string {
   return heat > 0 ? String(heat) : '—';
 }
 
-/** The reference inventory sorts ground ranges descending, including aerospace units. */
+/**
+ * The inventory's default weapon order, for the sheet and the weapons panel alike, is MegaMek's: long, then medium,
+ * then short range, then heat, all descending, an ATM or MML ranked by its longest-range ammo. Identical weapons put
+ * the front one first, and a vehicle's body-mounted weapons follow its others, as MegaMek loads them.
+ */
 export function recordSheetInventoryWeaponMounts(entity: BaseEntity): readonly EntityMountedWeapon[] {
   return [...entity.rangedWeapons()].sort((left, right) => {
     if (left.equipment.id === right.equipment.id) {
       if (left.rearMounted !== right.rearMounted) return left.rearMounted ? 1 : -1;
-      return 0;
+    } else {
+      const leftRanges = recordSheetSortRanges(left.equipment);
+      const rightRanges = recordSheetSortRanges(right.equipment);
+      for (const index of [2, 1, 0]) {
+        const delta = (rightRanges[index] ?? 0) - (leftRanges[index] ?? 0);
+        if (delta !== 0) return delta;
+      }
+      if (left.equipment.heat !== right.equipment.heat) return right.equipment.heat - left.equipment.heat;
     }
-    const leftRanges = recordSheetSortRanges(left.equipment);
-    const rightRanges = recordSheetSortRanges(right.equipment);
-    const rangeCount = Math.max(leftRanges.length, rightRanges.length);
-    for (let index = 0; index < rangeCount; index++) {
-      const delta = (rightRanges[index] ?? 0) - (leftRanges[index] ?? 0);
-      if (delta !== 0) return delta;
-    }
-    return right.equipment.heat - left.equipment.heat;
+    return recordSheetBodyLast(left, right);
   });
+}
+
+/** MegaMek loads a vehicle's body-mounted equipment after its other locations, so its inventory lists it last. */
+export function recordSheetBodyLast(left: EntityMountedEquipment, right: EntityMountedEquipment): number {
+  return Number(left.location === 'Body') - Number(right.location === 'Body');
 }
 
 /** One row per weapon mount; layouts count identical ones per row with `groupRecordSheetWeaponRows`. */
@@ -370,17 +386,19 @@ export function recordSheetInventoryWeapons(entity: BaseEntity): readonly {
   readonly ranges: readonly string[];
   readonly componentIds: readonly string[];
   readonly mountKey: string;
-  readonly linkedEquipment: RecordSheetLinkedEquipment | null;
+  readonly linkedEquipment: readonly RecordSheetLinkedEquipment[];
   readonly alternativeModes: readonly RecordSheetInventoryAlternativeMode[];
+  /** The aerospace attack values, which an aerospace sheet prints instead of the ground columns; null when modes do. */
+  readonly aerospace: AerospaceAttackValues | null;
 }[] {
   return Object.freeze(recordSheetInventoryWeaponMounts(entity).map((mount) => {
-    const ammoModes = recordSheetAlternativeModes(mount.equipment);
-    const enhancement = entity.getLinkingMount(mount);
     const semanticDamage = defaultRecordSheetWeaponDamageText(mount.equipment, entity.getEquipmentRegistry());
+    const { heat, insulated, artemis, linkedEquipment } = recordSheetWeaponAttachments(entity, mount, semanticDamage);
+    const ammoModes = recordSheetAlternativeModes(mount.equipment, artemis);
     return Object.freeze({
-      name: mount.displayName(),
-      location: formatEquipmentLocationCodes(mount.getOccupiedLocations()),
-      heat: recordSheetHeatText(laserInsulatorAdjustedHeat(mount.equipment.heat, enhancement?.equipment, mount.equipment)),
+      name: recordSheetInventoryMountName(entity, mount),
+      location: recordSheetMountLocationCodes(mount),
+      heat: recordSheetInsulatedHeatText(heat, insulated),
       damage: ammoModes.length > 0 ? (semanticDamage.match(/\[[^\]]+\]\s*$/u)?.[0] ?? '') : semanticDamage,
       minimumRange:
         ammoModes.length > 0 ? '' : mount.equipment.minimumRange > 0 ? String(mount.equipment.minimumRange) : '—',
@@ -390,10 +408,39 @@ export function recordSheetInventoryWeapons(entity: BaseEntity): readonly {
           : recordSheetRangeTexts(recordSheetWeaponRanges(mount.equipment).slice(0, 3)),
       componentIds: Object.freeze([mount.mountId]),
       mountKey: recordSheetWeaponMountKey(mount),
-      linkedEquipment: recordSheetLinkedEquipment(entity, mount, enhancement, semanticDamage),
+      linkedEquipment,
       alternativeModes: ammoModes,
+      aerospace: ammoModes.length > 0 ? null : aerospaceAttackValues(mount.equipment, null, artemis),
     });
   }));
+}
+
+/** A mount's printed location: its own location first, then the others it spans, as MegaMek lists a split weapon (LT/LA). */
+export function recordSheetMountLocationCodes(mount: EntityMountedEquipment): string {
+  return formatEquipmentLocationCodes(mount.getOccupiedLocationsMainFirst());
+}
+
+/** An insulated laser's heat is marked, as on MegaMekLab sheets. */
+function recordSheetInsulatedHeatText(heat: number, insulated: boolean): string {
+  return `${recordSheetHeatText(heat)}${insulated ? '*' : ''}`;
+}
+
+/** The Artemis system linked to a weapon; a sheet prints the values it gives when firing its own missiles. */
+export function recordSheetWeaponArtemis(entity: BaseEntity, mount: EntityMountedWeapon): ArtemisKind | null {
+  return artemisKind(entity.getLinkingMounts(mount).find(source => isArtemisEquipment(source.equipment))?.equipment);
+}
+
+/** Standard-mode heat and a separate printable line for each installed weapon attachment. */
+export function recordSheetWeaponAttachments(entity: BaseEntity, mount: EntityMountedWeapon, semanticDamage?: string) {
+    const attachments = entity.getLinkingMounts(mount).filter(source => isWeaponEnhancementEquipment(source.equipment))
+      .sort((left, right) => left.equipmentId.localeCompare(right.equipmentId));
+    const insulated = attachments.some(source => isLaserInsulatorEquipment(source.equipment));
+    return {
+      heat: laserInsulatorAdjustedHeat(mount.equipment.heat, insulated),
+      insulated,
+      artemis: recordSheetWeaponArtemis(entity, mount),
+      linkedEquipment: attachments.map(source => recordSheetLinkedEquipment(entity, mount, source, semanticDamage, insulated)),
+    };
 }
 
 export interface RecordSheetInventoryAlternativeMode {
@@ -402,6 +449,7 @@ export interface RecordSheetInventoryAlternativeMode {
   readonly damage: string;
   readonly minimumRange: string;
   readonly ranges: readonly [string, string, string];
+  readonly aerospace: AerospaceAttackValues;
 }
 
 /** The weapon enhancement printed on its own line under the weapon it is linked to. */
@@ -421,13 +469,13 @@ export interface RecordSheetLinkedEquipment {
 function recordSheetLinkedEquipment(
   entity: BaseEntity,
   mount: EntityMountedWeapon,
-  linking: EntityMountedEquipment | undefined,
-  semanticDamage: string,
-): RecordSheetLinkedEquipment | null {
-  const enhancement = linking?.equipment;
-  if (!linking || !enhancement || !isWeaponEnhancementEquipment(enhancement)) return null;
+  linking: EntityMountedEquipment,
+  semanticDamage: string | undefined,
+  insulated: boolean,
+): RecordSheetLinkedEquipment {
+  const enhancement = linking.equipment!;
   const weapon = mount.equipment;
-  const line = { componentIds: Object.freeze([linking.mountId]), name: enhancement.shortName || enhancement.name } as const;
+  const line = { componentIds: Object.freeze([linking.mountId]), name: recordSheetEnhancementLabel(enhancement) } as const;
   if (isPpcCapacitorEquipment(enhancement)) {
     const damage = resolveInventoryControlDamageText(
       { componentId: asComponentId(mount.mountId), physical: false, weapon },
@@ -442,13 +490,28 @@ function recordSheetLinkedEquipment(
     return Object.freeze({
       ...line,
       heat: String(weapon.heat + PPC_CAPACITOR_HEAT_BONUS),
-      damage: formatRecordSheetWeaponDamageText(weapon, damage ?? semanticDamage),
+      damage: formatRecordSheetWeaponDamageText(weapon, damage ?? semanticDamage ?? defaultRecordSheetWeaponDamageText(weapon, entity.getEquipmentRegistry())),
     });
   }
   if (isRiscLaserPulseModule(enhancement)) {
-    return Object.freeze({ ...line, heat: String(weapon.heat + RISC_LASER_PULSE_HEAT_BONUS), damage: '' });
+    return Object.freeze({
+      ...line, heat: recordSheetInsulatedHeatText(laserInsulatorAdjustedHeat(weapon.heat + RISC_LASER_PULSE_HEAT_BONUS, insulated), insulated),
+      damage: '',
+    });
   }
-  return Object.freeze({ ...line, heat: '—', damage: '' });
+  // An enhancement without a firing profile of its own leaves the heat cell empty, as MegaMekLab does
+  return Object.freeze({ ...line, heat: '', damage: '' });
+}
+
+/** MegaMekLab's label for a weapon enhancement's line. */
+function recordSheetEnhancementLabel(enhancement: Equipment): string {
+  const artemis = artemisKind(enhancement);
+  if (artemis) return { iv: 'w/Artemis IV', v: 'w/Artemis V', prototype: 'w/Prototype Artemis IV' }[artemis];
+  if (isApolloEquipment(enhancement)) return 'w/Apollo';
+  if (isPpcCapacitorEquipment(enhancement)) return 'w/Capacitor';
+  if (isRiscLaserPulseModule(enhancement)) return 'w/RISC Laser Module';
+  if (isLaserInsulatorEquipment(enhancement)) return 'w/Laser Insulator';
+  return `w/${enhancement.shortName || enhancement.name}`;
 }
 
 function recordSheetSortRanges(weapon: WeaponEquipment): readonly number[] {
@@ -466,11 +529,12 @@ function recordSheetWeaponRanges(weapon: WeaponEquipment): readonly number[] {
   return weapon.ammoType.includes('TORPEDO') ? weapon.weapon.wRanges : weapon.ranges;
 }
 
-function recordSheetAlternativeModes(weapon: WeaponEquipment): readonly RecordSheetInventoryAlternativeMode[] {
+function recordSheetAlternativeModes(weapon: WeaponEquipment, artemis: ArtemisKind | null): readonly RecordSheetInventoryAlternativeMode[] {
   return Object.freeze(
     recordSheetAmmoProfiles(weapon).map((profile) =>
       Object.freeze({
         name: profile.displayName,
+        aerospace: aerospaceAttackValues(weapon, profile, artemis),
         damage: recordSheetModeDamage(profile),
         minimumRange: profile.minimumRange > 0 ? String(profile.minimumRange) : '—',
         ranges: Object.freeze(profile.ranges.slice(0, 3).map((range) => String(range))) as readonly [
@@ -493,6 +557,7 @@ function recordSheetModeDamage(profile: AmmoWeaponProfile): string {
   switch (profile.id) {
     case 'mml-lrm':
     case 'atm-extended-range':
+    case 'atm-improved-magnetic-pulse':
       return '1/Msl';
     case 'mml-srm':
     case 'atm-standard':
@@ -502,18 +567,54 @@ function recordSheetModeDamage(profile: AmmoWeaponProfile): string {
   }
 }
 
-export function recordSheetAmmoProfile(entity: BaseEntity): readonly string[] {
-  return recordSheetAmmoEntries(
-    entity.equipment().flatMap((mount) => {
-      // Coolant pods are catalogued as ammunition but print as equipment, as MegaMekLab does.
-      if (isCoolantPodEquipment(mount.equipment)) return [];
-      const shots = mount.getAmmoShots();
-      // MegaMekLab keys ammo by its type's short name, as the live profile does; placement modifiers such as
-      // a battle armor "(Body)" mount never print.
-      const name = mount.equipment ? mount.equipment.shortName || mount.equipment.name : mount.displayName();
-      return shots === undefined ? [] : [[name, shots] as const];
-    }),
-  );
+/**
+ * The sheet's ammo totals: unprotected ammo, then the ammo CASE protects, then the ammo CASE II protects, each group on
+ * lines of its own. Mek sheets show CASE in the critical slots instead, so they print one group, as MegaMekLab does.
+ */
+export function recordSheetAmmoProfile(entity: BaseEntity): readonly RecordSheetAmmoSection[] {
+  return recordSheetAmmoSections(entity.equipment().flatMap(mount => {
+    const shots = mount.getAmmoShots() ?? recordSheetDispenserPayload(mount.equipment);
+    // Coolant pods are catalogued as ammunition but print as equipment, as MegaMekLab does.
+    if (shots === undefined || isCoolantPodEquipment(mount.equipment)) return [];
+    const protection = isMekEntity(entity) ? null : entity.ammoCaseProtection(mount.location);
+    // MegaMekLab keys ammo by its type's short name, as the live profile does; placement modifiers such as
+    // a battle armor "(Body)" mount never print.
+    const name = mount.equipment ? mount.equipment.shortName || mount.equipment.name : mount.displayName();
+    return [{
+      componentId: mount.mountId,
+      prefix: protection === 'case-ii' ? 'Ammo (CASE II):' : protection ? 'Ammo (CASE):' : 'Ammo:',
+      name,
+      shots,
+    }];
+  }));
+}
+
+/**
+ * The mines or sensors a dispenser carries, which the ammo line prints with the ammo: 2 mines per mine dispenser,
+ * vehicular, battle armor or space (TO:AUE pp. 137-138, 220), 30 sensors per remote sensor dispenser, 6 per battle
+ * armor one (TM pp. 236, 268).
+ */
+export function recordSheetDispenserPayload(equipment: Equipment | null | undefined): number | undefined {
+  const mines = aerospaceMineDispenserCapacity(equipment);
+  if (mines !== null) return mines;
+  if (sensorEquipmentKind(equipment) === 'sensor-dispenser') return equipment!.hasFlag('F_BA_EQUIPMENT') ? 6 : 30;
+  return undefined;
+}
+
+const RECORD_SHEET_AMMO_PREFIXES = ['Ammo:', 'Ammo (CASE):', 'Ammo (CASE II):'];
+
+/** Ammo bins grouped under their prefixes in print order, the generated and the live sheet alike. */
+export function recordSheetAmmoSections(
+  bins: readonly { readonly componentId: string; readonly prefix: string; readonly name: string; readonly shots: number }[],
+): readonly RecordSheetAmmoSection[] {
+  return Object.freeze(RECORD_SHEET_AMMO_PREFIXES.flatMap(prefix => {
+    const section = bins.filter(bin => bin.prefix === prefix);
+    return section.length === 0 ? [] : [Object.freeze({
+      prefix,
+      entries: recordSheetAmmoEntries(section.map(bin => [bin.name, bin.shots] as const)),
+      componentIds: Object.freeze(section.map(bin => bin.componentId)),
+    })];
+  }));
 }
 
 /** Printed and live ammo profiles: shots summed per printed ammo name, in MegaMekLab's (TreeMap) name order. */
@@ -532,10 +633,6 @@ export function recordSheetAmmoEntries(
   );
 }
 
-/** MegaMekLab marks CASE-protected ammunition on non-Mek sheets. */
-export function recordSheetNonMekAmmoPrefix(entity: BaseEntity): string {
-  return entity.equipment().some((mount) => isCaseEquipment(mount.equipment)) ? 'Ammo (CASE):' : 'Ammo:';
-}
 
 export function drawIdentityPanel(svg: SVGSVGElement, entity: BaseEntity, box: Box, ruleset: CBTRuleset): void {
   const group = addFrame(svg, entity.entityType.toUpperCase(), box);
@@ -564,29 +661,6 @@ export function drawIdentityPanel(svg: SVGSVGElement, entity: BaseEntity, box: B
     if (index < lines.length - 1)
       addLine(group, content.x - box.x, y + 3, content.x - box.x + content.width, y + 3, '#ddd', 0.5);
   });
-  appendLegacyIdentityAnchors(group, entity, box, ruleset);
-}
-
-export function appendLegacyIdentityAnchors(group: SVGGElement, entity: BaseEntity, box: Box, ruleset: CBTRuleset): void {
-  const values: Readonly<Record<string, string>> = {
-    type: entity.displayName(),
-    unitName: entity.displayName(),
-    tonnage: formatNumber(entity.tonnage()),
-    year: String(entity.year()),
-    techBase: formatTechBase(entity.techBase(), entity.mixedTech()),
-    role: entity.role(),
-    movementType: entity.getMotiveTypeAsString() ?? entity.entityType,
-    mpWalk: String(entity.walkMP()),
-    mpRun: String(entity.runMP()),
-    mpJump: String(entity.jumpMP()),
-    bv: formatWholeNumber(entity.battleValue(ruleset)),
-  };
-  Object.entries(values).forEach(([id, value]) => {
-    if (group.ownerSVGElement?.getElementById(id)) return;
-    const anchor = addText(group, value, box.width - 3, box.height - 3, { size: 0.1, fill: '#fff' });
-    anchor.id = id;
-    anchor.setAttribute('aria-hidden', 'true');
-  });
 }
 
 /**
@@ -599,7 +673,7 @@ export function appendBattleValue(
   position: { readonly x: number; readonly valueX: number; readonly y: number; readonly size: number; readonly maxWidth?: number },
   suffix = '',
 ): SVGTextElement {
-  addTemplateCaption(parent, 'BV:', position.x, position.y, { size: position.size, weight: 700 });
+  addText(parent, 'BV:', position.x, position.y, { size: position.size, weight: 700 });
   const value = addText(parent, `${formatWholeNumber(battleValue)}${suffix}`, position.valueX, position.y, {
     size: position.size,
     maxWidth: position.maxWidth,
@@ -609,48 +683,15 @@ export function appendBattleValue(
   return value;
 }
 
-/**
- * MegaMekLab template captions keep a fixed `textLength`; these are those widths per point of type,
- * taken from its record-sheet templates, so every template and type size prints them alike.
- */
-const TEMPLATE_CAPTION_EMS: Readonly<Record<string, number>> = {
-  'Type:': 21.401 / 9.67,
-  'Name:': 21.471 / 7.7,
-  'Tonnage:': 29.785 / 7.7,
-  'Tech Base:': 35.949 / 7.7,
-  'Role:': 16.16 / 7.7,
-  'Engine Type:': 40.915 / 7.7,
-  'Movement Type:': 54.285 / 7.7,
-  'Safe Thrust:': 38.723 / 7.7,
-  'Maximum Thrust:': 58.411 / 7.7,
-  'Weapons & Equipment Inventory': 121.508 / 8.6,
-  'BV:': 14.117 / 9.67,
-  Heat: 13.53 / 6.76,
-  'Level*': 18.187 / 6.76,
-  Effects: 19.001 / 6.76,
-};
-
-/** A template caption at MegaMekLab's width for its type size (plain text when the template has none). */
-export function addTemplateCaption(
-  parent: SVGElement,
-  caption: string,
-  x: number,
-  y: number,
-  options: Omit<NonNullable<Parameters<typeof addText>[4]>, 'textLength' | 'maxWidth'> & { readonly size: number },
-): SVGTextElement {
-  const ems = TEMPLATE_CAPTION_EMS[caption];
-  return addText(parent, caption, x, y, { ...options, ...(ems === undefined ? {} : { textLength: ems * options.size }) });
-}
-
-/** The data panel's "Type:" row; every template sets its value 26.229 points after the caption. */
+/** The data panel's "Type:" row, its value a space after the caption. */
 export function appendDataPanelType(
   group: SVGGElement,
   entity: BaseEntity,
   { x, y, font }: { readonly x: (value: number) => number; readonly y: (value: number) => number; readonly font: (value: number) => number },
   captionX: number,
 ): SVGTextElement {
-  addTemplateCaption(group, 'Type:', x(captionX), y(28), { size: font(9.67), weight: 700 });
-  const type = addText(group, entity.displayName(), x(captionX + 26.229), y(28), {
+  const caption = condenseDataPanelCaption(addText(group, 'Type:', x(captionX), y(28), { size: font(9.67), weight: 700 }));
+  const type = addText(group, entity.displayName(), valueXAfterCaptions([caption]), y(28), {
     size: font(9.67),
     weight: 700,
     maxWidth: x(187),
@@ -668,35 +709,68 @@ export interface DataPanelFact {
   readonly field?: string;
   /** Defaults to the templates' right-hand fact column. */
   readonly labelX?: number;
+  /** The template's value column: rows sharing it align their values. */
   readonly valueX?: number;
   readonly maxWidth?: number;
-  readonly anchor?: 'middle';
   readonly weightUnit?: 'kg';
+  /** Set on the caption and the value. */
+  readonly className?: string;
 }
 
-/** Data-panel fact rows at MegaMekLab geometry: template caption widths, values at 158.24 unless placed. */
+/**
+ * MegaMekLab condenses its data-panel captions; every caption and heading condenses alike, as far as the Mek's
+ * "Engine Type:" needs to fit its template column.
+ */
+export const DATA_PANEL_CAPTION_SQUEEZE = 0.88;
+
+/** Condenses a data-panel caption or heading to `squeeze` of its natural width. */
+export function condenseDataPanelCaption(caption: SVGTextElement, squeeze: number = DATA_PANEL_CAPTION_SQUEEZE): SVGTextElement {
+  caption.setAttribute('textLength', formatNumber(measureSvgTextCanvas(caption, caption.textContent ?? '') * squeeze));
+  caption.setAttribute('lengthAdjust', 'spacingAndGlyphs');
+  return caption;
+}
+
+/** Where values start after their captions: `gap` (a space by default) past the widest caption's drawn end. */
+export function valueXAfterCaptions(captions: readonly SVGTextElement[], gap?: number): number {
+  return Math.max(...captions.map(caption => Number(caption.getAttribute('x'))
+    + (Number(caption.getAttribute('textLength')) || measureSvgTextCanvas(caption, caption.textContent ?? ''))
+    + (gap ?? measureSvgTextCanvas(caption, ' '))));
+}
+
+/**
+ * Data-panel fact rows, their captions condensed alike. Rows sharing a value column start their values a space after
+ * the widest of their captions.
+ */
 export function appendDataPanelFacts(
   group: SVGGElement,
   facts: readonly DataPanelFact[],
   { x, y, font }: { readonly x: (value: number) => number; readonly y: (value: number) => number; readonly font: (value: number) => number },
 ): void {
   const size = font(RECORD_SHEET_FONT.body);
-  for (const fact of facts) {
-    addTemplateCaption(group, fact.label, x(fact.labelX ?? 115.7), y(fact.baseline), { size, weight: 700 });
-    const value = addText(group, fact.value, x(fact.valueX ?? 158.24), y(fact.baseline), {
+  const rows = facts.map(fact => {
+    const caption = condenseDataPanelCaption(addText(group, fact.label, x(fact.labelX ?? 115.7), y(fact.baseline), {
+      size, weight: 700, class: fact.className,
+    }));
+    const value = addText(group, fact.value, 0, y(fact.baseline), {
       size,
-      anchor: fact.anchor,
       maxWidth: x(fact.maxWidth ?? 58),
+      class: fact.className,
     });
     if (fact.id) value.id = fact.id;
     if (fact.field) value.setAttribute('data-mekbay-field', fact.field);
     if (fact.weightUnit) value.setAttribute('data-mekbay-weight-unit', fact.weightUnit);
+    return { column: `${fact.labelX ?? 115.7} ${fact.valueX ?? 158.24}`, caption, value };
+  });
+  for (const column of new Set(rows.map(row => row.column))) {
+    const shared = rows.filter(row => row.column === column);
+    const valueX = formatNumber(valueXAfterCaptions(shared.map(row => row.caption)));
+    shared.forEach(row => row.value.setAttribute('x', valueX));
   }
 }
 
 /** Every unit's crew values sit the same gap after their caption's natural width; captions are never squeezed. */
 export function crewSkillValueX(caption: SVGTextElement, fontScale = 1): number {
-  return Number(caption.getAttribute('x')) + measureSvgTextCanvas(caption, caption.textContent ?? '') + 3 * fontScale;
+  return valueXAfterCaptions([caption], 3 * fontScale);
 }
 
 /** Crew values share a readable size, vertically centred on their caption rather than sharing its baseline. */
@@ -1002,7 +1076,6 @@ interface DiagramHeadingOptions {
   readonly subtitleY?: number;
   readonly subtitleFontSize?: number;
   readonly subtitleId?: string;
-  readonly subtitleHorizontalScale?: number;
 }
 
 export function addDiagramHeading(
@@ -1046,13 +1119,6 @@ export function addDiagramHeading(
     anchor: 'middle',
     maxWidth: ribbonWidth - 10,
   });
-  if (options.subtitleHorizontalScale !== undefined) {
-    const anchorX = options.subtitleX ?? width / 2;
-    subtitleText.setAttribute(
-      'transform',
-      `translate(${formatNumber(anchorX)} 0) scale(${formatNumber(options.subtitleHorizontalScale)} 1) translate(${formatNumber(-anchorX)} 0)`,
-    );
-  }
   if (options.subtitleId) subtitleText.id = options.subtitleId;
 }
 
@@ -1165,9 +1231,9 @@ export function appendHeatEffectRows(
 ): void {
   const size = font(RECORD_SHEET_FONT.inventory);
   const [heatBaseline, levelBaseline] = layout.headingBaselines;
-  addTemplateCaption(group, 'Heat', x(15), y(heatBaseline), { size, anchor: 'middle' });
-  addTemplateCaption(group, 'Level*', x(15), y(levelBaseline), { size, anchor: 'middle' });
-  addTemplateCaption(group, 'Effects', x(layout.effectsX), y(levelBaseline), { size, anchor: 'middle' });
+  addText(group, 'Heat', x(15), y(heatBaseline), { size, anchor: 'middle' });
+  addText(group, 'Level*', x(15), y(levelBaseline), { size, anchor: 'middle' });
+  addText(group, 'Effects', x(layout.effectsX), y(levelBaseline), { size, anchor: 'middle' });
   rows.forEach((effect) => {
     const row = svgElement('g');
     setAttributes(row, { class: 'heatEffect', heat: effect.heat });
@@ -1774,35 +1840,28 @@ export function addText(
   if (options.textLength !== undefined) {
     text.setAttribute('textLength', formatNumber(options.textLength));
     text.setAttribute('lengthAdjust', 'spacingAndGlyphs');
-  } else if (options.maxWidth) fitRecordSheetTextLine(text, value, options.size ?? 7, options.maxWidth);
+  } else if (options.maxWidth) fitRecordSheetTextLine(text, value, options.maxWidth);
   parent.appendChild(text);
   return text;
 }
 
-/** Condenses one text line to `maxWidth` when it would overflow, and clears an outdated condensation otherwise. */
+/**
+ * Condenses one text line to `maxWidth` only when its measured width overflows, and clears an outdated condensation
+ * otherwise, so text that fits is never stretched. A tspan measures in its `font` text's type.
+ */
 export function fitRecordSheetTextLine(
   text: SVGTextContentElement,
   value: string,
-  size: number,
   maxWidth: number,
+  font: SVGTextContentElement = text,
 ): void {
-  if (textFitsWidth(value, size, maxWidth)) {
+  if (measureSvgTextCanvas(font, value) <= maxWidth) {
     text.removeAttribute('textLength');
     text.removeAttribute('lengthAdjust');
     return;
   }
   text.setAttribute('textLength', formatNumber(maxWidth));
   text.setAttribute('lengthAdjust', 'spacingAndGlyphs');
-}
-
-/** Record-sheet text's width by average glyph width rather than DOM measurement. */
-export function estimatedTextWidth(value: string, size: number): number {
-  return value.length * size * 0.54;
-}
-
-/** Whether record-sheet text fits a width (`estimatedTextWidth`). */
-export function textFitsWidth(value: string, size: number, width: number): boolean {
-  return estimatedTextWidth(value, size) <= width;
 }
 
 export function addWrappedText(
@@ -2021,7 +2080,7 @@ export function drawCounterBox(
     return line;
   });
   // A narrow box condenses its label to fit.
-  fitRecordSheetTextLine(lines[0]!, label, labelSize, width - 2);
+  fitRecordSheetTextLine(lines[0]!, label, width - 2);
   parent.appendChild(group);
   return Object.freeze({ group, value: lines[1]! });
 }

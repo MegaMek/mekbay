@@ -42,9 +42,9 @@ import {
 import { isInfantryFamilyEntity, isMekEntity, isVehicleEntity } from '../models/entity/utils/entity-type-guards';
 import {
     aimedShotLocations,
-    readAttackHeat,
+    attackHeatHits,
+    readAttackThermalEffects,
     readAttackHitLocation,
-    readInfernoMissiles,
     type AttackHitLocation,
 } from '../models/runtime/attack-hit-location';
 import type { InfernoMissile } from '../models/rules/inferno-rules';
@@ -63,7 +63,9 @@ import { MekPaperdollGenerator } from '../utils/sheets/mek-paperdoll-generator';
 import { isNavalRecordSheetEntity } from '../utils/sheets/layouts/naval-record-sheet-layout';
 import { combatVehiclePaperdollAsset, navalPaperdollAsset } from '../utils/sheets/layouts/vehicle-paperdoll-asset';
 import { roll2D6, rollD6 } from '../models/runtime/mek-automation-rules';
+import { diceForSlotIndex } from '../models/runtime/mek-critical-hit-v2';
 import type { WeaponHits } from '../models/runtime/cbt-force-unit-command-dispatcher';
+import type { MekLocationlessHeat, MekWeaponHit } from './direct-mek-automation.service';
 import { TURN_STEPS } from '../models/rules/turn-sequence';
 import type { MekHitArc } from '../utils/record-sheet-reference-table';
 import {
@@ -183,20 +185,34 @@ export class AttackResolutionService {
         return firstValueFrom(ref.closed);
     }
 
-    /** Resolves a completed FIRE from the selections it fired (the snapshot taken before firing). */
+    /** Rolls and settles attacks that spend nothing when they fire, such as physical attacks. */
     async resolveFired(
         member: CBTForceMember,
         fired: EquipmentPanelSnapshot,
         attack: WeaponAttackContext | null,
     ): Promise<void> {
-        if (!this.options.options().attackResolution || !attack) return;
+        const resolution = await this.rollAttacks(member, fired, attack);
+        if (resolution && resolution !== 'dismissed') await this.settleAttacks(member, resolution);
+    }
+
+    /**
+     * Rolls the selected attacks in the dialog, before they fire: a weapon that fails to lock on fires nothing
+     * (`locksOnTarget`). Null when there is nothing to roll; 'dismissed' when the dialog is closed without its
+     * buttons, which takes the attack back.
+     */
+    async rollAttacks(
+        member: CBTForceMember,
+        fired: EquipmentPanelSnapshot,
+        attack: WeaponAttackContext | null,
+    ): Promise<AttackResolution | 'dismissed' | null> {
+        if (!this.options.options().attackResolution || !attack) return null;
         if (attack.missingMovementModifier) {
             // Without the attacker's movement there is no target number to roll against.
             if (fired.components.some(row => row.weapon?.selection?.kind === 'target')
                 || fired.physicalAttacks.some(row => row.selection?.kind === 'target')) {
                 this.toast.showToast('Declare movement to resolve attacks', 'info');
             }
-            return;
+            return null;
         }
         // A swarm on a unit no longer among the targets can only be let go.
         if (fired.physicalAttacks.some(row => row.kind === 'end-swarm' && row.selection !== undefined && row.available
@@ -204,17 +220,41 @@ export class AttackResolutionService {
             await member.force.dispatchUnitCommand(member.id, { type: 'set-swarming', target: null });
         }
         const targets = this.attackTargets(member, fired, attack);
-        if (targets.length === 0) return;
+        if (targets.length === 0) return null;
         const attacker = this.unitNames.name(member.entity);
         const ref = this.dialogs.createDialog<AttackResolution, AttackResolutionDialogComponent,
             AttackResolutionDialogData>(AttackResolutionDialogComponent, { data: { attacker, targets } });
-        const resolution = await firstValueFrom(ref.closed);
-        if (!resolution) return;
+        return await firstValueFrom(ref.closed) ?? 'dismissed';
+    }
+
+    /** Settles what the rolls decided once the attacks fired: jams, physical outcomes and the hits sent. */
+    async settleAttacks(member: CBTForceMember, resolution: AttackResolution): Promise<void> {
+        const attacker = this.unitNames.name(member.entity);
         for (const componentId of resolution.jammed) {
             await member.force.dispatchUnitCommand(member.id, { type: 'set-component-jammed', componentId, jammed: true });
         }
         if (resolution.jammed.length > 0) {
             this.toast.showToast(`${resolution.jammed.length} weapon${resolution.jammed.length === 1 ? '' : 's'} jammed`, 'error');
+        }
+        // An insulated laser's critical hit strikes its first slot not yet hit on a 'Mech, as the critical roll would;
+        // it destroys the weapon of any other unit.
+        const target = this.options.options().trackPhaseAndTurn ? 'pending' : 'committed';
+        const snapshot = member.force.getUnitSnapshot(member.id);
+        const mek = snapshot && hasMekRuntime(snapshot) ? snapshot : null;
+        for (const componentId of resolution.insulatorFailed) {
+            const slot = mek && [...mek.index.slots.values()].find(candidate =>
+                candidate.componentIds.includes(componentId) && mek.query.criticalHits(candidate.id, 'preview') === 0);
+            if (mek && !slot) continue;
+            await member.force.dispatchUnitCommand(member.id, slot ? {
+                type: 'apply-mek-critical-roll',
+                locationId: slot.locationId,
+                results: diceForSlotIndex(mek.index.locations.get(slot.locationId)!.code, slot.slotIndex),
+                target,
+            } : { type: 'set-component-status', componentId, status: 'destroyed', target });
+        }
+        if (resolution.insulatorFailed.length > 0) {
+            const lasers = resolution.insulatorFailed.length;
+            this.toast.showToast(`${lasers} insulated laser${lasers === 1 ? '' : 's'} suffered a critical hit`, 'error');
         }
         const attackId = uuidv4();
         await this.settlePhysicalAttacks(member, resolution.physical, attackId);
@@ -307,7 +347,9 @@ export class AttackResolutionService {
                 ? fired.targets.find(candidate => candidate.targetId === selection.targetId)
                 : undefined;
             // A weapon that cannot fire (already fired this turn, jammed) stays selected but is not resolved again.
-            if (!weapon?.selectable || !target || !(row.equipment instanceof WeaponEquipment)) continue;
+            // Weapon bays are not resolved here: a plasma bay would otherwise strike as one rifle's heat with no damage.
+            if (!weapon?.selectable || !target || !(row.equipment instanceof WeaponEquipment)
+                || row.attack?.kind === 'weapon-bay') continue;
             const targeting = projectTargetingTarget(target, fired.ruleset);
             const presentation = projectWeaponTargetPresentation(row, targeting, attack, fired.ruleset);
             const range = presentation.damageRange;
@@ -319,7 +361,6 @@ export class AttackResolutionService {
             const struck = heatWeaponTarget(this.opfor.resolveOpforTarget(target.targetId)?.member.entity, targeting.unitType);
             const heatWeapon = heatEquipment === null ? undefined : attackHeatWeapon(heatEquipment, row.mode,
                 fired.ruleset, optionalRules, struck);
-            const targetFacts = struck === null ? {} : { targetTracksHeat: struck.tracksHeat };
             if (presentation.outOfRange || (!damage && !heatWeapon) || targetNumber === undefined) continue;
             const ammo = selectedAmmoEquipment(weapon.ammoSources, weapon.ammoSelection);
             // The calculator's partial-cover modifier is the one source for whether this weapon meets cover.
@@ -333,8 +374,7 @@ export class AttackResolutionService {
                 partialCover,
                 attack: weapon.platoon,
                 ...(heatWeapon === undefined ? {} : { heatWeapon }),
-                ...targetFacts,
-            }, gameRulesFor(fired.ruleset)) : weaponAttackProfile({
+            }) : weaponAttackProfile({
                 componentId: row.componentId,
                 equipment: row.equipment,
                 mode: row.mode,
@@ -345,10 +385,10 @@ export class AttackResolutionService {
                 name: row.label,
                 targetNumber,
                 partialCover,
-                ...targetFacts,
                 ...(presentation.aim === null ? {} : {
                     aim: Object.freeze({ location: presentation.aim.location, dice: aimedShotDice(fired.ruleset) }),
                 }),
+                ...(row.heatWeakened === false ? { insulated: true } : {}),
             }, gameRulesFor(fired.ruleset));
             if (!profile) continue;
             profiles.set(target.targetId, [...profiles.get(target.targetId) ?? [], profile]);
@@ -403,8 +443,6 @@ export class AttackResolutionService {
         event: AttackEvent,
         target: 'committed' | 'pending',
     ): Promise<boolean> {
-        const inferno = readInfernoMissiles(member, event.arc, event.weapons);
-        const heat = readAttackHeat(member, event.arc, event.weapons);
         const read = event.weapons.filter(weapon => !weapon.inferno).flatMap(weapon => {
             const source = attackDamageSource(weapon);
             if (weapon.swarmStrike) return swarmStrikeHits(member, weapon, source);
@@ -424,7 +462,7 @@ export class AttackResolutionService {
             });
         });
         const hits = this.strikeSwarmer(member, event, read);
-        let applied = await member.force.applyWeaponHits(member.id, weaponHits(member, event.arc, hits, inferno, heat), target);
+        let applied = await member.force.applyWeaponHits(member.id, attackWeaponHits(member, event, hits), target);
         // Infantry that took hold of this unit, or let go of it; infantry this attack knocked off the unit it swarmed.
         const swarmed = attackSwarms(event.weapons);
         if (swarmed !== null) {
@@ -586,38 +624,73 @@ function swarmStrikeHits(
     }));
 }
 
+type AttackHit = Readonly<{
+    location: AttackHitLocation;
+    damage: number;
+    source: DamageSource;
+    luckyHit?: boolean;
+    outsideHeat?: number;
+}>;
+
+/**
+ * An attack's hits for the struck unit's family. A Mek takes each weapon's heat in attack order and before that
+ * weapon's damage, where it strikes or with no location; heat-dissipating armor there reduces it as the hit is applied
+ * (Core pp. 201-202; IO:AE p. 81), and the Heat Phase only adds it up.
+ */
+function attackWeaponHits(
+    member: CBTForceMember,
+    event: AttackEvent,
+    hits: readonly (AttackHit & Readonly<{ weapon: AttackWeaponReport }>)[],
+): WeaponHits {
+    if (!isCBTMekForceMember(member)) {
+        const { heat, inferno } = readAttackThermalEffects(member, event.arc, event.weapons);
+        return weaponHits(member, event.arc, hits, inferno, heat);
+    }
+    const ordered: (AttackHit | MekLocationlessHeat)[] = [];
+    for (const weapon of event.weapons) {
+        for (const hit of attackHeatHits(member, event.arc, weapon)) {
+            if (hit.location === null) ordered.push({ outsideHeat: hit.heat });
+            else if (hit.location.kind === 'mek') {
+                ordered.push({ location: hit.location, damage: 0, source: attackDamageSource(weapon), outsideHeat: hit.heat });
+            }
+        }
+        ordered.push(...hits.filter(hit => hit.weapon === weapon));
+    }
+    return weaponHits(member, event.arc, ordered);
+}
+
+/** A Mek's inferno missiles arrive as heat in its groups, so `inferno` applies only to other units. */
 function weaponHits(
     member: CBTForceMember,
     arc: MekHitArc,
-    hits: readonly Readonly<{ location: AttackHitLocation; damage: number; source: DamageSource; luckyHit?: boolean }>[],
+    hits: readonly (AttackHit | MekLocationlessHeat)[],
     inferno: readonly InfernoMissile[] = [],
     heat = 0,
 ): WeaponHits {
     return isCBTMekForceMember(member)
         ? {
             family: 'mek',
-            inferno,
-            heat,
-            groups: hits.flatMap(({ location, damage, source }) => location.kind === 'mek' ? [Object.freeze({
-                location: location.location,
-                rear: location.rear,
-                damage,
+            groups: hits.flatMap((hit): MekWeaponHit[] => !('location' in hit) ? [hit] : hit.location.kind === 'mek' ? [Object.freeze({
+                location: hit.location.location,
+                rear: hit.location.rear,
+                damage: hit.damage,
                 arc,
-                throughArmorCritical: location.throughArmorCritical,
-                source,
+                throughArmorCritical: hit.location.throughArmorCritical,
+                source: hit.source,
+                ...(hit.outsideHeat ? { outsideHeat: hit.outsideHeat } : {}),
             })] : []),
         }
         : {
             family: 'non-mek',
             inferno,
             heat,
-            groups: hits.flatMap(({ location, damage, source, luckyHit }) => location.kind === 'non-mek' ? [Object.freeze({
-                locationId: location.locationId,
-                damage,
-                arc: location.arc,
-                effects: location.effects,
-                source,
-                ...(location.aeroCritical === undefined ? {} : { aeroCritical: location.aeroCritical, luckyHit: luckyHit === true }),
+            groups: hits.flatMap(hit => 'location' in hit && hit.location.kind === 'non-mek' ? [Object.freeze({
+                locationId: hit.location.locationId,
+                damage: hit.damage,
+                arc: hit.location.arc,
+                effects: hit.location.effects,
+                source: hit.source,
+                ...(hit.location.aeroCritical === undefined ? {} : { aeroCritical: hit.location.aeroCritical, luckyHit: hit.luckyHit === true }),
             })] : []),
         };
 }

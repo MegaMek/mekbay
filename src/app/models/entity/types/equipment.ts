@@ -170,7 +170,7 @@ export class EntityMountedEquipment implements EntityMountedEquipmentInit {
   }
 
   /** Canonical user-facing name for this installed equipment mount. */
-  displayName(includeAmmoShots = false): string {
+  displayName(includeAmmoShots = false, includeBodyMount = true): string {
     const name = this.equipment
       ? formatEquipmentName(this.equipment, includeAmmoShots ? this.getAmmoShots() : undefined)
       : this.equipmentId;
@@ -186,7 +186,7 @@ export class EntityMountedEquipment implements EntityMountedEquipmentInit {
           : null;
     if (turret !== null) modifiers.push(turret);
 
-    if (this.baMountLocation === 'Body') modifiers.push('Body');
+    if (this.baMountLocation === 'Body' && includeBodyMount) modifiers.push('Body');
     else if (this.baMountLocation === 'Turret' && !modifiers.includes('T')) modifiers.push('T');
     if (this.isSSWM) modifiers.push('SSW: Trooper 1');
     if (this.isDWP) modifiers.push('DWP');
@@ -225,6 +225,12 @@ export class EntityMountedEquipment implements EntityMountedEquipmentInit {
 
   getOccupiedLocations(): readonly string[] {
     return [...new Set(this.placements?.map(placement => placement.location) ?? [this.location])];
+  }
+
+  /** The occupied locations, the mount's own location first, as a split mount is printed and listed (LT/LA). */
+  getOccupiedLocationsMainFirst(): readonly string[] {
+    const occupied = this.getOccupiedLocations();
+    return occupied.includes(this.location) ? [this.location, ...occupied.filter(code => code !== this.location)] : occupied;
   }
 
   get isSplitAcrossLocations(): boolean {

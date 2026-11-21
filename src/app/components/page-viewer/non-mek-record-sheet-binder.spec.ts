@@ -400,9 +400,10 @@ describe('bindNonMekRecordSheet', () => {
 
     it('reflows current ammo names and totals without an equipment panel, retaining CASE and empty bins', () => {
         const svg = sheet();
-        appendRecordSheetAmmoProfile(svg, [], {
-            x: 0, y: 60, width: 200, fontSize: 10, lineHeight: 12, prefix: 'Ammo (CASE):',
-        });
+        // The generated sheet printed these bins under CASE
+        appendRecordSheetAmmoProfile(svg, [{
+            prefix: 'Ammo (CASE):', entries: [], componentIds: ['ammo-0', 'ammo-1', 'ammo-2', 'ammo-3'],
+        }], { x: 0, y: 60, width: 200, fontSize: 10, lineHeight: 12 });
         const profile = svg.querySelector<SVGElement>('#ammoProfile')!;
         const binding = bindNonMekRecordSheet(svg, ammoSnapshot([
             ['LRM 15 Ammo', 0],

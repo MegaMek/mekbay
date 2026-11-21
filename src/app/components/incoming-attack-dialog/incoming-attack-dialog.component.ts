@@ -11,8 +11,7 @@ import { infernoEffect, infernoEffectText } from '../../models/rules/inferno-rul
 import {
     attackDamagePreview,
     infernoMissilesThisTurn,
-    readAttackHeat,
-    readInfernoMissiles,
+    readAttackThermalEffects,
     type AttackHitLocation,
 } from '../../models/runtime/attack-hit-location';
 import type { AttackEvent } from '../../services/game-events.service';
@@ -71,7 +70,6 @@ export class IncomingAttackDialogComponent {
                 hit: toHitSucceeds(weapon.toHit, weapon.targetNumber),
                 cluster: weapon.cluster ?? null,
                 inferno: weapon.inferno === true,
-                ...(weapon.noHitLocation ? { noHitLocation: true } : {}),
                 ...(weapon.aim ? { aim: attackReportAim(weapon.aim) } : {}),
                 groups: weapon.groups.map(group => attackReportGroup(this.data.member, weapon.arc ?? this.data.event.arc,
                     group.damage, group.location, group.aux, weapon.partialCover === true, weapon.table, weapon.physical,
@@ -97,10 +95,11 @@ export class IncomingAttackDialogComponent {
         return swarmed === null ? null : swarmed ? 'Swarmed' : 'Swarm ended';
     });
     /** Outside heat the attack's heat-causing weapons apply. */
-    protected readonly heat = computed(() => readAttackHeat(this.data.member, this.data.event.arc, this.data.event.weapons));
+    private readonly thermal = computed(() => readAttackThermalEffects(this.data.member, this.data.event.arc, this.data.event.weapons));
+    protected readonly heat = computed(() => this.thermal().heat);
     /** What the attack's inferno missiles do to this unit; null without inferno hits. */
     protected readonly inferno = computed(() => {
-        const missiles = readInfernoMissiles(this.data.member, this.data.event.arc, this.data.event.weapons);
+        const missiles = this.thermal().inferno;
         const earlier = infernoMissilesThisTurn(this.data.member.force.getUnitSnapshot(this.data.member.id));
         return missiles.length === 0 ? null : infernoEffectText(infernoEffect(this.data.member.entity, missiles, earlier));
     });

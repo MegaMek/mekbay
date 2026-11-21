@@ -5,32 +5,13 @@ import type { ComponentId } from '../entity/entity-identifiers';
 import type { EquipmentStatus } from '../equipment-status.model';
 import {
     isLaserInsulatorPair,
-    laserInsulatorAdjustedHeat,
+    laserInsulatorWeakened,
 } from '../laser-insulator.model';
-import { equipmentForComponent, type MekRuntimeIndex } from './mek-runtime-index';
-
-export interface MekLaserInsulatorLink {
-    readonly insulatorId: ComponentId;
-    readonly laserId: ComponentId;
-}
+import { equipmentForComponent, mountedEquipmentForComponent, type MekRuntimeIndex } from './mek-runtime-index';
+import { componentIdForMount } from './unit-runtime-index';
 
 export interface MekLaserInsulatorRuntimeView {
     componentStatus(componentId: ComponentId): EquipmentStatus;
-}
-
-/** Returns the one exact entity-owned Laser Insulator-to-laser relation, if present. */
-export function mekLaserInsulatorLink(
-    index: MekRuntimeIndex,
-    laserId: ComponentId,
-): MekLaserInsulatorLink | null {
-    const insulatorId = index.relationships.linkedSourceByTarget.get(laserId);
-    if (insulatorId === undefined
-        || index.relationships.linkedTargetBySource.get(insulatorId) !== laserId) return null;
-    const insulator = equipmentForComponent(index, insulatorId);
-    const laser = equipmentForComponent(index, laserId);
-    return isLaserInsulatorPair(insulator, laser)
-        ? Object.freeze({ insulatorId, laserId })
-        : null;
 }
 
 export function isMekLaserInsulatorPair(
@@ -38,30 +19,16 @@ export function isMekLaserInsulatorPair(
     insulatorId: ComponentId,
     laserId: ComponentId,
 ): boolean {
-    return mekLaserInsulatorLink(index, laserId)?.insulatorId === insulatorId;
-}
-
-export function mekLaserInsulatorAdjustedHeat(
-    index: MekRuntimeIndex,
-    runtime: MekLaserInsulatorRuntimeView,
-    laserId: ComponentId,
-    baseHeat: number,
-): number {
-    const link = mekLaserInsulatorLink(index, laserId);
-    if (link === null) return baseHeat;
-    return laserInsulatorAdjustedHeat(
-        baseHeat,
-        equipmentForComponent(index, link.insulatorId),
-        equipmentForComponent(index, laserId),
-        runtime.componentStatus(link.insulatorId) === 'available',
-    );
+    return index.relationships.linkedTargetBySource.get(insulatorId) === laserId
+        && isLaserInsulatorPair(equipmentForComponent(index, insulatorId), equipmentForComponent(index, laserId));
 }
 
 export function mekLaserInsulatorWeakened(
     index: MekRuntimeIndex,
     runtime: MekLaserInsulatorRuntimeView,
     laserId: ComponentId,
-): boolean | null {
-    const link = mekLaserInsulatorLink(index, laserId);
-    return link === null ? null : runtime.componentStatus(link.insulatorId) !== 'available';
+): boolean | undefined {
+    const sources = index.relationships.linkedSourcesByTarget.get(laserId) ?? [];
+    return laserInsulatorWeakened(sources.map(id => mountedEquipmentForComponent(index, id)!),
+        mount => runtime.componentStatus(componentIdForMount(mount)) === 'available');
 }

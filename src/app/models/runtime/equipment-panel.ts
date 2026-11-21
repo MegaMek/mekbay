@@ -75,7 +75,7 @@ import {
 } from './mek-ammo';
 import { mekComponentModes } from './mek-component-rules';
 import { mekRiscLaserPulseActive, mekRiscLaserPulseLink } from './component-risc-laser-pulse';
-import { RISC_LASER_PULSE_HEAT_BONUS } from '../risc-laser-mode.model';
+import { RISC_LASER_PULSE_HEAT_BONUS, riscLaserPulseToHitAdjustment } from '../risc-laser-mode.model';
 import { prototypeLaserMaximumExtraHeat } from '../prototype-laser-heat.model';
 import { rapidFireAutocannonShotCount } from './component-rapid-fire-autocannon';
 import { MAGNETIC_CLAW_SHAKE_OFF_MODIFIER } from '../rules/anti-mek-attack-rules';
@@ -89,7 +89,9 @@ import {
     type AimedShotTarget,
     type AimedShotWeapon,
 } from '../rules/aimed-shot-rules';
-import { mekLaserInsulatorAdjustedHeat, mekLaserInsulatorWeakened } from './component-laser-insulator';
+import { laserInsulatorAdjustedHeat } from '../laser-insulator.model';
+import type { EntityMountedEquipment } from '../entity/types/equipment';
+import { mekLaserInsulatorWeakened } from './component-laser-insulator';
 import { applyFlamerWeaponTypes, flamerDisplayLabel } from '../flamer-mode.model';
 import { bombastLaserEquipmentProfile } from '../bombast-laser-mode.model';
 import { BOMBAST_LASER_CHARGED_STATE } from './component-bombast-laser';
@@ -123,8 +125,8 @@ import { applyHagEquipmentWeaponTypes, hagEquipmentToHitAdjustments } from './co
 import type { MekCombatModifierProjectionResult } from './mek-combat-modifiers';
 import { applyGaussPowerWeaponTypes } from './mek-gauss-power';
 import { applyComponentApolloWeaponTypes } from './component-apollo';
-import { apolloToHitAdjustment } from '../apollo-mode.model';
-import { artemisVToHitAdjustment } from '../artemis-equipment.model';
+import { isApolloEquipment, apolloToHitAdjustment } from '../apollo-mode.model';
+import { isArtemisEquipment, artemisVToHitAdjustment } from '../artemis-equipment.model';
 import {
     ppcCapacitorChargedForWeapon,
     ppcCapacitorFiringHeat,
@@ -227,6 +229,31 @@ export interface EquipmentPanelHitResolution {
 export interface EquipmentPanelModifier {
     readonly name: string;
     readonly status?: 'destroyed' | 'disabled' | 'warning';
+}
+
+/** The panel's ranged weapon rows in Entity order: the rows a saved weapon order permutes. */
+export function equipmentPanelWeapons(snapshot: Pick<EquipmentPanelSnapshot, 'components'>): readonly EquipmentPanelComponent[] {
+    return snapshot.components.filter(row => row.weapon !== undefined);
+}
+
+export function equipmentPanelAttachments(
+    mounts: readonly EntityMountedEquipment[],
+    statusOf: (mount: EntityMountedEquipment) => EquipmentStatus,
+) {
+    // Any Artemis guides its own missiles' attack values; Artemis V and Apollo also adjust the to-hit roll
+    const fireControl = mounts.find(mount =>
+        isArtemisEquipment(mount.equipment) || isApolloEquipment(mount.equipment));
+    const modifiers = mounts.flatMap(mount => {
+        const equipment = mount.equipment;
+        if (!equipment || !isWeaponEnhancementEquipment(equipment)) return [];
+        const status = statusOf(mount);
+        return [Object.freeze({
+            name: equipment.shortName || equipment.name,
+            ...(status === 'available' ? {} : { status }),
+        })];
+    });
+    return { modifiers: Object.freeze(modifiers), fireControl: fireControl?.equipment,
+        fireControlStatus: fireControl ? statusOf(fireControl) : 'available' as const };
 }
 
 export interface EquipmentPanelWeaponDamage {
@@ -938,6 +965,8 @@ export function equipmentWeaponToHit(
 
 export interface MekPhysicalAttackRow {
     readonly target: AttackerActionTarget;
+    /** The printed name, without the kicking leg the label adds. */
+    readonly name?: string;
     readonly label: string;
     readonly locationIds: readonly LocationId[];
     readonly locationCodes: readonly string[];
@@ -1445,9 +1474,6 @@ function projectMekEquipmentComponents(
             const baseWeaponHeat = equipment instanceof WeaponEquipment
                 ? bombast?.heat ?? equipment.heat
                 : 0;
-            const operatingWeaponHeat = equipment instanceof WeaponEquipment
-                ? mekLaserInsulatorAdjustedHeat(index, query, componentId, baseWeaponHeat)
-                : baseWeaponHeat;
             const bombastCharged = ruleset === 'core-2026'
                 && query.componentBombastLaser(componentId)?.chargeState === BOMBAST_LASER_CHARGED_STATE;
             const ammoSources = equipment instanceof WeaponEquipment
@@ -1467,25 +1493,22 @@ function projectMekEquipmentComponents(
             const bombastToHit = bombast === null
                 ? undefined
                 : bombastCharged ? 0 : bombast.toHitModifier;
-            const linkedEnhancementId = index.relationships.linkedSourceByTarget.get(componentId);
-            const linkedEnhancement = linkedEnhancementId === undefined
-                ? undefined
-                : equipmentForComponent(index, linkedEnhancementId);
-            const linkedEnhancementStatus = linkedEnhancementId === undefined
-                ? 'available'
-                : query.componentStatus(linkedEnhancementId);
+            const { modifiers, fireControl, fireControlStatus } = equipmentPanelAttachments(
+                component.kind === 'equipment' ? entity.getLinkingMounts(component.mount) : [],
+                mount => query.componentStatus(asComponentId(mount.mountId)),
+            );
             const artemisVToHit = equipment instanceof WeaponEquipment
                 ? artemisVToHitAdjustment(
-                    linkedEnhancement,
+                    fireControl,
                     equipment,
-                    linkedEnhancementStatus,
+                    fireControlStatus,
                     selectedAmmo,
                     query.hasCondition('jammed'),
                     query.c3DisruptedByStealth(),
                 )
                 : null;
             const apolloToHit = equipment instanceof WeaponEquipment
-                ? apolloToHitAdjustment(linkedEnhancement, equipment, linkedEnhancementStatus, ruleset)
+                ? apolloToHitAdjustment(fireControl, equipment, fireControlStatus, ruleset)
                 : null;
             const riscLaserPulse = equipment instanceof WeaponEquipment
                 ? mekRiscLaserPulseLink(index, componentId)
@@ -1513,14 +1536,7 @@ function projectMekEquipmentComponents(
                 ...hagEquipmentToHitAdjustments(index, componentId, mode),
                 ...(artemisVToHit === null ? [] : [artemisVToHit]),
                 ...(apolloToHit === null ? [] : [apolloToHit]),
-                ...(riscLaserPulse === null ? [] : [{
-                    kind: 'add' as const,
-                    label: riscLaserPulseActive
-                        ? riscLaserPulse.moduleLabel
-                        : `${riscLaserPulse.moduleLabel} Inactive`,
-                    modifier: riscLaserPulseActive ? -2 : 0,
-                    weakened: !riscLaserPulseActive,
-                }]),
+                ...(riscLaserPulse ? [riscLaserPulseToHitAdjustment(riscLaserPulse.moduleLabel, riscLaserPulseActive)] : []),
                 ...(shieldToHit === null ? [] : [shieldToHit]),
             ];
             const toHitSubject = equipment instanceof WeaponEquipment
@@ -1578,21 +1594,15 @@ function projectMekEquipmentComponents(
                 : null;
             const laserInsulatorWeakened = equipment instanceof WeaponEquipment
                 ? mekLaserInsulatorWeakened(index, query, componentId)
-                : null;
-            const modifiers: readonly EquipmentPanelModifier[] = linkedEnhancement !== undefined
-                && isWeaponEnhancementEquipment(linkedEnhancement)
-                ? Object.freeze([Object.freeze({
-                    name: linkedEnhancement.shortName || linkedEnhancement.name,
-                    ...(linkedEnhancementStatus === 'available'
-                        ? {}
-                        : { status: linkedEnhancementStatus as 'destroyed' | 'disabled' }),
-                })])
-                : Object.freeze([]);
+                : undefined;
+            const operatingWeaponHeat = laserInsulatorAdjustedHeat(
+                baseWeaponHeat + riscLaserPulseHeat, laserInsulatorWeakened === false,
+            ) + ppcCapacitorHeat;
             const weapon = !(equipment instanceof WeaponEquipment)
                 ? undefined
                 : Object.freeze({
-                    heat: operatingWeaponHeat + riscLaserPulseHeat + ppcCapacitorHeat,
-                    firingHeat: (operatingWeaponHeat + riscLaserPulseHeat + ppcCapacitorHeat)
+                    heat: operatingWeaponHeat,
+                    firingHeat: operatingWeaponHeat
                         * rapidFireShotCount * machineGunArrayMemberCount,
                     ...(prototypeMaximumHeat === 0 ? {} : { heatSuffix: '*' as const }),
                     selectable: canPerformMekAction(
@@ -1641,7 +1651,7 @@ function projectMekEquipmentComponents(
                 ...(mode === undefined ? {} : { mode }),
                 jammed: query.componentJammed(componentId),
                 ...(bayResolution.kind === 'resolved' ? { bay: bayResolution.facts } : {}),
-                ...(laserInsulatorWeakened === null
+                ...(laserInsulatorWeakened === undefined
                     ? {}
                     : { heatWeakened: laserInsulatorWeakened }),
                 ...(modifiers.length === 0 ? {} : { modifiers }),
@@ -1739,6 +1749,7 @@ function installedWeaponFacts(
         types = effective;
     }
     const mode = query.componentMode(componentId);
+    if (mekRiscLaserPulseActive(index, query, componentId)) types = new Set([...types, 'P']);
     types = applyHagEquipmentWeaponTypes(equipment, mode, types);
     types = applyFlamerWeaponTypes(equipment, mode, types, ruleset, optionalRules);
     types = applyGaussPowerWeaponTypes(equipment, query.componentGaussPower(componentId), types);

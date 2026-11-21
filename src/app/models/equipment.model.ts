@@ -31,7 +31,6 @@ import { resolveWeaponDamageFacts } from './entity/utils/weapon-damage-kernel';
 import { isBombastLaserEquipment } from './bombast-laser-mode.model';
 import { isHagEquipment } from './hag-mode.model';
 import { isFlamerEquipment } from './flamer-mode.model';
-import { isRiscLaserPulseModule } from './risc-laser-mode.model';
 import { isPpcEquipment } from './ppc-capacitor.model';
 import { isBapEquipment } from './bap-equipment.model';
 import {
@@ -553,8 +552,9 @@ export class Equipment {
 // Weapon Equipment Class
 // ============================================================================
 
+/** Weapons whose type includes S: special munitions such as standard and light AC ammo (TW pp. 140, 303). */
 const SWITCHABLE_AMMO = new Set<AmmoType>([
-    'AC', 'AC_PRIMITIVE', 'AC_IMP', 'AC_LBX', 'AC_ROTARY',
+    'AC', 'AC_PRIMITIVE', 'AC_IMP', 'AC_LBX', 'AC_ROTARY', 'LAC',
     'LRM', 'LRM_PRIMITIVE', 'LRM_IMP', 'NLRM',
     'MML',
     'SRM', 'SRM_IMP',
@@ -978,7 +978,10 @@ export class MiscEquipment extends Equipment {
     get baseDamageAbsorptionRate(): number { return this.misc.baseDamageAbsorptionRate; }
     get baseDamageCapacity(): number { return this.misc.baseDamageCapacity; }
     get industrial(): boolean { return this.misc.industrial; }
-    /** Heat generated while operating, equivalent to MegaMek's MiscType.getHeat(). */
+    /**
+     * Heat generated while operating, equivalent to MegaMek's MiscType.getHeat() except for a RISC laser pulse module,
+     * whose heat belongs to the laser it modifies (riscLaserPulseHeat).
+     */
     get operatingHeat(): number {
         const signatureHeat = signatureSystemOperatingHeat(this);
         if (signatureHeat > 0) return signatureHeat;
@@ -986,7 +989,6 @@ export class MiscEquipment extends Equipment {
         const aerospaceHeat = aerospaceSupportOperatingHeat(this);
         if (aerospaceHeat !== null) return aerospaceHeat;
         if (isViralJammerEquipment(this)) return VIRAL_JAMMER_OPERATING_HEAT;
-        if (isRiscLaserPulseModule(this)) return 2;
         const c3Heat = c3EquipmentOperatingHeat(this);
         if (c3Heat > 0) return c3Heat;
         if (physicalHeat > 0) return physicalHeat;

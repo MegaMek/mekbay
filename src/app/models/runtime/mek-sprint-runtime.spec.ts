@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 
 import { canPerformMekAction } from './mek-action-availability';
+import { withoutMekMovementPsrEquipmentV2 } from './mek-movement-psr-v2';
 import type { ComponentId } from '../entity/entity-identifiers';
 import { evaluateMekMechanicsScenarioSupport } from './mek-mechanics-profile';
 import { projectMekTurnPanel } from './mek-turn-panel';
@@ -186,6 +187,19 @@ describe('direct optional Sprint rules', () => {
         const quadMovement = supportedMovement(quad);
         expect(quadMovement).toEqual(jasmine.objectContaining({ walkMp: 1, runMp: 0, sprintMp: 0 }));
         expect(sprintReasonCodes(quad)).toContain('RUN_UNAVAILABLE');
+    });
+
+    it('drops a sprint check naming its booster from state whose source changed, and keeps a kick check', () => {
+        const fixture = createDirectSprintingRuntimeFixture();
+        const masc = fixture.equipmentComponent('Test MASC');
+        expect(activate(fixture, masc.id)).toBeTrue();
+        expect(declareSprint(fixture, 13, [masc.id])).toBeTrue();
+        expect(fixture.instance.dispatch({ type: 'record-mek-physical-attack-checks', attackId: 'attack:kick',
+            checks: ['kicked'] }).accepted).toBeTrue();
+
+        const reset = withoutMekMovementPsrEquipmentV2(fixture.instance.snapshot().movementPsr);
+        expect(reset.movement?.boosterComponentIds).toEqual([]);
+        expect(reset.checks.map(check => check.source.triggerKind)).toEqual(['kicked']);
     });
 });
 

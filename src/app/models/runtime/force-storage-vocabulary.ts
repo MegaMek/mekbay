@@ -166,6 +166,7 @@ export const CBT_HEAT_FIELD = {
     pendingOverride: 'o',
     pendingOffset: 'a',
     heatsinksOff: 's',
+    heatsinksOffNext: 'n',
 } as const;
 
 export const CBT_MOVEMENT_FIELD = {
@@ -182,6 +183,8 @@ export const CBT_MOVEMENT_DECLARATION_INDEX = {
     mode: 0,
     distance: 1,
     boosterComponentIds: 2,
+    jumpJetsFired: 3,
+    jumpFromDepth: 4,
 } as const;
 
 export const CBT_MOVEMENT_SOURCE_FIELD = {

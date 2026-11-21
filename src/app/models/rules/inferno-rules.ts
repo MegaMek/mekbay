@@ -1,7 +1,6 @@
 // Copyright (C) 2026 The MegaMek Team
 // SPDX-License-Identifier: GPL-3.0-or-later
 
-import type { CBTRuleset } from '../cbt-ruleset.model';
 import type { BaseEntity } from '../entity/base-entity';
 import type { LocationId } from '../entity/entity-identifiers';
 import {
@@ -19,7 +18,7 @@ export const INFERNO_HEAT_PER_MISSILE = 2;
 /** The one name Inferno munitions show by: platoon damage and attack hit groups. */
 export const INFERNO_LABEL = 'Inferno';
 
-/** Outside heat sources are cumulative to at most 15 heat in a turn (TW p. 159; Core p. 102). */
+/** Outside heat sources are cumulative to at most 15 heat in a turn (TW p. 159; Core p. 103). */
 export const MAX_OUTSIDE_HEAT_PER_TURN = 15;
 
 /** The outside heat a unit holds after `added` more this turn; heat past the cap is wasted. */
@@ -38,9 +37,12 @@ export function outsideHeatThisTurn(state: Readonly<{
     return addOutsideHeat(state.turn.outsideHeat ?? 0, state.pendingCombat.outsideHeat ?? 0);
 }
 
-/** Inferno missiles deliver no damage; their effect depends on the unit they strike (TW pp. 141-142). */
+/**
+ * Inferno missiles deliver no damage; their effect depends on the unit they strike (TW pp. 141-142). Improved Inferno
+ * (IIW) iATM missiles resolve by the same rules (IO:AE p. 61).
+ */
 export function isInfernoAmmo(ammo: AmmoEquipment | null | undefined): boolean {
-    return ammo?.hasMunitionType('M_INFERNO') === true;
+    return ammo?.hasMunitionType('M_INFERNO') === true || ammo?.hasMunitionType('M_IATM_IIW') === true;
 }
 
 /** An SRM platoon that hits fires one inferno missile per 2 points of its damage, rounded down (TW p. 142). */
@@ -49,7 +51,7 @@ export function platoonInfernoMissiles(damage: number): number {
 }
 
 /** One inferno missile that struck: its hit-location roll read on the struck unit's table, null without one. */
-export type InfernoMissile = Readonly<{ location: AttackHitLocation | null }>;
+export type InfernoMissile = Readonly<{ location: AttackHitLocation | null; heat?: number }>;
 
 /** What the inferno missiles of one attack do to the unit they strike (TW pp. 141-142; MegaMek deliverInfernoMissiles). */
 export type InfernoEffect =
@@ -67,23 +69,6 @@ const CONVENTIONAL_FIGHTERS = new Set(['ConvFighter', 'FixedWingSupport']);
 /** Fire-resistant armor ignores the heat of heat-causing weapons and inferno missiles (TW pp. 142, 228). */
 export function isFireResistant(entity: BaseEntity): boolean {
     return isBattleArmorEntity(entity) && entity.uniformArmor()?.armor?.armorType === 'BA_FIRE_RESIST';
-}
-
-/**
- * Whether inferno missiles roll a hit location on the unit they strike. Under Core, missiles striking a unit that tracks
- * heat roll none and only add heat (Core p. 192); a unit that does not track heat takes the Total Warfare effects of
- * the location each missile strikes in either ruleset. `tracksHeat` is undefined while the struck unit is unknown.
- */
-export function infernoRollsHitLocation(ruleset: CBTRuleset, tracksHeat: boolean | undefined): boolean {
-    return ruleset !== 'core-2026' || tracksHeat !== true;
-}
-
-/**
- * Core inferno missiles roll no hit location (Core p. 192), so partial cover cannot stop them; Total Warfare reads each
- * missile's roll, and one striking cover misses (TW p. 102).
- */
-export function infernoMeetsCover(ruleset: CBTRuleset): boolean {
-    return ruleset !== 'core-2026';
 }
 
 /**
@@ -107,7 +92,7 @@ export function infernoEffect(entity: BaseEntity, missiles: readonly InfernoMiss
     const striking = struckMissiles(entity, missiles);
     const everyThird = Math.floor((earlier + striking.length) / 3) - Math.floor(earlier / 3);
     // Meks, aerospace fighters and small craft take the heat (TW p. 113).
-    if (entity.tracksHeat()) return Object.freeze({ kind: 'heat', heat: INFERNO_HEAT_PER_MISSILE * striking.length });
+    if (entity.tracksHeat()) return Object.freeze({ kind: 'heat', heat: striking.reduce((sum, missile) => sum + (missile.heat ?? INFERNO_HEAT_PER_MISSILE), 0) });
     // Neither infantry effect is modified by terrain or infantry type.
     if (isInfantryEntity(entity)) return Object.freeze({ kind: 'troopers', troopers: 3 * striking.length });
     if (isBattleArmorEntity(entity)) {

@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 
 import { mekConvertedMovementPoints, type MekConvertedMode } from '../mek-conversion-mode';
+import { minimumJumpJets, wholeJumpJetMp } from '../jump-equipment.model';
 import { jsonValuesEqual } from '../../utils/json-value.util';
 import { compareText } from '../../utils/string.util';
 import { isObjectLiteralRecord } from '../../utils/json-value.util';
@@ -38,6 +39,7 @@ export type MekMovementModeV2 = 'stationary' | 'walk' | 'run' | 'sprint' | 'jump
 /** Detached movement facts consumed by heat settlement, including retained VTOL recovery. */
 export interface MekMovementHeatInputV2 {
     readonly mode: MekMovementModeV2 | 'VTOL';
+    readonly jumpJetsFired?: number;
     readonly distance: number;
 }
 export type MekActionIntentKindV2 = 'shutdown' | 'startup';
@@ -47,6 +49,10 @@ export type MekPilotCheckStatusV2 = 'pending' | MekPilotCheckOutcomeV2;
 export interface MekMovementDeclarationV2 {
     readonly mode: MekMovementModeV2;
     readonly distance: number;
+    /** Actual jets fired when fractional donor jets are installed (CO p. 213). */
+    readonly jumpJetsFired?: number;
+    /** Water depth at takeoff, independent of the landing hex. Omitted on land. */
+    readonly jumpFromDepth?: number;
     /** Exact active MASC/supercharger components selected for this Run or Sprint. */
     readonly boosterComponentIds: readonly ComponentId[];
 }
@@ -65,6 +71,7 @@ export type MekPilotCheckTriggerKindV2 =
     | 'move-damaged-leg'
     | 'move-damaged-actuator'
     | 'sprint-booster'
+    | 'primitive-prototype-jump'
     | 'jump-into-water'
     | 'shake-off-jump'
     | 'get-up'
@@ -308,6 +315,7 @@ export type MekBattleValueMovementProjectionV2 =
     | MekMovementPsrUnsupportedV2;
 
 export interface MekDeclarationLegalityV2 {
+    readonly jumpJets?: Readonly<{ minimum: number; maximum: number }>;
     readonly legal: boolean;
     readonly maximumMp: number;
     readonly reasons: readonly MekMovementMessageV2<MekMovementBlockReasonCodeV2>[];
@@ -465,6 +473,8 @@ interface LegDamageSummaryV2 {
 }
 
 interface MovementNumbersV2 {
+    readonly workingJetThrust: readonly number[];
+    readonly wingJumpMp: number;
     readonly controlledByDrone: boolean;
     readonly allLimbsDestroyed: boolean;
     readonly movementImpaired: boolean;
@@ -539,7 +549,7 @@ const PHYSICAL_ATTACK_CHECK_REASONS: Readonly<Record<MekPhysicalAttackCheckTrigg
 const PHYSICAL_ATTACK_TRIGGER_KIND_SET: ReadonlySet<string> = new Set(Object.keys(PHYSICAL_ATTACK_CHECK_REASONS));
 const TRIGGER_KINDS = Object.freeze([
     'damage-total-20', 'leg-actuator-hit', 'hip-hit', 'gyro-hit', 'leg-destroyed',
-    'move-damaged-gyro', 'move-damaged-leg', 'move-damaged-actuator', 'sprint-booster', 'jump-into-water',
+    'move-damaged-gyro', 'move-damaged-leg', 'move-damaged-actuator', 'sprint-booster', 'primitive-prototype-jump', 'jump-into-water',
     'shake-off-jump', 'get-up', 'shutdown',
 ] as const satisfies readonly MekPilotCheckTriggerKindV2[]);
 const TRIGGER_KIND_SET: ReadonlySet<string> = new Set([...TRIGGER_KINDS, ...PHYSICAL_ATTACK_TRIGGER_KIND_SET]);
@@ -600,7 +610,9 @@ export function canonicalizeMekMovementDeclarationV2(
     value: MekMovementDeclarationV2,
 ): MekMovementDeclarationV2 {
     if (!isObjectLiteralRecord(value)
-        || !exactKeys(value, ['mode', 'distance', 'boosterComponentIds'])
+        || !exactKeys(value, ['mode', 'distance', 'boosterComponentIds', 'jumpJetsFired', 'jumpFromDepth'])
+        || (value.jumpJetsFired !== undefined && (value.mode !== 'jump' || !canonicalNonnegativeInteger(value.jumpJetsFired, MAX_MEK_MOVEMENT_MP_V2)))
+        || (value.jumpFromDepth !== undefined && (value.mode !== 'jump' || !canonicalInteger(value.jumpFromDepth, 1, 3)))
         || !isMovementMode(value.mode)
         || !canonicalNonnegativeInteger(value.distance, MAX_MEK_MOVEMENT_MP_V2)
         || !Array.isArray(value.boosterComponentIds)) {
@@ -617,6 +629,8 @@ export function canonicalizeMekMovementDeclarationV2(
         mode: value.mode,
         distance: value.distance,
         boosterComponentIds: Object.freeze(boosters as ComponentId[]),
+        ...(value.jumpJetsFired === undefined ? {} : { jumpJetsFired: value.jumpJetsFired }),
+        ...(value.jumpFromDepth === undefined ? {} : { jumpFromDepth: value.jumpFromDepth }),
     });
 }
 
@@ -696,7 +710,8 @@ export function projectMekMovementPsrV2(
     try { canonicalState = canonicalizeMekMovementPsrStateV2(state); }
     catch { return unsupported('Movement/PSR state is not canonical'); }
 
-    const numbers = movementNumbers(profile, facts);
+    const numbers = movementNumbers(profile, facts, { jumpFromDepth: canonicalState.movement?.mode === 'jump'
+        ? canonicalState.movement.jumpFromDepth ?? 0 : undefined });
     const destroyed = facts.destruction.committed.destroyed;
     const shutdown = facts.conditions.has('shutdown');
     const disconnected = facts.conditions.has('disconnected');
@@ -885,6 +900,12 @@ export function declareMekMovementV2(
         && tracksOrFeetDeclared(profile, canonicalState)) {
         return Object.freeze({ accepted: false, reason: 'ILLEGAL_DECLARATION', blockers: ['TRACKS_OR_FEET_DECLARED'] });
     }
+    if (canonicalDeclaration.mode === 'jump') {
+        const depth = canonicalState.movement?.mode === 'jump'
+            ? canonicalState.movement.jumpFromDepth : facts.waterDepth;
+        const { jumpFromDepth: _depth, ...intent } = canonicalDeclaration;
+        canonicalDeclaration = { ...intent, ...(depth ? { jumpFromDepth: depth } : {}) };
+    }
     const candidate = freezeState({ ...canonicalState, movement: canonicalDeclaration });
     const projected = projectMekMovementPsrV2(profile, facts, candidate);
     if (projected.kind === 'unsupported') {
@@ -898,10 +919,15 @@ export function declareMekMovementV2(
                 ?? ['Declaration legality was not projected']),
         });
     }
+    if (projected.declaration.jumpJets && canonicalDeclaration.jumpJetsFired === undefined) {
+        canonicalDeclaration = { ...canonicalDeclaration, jumpJetsFired: projected.declaration.jumpJets.minimum };
+    }
     const retained = canonicalState.checks.filter(check =>
         check.source.sourceKind !== 'movement' || check.status !== 'pending');
-    // A movement makes its roll once: changing its distance after an immediate roll raises it no more.
-    const rolled = new Set(retained.filter(check => check.immediate && check.source.sourceKind === 'movement')
+    // A movement makes its roll once: changing its distance after an immediate roll raises it no more, and a jump
+    // makes one landing roll however its distance or jets fired are corrected (IO:AE p. 114).
+    const rolled = new Set(retained.filter(check => check.source.sourceKind === 'movement'
+        && (check.immediate || check.source.triggerKind === 'primitive-prototype-jump'))
         .map(check => check.source.triggerKind));
     const seeds = movementCheckSeeds(profile, facts, canonicalDeclaration)
         .filter(item => !rolled.has(item.source.triggerKind));
@@ -1543,6 +1569,23 @@ export function mekMovementPsrStatesEqualV2(
 }
 
 /**
+ * The state without its component and critical-slot facts, for a unit whose source changed: the movement keeps no
+ * boosters, and a pilot check that names a component or slot, in its source or its witness, is dropped. Checks naming
+ * only locations stay.
+ */
+export function withoutMekMovementPsrEquipmentV2(value: MekMovementPsrStateV2): MekMovementPsrStateV2 {
+    const state = canonicalizeMekMovementPsrStateV2(value);
+    return canonicalizeMekMovementPsrStateV2({
+        ...state,
+        movement: state.movement === null ? null : { ...state.movement, boosterComponentIds: [] },
+        checks: state.checks.filter(check => {
+            const references = collectRemapReferences({ ...state, movement: null, checks: [check] });
+            return references.components.size === 0 && references.criticalSlots.size === 0;
+        }),
+    });
+}
+
+/**
  * Rebind every topology identity carried by durable movement/PSR state. The
  * kernel owns witness grammar and check-ID derivation, so persistence codecs
  * never need to parse or duplicate either contract. No partial state escapes:
@@ -1638,7 +1681,7 @@ function canonicalAutomaticFalls(
 function movementNumbers(
     profile: MekMechanicsProfile,
     facts: MekMovementPsrRuntimeFactsV2,
-    options: Readonly<{ battleValue?: boolean }> = {},
+    options: Readonly<{ battleValue?: boolean; jumpFromDepth?: number }> = {},
 ): MovementNumbersV2 {
     const legs = legDamage(profile, facts);
     const destroyedLegs = legs.filter(leg => leg.destroyed).length;
@@ -1831,15 +1874,19 @@ function movementNumbers(
             activeSupercharger,
         )));
 
-    const lostJets = profile.jumpJets.filter(group => !groupAvailable(group, facts)).length;
+    // TW p. 53 and Core: submerged jets cannot fire at takeoff. BV ignores the current hex.
+    const depth = options.battleValue ? 0 : options.jumpFromDepth ?? facts.waterDepth ?? 0;
+    const workingJets = profile.jumpJets.filter(group => depth < 2 && !(depth === 1 && group.legMounted)
+        && groupAvailable(group, facts));
+    const jetMp = Math.min(profile.movement.installedJumpJetMp, wholeJumpJetMp(workingJets));
     const wingSlotLoss = profile.partialWings.reduce((sum, group) => sum
         + group.criticalSlotIds.filter(slotId => facts.criticalSlotUnavailable(slotId)).length, 0);
-    const lostWingBonus = Math.min(3, wingSlotLoss);
+    const wingBonus = jetMp > 0
+        ? Math.max(0, profile.movement.baseJumpMp - profile.movement.installedJumpJetMp - wingSlotLoss)
+        : 0;
     const jump = activeLargeShields > 0 ? 0 : Math.max(
         0,
-        profile.movement.baseJumpMp
-            - lostJets
-            - lostWingBonus
+        jetMp + wingBonus
             - activeMediumShields
             - (modularArmorActive ? 1 : 0),
     );
@@ -1855,7 +1902,7 @@ function movementNumbers(
         ? 0
         : Math.max(0, Math.floor(preDamageWalk * (profile.tracks.length - lostTracks) / profile.tracks.length)
             + heatModifier);
-    impaired ||= heatModifier < 0 || lostJets > 0 || wingSlotLoss > 0 || lostUmus > 0;
+    impaired ||= heatModifier < 0 || workingJets.length < profile.jumpJets.length || wingSlotLoss > 0 || lostUmus > 0;
     // Compare with the current equipment configuration, not the original design.
     // Expended modular armor and discarded shields can improve that baseline.
     const baselineWalk = preDamageWalk + (tsmActive ? 2 : 0);
@@ -1889,6 +1936,8 @@ function movementNumbers(
         jumpMp: 0,
     };
     return Object.freeze({
+        workingJetThrust: workingJets.map(jet => jet.mpContribution),
+        wingJumpMp: wingBonus,
         controlledByDrone: !facts.functionalCrew && drone,
         allLimbsDestroyed: profile.limbs.length > 0
             && profile.limbs.every(limb => facts.locationDestroyed(limb.locationId)),
@@ -2387,10 +2436,19 @@ function declarationLegality(
             );
         }
     }
+    const jumpJets = declaration.mode === 'jump' && profile.jumpJets.some(jet => jet.mpContribution < 1)
+        ? { minimum: minimumJumpJets(Math.max(0, declaration.distance - numbers.wingJumpMp), numbers.workingJetThrust),
+            maximum: numbers.workingJetThrust.length }
+        : undefined;
+    if (declaration.jumpJetsFired !== undefined && (!jumpJets || declaration.jumpJetsFired < jumpJets.minimum
+        || declaration.jumpJetsFired > jumpJets.maximum)) {
+        reasons.push(blocker('NO_MOVEMENT_POINTS', 'Select an available number of jump jets for this distance.'));
+    }
     if (declaration.distance > maximumMp) {
         reasons.push(blocker('NO_MOVEMENT_POINTS', `Declared distance exceeds ${declaration.mode} MP`));
     }
     return Object.freeze({
+        ...(jumpJets ? { jumpJets } : {}),
         legal: action.legal && reasons.length === 0,
         maximumMp,
         reasons: Object.freeze(reasons),
@@ -2453,9 +2511,15 @@ function movementCheckSeeds(
     if (facts.conversion !== undefined && !(facts.conversion.mode === 'airmek' && !facts.airborne)) {
         return Object.freeze([]);
     }
-    const seeds = declaration.mode === 'sprint'
-        ? sprintBoosterCheckSeeds(profile, facts, declaration)
-        : [];
+    const seeds: MekPilotCheckSeedV2[] = [];
+    if (declaration.mode === 'sprint') seeds.push(...sprintBoosterCheckSeeds(profile, facts, declaration));
+    // IO: Alternate Eras p. 114 requires a landing roll for any jump with primitive prototype jets.
+    if (declaration.mode === 'jump' && profile.jumpJets.some(jet => jet.kind === 'primitive-prototype')) {
+        seeds.push(seed({
+            sourceKind: 'movement', triggerKind: 'primitive-prototype-jump',
+            witness: canonicalWitness({ declaration }), criticalSlotIds: [], locationIds: [],
+        }, 'Landing with primitive prototype jump jets'));
+    }
     if (!movementModeRaisesDamageChecks(profile, declaration)) return Object.freeze([...seeds]);
     const damagedGyro = canonicalIds(profile.gyro.criticalSlotIds.filter(slotId =>
         facts.criticalSlotUnavailable(slotId)), 'damaged gyro critical slot') as CriticalSlotId[];
@@ -2595,6 +2659,8 @@ function legActuatorHitRaisesCheck(profile: MekMechanicsProfile, kind: MekActuat
 function pilotCheckRaisedByRules(profile: MekMechanicsProfile, check: MekPilotCheckRecordV2): boolean {
     const source = check.source;
     switch (source.triggerKind) {
+        case 'primitive-prototype-jump':
+            return profile.jumpJets.some(jet => jet.kind === 'primitive-prototype');
         case 'leg-actuator-hit': {
             const slotId = source.criticalSlotIds[0];
             const actuator = profile.limbs.flatMap(limb => limb.actuators)
@@ -2657,6 +2723,8 @@ function ownPilotCheckModifier(
 ): number {
     const source = check.source;
     switch (source.triggerKind) {
+        case 'primitive-prototype-jump':
+            return 3;
         case 'get-up': {
             const careful = (JSON.parse(source.witness) as Record<string, unknown>)['carefulStand'] === true;
             return projected.standing.standingModifier + (careful ? -2 : 0);
@@ -2995,6 +3063,8 @@ function pilotCheckTriggerStillActive(
         case 'move-damaged-actuator':
             return movementWitnessMatchesDeclaration(source, state.movement)
                 && source.criticalSlotIds.every(slotId => facts.criticalSlotUnavailable(slotId));
+        case 'primitive-prototype-jump':
+            return movementWitnessMatchesDeclaration(source, state.movement);
         case 'sprint-booster': {
             if (!movementWitnessMatchesDeclaration(source, state.movement)) return false;
             const witness = JSON.parse(source.witness) as Record<string, unknown>;
@@ -3284,6 +3354,14 @@ function validateSourceSemantics(source: MekPilotCheckSourceV2, decodedWitness: 
                 || (witness['boosterKind'] !== 'MASC'
                     && witness['boosterKind'] !== 'supercharger')) {
                 throw new Error('Sprint-booster witness does not match its source');
+            }
+            return;
+        }
+        case 'primitive-prototype-jump': {
+            requireSource('movement', 0, 0);
+            const witness = exactWitnessRecord(decodedWitness, ['declaration']);
+            if (exactWitnessMovementDeclaration(witness['declaration']).mode !== 'jump') {
+                throw new Error('Primitive prototype jet landing requires a jump declaration');
             }
             return;
         }
@@ -3692,6 +3770,7 @@ function collectPilotCheckWitnessReferences(
                 `${path}.slotIds[${index}]`,
             ));
             return;
+        case 'primitive-prototype-jump':
         case 'sprint-booster':
             collectMovementDeclarationReferences(
                 witness['declaration'] as MekMovementDeclarationV2,
@@ -3954,6 +4033,10 @@ function remapPilotCheckWitness(
                     .map(id => requiredRemappedId(ids.criticalSlots, id))
                     .sort(compareText),
             });
+        case 'primitive-prototype-jump':
+            return canonicalWitness({ declaration: remapMovementDeclaration(
+                witness['declaration'] as MekMovementDeclarationV2, ids,
+            ) });
         case 'sprint-booster':
             return canonicalWitness({
                 declaration: remapMovementDeclaration(

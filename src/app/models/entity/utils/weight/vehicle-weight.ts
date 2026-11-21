@@ -2,14 +2,16 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 // Author: Drake
 
-import { AmmoEquipment, ArmorEquipment, MiscEquipment, StructureEquipment, WeaponEquipment } from '../../../equipment.model';
+import { AmmoEquipment, ArmorEquipment, MiscEquipment, StructureEquipment, WeaponEquipment, type Equipment } from '../../../equipment.model';
+import { isHeatSinkEquipment } from '../../../heat-equipment.model';
+import { isModularArmorEquipment } from '../../../modular-armor.model';
 import { getBayConstructionWeight, isQuartersBay } from '../../bays/bay-definitions';
 import type { VehicleEntity } from '../../entities/vehicle/vehicle-entity';
 import { STRUCTURE_TYPE } from '../../types/structure';
 import { calculateHeatNeutralRequirement, calculatePowerAmplifierWeight } from '../cost/common';
 import { getEquipmentEngineWeight } from '../equipment-engine-weight';
 import { resolveLabArmorEquipment } from './armor-weight';
-import { ceilToHalfTon } from './weight-rounding';
+import { ceilToHalfTon, ceilToKilogram } from './weight-rounding';
 import { isConstructionSystemEquipment } from '../../../construction-equipment.model';
 
 export interface VehicleWeightBreakdown {
@@ -46,8 +48,8 @@ export function calculateVehicleWeightBreakdown(entity: VehicleEntity): VehicleW
     calculateHeatNeutralRequirement(entity) - entity.mountedEngine().weightFreeHeatSinks,
   );
   const armor = calculateVehicleArmorWeight(entity);
-  const turret = calculateTurretWeight(entity, false);
-  const dualTurret = calculateTurretWeight(entity, true);
+  const turret = calculateVehicleTurretWeight(entity, false);
+  const dualTurret = calculateVehicleTurretWeight(entity, true);
   const liftingEquipment = ['Hover', 'VTOL', 'Hydrofoil', 'Submarine', 'WiGE'].includes(entity.motiveType())
     ? ceilToHalfTon(entity.tonnage() / 10)
     : 0;
@@ -108,18 +110,32 @@ export function calculateVehicleArmorWeight(entity: VehicleEntity): number {
   return ceilToHalfTon(raw);
 }
 
-function calculateTurretWeight(entity: VehicleEntity, dual: boolean): number {
+/**
+ * One turret's mass, for weight and cost (TM p. 279: 5,000 x turret tonnage). On Combat and Support Vehicles alike,
+ * "Turrets weigh 10 percent as much as all equipment mounted within the turret, except for armor, ammunition, heat
+ * sinks and power amplifiers (rounded up to the nearest kilograms for Small Support Vehicles, or to the nearest
+ * half-ton for vehicles weighing 5 tons and up)" (TM p. 241); a dual turret follows the same rules (TO:AUE p. 159).
+ * An OmniVehicle's base chassis fixes it.
+ */
+export function calculateVehicleTurretWeight(entity: VehicleEntity, dual: boolean): number {
   const exists = dual ? entity.hasDualTurret() : entity.hasTurret();
   if (!exists) return 0;
   const baseWeight = dual ? entity.baseChassisTurret2Weight() : entity.baseChassisTurretWeight();
   if (entity.omni() && baseWeight >= 0) return baseWeight;
   const locations = dual ? ['Front Turret'] : ['Turret', 'Rear Turret'];
-  const equipmentWeight = entity.equipment().reduce((total, mount) => {
-    if (!locations.includes(mount.location) || mount.equipment instanceof AmmoEquipment) return total;
-    if (!dual && mount.equipment instanceof ArmorEquipment) return total;
-    return total + requireTonnage(entity, mount);
-  }, 0);
-  return ceilToHalfTon(equipmentWeight / 10);
+  const raw = entity.equipment().reduce((total, mount) =>
+    locations.includes(mount.location) && isVehicleTurretPayload(mount.equipment) ? total + requireTonnage(entity, mount) : total,
+  0) / 10;
+  return entity.isSupportVehicle() && entity.tonnage() < 5 ? ceilToKilogram(raw) : ceilToHalfTon(raw);
+}
+
+/**
+ * Equipment a vehicle turret's mass counts: not armor, ammunition or heat sinks (TM p. 241). Modular Armor is an armor
+ * type (TO:AUE p. 92); power amplifiers are never turret mounts.
+ */
+export function isVehicleTurretPayload(equipment: Equipment | undefined): boolean {
+  return !(equipment instanceof AmmoEquipment) && !(equipment instanceof ArmorEquipment)
+    && !isModularArmorEquipment(equipment) && !isHeatSinkEquipment(equipment);
 }
 
 function requireTonnage(

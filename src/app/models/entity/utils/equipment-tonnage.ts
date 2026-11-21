@@ -26,6 +26,7 @@ import {
     isPartialWingEquipment,
     isUmuEquipment,
     jumpPropulsionTonnageMultiplier,
+    standardJumpJetTonnage,
 } from '../../jump-equipment.model';
 import { isActuatorEnhancementSystem } from '../../myomer-equipment.model';
 import { isDroneOperatingSystemEquipment } from '../../drone-operating-system.model';
@@ -118,9 +119,7 @@ export function getEquipmentTonnage(
             if (unitTonnage < 10) return 0.1 * multiplier;
             return 0.15 * multiplier;
         }
-        if (unitTonnage <= 55) return 0.5 * multiplier;
-        if (unitTonnage <= 85) return multiplier;
-        return 2 * multiplier;
+        return standardJumpJetTonnage(unitTonnage) * multiplier;
     } else if (isPartialWingEquipment(equipment) && isEquipmentForPlatform(equipment, 'mek')) {
         return standardRound(tonnage * (equipment.techBase === 'Clan' ? 0.05 : 0.07), entity);
     } else if (isPartialWingEquipment(equipment) && isEquipmentForPlatform(equipment, 'protomek')) {

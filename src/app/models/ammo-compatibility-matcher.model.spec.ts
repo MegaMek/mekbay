@@ -8,8 +8,10 @@ import {
     createAmmoCompatibilityMatch,
     matchesAmmoCompatibility,
 } from './ammo-compatibility-matcher.model';
+import { ATM_IMPROVED_MAGNETIC_PULSE_PROFILE } from './ammo-weapon-profile.model';
+import { expectedInventoryModes } from './runtime/component-inventory-mode';
 
-function weapon(ammoType: 'ATM' | 'MML', rackSize = 6): WeaponEquipment {
+function weapon(ammoType: 'ATM' | 'IATM' | 'MML', rackSize = 6): WeaponEquipment {
     return new WeaponEquipment({
         id: `${ammoType}${rackSize}`,
         name: `${ammoType} ${rackSize}`,
@@ -21,7 +23,7 @@ function weapon(ammoType: 'ATM' | 'MML', rackSize = 6): WeaponEquipment {
 function ammo(input: {
     readonly id: string;
     readonly name: string;
-    readonly ammoType: 'ATM' | 'MML';
+    readonly ammoType: 'ATM' | 'IATM' | 'MML';
     readonly rackSize?: number;
     readonly flags?: readonly EquipmentFlag[];
     readonly munitionTypes?: readonly AmmoMunitionFlag[];
@@ -66,6 +68,20 @@ describe('ammo compatibility matcher', () => {
         expect(match(atm, explosive, 'High Explosive')).toBeTrue();
         expect(match(atm, imp, 'High Explosive')).toBeFalse();
         expect(match(atm, wrongRack, 'Standard')).toBeFalse();
+    });
+
+    it('fires Improved Magnetic Pulse missiles from an iATM only, in their own mode (IO:AE p. 61)', () => {
+        const imp = ATM_IMPROVED_MAGNETIC_PULSE_PROFILE.displayName;
+        const iatm = weapon('IATM', 3);
+        const impAmmo = ammo({ id: 'imp', name: 'iATM 3 IMP Ammo', ammoType: 'IATM', rackSize: 3, munitionTypes: ['M_IATM_IMP'] });
+        const standard = ammo({ id: 'standard', name: 'iATM 3 Ammo', ammoType: 'IATM', rackSize: 3, munitionTypes: ['M_STANDARD'] });
+
+        expect(expectedInventoryModes('IATM')).toContain(imp);
+        expect(expectedInventoryModes('ATM')).not.toContain(imp);
+        expect(match(iatm, impAmmo, imp)).toBeTrue();
+        expect(match(iatm, impAmmo, 'High Explosive')).toBeFalse();
+        expect(match(iatm, standard, imp)).toBeFalse();
+        expect(match(weapon('ATM', 3), impAmmo, imp)).toBeFalse();
     });
 
     it('reuses canonical MML classification for loadout facts', () => {

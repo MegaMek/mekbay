@@ -6,9 +6,10 @@ import { MountedArmor, MountedEngine, MountedStructure } from '../../models/enti
 import { MekEntity, MekWithArmsEntity } from '../../models/entity/entities/mek/mek-entity';
 import { createTestEquipmentRegistry } from '../../models/entity/testing/test-equipment-registry';
 import { addTestEquipment } from '../../models/entity/testing/test-mounted-equipment';
+import { evaluateMekRuntimeCapability } from '../../models/runtime/mek-runtime-capability';
 import { createConstructionEntity, type ConstructionUnitKind } from './construction-factory';
 import { constructionAdvancedMekMessages } from './construction-advanced-mek-rules';
-import { validateConstruction } from './construction-rules';
+import { setConstructionStructure, validateConstruction } from './construction-rules';
 
 function mek(kind: ConstructionUnitKind = 'Biped'): MekEntity {
     return createConstructionEntity(kind, createTestEquipmentRegistry()) as MekEntity;
@@ -226,6 +227,32 @@ describe('advanced Mek construction combinations', () => {
         expect(codes(entity)).toContain('FRANKEN_SUPERHEAVY_DONOR');
         entity.omni.set(true);
         expect(codes(entity)).toContain('FRANKEN_OMNI');
+    });
+
+    it('uses the center torso class for every donor in construction and force admission', () => {
+        for (const kind of ['Biped', 'Quad', 'Tripod'] as const) {
+            for (const [center, incompatible, compatible] of [[100, 105, 95], [105, 100, 110]]) {
+                const entity = mek(kind);
+                entity.setTonnage(center);
+                for (const location of entity.locationOrder.filter(code => code !== 'CT')) {
+                    const original = entity.structureAt(location);
+                    expect(() => setConstructionStructure(entity, original.structure, location, incompatible)).toThrowError(/center torso requires/);
+                    expect(entity.structureAt(location).tonnage).toBe(center);
+                    // An imported design can already contain the incompatible donor.
+                    entity.setStructureAt(location, original.withTonnage(incompatible));
+                    const issues = validateConstruction(entity).messages.filter(message => message.code === 'FRANKEN_SUPERHEAVY_DONOR');
+                    expect(issues.map(message => message.location)).toEqual([location]);
+                    expect(evaluateMekRuntimeCapability(entity)).toEqual(jasmine.objectContaining({
+                        readiness: 'deferred', blockers: [jasmine.objectContaining({ code: 'FRANKEN_SUPERHEAVY_DONOR' })],
+                    }));
+                    const sameClass = entity.locationIsLeg(location) ? Math.max(center, compatible) : compatible;
+                    setConstructionStructure(entity, original.structure, location, sameClass);
+                    expect(codes(entity)).not.toContain('FRANKEN_SUPERHEAVY_DONOR');
+                    expect(evaluateMekRuntimeCapability(entity).readiness).toBe('ready');
+                    entity.setStructureAt(location, original);
+                }
+            }
+        }
     });
 
     it('checks cockpit availability at the selected design year', () => {

@@ -12,7 +12,9 @@ import {
     isRangeBracketWithinMaximum,
     effectiveAerospaceMaximumBracket,
 } from './aerospace-range.util';
-import { ATM_EXTENDED_RANGE_PROFILE, ATM_HIGH_EXPLOSIVE_PROFILE, MML_SRM_PROFILE } from '../models/ammo-weapon-profile.model';
+import {
+    ATM_EXTENDED_RANGE_PROFILE, ATM_HIGH_EXPLOSIVE_PROFILE, ATM_IMPROVED_MAGNETIC_PULSE_PROFILE, MML_SRM_PROFILE,
+} from '../models/ammo-weapon-profile.model';
 
 describe('aerospace range utilities', () => {
     it('selects standard brackets at each boundary', () => {
@@ -64,6 +66,25 @@ describe('aerospace range utilities', () => {
         expect(aerospaceAttackValues(weapon, null)).toEqual([6, 8, 8, 9]);
         expect(aerospaceAttackValues(weapon, ATM_EXTENDED_RANGE_PROFILE)).toEqual([4, 4, 4, 4]);
         expect(aerospaceAttackValues(weapon, ATM_HIGH_EXPLOSIVE_PROFILE)).toEqual([9, 0, 0, 0]);
+        expect(aerospaceAttackValues(weapon, ATM_IMPROVED_MAGNETIC_PULSE_PROFILE)).toEqual([3, 0, 0, 0]);
         expect(aerospaceAttackValues(weapon, MML_SRM_PROFILE)).toEqual([12, 0, 0, 0]);
+    });
+
+    it('adds the Artemis values of TW p. 303, TO:AUE p. 95 and IO:AE p. 65', () => {
+        const launcher = (ammoType: string, rackSize: number, av: readonly number[]) =>
+            ({ ammoType, rackSize, weapon: { av } }) as never;
+        const mml7 = launcher('MML', 7, [4, 4, 4, 0]);
+
+        // Artemis IV: MML 7 4/6 and its SRM 8/12, LRM 15 9/12, SRM 4 4/6
+        expect(aerospaceAttackValues(mml7, null, 'iv')).toEqual([6, 6, 6, 0]);
+        expect(aerospaceAttackValues(mml7, MML_SRM_PROFILE, 'iv')).toEqual([12, 0, 0, 0]);
+        expect(aerospaceAttackValues(launcher('LRM', 15, [9, 9, 9, 0]), null, 'iv')).toEqual([12, 12, 12, 0]);
+        expect(aerospaceAttackValues(launcher('SRM', 4, [4, 0, 0, 0]), null, 'iv')).toEqual([6, 0, 0, 0]);
+        // Artemis V reads a Cluster Hits roll of 10, which also lifts an MML 3; Artemis IV does not
+        expect(aerospaceAttackValues(launcher('MML', 3, [2, 2, 2, 0]), null, 'iv')).toEqual([2, 2, 2, 0]);
+        expect(aerospaceAttackValues(launcher('MML', 3, [2, 2, 2, 0]), null, 'v')).toEqual([3, 3, 3, 0]);
+        // Prototype Artemis IV reads a roll of 8, which only adds a hit to a 2-missile rack
+        expect(aerospaceAttackValues(launcher('SRM', 2, [2, 0, 0, 0]), null, 'prototype')).toEqual([4, 0, 0, 0]);
+        expect(aerospaceAttackValues(launcher('LRM', 15, [9, 9, 9, 0]), null, 'prototype')).toEqual([9, 9, 9, 0]);
     });
 });

@@ -1,6 +1,7 @@
 // Copyright (C) 2026 The MegaMek Team
 // SPDX-License-Identifier: GPL-3.0-or-later
 
+import { restoreMekUnit } from './cbt-mek-unit';
 import { asComponentId } from '../entity/entity-identifiers';
 import {
     compileMekHeatProfile,
@@ -25,9 +26,64 @@ import {
 } from './mek-turn-state-v2';
 import {
     createDirectEngineHeatRuntimeFixture,
+    createMixedHeatSinkFixture,
     createDirectMekRuntimeFixture,
     type DirectMekRuntimeFixture,
 } from './testing/direct-mek-runtime-fixture';
+
+describe('mixed prototype and single sinks (IO:AE p. 65)', () => {
+    for (const ruleset of ['core-2026', 'total-warfare'] as const) {
+        it(`counts cooling by sink type and switches both sink types off at the End Phase under ${ruleset}`, async () => {
+            // TW (Shutting Off Heat Sinks) and Core p. 103: switched off in the End Phase, after this turn's Heat Phase.
+            const fixture = createMixedHeatSinkFixture(ruleset);
+            const projection = mekProjection(fixture);
+            const id = fixture.equipmentComponent('ISDoubleHeatSinkPrototype').id;
+            expect(fixture.entity.bulkHeatSinkCount()).toBe(10);
+            expect(projection().capacity).toBe(12);
+            // On turn 1, until a move is assigned, the switch holds at once (the user's rule; Core p. 103).
+            fixture.instance.dispatch({ type: 'set-heatsinks-off', heatsinksOff: 1 });
+            expect(fixture.instance.query().heatState()).toEqual(jasmine.objectContaining({ heatsinksOff: 1 }));
+            expect(fixture.instance.query().heatState().heatsinksOffNext).toBeUndefined();
+            // Once a move is assigned, turn 1 also switches in the End Phase.
+            expect(fixture.instance.dispatch({ type: 'declare-mek-movement',
+                declaration: { mode: 'stationary', distance: 0, boosterComponentIds: [] } }).changed).toBeTrue();
+            fixture.instance.dispatch({ type: 'set-heatsinks-off', heatsinksOff: 0 });
+            expect(fixture.instance.query().heatState()).toEqual(jasmine.objectContaining({ heatsinksOff: 1, heatsinksOffNext: 0 }));
+            fixture.instance.dispatch({ type: 'end-turn', policy: 'automatic' });
+            expect(projection().capacity).toBe(12);
+            fixture.instance.dispatch({ type: 'set-heatsinks-off', heatsinksOff: 1 });
+            expect(fixture.instance.query().heatState()).toEqual(jasmine.objectContaining({ heatsinksOff: 0, heatsinksOffNext: 1 }));
+            expect(projection().capacity).toBe(12);
+            expect(fixture.instance.dispatch({ type: 'set-component-mode', componentId: id, mode: 'disabling' }).changed).toBeTrue();
+            expect(projection().capacity).toBe(12);
+            // The pending switch survives a save before the End Phase.
+            const pending = await restoreMekUnit(fixture.instance.serialize(), fixture.entity, fixture.identity,
+                { profileId: 'pristine', deployment: { id: 'default' }, scenario: { id: 'megamek', ruleset } });
+            expect(pending.query().heatState().heatsinksOffNext).toBe(1);
+            fixture.instance.dispatch({ type: 'end-turn', policy: 'automatic' });
+            expect(fixture.instance.query().heatState().heatsinksOffNext).toBeUndefined();
+            expect(projection().capacity).toBe(9);
+            expect(projection().disabledSinkUnits).toBe(2);
+            const restored = await restoreMekUnit(fixture.instance.serialize(), fixture.entity, fixture.identity,
+                { profileId: 'pristine', deployment: { id: 'default' }, scenario: { id: 'megamek', ruleset } });
+            expect(restored.query().heatProjection()).toEqual(fixture.instance.query().heatProjection());
+            restored.dispatch({ type: 'set-condition', condition: 'shutdown', active: true });
+            expect(restored.dispatch({ type: 'set-component-mode', componentId: id, mode: 'enabling' }).changed).toBeTrue();
+        });
+    }
+});
+
+describe('prototype double heat sink switch timing', () => {
+    it('switches a prototype double at once before the first move of the game, as the bulk switch does (Core p. 103)', () => {
+        const fixture = createMixedHeatSinkFixture('core-2026');
+        const projection = mekProjection(fixture);
+        const id = fixture.equipmentComponent('ISDoubleHeatSinkPrototype').id;
+        expect(projection().capacity).toBe(12);
+        expect(fixture.instance.dispatch({ type: 'set-component-mode', componentId: id, mode: 'disabling' }).changed).toBeTrue();
+        expect(fixture.instance.query().componentMode(id)).toBe('disabled');
+        expect(projection().capacity).toBe(10);
+    });
+});
 
 const NO_COMPONENTS = new Set<ReturnType<typeof asComponentId>>();
 const NO_CRITICALS = new Set<never>();
@@ -178,7 +234,7 @@ describe('origin/next Mek movement and engine heat parity', () => {
             jump: Object.freeze({
                 ...base.jump,
                 kind: 'none' as const,
-                componentIds: Object.freeze([]),
+                jets: Object.freeze([]),
                 boosterComponentIds: Object.freeze([boosterId]),
             }),
         });
@@ -187,7 +243,7 @@ describe('origin/next Mek movement and engine heat parity', () => {
             jump: Object.freeze({
                 ...boosterOnly.jump,
                 kind: 'standard' as const,
-                componentIds: Object.freeze([jetId]),
+                jets: Object.freeze([{ componentId: jetId, mpContribution: 1 }]),
             }),
         });
 
@@ -207,7 +263,7 @@ describe('origin/next Mek movement and engine heat parity', () => {
         ));
         const jetId = asComponentId('component:test-jump-jet');
         const withJets = (profile: MekHeatProfile, kind: 'standard' | 'improved' | 'prototype-improved') =>
-            Object.freeze({ ...profile, jump: Object.freeze({ ...profile.jump, kind, componentIds: [jetId] }) });
+            Object.freeze({ ...profile, jump: Object.freeze({ ...profile.jump, kind, jets: [{ componentId: jetId, mpContribution: 1 }] }) });
         const jumpHeat = (profile: MekHeatProfile) =>
             [1, 5].map(distance => movementHeat(profile, 'jump', distance));
 
@@ -315,9 +371,15 @@ describe('origin/next Mek movement and engine heat parity', () => {
                 .toBeTrue();
             expect(projection().projected).toBe(5);
             expect(next()).toBe(follow ? 13 : 8);
-            // Heat sinks switched off push the calculation up by the cooling they lose, and NEXT with it.
+            // Once a move is assigned, heat sinks switched off wait for the End Phase (Core p. 103); a 3-heat laser moves
+            // NEXT with the calculation.
+            expect(fixture.instance.dispatch({ type: 'declare-mek-movement',
+                declaration: { mode: 'stationary', distance: 0, boosterComponentIds: [] } }).accepted).toBeTrue();
             expect(fixture.instance.dispatch({ type: 'set-heatsinks-off', heatsinksOff: 2 }).accepted).toBeTrue();
-            expect(next()).toBe(follow ? 15 : 8);
+            expect(next()).toBe(follow ? 13 : 8);
+            const laser = fixture.equipmentComponent('ISMediumLaser');
+            expect(fixture.instance.dispatch({ type: 'fire-weapons', selections: [{ weaponId: laser.id }] }).accepted).toBeTrue();
+            expect(next()).toBe(follow ? 16 : 8);
             // A NEXT tapped onto the calculation drops the adjustment.
             expect(fixture.instance.dispatch({ type: 'set-pending-heat', heat: projection().projected, follow }).accepted)
                 .toBeTrue();

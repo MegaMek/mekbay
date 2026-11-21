@@ -9,7 +9,7 @@ import {
 DirectMekAutomationService,
 type DirectMekEndPhaseAutomationRequest,
 type DirectMekEndTurnAutomationRequest,
-type MekDamageGroup,
+type MekWeaponHit,
 type PreparedDirectMekAutomationCommand,
 } from '../../services/direct-mek-automation.service';
 import {
@@ -70,10 +70,11 @@ function stateRevision(snapshot: CBTUnitSnapshot | null): number | null {
 
 /**
  * Accepted weapon hits, read on the struck unit's own hit-location table: damage groups, the inferno missiles of the
- * same attack, whose effect the struck unit decides, and the outside heat its heat-causing weapons apply.
+ * same attack, whose effect the struck unit decides, and the outside heat its heat-causing weapons apply. A Mek's
+ * groups carry their heat in attack order, inferno missiles and heat that strikes no location included.
  */
 export type WeaponHits =
-    | Readonly<{ family: 'mek'; groups: readonly MekDamageGroup[]; inferno?: readonly InfernoMissile[]; heat?: number }>
+    | Readonly<{ family: 'mek'; groups: readonly MekWeaponHit[] }>
     | Readonly<{ family: 'non-mek'; groups: readonly NonMekDamageGroup[]; inferno?: readonly InfernoMissile[]; heat?: number }>;
 
 export interface CBTForceUnitCommandBoundary {
@@ -170,7 +171,7 @@ export class CBTForceUnitCommandDispatcher {
             const apply = hits.family === 'mek'
                 ? hasMekRuntime(snapshot) && mekAutomation
                     ? (dispatch: CBTForceUnitCommandDispatch) =>
-                        mekAutomation.applyWeaponHits(this.force, instanceId, hits.groups, target, dispatch, hits.inferno, hits.heat)
+                        mekAutomation.applyWeaponHits(this.force, instanceId, hits.groups, target, dispatch)
                     : null
                 : hasNonMekRuntime(snapshot) && nonMekAutomation
                     ? (dispatch: CBTForceUnitCommandDispatch) =>

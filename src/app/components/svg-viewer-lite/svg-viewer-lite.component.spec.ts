@@ -12,7 +12,7 @@ import { NativeEntityService } from '../../services/native-entity.service';
 import type { LoadedEntity } from '../../models/entity/entity-repository';
 import { TestTankEntity } from '../../models/entity/testing/test-entities';
 import { RecordSheetSourceService } from '../../services/record-sheet-source.service';
-import type { RecordSheetPipLayout } from '../../models/options.model';
+import type { RecordSheetGroupWeapons, RecordSheetPipLayout } from '../../models/options.model';
 import { SvgViewerLiteComponent } from './svg-viewer-lite.component';
 import { SvgExportUtil } from '../../utils/svg-export.util';
 
@@ -51,7 +51,7 @@ describe('SvgViewerLiteComponent', () => {
     let originalResizeObserver: typeof ResizeObserver | undefined;
     let triggerResize: (() => void) | null;
     const options = signal({ mouseWheelAction: 'scroll' as 'scroll' | 'zoom', CBTOptionalRules: { quirks: true }, recordSheetPipLayout: 'classic' as RecordSheetPipLayout,
-        recordSheetGroupWeapons: false,
+        recordSheetGroupWeapons: 'disabled' as RecordSheetGroupWeapons,
         printAllOptions: { paperSize: 'letter' as 'a4' | 'letter', recordSheetCenterPanelContent: 'clusterTable' } });
 
     beforeEach(() => {
@@ -70,7 +70,7 @@ describe('SvgViewerLiteComponent', () => {
             svg.setAttribute('viewBox', '0 0 612 792');
             return { svgs: [svg] };
         });
-        options.set({ mouseWheelAction: 'scroll', CBTOptionalRules: { quirks: true }, recordSheetPipLayout: 'classic', recordSheetGroupWeapons: false, printAllOptions: { paperSize: 'letter' as 'a4' | 'letter', recordSheetCenterPanelContent: 'clusterTable' } });
+        options.set({ mouseWheelAction: 'scroll', CBTOptionalRules: { quirks: true }, recordSheetPipLayout: 'classic', recordSheetGroupWeapons: 'disabled', printAllOptions: { paperSize: 'letter' as 'a4' | 'letter', recordSheetCenterPanelContent: 'clusterTable' } });
         triggerResize = null;
         originalResizeObserver = window.ResizeObserver;
         window.ResizeObserver = class implements ResizeObserver {
@@ -357,7 +357,21 @@ describe('SvgViewerLiteComponent', () => {
 
     it('regenerates an open preview when identical weapons become grouped', async () => {
         const { fixture, svg } = await createViewer();
-        options.update(current => ({ ...current, recordSheetGroupWeapons: true }));
+        options.update(current => ({ ...current, recordSheetGroupWeapons: 'enabled' }));
+        await fixture.whenStable();
+        expect(recordSheets.load).toHaveBeenCalledTimes(2);
+        expect(recordSheets.load.calls.mostRecent().args[1]?.groupWeapons).toBeTrue();
+        expect(fixture.nativeElement.querySelector('svg')).not.toBe(svg);
+    });
+
+    it('groups identical weapons under "Only previews" only in the unit details sheet preview', async () => {
+        const { fixture, svg } = await createViewer();
+        options.update(current => ({ ...current, recordSheetGroupWeapons: 'previews' }));
+        await fixture.whenStable();
+        expect(recordSheets.load).toHaveBeenCalledTimes(1);
+
+        fixture.componentRef.setInput('previewGrouping', true);
+        fixture.detectChanges();
         await fixture.whenStable();
         expect(recordSheets.load).toHaveBeenCalledTimes(2);
         expect(recordSheets.load.calls.mostRecent().args[1]?.groupWeapons).toBeTrue();

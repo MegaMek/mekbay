@@ -97,11 +97,47 @@ export interface CBTUnitHeatState {
      */
     readonly pendingOffset?: number;
     readonly heatsinksOff: number;
+    /**
+     * The heat sinks the player switched off for the End Phase: shut-off sinks dissipate nothing from the following
+     * Heat Phase (TW, Shutting Off Heat Sinks; Core p. 103). Absent when the switch is unchanged.
+     */
+    readonly heatsinksOffNext?: number;
+}
+
+function heatSinkSwitch(heat: CBTUnitHeatState): Pick<CBTUnitHeatState, 'heatsinksOff' | 'heatsinksOffNext'> {
+    return { heatsinksOff: heat.heatsinksOff, ...(heat.heatsinksOffNext === undefined ? {} : { heatsinksOffNext: heat.heatsinksOffNext }) };
+}
+
+/**
+ * On turn 1, until the unit has a move assigned, a heat-sink switch holds at once, so a unit can begin the game with
+ * any number of sinks off (Core p. 103; the user's rule for both rulesets and every unit). Otherwise the End Phase
+ * makes it.
+ */
+export function heatSinkSwitchIsImmediate(turn: Readonly<{ turnCounter: number }>, moveAssigned: boolean): boolean {
+    return turn.turnCounter === 0 && !moveAssigned;
+}
+
+/**
+ * Switches heat sinks off or on. The switch is made in the End Phase, so the turn's Heat Phase keeps the sinks it had
+ * (TW, Shutting Off Heat Sinks; Core p. 103), except when it holds at once (`heatSinkSwitchIsImmediate`). 'Meks and
+ * other units switch alike.
+ */
+export function withHeatSinkSwitch<T extends CBTUnitHeatState>(heat: T, heatsinksOff: number, atOnce: boolean): T {
+    const { heatsinksOffNext: _next, ...rest } = heat;
+    return (atOnce || heatsinksOff === heat.heatsinksOff
+        ? { ...rest, heatsinksOff }
+        : { ...rest, heatsinksOffNext: heatsinksOff }) as T;
+}
+
+/** The End Phase applies the heat-sink switch set during the turn. */
+export function settleHeatSinkSwitch<T extends CBTUnitHeatState>(heat: T): T {
+    const { heatsinksOffNext, ...rest } = heat;
+    return (heatsinksOffNext === undefined ? heat : { ...rest, heatsinksOff: heatsinksOffNext }) as T;
 }
 
 /** Settles the track at a value: the prior current heat becomes previous and any pending arrow is consumed. */
 export function settleHeat(heat: CBTUnitHeatState, current: number): CBTUnitHeatState {
-    return Object.freeze({ current, previous: heat.current, heatsinksOff: heat.heatsinksOff });
+    return Object.freeze({ current, previous: heat.current, ...heatSinkSwitch(heat) });
 }
 
 /** The heat a unit is headed for: the player's arrow (NEXT) when one is set, otherwise its current heat. */
@@ -120,7 +156,7 @@ export function withPendingHeat(
         previous: heat.previous,
         ...(pendingOverride === undefined ? {} : { pendingOverride }),
         ...(pendingOverride === undefined || pendingOffset === undefined ? {} : { pendingOffset }),
-        heatsinksOff: heat.heatsinksOff,
+        ...heatSinkSwitch(heat),
     });
 }
 

@@ -23,6 +23,7 @@ const PIPS_PER_ARMOR_BLOCK = PIPS_PER_ROW * MAX_PIP_ROWS;
  */
 export class CapitalShipPipRenderer {
 
+    /** `cellScale` sizes the grid's cells against MegaMekLab's: the capital paperdolls draw them at three quarters. */
     public static createPips(
         count: number,
         containerWidth: number,
@@ -30,6 +31,7 @@ export class CapitalShipPipRenderer {
         type: CapitalPipType,
         location: string,
         options: PipRenderOptions = {},
+        cellScale = 1,
     ): SVGGElement | null {
         if (!Number.isFinite(count)
             || count <= 0
@@ -53,9 +55,9 @@ export class CapitalShipPipRenderer {
         group.setAttribute('data-pip-capacity', String(pipCount));
         group.setAttribute('data-rendered-visible-pips', String(pipCount));
         if (type === 'armor') {
-            this.appendArmorPips(group, pipCount, containerWidth, containerHeight, location, options);
+            this.appendArmorPips(group, pipCount, containerWidth, containerHeight, location, options, ARMOR_PIP_SIZE * cellScale);
         } else {
-            this.appendStructurePips(group, pipCount, containerWidth, location, options);
+            this.appendStructurePips(group, pipCount, containerWidth, location, options, STRUCTURE_PIP_SIZE * cellScale);
         }
         return group;
     }
@@ -89,9 +91,10 @@ export class CapitalShipPipRenderer {
         containerHeight: number,
         location: string,
         options: PipRenderOptions,
+        pipSize: number,
     ): void {
-        let pipWidth = ARMOR_PIP_SIZE;
-        let pipHeight = ARMOR_PIP_SIZE;
+        let pipWidth = pipSize;
+        let pipHeight = pipSize;
         let blockWidth = (PIPS_PER_ROW + 1) * pipWidth;
         let blockHeight = (MAX_PIP_ROWS + 1) * pipHeight;
         const blockCount = Math.ceil(count / PIPS_PER_ARMOR_BLOCK);
@@ -166,20 +169,21 @@ export class CapitalShipPipRenderer {
         containerWidth: number,
         location: string,
         options: PipRenderOptions,
+        pipSize: number,
     ): void {
-        const blockWidth = PIPS_PER_ROW * STRUCTURE_PIP_SIZE;
+        const blockWidth = PIPS_PER_ROW * pipSize;
         const pipsPerBlock = this.structurePipsPerBlock(location);
         const firstBlockCount = count > pipsPerBlock ? Math.floor(count / 2) : count;
         const startX = count > pipsPerBlock
-            ? containerWidth / 2 - blockWidth - STRUCTURE_PIP_SIZE * 0.5
+            ? containerWidth / 2 - blockWidth - pipSize * 0.5
             : containerWidth / 2 - blockWidth * 0.5;
         this.appendPipBlock(
             group,
             startX,
             0,
             firstBlockCount,
-            STRUCTURE_PIP_SIZE,
-            STRUCTURE_PIP_SIZE,
+            pipSize,
+            pipSize,
             'structure',
             location,
             options,
@@ -187,11 +191,11 @@ export class CapitalShipPipRenderer {
         if (count > firstBlockCount) {
             this.appendPipBlock(
                 group,
-                startX + blockWidth + STRUCTURE_PIP_SIZE,
+                startX + blockWidth + pipSize,
                 0,
                 count - firstBlockCount,
-                STRUCTURE_PIP_SIZE,
-                STRUCTURE_PIP_SIZE,
+                pipSize,
+                pipSize,
                 'structure',
                 location,
                 options,

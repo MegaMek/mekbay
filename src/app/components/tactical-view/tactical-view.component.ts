@@ -947,7 +947,7 @@ export class TacticalViewComponent {
         if (!isCBTMekForceMember(member) || !snapshot || !unit || !hasMekRuntime(unit)) return;
         const command = recordSheetCommand(interaction, {
             query: unit.query,
-            heatSinkCount: snapshot.heatSinks.count,
+            heatSinkCount: unit.entity.bulkHeatSinkCount(),
         }, this.pendingDamage(), delta);
         await this.sendMekCommand(command, interaction.context);
     }

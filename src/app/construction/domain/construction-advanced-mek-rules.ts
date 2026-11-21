@@ -149,10 +149,9 @@ export function constructionAdvancedMekMessages(entity: BaseEntity): EntityValid
             message: `Mismatched donor legs apply +${entity.frankenMekPilotingModifier()} to Piloting Skill Rolls.`,
         });
         if (entity.omni()) add('FRANKEN_OMNI', 'FrankenMeks cannot be OmniMeks.', undefined, 'structure');
-        const centerMass = entity.structureByLocation().get('CT')?.tonnage ?? entity.tonnage();
+        const centerMass = entity.tonnage();
         for (const [location, structure] of entity.structureByLocation()) {
             if (!Number.isInteger(structure.tonnage) || structure.tonnage < 10 || structure.tonnage > 200 || structure.tonnage % 5 !== 0) add('FRANKEN_DONOR_TONNAGE', 'Donor structure must be 10–200 tons in five-ton increments.', location, 'structure');
-            if (centerMass <= 100 && structure.tonnage > 100) add('FRANKEN_SUPERHEAVY_DONOR', 'A center torso of 100 tons or less cannot use superheavy donor structure.', location, 'structure');
             if (entity.locationIsLeg(location) && structure.tonnage < centerMass) add('FRANKEN_LEG_DONOR', 'Leg donor tonnage cannot be lower than center-torso donor tonnage.', location, 'structure');
         }
     }

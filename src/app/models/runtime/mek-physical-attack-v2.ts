@@ -88,6 +88,9 @@ export type MekPhysicalAttackEffectV2 =
 
 export interface MekPhysicalAttackProjectionRowV2 {
     readonly target: AttackerActionTarget;
+    /** The attack's printed name, as the record sheet lists it. */
+    readonly name: string;
+    /** The name with the leg a kick uses, as the equipment panel shows it. */
     readonly label: string;
     readonly locationIds: readonly LocationId[];
     readonly locationCodes: readonly string[];
@@ -190,6 +193,7 @@ export function projectMekPhysicalAttacksV2(
                 requireLocation(index, locationId).code);
             attacks.push(Object.freeze({
                 target: Object.freeze({ kind: 'component' as const, componentId: group.componentId }),
+                name: mount.displayName(),
                 label: mount.displayName(),
                 locationIds: Object.freeze([...group.locationIds]),
                 locationCodes: Object.freeze(locationCodes),
@@ -224,6 +228,7 @@ export function projectMekPhysicalAttacksV2(
             facts.airborneAirMek && (isMekKick(action.kind) || action.kind === 'punch' || action.kind === 'brush-off'));
             attacks.push(Object.freeze({
                 target: Object.freeze({ kind: 'intrinsic' as const, actionId: action.id }),
+                name: action.name,
                 label: kickingLegCode !== undefined
                     ? `${action.name} (${kickingLegCode})`
                     : action.name,

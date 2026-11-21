@@ -58,7 +58,7 @@ const DEFAULT_OPTIONS: Options = {
   swipeToNextSheet: 'horizontal',
   recordSheetDoubleTapZoomReset: 'contextual',
   recordSheetPipLayout: 'classic',
-  recordSheetGroupWeapons: false,
+  recordSheetGroupWeapons: 'previews',
   syncZoomBetweenSheets: true,
   trackPhaseAndTurn: true,
   realPhases: false,
@@ -117,7 +117,9 @@ const DEFAULT_OPTIONS: Options = {
   },
 };
 
-type LegacyOptions = Partial<Options> & {
+type LegacyOptions = Omit<Partial<Options>, 'recordSheetGroupWeapons'> & {
+  /** Formerly a boolean: true grouped identical weapons everywhere. */
+  recordSheetGroupWeapons?: Options['recordSheetGroupWeapons'] | boolean;
   themeColor?: 'normal' | 'night';
   sheetsColor?: 'normal' | 'night';
   ASCardStyle?: 'colored' | 'monochrome';
@@ -192,7 +194,7 @@ function resolvePrintAllOptions(saved: LegacyOptions | null | undefined): PrintA
 }
 
 function resolveForceBudgetOptimizerLastSkills(
-  saved: Partial<Options> | null | undefined,
+  saved: LegacyOptions | null | undefined,
 ): ForceBudgetOptimizerLastSkills {
   const defaults = DEFAULT_OPTIONS.forceBudgetOptimizerLastSkills;
   const skills = saved?.forceBudgetOptimizerLastSkills;
@@ -213,7 +215,7 @@ function resolveForceBudgetOptimizerLastSkills(
   };
 }
 
-function resolveForceGeneratorOptions(saved: Partial<Options> | null | undefined): ForceGeneratorOptions {
+function resolveForceGeneratorOptions(saved: LegacyOptions | null | undefined): ForceGeneratorOptions {
   const defaults = DEFAULT_OPTIONS.forceGenerator;
   const forceGenerator = saved?.forceGenerator;
   return {
@@ -250,7 +252,7 @@ function resolveForceGeneratorOptions(saved: Partial<Options> | null | undefined
   };
 }
 
-function resolveCBTOptionalRules(saved: Partial<Options> | null | undefined): CBTOptionalRules {
+function resolveCBTOptionalRules(saved: LegacyOptions | null | undefined): CBTOptionalRules {
   const defaults = DEFAULT_OPTIONS.CBTOptionalRules;
   return {
     quirks: resolveSavedValue(saved?.CBTOptionalRules?.quirks, defaults.quirks),
@@ -385,7 +387,11 @@ export class OptionsService {
         DEFAULT_OPTIONS.recordSheetPipLayout,
         OPTION_VALUES.recordSheetPipLayout,
       ),
-      recordSheetGroupWeapons: saved?.recordSheetGroupWeapons ?? DEFAULT_OPTIONS.recordSheetGroupWeapons,
+      recordSheetGroupWeapons: resolveSavedValue(
+        saved?.recordSheetGroupWeapons === true ? 'enabled' : saved?.recordSheetGroupWeapons,
+        DEFAULT_OPTIONS.recordSheetGroupWeapons,
+        OPTION_VALUES.recordSheetGroupWeapons,
+      ),
       lastCanvasState: saved?.lastCanvasState,
       sidebarLipPosition: saved?.sidebarLipPosition,
       trackPhaseAndTurn: saved?.trackPhaseAndTurn ?? DEFAULT_OPTIONS.trackPhaseAndTurn,

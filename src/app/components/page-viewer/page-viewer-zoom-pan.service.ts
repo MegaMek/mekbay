@@ -41,6 +41,7 @@ const DOUBLE_TAP_DELAY = 300;
 const DOUBLE_TAP_DISTANCE = 30;
 const WHEEL_PAGE_THRESHOLD_PX = 80;
 const WHEEL_GESTURE_IDLE_MS = 180;
+const TRANSFORM_IDLE_MS = 200;
 
 export interface ViewState {
     scale: number;
@@ -180,6 +181,7 @@ export class PageViewerZoomPanService {
 
     // RAF throttling
     private transformFrameId: number | null = null;
+    private transformIdleTimer: ReturnType<typeof setTimeout> | undefined;
 
     // Event listeners bound to this
     private boundOnWheel = this.onWheel.bind(this);
@@ -421,6 +423,7 @@ export class PageViewerZoomPanService {
 
     private cleanup(): void {
         this.cancelTransformFrame();
+        clearTimeout(this.transformIdleTimer);
         const container = this.containerRef?.nativeElement;
         if (!container) return;
 
@@ -1011,6 +1014,11 @@ export class PageViewerZoomPanService {
         // Apply only translation to content container (no scale)
         content.style.transform = `translate(${translate.x}px, ${translate.y}px)`;
         content.style.transformOrigin = 'top left';
+        // will-change keeps every layer inside at the resolution it was first drawn, so a sheet Chrome split
+        // into layers would stay blurry after a zoom. Hint it only while the view moves.
+        content.style.willChange = 'transform';
+        clearTimeout(this.transformIdleTimer);
+        this.transformIdleTimer = setTimeout(() => content.style.willChange = '', TRANSFORM_IDLE_MS);
 
         const scaleChanged = this.lastAppliedScale !== scale;
 

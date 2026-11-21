@@ -10,7 +10,7 @@ import {
     TestTankEntity,
 } from '../../../models/entity/testing/test-entities';
 import { addTestEquipment } from '../../../models/entity/testing/test-mounted-equipment';
-import { AmmoEquipment } from '../../../models/equipment.model';
+import { AmmoEquipment, MiscEquipment } from '../../../models/equipment.model';
 import { RecordSheetSvgGenerator } from '../record-sheet-svg-generator';
 import { updateRecordSheetAmmoProfile } from '../record-sheet-ammo-rendering';
 import { recordSheetAmmoEntries } from '../record-sheet-svg-rendering';
@@ -32,7 +32,7 @@ describe('generated non-Mek ammo rows', () => {
 
             expect(profile).not.toBeNull();
             expect(profile!.querySelectorAll('text').length).toBe(0);
-            updateRecordSheetAmmoProfile(profile!, ['(AC/5) 13']);
+            updateRecordSheetAmmoProfile(profile!, [{ prefix: 'Ammo:', entries: ['(AC/5) 13'] }]);
             expect(profile!.textContent).toBe('Ammo: (AC/5) 13');
         });
 
@@ -73,6 +73,48 @@ describe('generated non-Mek ammo rows', () => {
         expect(svg.querySelector('#ammoProfile')?.textContent).toBe('Ammo: (SRM 2) 4');
         // The live profile names bins by their equipment; both paths agree.
         expect(recordSheetAmmoEntries([['SRM 2 Ammo', 4]])).toEqual(['(SRM 2) 4']);
+    });
+
+    const caseEquipment = (flag: 'F_CASE' | 'F_CASE_II') => new MiscEquipment({ id: flag, name: flag, type: 'misc', flags: [flag] });
+    const ammoProfileLines = async (entity: BaseEntity, format: 'compact' | 'letter') =>
+        [...(await RecordSheetSvgGenerator.generate(entity, { ruleset: 'total-warfare', format }))
+            .querySelectorAll('#ammoProfile text')].map(line => line.textContent);
+
+    it('puts all of a vehicle\'s ammo under its CASE, wherever the CASE is (TW p. 194)', async () => {
+        const entity = new TestTankEntity();
+        addTestEquipment(entity, caseEquipment('F_CASE'), { location: 'Rear' });
+        addAmmo(entity, 'AC/5');
+        addTestEquipment(entity, new AmmoEquipment({
+            id: 'Test MG Ammo', name: 'MG Ammo', type: 'ammo', ammo: { type: 'MG', rackSize: 2, shots: 100 },
+        }), { location: 'Front', shotsCount: 100 });
+
+        expect((await ammoProfileLines(entity, 'compact')).join(' ')).toBe('Ammo (CASE): (AC/5) 24, (MG) 100');
+    });
+
+    it('counts the CASE a Clan internal structure carries built in (TM errata p. 210)', async () => {
+        const entity = new TestTankEntity();
+        entity.techBase.set('Clan');
+        addTestEquipment(entity, new AmmoEquipment({
+            id: 'Test AC/5 Ammo', name: 'AC/5 Ammo', type: 'ammo', stats: { explosive: true },
+            ammo: { type: 'AC', rackSize: 5, shots: 24 },
+        }), { location: 'Body', shotsCount: 24 });
+
+        expect(await ammoProfileLines(entity, 'compact')).toEqual(['Ammo (CASE): (AC/5) 24']);
+    });
+
+    it('puts a fighter\'s fuselage ammo under CASE II only in the fuselage (TO:AUE p. 110)', async () => {
+        const entity = new TestAeroSpaceFighterEntity();
+        const [nose, fuselage] = [entity.locationOrder[0], entity.locationOrder.at(-1)!];
+        addTestEquipment(entity, caseEquipment('F_CASE_II'), { location: nose });
+        addTestEquipment(entity, new AmmoEquipment({
+            id: 'Test AC/5 Ammo', name: 'AC/5 Ammo', type: 'ammo', ammo: { type: 'AC', rackSize: 5, shots: 24 },
+        }), { location: fuselage, shotsCount: 24 });
+
+        expect(await ammoProfileLines(entity, 'letter')).toEqual(['Ammo: (AC/5) 24']);
+
+        addTestEquipment(entity, caseEquipment('F_CASE_II'), { location: fuselage });
+
+        expect(await ammoProfileLines(entity, 'letter')).toEqual(['Ammo (CASE II): (AC/5) 24']);
     });
 
     it('orders ammo by name in code-unit order, like the TreeMap MegaMekLab prints from', () => {

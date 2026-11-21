@@ -6,6 +6,7 @@ import { appendRecordSheetAmmoProfile, updateRecordSheetAmmoProfile } from './re
 describe('record sheet ammo SVG rendering', () => {
     const namespace = 'http://www.w3.org/2000/svg';
     const entries = Array<string>(6).fill('(AC/5) 20');
+    const plain = (lines: readonly string[]) => [{ prefix: 'Ammo:', entries: lines, componentIds: [] }];
     let attached: SVGSVGElement[];
 
     beforeEach(() => attached = []);
@@ -26,7 +27,7 @@ describe('record sheet ammo SVG rendering', () => {
 
     it('creates no text for an empty ammo profile', () => {
         const { svg, options } = fixture();
-        const profile = appendRecordSheetAmmoProfile(svg, [], options);
+        const profile = appendRecordSheetAmmoProfile(svg, plain([]), options);
 
         expect(profile.childElementCount).toBe(0);
     });
@@ -39,45 +40,45 @@ describe('record sheet ammo SVG rendering', () => {
         svg.style.left = '0';
         svg.style.top = '0';
         attach(svg);
-        const profile = appendRecordSheetAmmoProfile(svg, [], options);
-        updateRecordSheetAmmoProfile(profile, entries, true);
+        const profile = appendRecordSheetAmmoProfile(svg, plain([]), options);
+        updateRecordSheetAmmoProfile(profile, plain(entries), true);
         const hitArea = profile.querySelector<SVGRectElement>('rect')!;
         const bounds = hitArea.getBoundingClientRect();
         // The right edge and interline gap must receive clicks even without text underneath.
         expect(document.elementFromPoint(bounds.right - 1, bounds.top + 12)).toBe(hitArea);
 
-        updateRecordSheetAmmoProfile(profile, ['(MG) 100'], true);
+        updateRecordSheetAmmoProfile(profile, plain(['(MG) 100']), true);
         expect(profile.querySelector('rect')).not.toBeNull();
-        updateRecordSheetAmmoProfile(profile, [], true);
+        updateRecordSheetAmmoProfile(profile, plain([]), true);
         expect(profile.childElementCount).toBe(0);
-        updateRecordSheetAmmoProfile(profile, entries);
+        updateRecordSheetAmmoProfile(profile, plain(entries));
         expect(profile.querySelector('rect')).toBeNull();
     });
 
     it('adds and removes rows across repeated updates', () => {
         const { svg, options } = fixture();
-        const profile = appendRecordSheetAmmoProfile(svg, [], options);
+        const profile = appendRecordSheetAmmoProfile(svg, plain([]), options);
 
         for (let cycle = 0; cycle < 3; cycle++) {
-            updateRecordSheetAmmoProfile(profile, entries);
+            updateRecordSheetAmmoProfile(profile, plain(entries));
             expect(profile.querySelectorAll('text').length).toBe(2);
 
-            updateRecordSheetAmmoProfile(profile, ['(MG) 100']);
+            updateRecordSheetAmmoProfile(profile, plain(['(MG) 100']));
             expect(profile.childElementCount).toBe(1);
             expect(profile.querySelector('text')!.textContent).toBe('Ammo: (MG) 100');
 
-            updateRecordSheetAmmoProfile(profile, []);
+            updateRecordSheetAmmoProfile(profile, plain([]));
             expect(profile.childElementCount).toBe(0);
         }
     });
 
     it('produces identical rows and compression when detached and attached', () => {
         const { svg, options } = fixture();
-        const profile = appendRecordSheetAmmoProfile(svg, entries, options);
+        const profile = appendRecordSheetAmmoProfile(svg, plain(entries), options);
         const detachedOutput = profile.outerHTML;
 
         attach(svg);
-        updateRecordSheetAmmoProfile(profile, entries);
+        updateRecordSheetAmmoProfile(profile, plain(entries));
 
         expect(profile.outerHTML).toBe(detachedOutput);
         expect(profile.querySelectorAll('text').length).toBe(2);

@@ -46,6 +46,7 @@ import {
     aerospaceRangeCaptions,
 } from '../../utils/aerospace-range.util';
 import { applyEquipmentRowOrder } from '../../models/runtime/equipment-row-order';
+import { recordSheetInventoryWeaponMounts } from '../../utils/sheets/record-sheet-svg-rendering';
 import type { ComponentId } from '../../models/entity/entity-identifiers';
 import { orderedModifierTooltipLines } from '../../utils/hit-target-tooltip.util';
 import {
@@ -307,9 +308,14 @@ export class WeaponsEquipmentPanelComponent {
 
     private buildGroups(runtime: EquipmentDialogRuntimeController): EquipmentPanelGroup[] {
         const snapshot = runtime.snapshot();
+        // Without a saved order the weapons take the record sheet's default order
+        const defaultPosition = new Map(recordSheetInventoryWeaponMounts(runtime.member.entity)
+            .map((mount, index) => [String(mount.mountId), index]));
+        const position = (row: EquipmentPanelRow) => defaultPosition.get(row.id) ?? defaultPosition.size;
         const ranged = this.groupMachineGunArrayRows(applyEquipmentRowOrder(
             runtime.weapons().map((row, index) => this.componentRow(row, 'ranged', index)),
             snapshot.equipmentRowOrder?.ranged,
+            rows => [...rows].sort((left, right) => position(left) - position(right)),
         ));
         const physical = applyEquipmentRowOrder(
             snapshot.physicalAttacks.map((row, index) => this.physicalRow(row, index)),

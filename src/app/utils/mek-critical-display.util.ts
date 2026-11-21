@@ -1,7 +1,6 @@
 // Copyright (C) 2026 The MegaMek Team
 // SPDX-License-Identifier: GPL-3.0-or-later
 
-import { isCaseIIEquipment, isStandardCaseEquipment } from '../models/case-equipment.model';
 import type { MekEntity } from '../models/entity/entities/mek/mek-entity';
 import type { CriticalSlotView, EntityMountedEquipment } from '../models/entity/types';
 import type { MekLocation } from '../models/entity/types/locations';
@@ -10,17 +9,19 @@ import { isCoolantPodEquipment } from '../models/runtime/component-coolant-pod';
 import { recordSheetAmmoName } from './record-sheet-ammo.util';
 import { COCKPIT_CREW_ROLES } from '../models/entity/components/cockpit-data';
 
-export type MekCriticalCaseLabel = 'CASE' | 'CASE II';
+export type MekCriticalCaseLabel = 'CASE' | 'CASE II' | 'CASE-P';
 
-/** CASE annotation shared by Mek critical-slot presentations. */
+/**
+ * CASE annotation shared by Mek critical-slot presentations, from the entity's CASE resolution that play uses.
+ * Prototype CASE keeps its own name, CASE-P (IO:AE p. 65), as its venting can fail.
+ */
 export function mekCriticalCaseLabel(
     entity: MekEntity,
     location: string,
 ): MekCriticalCaseLabel | null {
-    const mounts = entity.equipment().filter(mount => mount.getOccupiedLocations().includes(location));
-    if (mounts.some(mount => isCaseIIEquipment(mount.equipment))) return 'CASE II';
-    if (mounts.some(mount => isStandardCaseEquipment(mount.equipment))) return 'CASE';
-    return entity.automaticClanCaseLocations().has(location) ? 'CASE' : null;
+    const protection = entity.ammoCaseProtection(location);
+    if (protection === null) return null;
+    return protection === 'case-ii' ? 'CASE II' : protection === 'prototype' ? 'CASE-P' : 'CASE';
 }
 
 /** One occupant of a Mek critical slot, as the critical table names it. */

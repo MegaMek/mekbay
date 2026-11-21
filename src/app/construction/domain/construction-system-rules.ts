@@ -14,35 +14,105 @@ import {
   COCKPIT_DATA,
   ENGINE_DATA,
   GYRO_DATA,
+  MountedEngine,
   getFixedWingSupportConstructionTech,
   getInfantryMotiveTech,
   getSupportTankConstructionTech,
 } from '../../models/entity/components';
 import type { GyroType } from '../../models/entity/components/gyro-data';
-import type { CockpitType, EngineType, EntityTechBase, MotiveType, TechRating } from '../../models/entity/types';
+import type { CockpitType, EngineType, EntityMountedEquipment, EntityTechBase, MekSystemType, MotiveType, TechRating } from '../../models/entity/types';
+import { mekLocationId, mekSystemComponentId } from '../../models/entity/mek-entity-conventions';
 import { constructionEngineTechnology, constructionTechnologyEligibility } from './construction-technology-rules';
 import { WeaponEquipment, type Equipment } from '../../models/equipment.model';
 
-/** Read the fixed template, before mounted equipment overlays the critical grid. */
-export function constructionSystemSlotKeys(entity: BaseEntity): ReadonlySet<string> {
-  const slots = new Set<string>();
+export function replaceConstructionEngine(entity: BaseEntity,
+  changes: Partial<{ type: EngineType; rating: number; techBase: 'IS' | 'Clan'; installed: boolean }>): void {
+  const old = entity.mountedEngine();
+  const next = new MountedEngine({
+    type: old.type(), rating: old.rating, installed: true, baseChassisHeatSinks: old.getBaseChassisHeatSinks(false),
+    ...changes, techBase: entity.mixedTech() ? changes.techBase ?? old.techBase : entity.techBase(),
+  });
+  if (entity instanceof MekEntity) entity.configureEngine(next);
+  else entity.mountedEngine.set(next);
+}
+
+export function mekConstructionEngineLimit(entity: BaseEntity, primitive = entity instanceof MekEntity && entity.mountedCockpit().isPrimitive): number {
+  return primitive || entity.mountedEngine().type() === 'Compact' ? 400 : 500;
+}
+
+export function syncConstructionMekEngine(entity: MekEntity, walkMP = entity.originalWalkMP(), tonnage = entity.tonnage(),
+  primitive = entity.mountedCockpit().isPrimitive): void {
+  const rating = entity.calculateEngineRating(walkMP, tonnage, primitive);
+  const limit = mekConstructionEngineLimit(entity, primitive);
+  if (rating < 10 || rating > limit || rating % 5 !== 0)
+    throw new Error(`This movement and tonnage require engine rating ${rating}; choose a rating from 10 to ${limit} in increments of five.`);
+  const engine = entity.mountedEngine();
+  if (rating !== engine.rating || !engine.installed || (!entity.mixedTech() && engine.techBase !== entity.techBase()))
+    replaceConstructionEngine(entity, { rating });
+}
+
+/** Read the fixed template, before mounted equipment overlays the critical grid: each system slot and its system. */
+export function constructionSystemSlotKeys(entity: BaseEntity): ReadonlyMap<string, string> {
+  const slots = new Map<string, string>();
   if (entity instanceof MekEntity) for (const location of entity.locationOrder) {
     entity.getSystemSlotsForLocation(location).forEach((slot, index) => {
-      if (slot.type === 'system') slots.add(`${location}:${index}`);
+      if (slot.type === 'system') slots.set(`${location}:${index}`, slot.systemType);
     });
   }
   return slots;
 }
 
-/** New system slots displace whole mounts; leave all other placements as authored. */
-export function reconcileConstructionSystemSlots(entity: BaseEntity, previous: ReadonlySet<string>): void {
-  const added = new Set([...constructionSystemSlotKeys(entity)].filter(key => !previous.has(key)));
-  if (!added.size) return;
-  // Release every affected mount together, without packing one into another's slots.
+/** System slot keys grouped by the component they belong to (engine and gyro Mek-wide, actuators per location). */
+export function constructionSystemComponents(slots: ReadonlyMap<string, string>): ReadonlyMap<string, readonly string[]> {
+  const components = new Map<string, string[]>();
+  for (const [key, system] of slots) {
+    const id = mekSystemComponentId(system as MekSystemType, mekLocationId(key.slice(0, key.indexOf(':')))!);
+    components.set(id, [...components.get(id) ?? [], key]);
+  }
+  return components;
+}
+
+/**
+ * New system slots displace whole mounts; leave all other placements as authored. Armor covers every slot of its
+ * component (TO:AUE p. 95): a fully armored component keeps it over its new slots, and a slot that no longer holds the
+ * same system loses it.
+ */
+export function reconcileConstructionSystemSlots(entity: BaseEntity, previous: ReadonlyMap<string, string>): void {
+  const current = constructionSystemSlotKeys(entity);
+  if (entity instanceof MekEntity) {
+    const armored = entity.armoredSystemSlots();
+    const kept = new Set([...armored].filter(key => current.has(key) && (!previous.has(key) || previous.get(key) === current.get(key))));
+    const before = constructionSystemComponents(previous);
+    for (const [id, keys] of constructionSystemComponents(current)) {
+      if (before.get(id)?.every(key => armored.has(key))) for (const key of keys) kept.add(key);
+    }
+    if (kept.size !== armored.size || [...kept].some(key => !armored.has(key))) entity.armoredSystemSlots.set(kept);
+  }
+  if (!(entity instanceof MekEntity)) return;
+  // System slots that come or go move the location's equipment down or up, keeping its order, so it stays packed from
+  // the first free slot as MegaMek reads it; what no longer fits is left unallocated.
+  const changed = new Set([...previous.keys(), ...current.keys()].filter(key => previous.get(key) !== current.get(key))
+    .map(key => key.slice(0, key.indexOf(':'))));
+  const overflow: EntityMountedEquipment[] = [];
+  for (const location of changed) entity.arrangeEquipment(location, undefined, overflow);
+  if (!overflow.length) return;
+  const displaced = new Set(overflow.map(mount => mount.mountId));
   entity.updateEquipment(mounts => mounts.map(mount =>
-    mount.placements?.some(placement => added.has(`${placement.location}:${placement.slotIndex}`))
-      ? mount.clone({ allocation: { kind: 'unallocated' } })
-      : mount));
+    displaced.has(mount.mountId) ? mount.clone({ allocation: { kind: 'unallocated' } }) : mount));
+}
+
+/**
+ * Keeps every Mek location packed from its first free slot in its current order, as MegaMek's MtfFile reads it, with
+ * split weapons ordered so each row reads back as its own. A location that cannot be packed (a draft whose blocks do
+ * not fit) is left as it is.
+ */
+export function packConstructionMekLocations(entity: BaseEntity): void {
+  if (!(entity instanceof MekEntity)) return;
+  for (const location of entity.locationOrder) {
+    const overflow: EntityMountedEquipment[] = [];
+    entity.planEquipmentOrder(location, undefined, entity.equipment(), overflow);
+    if (!overflow.length) entity.arrangeEquipment(location);
+  }
 }
 
 /** TechManual p. 19; MML also excludes primitive fighters, primitive Meks and LAMs. */

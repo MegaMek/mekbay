@@ -4,7 +4,7 @@
 import { asComponentId } from '../entity/entity-identifiers';
 import { AmmoEquipment, WeaponEquipment } from '../equipment.model';
 import { CORE_2026_GAME_RULES, TW_GAME_RULES, type CBTGameRules } from './game-rules';
-import { resolveWeaponAttack, weaponAttackProfile } from './weapon-attack-resolution';
+import { locksOnTarget, resolveWeaponAttack, weaponAttackProfile } from './weapon-attack-resolution';
 
 describe('weapon attack resolution', () => {
     const weaponId = asComponentId('weapon');
@@ -48,6 +48,31 @@ describe('weapon attack resolution', () => {
         const profile = weaponAttackProfile({ componentId: weaponId, equipment: streak, mode: undefined, damage: { values: [2], maximum: 8, unit: 'missile' }, ammo: null, types: [], name: 'Streak SRM 4', targetNumber: 7, partialCover: false }, TW_GAME_RULES)!;
 
         expect(resolveWeaponAttack(profile, [5, 2], null)).toEqual({ hit: true, jammed: false, hits: 4, groups: [2, 2, 2, 2], heat: 0 });
+    });
+
+    it('locks a direct iATM on but not the Fusillade that fires its munitions (IO:AE pp. 59-60)', () => {
+        const iatm = new WeaponEquipment({
+            id: 'CLiATM3', name: 'iATM 3', type: 'weapon', flags: ['F_MISSILE', 'F_MEK_WEAPON'],
+            weapon: { damage: 'cluster', rackSize: 3, ammoType: 'IATM' },
+        });
+        const fusillade = new WeaponEquipment({
+            id: 'Fusillade', name: 'Fusillade Launcher', type: 'weapon',
+            flags: ['F_MISSILE', 'F_ONE_SHOT', 'F_DOUBLE_ONE_SHOT', 'F_PROTO_WEAPON'],
+            weapon: { damage: 'cluster', rackSize: 3, ammoType: 'IATM' },
+        });
+        expect(locksOnTarget(iatm)).toBeTrue();
+        expect(locksOnTarget(fusillade)).toBeFalse();
+
+        const profile = weaponAttackProfile({ componentId: weaponId, equipment: fusillade, mode: undefined, damage: { values: [2], maximum: 6, unit: 'missile' }, ammo: null, types: [], name: 'Fusillade Launcher', targetNumber: 7, partialCover: false }, TW_GAME_RULES)!;
+        expect(profile.allHit).toBeFalse();
+        // The integral Artemis adds 2 to the Cluster Hits Table roll (IO:AE p. 59): a natural 8 on the 3 column hits
+        // with 3 missiles, and with 2 once hostile ECM takes the modifier away.
+        expect(profile.clusterModifier).toBe(2);
+        expect(resolveWeaponAttack(profile, [4, 3], [4, 4]).hits).toBe(3);
+        expect(resolveWeaponAttack(profile, [4, 3], [4, 4], 0).hits).toBe(2);
+        // The iATM it derives from carries no integral Artemis.
+        expect(weaponAttackProfile({ componentId: weaponId, equipment: iatm, mode: undefined, damage: { values: [2], maximum: 6, unit: 'missile' }, ammo: null, types: [], name: 'iATM 3', targetNumber: 7, partialCover: false }, TW_GAME_RULES)!
+            .clusterModifier).toBeUndefined();
     });
 
     it('treats direct-fire weapons as one hit and rapid-fire shots as separate locations', () => {

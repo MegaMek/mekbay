@@ -9,6 +9,9 @@ import type { EntityMountedEquipment } from '../../models/entity/types/equipment
  */
 export type InventoryWeaponStateKey = (componentId: string) => string;
 
+/** A state key's leading digit orders the rows of one design; destroyed and missing weapons lead with this one. */
+export const DESTROYED_WEAPON_STATE_ORDER = '3';
+
 /** How a weapon is mounted, beyond what its row prints; weapons share a counted row only on equal keys. */
 export function recordSheetWeaponMountKey(mount: EntityMountedEquipment): string {
     return JSON.stringify([
@@ -21,7 +24,8 @@ interface GroupableInventoryRow {
     readonly componentIds: readonly string[];
     /** Present on weapons only: a row without it keeps its place, uncounted. */
     readonly mountKey?: string;
-    readonly linkedEquipment?: { readonly componentIds: readonly string[] } | null;
+    readonly linkedEquipment?: readonly { readonly componentIds: readonly string[] }[];
+    readonly alternativeModes?: readonly unknown[];
 }
 
 /**
@@ -32,7 +36,7 @@ export function groupRecordSheetWeaponRows<T extends GroupableInventoryRow>(
     rows: readonly T[],
     stateKey: InventoryWeaponStateKey,
 ): (T & { readonly quantity?: number })[] {
-    type Group = { quantity: number; componentIds: string[]; linkedEquipment?: { componentIds: string[] } | null };
+    type Group = { quantity: number; componentIds: string[]; linkedEquipment: { componentIds: string[] }[]; alternativeModes?: readonly unknown[] };
     const designs = new Map<string, Map<string, Group>>();
     const listed: (T | Map<string, Group>)[] = [];
     for (const row of rows) {
@@ -40,31 +44,35 @@ export function groupRecordSheetWeaponRows<T extends GroupableInventoryRow>(
             listed.push(row);
             continue;
         }
-        const linked = row.linkedEquipment;
-        const design = JSON.stringify({ ...row, componentIds: null, linkedEquipment: linked && { ...linked, componentIds: null } });
+        const linked = row.linkedEquipment ?? [];
+        const design = JSON.stringify({ ...row, componentIds: null, linkedEquipment: linked.map(item => ({ ...item, componentIds: null })) });
         let states = designs.get(design);
         if (!states) {
             states = new Map();
             designs.set(design, states);
             listed.push(states);
         }
-        const state = [...row.componentIds, ...(linked?.componentIds ?? [])].map(stateKey).join('\u0001');
+        const state = [...row.componentIds, ...linked.flatMap(item => item.componentIds)].map(stateKey).join('\u0001');
         const group = states.get(state);
         if (group) {
             group.quantity += row.componentIds.length;
             group.componentIds.push(...row.componentIds);
-            group.linkedEquipment?.componentIds.push(...(linked?.componentIds ?? []));
+            linked.forEach((item, index) => group.linkedEquipment[index].componentIds.push(...item.componentIds));
         } else {
             states.set(state, {
                 ...row,
                 quantity: row.componentIds.length,
                 componentIds: [...row.componentIds],
-                linkedEquipment: linked && { ...linked, componentIds: [...linked.componentIds] },
+                linkedEquipment: linked.map(item => ({ ...item, componentIds: [...item.componentIds] })),
             });
         }
     }
+    // Weapons split out because they are destroyed no longer fire, so they print without their ammo lines
+    const destroyed = (group: Group & Partial<GroupableInventoryRow>) => group.componentIds
+        .every(componentId => stateKey(componentId).startsWith(DESTROYED_WEAPON_STATE_ORDER));
     return listed.flatMap(entry => entry instanceof Map
-        ? [...entry].sort(([left], [right]) => left < right ? -1 : left > right ? 1 : 0).map(([, group]) => group as unknown as T & { quantity: number })
+        ? [...entry].sort(([left], [right]) => left < right ? -1 : left > right ? 1 : 0).map(([, group]) =>
+            (group.alternativeModes !== undefined && destroyed(group) ? { ...group, alternativeModes: [] } : group) as unknown as T & { quantity: number })
         : [entry]);
 }
 

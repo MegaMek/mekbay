@@ -421,12 +421,13 @@ export class PageViewerOverlayService {
         count: number,
         heatsinksOff: number,
         apply: (heatsinksOff: number) => void,
+        title = 'Active Heatsinks',
     ): void {
         this.openNumberPicker(unitId, event, {
             min: 0,
             max: count,
             selected: Math.max(0, count - heatsinksOff),
-            title: 'Active Heatsinks',
+            title,
             targetType: 'heatsinks',
         }, active => apply(count - active));
     }

@@ -32,6 +32,14 @@
                     }
                 </span>
             </div>
+            @if (weapon.insulator; as insulator) {
+                <div class="cluster-line">
+                    <span class="step-label">Insulator</span>
+                    <ng-container *ngTemplateOutlet="rollChip; context: {
+                        dice: insulator.dice, weapon: w, roll: 'insulator', label: 'Set ' + weapon.name + ' laser insulator roll' }" />
+                    <span class="cluster-hits">{{ insulator.failed ? 'Critical hit on the laser' : 'No effect' }}</span>
+                </div>
+            }
             @if (weapon.hit && weapon.cluster; as cluster) {
                 <div class="cluster-line">
                     <span class="step-label">Cluster</span>
@@ -53,12 +61,12 @@
             @if (weapon.hit && weapon.heat; as heat) {
                 <!-- Plasma dice add heat to a unit that tracks it, and damage to any other. -->
                 <div class="cluster-line">
-                    <span class="step-label">{{ heat.value > 0 || heat.cover ? 'Heat' : 'Damage' }}</span>
+                    <span class="step-label">{{ heat.value > 0 || heat.reduced ? 'Heat' : 'Damage' }}</span>
                     @if (heat.dice.length > 0) {
                         <ng-container *ngTemplateOutlet="rollChip; context: {
                             dice: heat.dice, weapon: w, roll: 'heat', label: 'Set ' + weapon.name + ' heat roll' }" />
                     }
-                    @if (heat.value > 0 || heat.cover) {
+                    @if (heat.value > 0 || heat.reduced) {
                         <span class="cluster-hits"><strong>+{{ heat.value }}</strong></span>
                     }
                 </div>
@@ -82,11 +90,9 @@
                             } @else {
                                 <span class="damage" [title]="group.troopers ? 'Troopers' : 'Damage'">{{ group.damage }}</span>
                             }
-                            @if (!weapon.noHitLocation) {
-                                <ng-container *ngTemplateOutlet="rollChip; context: {
-                                    dice: group.location, weapon: w, roll: g, label: 'Set hit location roll ' + (g + 1) }" />
-                            }
-                            @if (group.label !== null && !weapon.noHitLocation) {
+                            <ng-container *ngTemplateOutlet="rollChip; context: {
+                                dice: group.location, weapon: w, roll: g, label: 'Set hit location roll ' + (g + 1) }" />
+                            @if (group.label !== null) {
                                 <span class="location">
                                     {{ group.label }}
                                     @if (group.throughArmorCritical) { <em>TAC check</em> }

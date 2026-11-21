@@ -8,7 +8,7 @@ import { ammoExplosionDamagePerShot } from './mek-critical-hit-v2';
 import type { CBTUnitAttackerTargetingReconciliationPlan } from './attacker-targeting-state';
 import type { CBTUnitAttackerTargetingCommand,CBTUnitSelectedWeaponFireCommand } from './unit-command';
 
-import { freezeCommonUnitRuntimeState,isHeatOffset,isHeatValue,readFiredWeapons,sameNextHeat,withFiredWeapons,settleHeat,withEditedHeat,withNextHeat,withPendingCombatDelta,withPendingHeat,type CBTUnitHeatState,type CBTUnitPendingCombatState } from './cbt-unit-runtime';
+import { heatSinkSwitchIsImmediate,freezeCommonUnitRuntimeState,isHeatOffset,isHeatValue,readFiredWeapons,sameNextHeat,withFiredWeapons,settleHeat,settleHeatSinkSwitch,withEditedHeat,withHeatSinkSwitch,withNextHeat,withPendingCombatDelta,withPendingHeat,type CBTUnitHeatState,type CBTUnitPendingCombatState } from './cbt-unit-runtime';
 import { assignedCrewRuntimeState,canonicalizeCrewAssignment,commitCrewDeaths,createDefaultCrewAssignment,type CrewAssignment } from './crew-assignment';
 import type { CBTUnitCommand } from './unit-command';
 
@@ -38,6 +38,7 @@ import { heatOrDamageComponentModes } from '../flamer-mode.model';
 import { isDisposableWeaponMount, platoonHeatOrDamageWeapon } from '../rules/conventional-infantry-combat-rules';
 import type { EquipmentStatus } from '../equipment-status.model';
 import { AmmoEquipment,WeaponEquipment,type Equipment } from '../equipment.model';
+import { locksOnTarget } from '../rules/weapon-attack-resolution';
 import type { MotiveModes } from '../motiveModes.model';
 import { projectAeroRuntimeRules,type AeroRuntimeRulesProjection } from '../rules/aero-runtime-rules';
 import { gameRulesFor } from '../rules/game-rules';
@@ -53,7 +54,7 @@ import { isUnitCover,type UnitCover } from '../unit-cover.model';
 import { createPristineAttackerTargetingState,freezeAttackerTargetingState,MAX_ATTACKER_TARGETING_COMPONENTS,reconcileAttackerTargetingState,reduceAttackerTargetingCommand,type AttackerAmmoSelection,type AttackerTargetingValidationContext } from './attacker-targeting-state';
 import { projectComponentLocationStatuses,type ComponentStatusProjection } from './component-status-projection';
 import type { TargetRegistrySnapshot } from './encounter-runtime';
-import { entityAmmoLoadout,entityAmmoLoadouts,weaponAcceptsAmmo,type AmmoLoadout } from './mek-ammo';
+import { ammoSourceFeedsWeapon,entityAmmoDefaultMunitionKey,entityAmmoLoadout,entityAmmoLoadouts,weaponAcceptsAmmo,type AmmoLoadout } from './mek-ammo';
 import { buildNonMekRuntimeIndex,type NonMekRuntimeIndex } from './non-mek-runtime-index';
 
 import { isBoobyTrapEquipment,isMobileHpgEquipment } from '../aerospace-support-equipment.model';
@@ -68,7 +69,9 @@ type VelocityRecordEntry,
 import { bombastLaserEquipmentModes,bombastLaserEquipmentProfile } from '../bombast-laser-mode.model';
 import { ECMMode } from '../common.model';
 import { isJumpJetEquipment,isUmuEquipment } from '../jump-equipment.model';
-import { laserInsulatorAdjustedHeat } from '../laser-insulator.model';
+import { isRiscLaserPulseModule, RISC_LASER_MODES, RISC_LASER_STANDARD_MODE, RISC_LASER_PULSE_MODE, RISC_LASER_PULSE_HEAT_BONUS } from '../risc-laser-mode.model';
+import type { EntityMountedEquipment } from '../entity/types/equipment';
+import { laserInsulatorWeakened, laserInsulatorAdjustedHeat } from '../laser-insulator.model';
 import { prototypeLaserHeatForRoll,prototypeLaserHeatRollMap,prototypeLaserMaximumExtraHeat,type PrototypeLaserHeatResult } from '../prototype-laser-heat.model';
 import { rapidFireAutocannonComponentModes } from '../rapid-fire-autocannon-mode.model';
 import { type CBTUnitCommandResult,type CBTUnitQueryPort,type CBTUnitRuntimeState,type HeatAutomationPolicy,type RuntimeStatePerspective } from './cbt-unit-runtime';
@@ -96,15 +99,19 @@ export interface NonMekComponentModeDefinition {
 /** Explicit non-Mek behavior registry; raw catalog mode arrays are never a fallback. */
 export function nonMekComponentModes(
     entity: BaseEntity,
-    equipment: Equipment | undefined,
+    mount: EntityMountedEquipment | undefined,
     ruleset: CBTRuleset,
 ): NonMekComponentModeDefinition {
+    const equipment = mount?.equipment;
     const boobyTrap = boobyTrapComponentModes(equipment);
     if (boobyTrap !== null) return boobyTrap;
     const hpg = mobileHpgComponentModes(equipment);
     if (hpg !== null) return hpg;
-    const electronic = electronicComponentModes(equipment, isProtoMekEntity(entity));
+    const electronic = electronicComponentModes(equipment, entity.entityType);
     if (electronic !== null) return electronic;
+    if (mount && entity.getLinkingMounts(mount).some(source => isRiscLaserPulseModule(source.equipment))) {
+        return { modes: RISC_LASER_MODES, defaultMode: RISC_LASER_STANDARD_MODE };
+    }
     const inventory = inventoryEquipmentModes(equipment);
     if (inventory !== null) return inventory;
     const rapidFire = rapidFireAutocannonComponentModes(equipment);
@@ -128,13 +135,14 @@ export function nonMekHeatOrDamageWeapon(entity: BaseEntity, equipment: Equipmen
 /** Persistable modes include tagged in-flight ECM transitions not shown as choices. */
 export function nonMekComponentStateModes(
     entity: BaseEntity,
-    equipment: Equipment | undefined,
+    mount: EntityMountedEquipment | undefined,
     ruleset: CBTRuleset,
 ): NonMekComponentModeDefinition {
-    const electronic = electronicComponentModes(equipment, isProtoMekEntity(entity));
-    if (electronic === null) return nonMekComponentModes(entity, equipment, ruleset);
+    const equipment = mount?.equipment;
+    const electronic = electronicComponentModes(equipment, entity.entityType);
+    if (electronic === null) return nonMekComponentModes(entity, mount, ruleset);
     return Object.freeze({
-        modes: electronicRuntimeModes(equipment, isProtoMekEntity(entity)),
+        modes: electronicRuntimeModes(equipment, entity.entityType),
         defaultMode: electronic.defaultMode,
     });
 }
@@ -169,7 +177,7 @@ export function effectiveNonMekComponentMode(
         }
         return MML_INVENTORY_MODES[1];
     }
-    return nonMekComponentModes(entity, equipment, ruleset).defaultMode;
+    return nonMekComponentModes(entity, component.mount, ruleset).defaultMode;
 }
 
 export interface NonMekDamageTrackRuntimeState {
@@ -833,6 +841,7 @@ export function reduceNonMekSelectedWeaponFire(binding: NonMekRuntimeBinding, st
 
     const ammoSpends = new Map<ComponentId, number>();
     const prototypeHeat: PrototypeLaserHeatResult[] = [];
+    const noLock = new Set(command.noLock ?? []);
     let heat = 0;
     const vehicle = isVehicleEntity(binding.entity) ? projectVehicleRuntimeRules(binding.entity, binding.index, state, binding.ruleset, binding.crewAssignment) : null;
     const infantry = isInfantryFamilyEntity(binding.entity) ? projectInfantryRuntimeRules(binding.entity, binding.index, state) : null;
@@ -851,16 +860,22 @@ export function reduceNonMekSelectedWeaponFire(binding: NonMekRuntimeBinding, st
             || protoMek?.fireBlockedComponentIds.has(weaponId) === true) {
             return unchanged();
         }
+        // A weapon that failed to lock on still counts as fired, but spends no ammo and makes no heat (TW p. 138).
+        if (noLock.has(weaponId)) {
+            if (!locksOnTarget(weapon)) return unchanged();
+            continue;
+        }
         const mode = query.componentMode(weaponId);
         const shots = rapidFireAutocannonShotCount(weapon, mode);
         const bombast = bombastLaserEquipmentProfile(weapon, binding.ruleset, mode);
-        const linkedEnhancement = binding.entity.getLinkingMount(component.mount);
+        const attachments = binding.entity.getLinkingMounts(component.mount);
+        const available = (mount: EntityMountedEquipment) =>
+            query.componentStatus(componentIdForMount(mount), 'committed') === 'available';
+        const pulsed = mode === RISC_LASER_PULSE_MODE
+            && attachments.some(source => isRiscLaserPulseModule(source.equipment) && available(source));
         heat += laserInsulatorAdjustedHeat(
-            bombast?.heat ?? weapon.heat,
-            linkedEnhancement?.equipment,
-            weapon,
-            linkedEnhancement !== undefined
-                && query.componentStatus(componentIdForMount(linkedEnhancement), 'committed') === 'available',
+            (bombast?.heat ?? weapon.heat) + (pulsed ? RISC_LASER_PULSE_HEAT_BONUS : 0),
+            laserInsulatorWeakened(attachments, available) === false,
         ) * shots;
         const maximumPrototypeHeat = prototypeLaserMaximumExtraHeat(weapon.internalName);
         if (binding.entity.tracksHeat() && maximumPrototypeHeat > 0) {
@@ -906,6 +921,7 @@ export function reduceNonMekSelectedWeaponFire(binding: NonMekRuntimeBinding, st
         );
         if (!source
             || !loadout
+            || !ammoSourceFeedsWeapon(sourceId, source.mount, weaponId)
             || loadout.munitionKey !== ammoSelection.munitionKey
             || query.componentStatus(sourceId, 'committed') !== 'available'
             || !weaponAcceptsAmmo(weapon, loadout.equipment, mode)) {
@@ -1019,6 +1035,7 @@ export function nonMekWeaponTargetSubject(
     let selectedAmmo: AmmoEquipment | null = null;
     for (const source of sources) {
         if (selection?.preferredSourceId !== undefined && source.componentId !== selection.preferredSourceId) continue;
+        if (!ammoSourceFeedsWeapon(source.componentId, index.components.get(source.componentId)?.mount, componentId)) continue;
         const munitionKey = selection?.munitionKey ?? source.current.munitionKey;
         const loadout = source.loadouts.find(candidate => candidate.munitionKey === munitionKey
             && weaponAcceptsAmmo(weapon, candidate.equipment, mode));
@@ -1563,7 +1580,7 @@ function reduceNonMekUnitState(
                 buildNonMekElectronicFacts(entity, index, state, ruleset),
                 command.componentId,
                 command.mode,
-                isProtoMekEntity(entity),
+                entity.entityType,
             );
             if (electronic.kind === 'invalid') throw new Error('Invalid component mode');
             if (electronic.kind === 'unchanged') return null;
@@ -1573,7 +1590,7 @@ function reduceNonMekUnitState(
                     const definition = index.components.get(update.componentId);
                     const defaultMode = nonMekComponentModes(
                         entity,
-                        definition?.mount.equipment,
+                        definition?.mount,
                         ruleset,
                     ).defaultMode;
                     updated = withComponentMode(
@@ -1587,7 +1604,7 @@ function reduceNonMekUnitState(
                 candidate = updated;
                 break;
             }
-            const modeDefinition = nonMekComponentModes(entity, component.mount.equipment, ruleset);
+            const modeDefinition = nonMekComponentModes(entity, component.mount, ruleset);
             const status = entityComponentStatus(
                 entity,
                 index,
@@ -1596,7 +1613,10 @@ function reduceNonMekUnitState(
                 command.componentId,
                 'committed',
             );
-            if (status !== 'available' || !modeDefinition.modes.includes(command.mode)) {
+            const module = command.mode === RISC_LASER_PULSE_MODE
+                ? entity.getLinkingMounts(component.mount).find(source => isRiscLaserPulseModule(source.equipment)) : undefined;
+            if (status !== 'available' || !modeDefinition.modes.includes(command.mode)
+                || (module && entityComponentStatus(entity, index, state, ruleset, componentIdForMount(module), 'committed') !== 'available')) {
                 throw new Error('Invalid component mode');
             }
             const updated = withComponentMode(
@@ -1642,8 +1662,8 @@ function reduceNonMekUnitState(
                 || command.remaining > loadout.capacity) {
                 throw new Error('Invalid ammunition loadout');
             }
-            const defaultMunitionKey = component.mount.equipment?.internalName;
-            if (defaultMunitionKey === undefined) throw new Error('Component is not ammunition');
+            const defaultMunitionKey = entityAmmoDefaultMunitionKey(entity, component.mount);
+            if (defaultMunitionKey === null) throw new Error('Component is not ammunition');
             if (command.hotLoaded !== undefined && typeof command.hotLoaded !== 'boolean') throw new Error('Invalid hot-load setting');
             if (command.hotLoaded && !loadout.equipment.hasFlag('F_HOT_LOAD')) throw new Error('Ammo cannot be hot-loaded');
             const configured = withAmmoConfiguration(state, command.componentId, {
@@ -1785,8 +1805,8 @@ function reduceNonMekUnitState(
         case 'set-heatsinks-off': {
             if (!entity.tracksHeat()) throw new Error('Non-Mek unit does not track heat');
             const heatsinksOff = boundedHeatsinksOff(command.heatsinksOff, entity.engineHeatSinks());
-            if (state.heat.heatsinksOff === heatsinksOff) return null;
-            candidate = { ...state, heat: { ...state.heat, heatsinksOff } };
+            if ((state.heat.heatsinksOffNext ?? state.heat.heatsinksOff) === heatsinksOff) return null;
+            candidate = { ...state, heat: Object.freeze(withHeatSinkSwitch(state.heat, heatsinksOff, heatSinkSwitchIsImmediate(state.turn, state.turn.movement != null))) };
             break;
         }
         case 'apply-heat':
@@ -1992,6 +2012,8 @@ function reduceNonMekUnitState(
             }
             // Heat settles first, as for 'Meks: pending damage generates heat now; only committed sink loss cools less.
             let committed = commitPendingCombat(settleNonMekEndTurnHeat(entity, index, state, ruleset, command.policy), index);
+            // The heat-sink switch set during the turn holds from its End Phase.
+            committed = { ...committed, heat: Object.freeze(settleHeatSinkSwitch(committed.heat)) };
             committed = settleNonMekEscalatingFailures(entity, index, committed, ruleset);
             committed = settleNonMekMobileHpgs(entity, index, committed);
             committed = settleNonMekElectronicSuites(entity, index, committed, ruleset);
@@ -2129,7 +2151,7 @@ function buildNonMekAttackerTargetingContext(
         const loadouts = entityAmmoLoadouts(entity, source.mount, ruleset);
         return loadouts.length === 0
             ? []
-            : [Object.freeze({ componentId: source.id, loadouts })];
+            : [Object.freeze({ componentId: source.id, mount: source.mount, loadouts })];
     });
     const weapons = components
         .filter(component => component.mount.equipment instanceof WeaponEquipment
@@ -2145,6 +2167,7 @@ function buildNonMekAttackerTargetingContext(
                 component.id,
             );
             const sources = ammoSources.flatMap(source => {
+                if (!ammoSourceFeedsWeapon(source.componentId, source.mount, component.id)) return [];
                 const munitionKeys = source.loadouts
                     .filter(loadout => weaponAcceptsAmmo(weapon, loadout.equipment, selectedMode))
                     .map(loadout => loadout.munitionKey);
@@ -2255,7 +2278,6 @@ function buildNonMekElectronicFacts(
     state: NonMekUnitRuntimeState,
     ruleset: CBTRuleset,
 ): readonly ElectronicComponentFact[] {
-    const protoMek = isProtoMekEntity(entity);
     const statuses = isVehicleEntity(entity)
         ? projectVehicleRuntimeRules(entity, index, state, ruleset).componentStatuses
         : projectComponentLocationStatuses(index, state).committed;
@@ -2266,7 +2288,7 @@ function buildNonMekElectronicFacts(
         if (!equipment) return [];
         const claims = electronicClaims(equipment);
         if (!claims.ecm && !claims.probe
-            && !isPowerControlledEquipment(equipment, protoMek)) return [];
+            && !isPowerControlledEquipment(equipment, entity.entityType)) return [];
         return [Object.freeze({
             componentId: component.id,
             equipment,
@@ -2346,12 +2368,12 @@ function settleNonMekElectronicSuites(
     let settled = state;
     for (const update of planElectronicSettlement(
         buildNonMekElectronicFacts(entity, index, state, ruleset),
-        isProtoMekEntity(entity),
+        entity.entityType,
     )) {
         const definition = index.components.get(update.componentId);
         const defaultMode = nonMekComponentModes(
             entity,
-            definition?.mount.equipment,
+            definition?.mount,
             ruleset,
         ).defaultMode;
         settled = withComponentMode(
@@ -2726,7 +2748,7 @@ function validateState(
         if (component.mode !== undefined) {
             const modeDefinition = nonMekComponentStateModes(
                 entity,
-                definition.mount.equipment,
+                definition.mount,
                 ruleset,
             );
             if (!modeDefinition.modes.includes(component.mode)
@@ -2794,12 +2816,16 @@ function validateState(
         throw new Error('Invalid non-Mek NEXT offset');
     }
     boundedHeatsinksOff(state.heat.heatsinksOff, entity.engineHeatSinks());
+    if (state.heat.heatsinksOffNext !== undefined
+        && boundedHeatsinksOff(state.heat.heatsinksOffNext, entity.engineHeatSinks()) === state.heat.heatsinksOff) {
+        throw new Error('A pending heat-sink switch must change the switch');
+    }
     if (!entity.tracksHeat() && (state.heat.current !== 0
         || outsideHeatThisTurn(state) !== 0
         || state.turn.heatDissipationConsumed !== undefined || state.turn.settledHeat.size !== 0
         || state.heat.previous !== 0
         || state.heat.pendingOverride !== undefined
-        || state.heat.heatsinksOff !== 0)) {
+        || state.heat.heatsinksOff !== 0 || state.heat.heatsinksOffNext !== undefined)) {
         throw new Error('Runtime heat state belongs to a non-Mek unit that does not track heat');
     }
     if (!Number.isSafeInteger(state.turn.turnCounter) || state.turn.turnCounter < 0

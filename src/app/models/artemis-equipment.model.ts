@@ -36,6 +36,22 @@ export function isArtemisCompatibleWeapon(equipment: Equipment | null | undefine
   return equipment?.hasFlag(ARTEMIS_COMPATIBLE_FLAG) === true;
 }
 
+/** Artemis only guides the missiles made for it; other ammo fires as from a normal launcher (TW p. 130). */
+export function firesArtemisAmmo(kind: ArtemisKind, ammo: AmmoEquipment | null): boolean {
+  return ammo?.hasMunitionType(kind === 'v' ? 'M_ARTEMIS_V_CAPABLE' : 'M_ARTEMIS_CAPABLE') === true;
+}
+
+/** The linked Artemis system that guides an attack: working, not jammed and firing its own missiles. */
+export function activeArtemisKind(
+  source: ArtemisFlagCarrier | undefined,
+  status: EquipmentStatus,
+  ammo: AmmoEquipment | null,
+  jammed: boolean,
+): ArtemisKind | null {
+  const kind = artemisKind(source);
+  return kind !== null && status === 'available' && !jammed && firesArtemisAmmo(kind, ammo) ? kind : null;
+}
+
 /** Direct-fire adjustment for a canonical linked Artemis V system. */
 export function artemisVToHitAdjustment(
   source: Equipment | undefined,
@@ -46,7 +62,7 @@ export function artemisVToHitAdjustment(
   stealthEcm: boolean,
 ): Extract<ToHitAdjustment, { readonly kind: 'add' }> | null {
   if (!source || !isArtemisVEquipment(source) || !isArtemisCompatibleWeapon(weapon)) return null;
-  const compatibleAmmo = ammo?.hasMunitionType('M_ARTEMIS_V_CAPABLE') === true;
+  const compatibleAmmo = firesArtemisAmmo('v', ammo);
   const weakened = status !== 'available' || jammed || stealthEcm || !compatibleAmmo;
   const label = source.shortName || source.name;
   return Object.freeze({

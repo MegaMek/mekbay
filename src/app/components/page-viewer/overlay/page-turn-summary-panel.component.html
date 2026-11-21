@@ -114,6 +114,13 @@
                 </div>
             }
 
+            @if (jumpJetChoice(); as jets) {
+                <label class="summary-row">Jump jets fired
+                    <input type="number" [min]="jets.minimum" [max]="jets.maximum" step="1"
+                        [value]="jets.fired" (change)="setJumpJetsFired($event)" />
+                </label>
+            }
+
             @for (trackRow of equipmentTrackControlRows(); track trackRow.componentId) {
                 <div class="summary-row equipment-track-row" [class.damaged]="trackRow.damaged">
                     <span class="equipment-track-label">{{ trackRow.label }}</span>

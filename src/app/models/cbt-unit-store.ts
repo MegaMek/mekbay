@@ -33,6 +33,7 @@ import { isSerializedNonMekUnit,type SerializedNonMekUnit } from './runtime/non-
 import type { ScenarioRules } from './runtime/unit-state-initializer';
 import { DEFAULT_FORCE_DEPLOYMENT_ID,scenarioRuleset } from './runtime/unit-state-initializer';
 import type { UnitConditionKey } from './unit-condition.model';
+import { sourceHashCanaryChanged } from './source-hash-canary';
 
 import type { EquipmentInteractionRegistry } from '../services/equipment-interaction-registry.service';
 import { ToastService } from '../services/toast.service';
@@ -53,7 +54,7 @@ projectNonMekEquipmentInteractions,
 selectNonMekEquipmentChoice,
 } from './runtime/cbt-equipment-interactions';
 import { pruneRemovedUnitsFromEncounter } from './runtime/cbt-force-persistence-helpers';
-import { sameCBTUnitGameplayState } from './runtime/cbt-force-runtime-history';
+import { anonymizeSourceChangedEquipmentHistory,sameCBTUnitGameplayState } from './runtime/cbt-force-runtime-history';
 import { entityTargetRosterRow,mekTargetRosterRow } from './runtime/cbt-force-target-roster';
 import { cbtUnitMatchesEntity } from './runtime/cbt-unit-validation';
 import type {
@@ -187,6 +188,11 @@ export class CBTUnitStore {
             }
             serializedUnits.set(entry.instanceId, serialized);
         });
+        // A unit's changed source can renumber its mounts, which reset its equipment state (`CBTUnitService.restore`):
+        // the force's C3 endpoints and history naming its components go with it, and nothing of the other units.
+        const sourceChangedUnitIds = new Set(retainedEntries.filter(entry => sourceHashCanaryChanged(
+            entry.unit.sourceHashCanary, serializedUnits.get(entry.instanceId)!.sourceHashCanary))
+            .map(entry => entry.instanceId));
         const hydratedUnits = retainedEntries.map(entry => Object.freeze({
             ...entry,
             stateRevision: serializedUnits.get(entry.instanceId)!.stateRevision,
@@ -219,10 +225,12 @@ export class CBTUnitStore {
             ...envelope,
             units: hydratedUnits,
             roster,
-            encounter: removedUnitIds.size === 0
+            encounter: removedUnitIds.size === 0 && sourceChangedUnitIds.size === 0
                 ? envelope.encounter
-                : pruneRemovedUnitsFromEncounter(envelope.encounter, removedUnitIds),
-            history: removedUnitIds.size === 0 ? envelope.history : emptyRuntimeHistory(),
+                : pruneRemovedUnitsFromEncounter(envelope.encounter, removedUnitIds, sourceChangedUnitIds),
+            history: removedUnitIds.size === 0
+                ? anonymizeSourceChangedEquipmentHistory(envelope.history, units, sourceChangedUnitIds)
+                : emptyRuntimeHistory(),
         });
         const encounter = decodeCBTEncounterStateV2(hydratedEnvelope.encounter);
         if (!validateCBTEncounterNetworks(encounter.networks, units)) {

@@ -13,7 +13,6 @@
     left: 0;
     width: 100%;
     height: 100%;
-    will-change: transform;
 
     @media print {
         transform: none !important;
@@ -35,8 +34,8 @@
     display: flex;
     flex-direction: row;
     gap: 0;
-    /* Gap is handled via page translateX */
-    will-change: transform;
+    /* Gap is handled via page translateX. The zoom/pan service sets will-change only while the view moves:
+       a permanent hint keeps layers inside at their first resolution, blurring zoomed sheets. */
     transform-origin: top left;
 
     @media print {
@@ -99,6 +98,11 @@
 
 :host ::ng-deep .swiping .page-wrapper[data-slot-index] {
     transition: none;
+}
+
+/* Only while swiping, for the same reason as .page-content. */
+:host ::ng-deep .swiping .swipe-wrapper {
+    will-change: transform;
 }
 
 @media print {

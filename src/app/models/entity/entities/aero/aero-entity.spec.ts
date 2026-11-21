@@ -132,6 +132,22 @@ describe('AeroEntity bomb capacity', () => {
   });
 });
 
+describe('AeroEntity ammunition CASE', () => {
+  it('protects only the CASE II location, while standard CASE covers all fighter ammunition (TO:AUE p. 110; TW p. 161)', () => {
+    const entity = new ConvFighterEntity();
+    const caseII = addTestEquipmentWithFlags(entity, 'F_CASE_II', { location: 'Nose' });
+
+    expect(entity.ammoCaseProtection('Nose')).toBe('case-ii');
+    expect(entity.ammoCaseProtection('Fuselage')).toBeNull();
+    expect(entity.ammoCaseProtection('Nose', mount => mount !== caseII)).toBeNull();
+
+    addTestEquipmentWithFlags(entity, 'F_CASE', { location: 'Fuselage' });
+    expect(entity.ammoCaseProtection('Nose')).toBe('case-ii');
+    expect(entity.ammoCaseProtection('Fuselage')).toBe('case');
+    expect(entity.ammoCaseProtection('Left Wing')).toBe('case');
+  });
+});
+
 function cargoBay(capacity: number) {
   return {
     id: 'cargo-bay', kind: 'bay' as const, configuration: { type: 'cargo' as const },

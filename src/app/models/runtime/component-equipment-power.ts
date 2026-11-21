@@ -1,9 +1,11 @@
 // Copyright (C) 2026 The MegaMek Team
 // SPDX-License-Identifier: GPL-3.0-or-later
 
+import { isPrototypeDoubleHeatSinkEquipment } from '../heat-equipment.model';
 import type { PickerChoice } from '../../components/picker/picker.interface';
 import { equipmentForComponent } from './mek-runtime-index';
 import {
+    isBulkSwitchedPrototypeHeatSink,
     isNovaCewsEquipment,
     isPowerControlledEquipment,
     isSearchlightEquipment,
@@ -35,7 +37,7 @@ export class EquipmentPowerHandler extends EquipmentInteractionHandler {
 
     override choices(input: EquipmentInteractionInput): readonly EquipmentInteractionChoice[] {
         const equipment = equipmentForComponent(input.index, input.componentId);
-        if (!isPowerControlledEquipment(equipment)) return [];
+        if (!isPowerControlledEquipment(equipment) || isBulkSwitchedPrototypeHeatSink(input.entity, equipment)) return [];
         const facts = electronicFacts(input);
         const state = presentedElectronicPowerMode(facts, input.componentId);
         const labels = powerLabels(equipment!, state);
@@ -44,6 +46,7 @@ export class EquipmentPowerHandler extends EquipmentInteractionHandler {
             value: nextPowerToggleMode(state),
             active: powerEffectivelyEnabled(state),
             displayType: 'toggle' as const,
+            ...(isPrototypeDoubleHeatSinkEquipment(equipment) ? { skipActionGate: true } : {}),
         })];
     }
 
@@ -53,7 +56,8 @@ export class EquipmentPowerHandler extends EquipmentInteractionHandler {
         context: EquipmentInteractionCommandContext,
     ): boolean {
         const equipment = equipmentForComponent(input.index, input.componentId);
-        if (!equipment || !isPowerControlledEquipment(equipment)) return false;
+        if (!equipment || !isPowerControlledEquipment(equipment)
+            || isBulkSwitchedPrototypeHeatSink(input.entity, equipment)) return false;
         const offered = this.choices(input)[0];
         if (!offered || choice.value !== offered.value) return false;
         const result = input.runtime.dispatch({
@@ -79,12 +83,12 @@ export function electronicFacts(input: EquipmentInteractionInput): readonly Elec
             || isBapEquipment(equipment)
             || isNovaCewsEquipment(equipment)
             || isPowerControlledEquipment(equipment);
-        if (!claimsElectronicFunction) return [];
+        if (!claimsElectronicFunction || isBulkSwitchedPrototypeHeatSink(input.entity, equipment)) return [];
         return [Object.freeze({
             componentId,
             equipment,
             mode: state.components.get(componentId)?.mode,
-            operational: !unavailable
+            operational: (!unavailable || !state.destroyed && isPrototypeDoubleHeatSinkEquipment(equipment))
                 && input.runtime.query().componentStatus(componentId) === 'available',
         })];
     }));
@@ -100,7 +104,7 @@ function powerLabels(
             ? 'Nova CEWS'
             : isSearchlightEquipment(equipment)
                 ? 'Searchlight'
-                : 'System';
+                : isPrototypeDoubleHeatSinkEquipment(equipment) ? 'Heat sink' : 'System';
     switch (state) {
         case POWER_ENABLED_MODE: return Object.freeze({ label: `${subject} is ON` });
         case POWER_ENABLING_MODE: return Object.freeze({ label: `Turning ${subject.toLowerCase()} on…` });

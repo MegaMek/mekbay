@@ -101,15 +101,13 @@ describe('parseGameEvent', () => {
         }
     });
 
-    it('keeps inferno missiles that roll no hit location, and rejects the flag on any other weapon', () => {
-        const inferno = { name: 'SRM 6', types: ['M'], targetNumber: 7, toHit: [4, 4], inferno: true, noHitLocation: true,
+    it('keeps inferno missiles and rejects a malformed inferno flag', () => {
+        const inferno = { name: 'SRM 6', types: ['M'], targetNumber: 7, toHit: [4, 4], inferno: true,
             groups: [{ damage: 0, location: [3, 4], aux: 1 }] };
         expect(parseGameEvent({ ...attack(), weapons: [inferno] })).toEqual(jasmine.objectContaining({
-            weapons: [jasmine.objectContaining({ inferno: true, noHitLocation: true })],
+            weapons: [jasmine.objectContaining({ inferno: true })],
         }));
-        for (const bad of [{ ...inferno, inferno: undefined }, { ...inferno, noHitLocation: false }]) {
-            expect(parseGameEvent({ ...attack(), weapons: [bad] })).toBeNull();
-        }
+        expect(parseGameEvent({ ...attack(), weapons: [{ ...inferno, inferno: false }] })).toBeNull();
     });
 
     it('accepts a physical attack read on the 1D6 punch table, and no other dice count', () => {

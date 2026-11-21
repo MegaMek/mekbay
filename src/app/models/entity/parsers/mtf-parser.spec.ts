@@ -15,6 +15,7 @@ import { ParseContext } from './parse-context';
 import { MtfSourceLimitError, parseMtf } from './mtf-parser';
 import { writeMtf } from '../writers/mtf-writer';
 import { encodeNativeEntity } from '../write-entity';
+import { evaluateMekRuntimeCapability } from '../../runtime/mek-runtime-capability';
 import { parseEntity, UnsupportedNativeFormatError } from '../parse-entity';
 import { buildEquipmentRegistry } from '../../../services/catalogs/equipment-catalog-builder';
 
@@ -323,6 +324,29 @@ describe('MTF parser identity', () => {
     expect(written).toContain('\ndonor: Donor Mek\ndonor type: BattleMek\n');
   });
 
+  it('derives engine critical slots and unspecified donor tonnages from the center torso', () => {
+    for (const [center, other, engineSlots] of [[100, 105, 6], [105, 100, 3]]) {
+      const entity = parseMtf(frankenMtf(`structure:Standard\nCT structure:${center}\nLA structure:${other}\n`),
+        new ParseContext('franken-boundary.mtf', structureRegistry()));
+      expect(entity.tonnage()).toBe(center);
+      expect(entity.structureAt('RT').tonnage).toBe(center);
+      expect(entity.structureAt('LA').tonnage).toBe(other);
+      const ctEngineSlots = () => entity.criticalSlotGrid().get('CT')!
+        .filter(slot => slot.type === 'system' && slot.systemType === 'Engine').length;
+      expect(ctEngineSlots()).toBe(engineSlots);
+      expect(entity.frankenMekDonorSizeIssues().map(issue => issue.location)).toEqual(['LA']);
+      entity.setStructureAt('CT', entity.structureAt('CT').withTonnage(other));
+      expect(ctEngineSlots()).toBe(center === 100 ? 3 : 6);
+    }
+  });
+
+  it('ignores bare donor tonnages under a Hybrid structure line, as MtfFile does', () => {
+    const entity = parseMtf(frankenMtf('structure:Hybrid\nCT structure:35\nLT structure:10\n'),
+      new ParseContext('franken-hybrid.mtf', structureRegistry()));
+    expect(entity.tonnage()).toBe(20);
+    expect(entity.structureAt('LT').tonnage).toBe(20);
+  });
+
   it('diagnoses malformed FrankenMek structure tonnage instead of coercing it to zero', () => {
     const ctx = new ParseContext('invalid-franken.mtf', structureRegistry());
     const entity = parseMtf(frankenMtf('structure:Standard\nLA structure:20.5\n'), ctx);
@@ -583,7 +607,7 @@ describe('MTF parser identity', () => {
     expect(mounts.map((mount) => mount.size)).toEqual([3, 3]);
   });
 
-  it('rejects combined equipment in a non-superheavy critical slot', () => {
+  it('retains both loads for repair when a non-superheavy slot illegally combines equipment', () => {
     const ammo = new AmmoEquipment({
       id: 'Test Ammo',
       name: 'Test Ammo',
@@ -595,6 +619,12 @@ describe('MTF parser identity', () => {
       new ParseContext('normal-combined-ammo.mtf', equipmentRegistry({ [ammo.id]: ammo })),
     );
 
+    expect(encodeNativeEntity(entity)).toContain('\nTest Ammo|Test Ammo\n');
+    const admission = evaluateMekRuntimeCapability(entity);
+    expect(admission.readiness).toBe('deferred');
+    if (admission.readiness === 'deferred') {
+      expect(admission.blockers.map(blocker => blocker.code)).toContain('CRIT_SLOT_SHARING_INVALID');
+    }
     expect(entity.validationResult().messages).toContain(
       jasmine.objectContaining({
         code: 'CRIT_SLOT_SHARING_INVALID',
@@ -886,5 +916,226 @@ ${rightLeg}
     const entity = parseEntity(mek('-Empty-', 'UMU\nUMU', 'UMU\nUMU'), 'umu.mtf', catalog).entity;
 
     expect(encodeNativeEntity(entity)).toContain('\njump mp:0\n');
+  });
+});
+
+describe('MTF weapon rows', () => {
+  let catalog: EquipmentRegistry;
+  beforeAll(async () => {
+    catalog = buildEquipmentRegistry(await (await fetch('/online-assets/static/equipment.json')).json());
+  });
+
+  const rows = (location: string, lines: readonly string[]) => `${location}:\n${lines.join('\n')}\n\n`;
+  const guns = (entity: ReturnType<typeof parseMtf>) => entity.equipment().filter((mount) => mount.equipment?.id === 'Autocannon/20')
+    .map((mount) => mount.placements!.map((p) => `${p.location}${p.slotIndex + 1}`).join(','));
+
+  it('reads a location as MegaMek does: empty rows close up and a waiting split takes the first matching row', () => {
+    // MtfFile.remapCritDataAroundSystemSlots fills the free slots in file order, and the arm's split gun is still
+    // waiting for a slot when the torso's first AC/20 row arrives.
+    const source = minimalMtf() + 'Weapons:2\nAutocannon/20, Right Torso\nAutocannon/20, Right Torso\n\n'
+      + rows('Right Arm', ['Shoulder', 'Upper Arm Actuator', ...Array(9).fill('Autocannon/20')])
+      + rows('Right Torso', [...Array(10).fill('Autocannon/20'), '-Empty-', 'Autocannon/20']);
+    const context = new ParseContext('gapped.mtf', catalog);
+    expect(guns(parseMtf(source, context))).toEqual([
+      [...Array.from({ length: 9 }, (_, index) => `RA${index + 3}`), 'RT1'].join(','),
+      Array.from({ length: 10 }, (_, index) => `RT${index + 2}`).join(','),
+    ]);
+    expect(context.warnings.filter((warning) => warning.code === 'MTF_WEAPON_COUNT_MISMATCH')).toEqual([]);
+  });
+
+  it('writes a split gun\'s torso part before the whole gun it shares the torso with, so both read back as placed', () => {
+    const entity = parseMtf(minimalMtf()
+      + rows('Right Arm', ['Shoulder', 'Upper Arm Actuator', ...Array(9).fill('Autocannon/20')])
+      + rows('Right Torso', Array(11).fill('Autocannon/20')), new ParseContext('packed.mtf', catalog));
+    const placed = guns(entity);
+    // Asking the editor's packer for the whole gun first still puts the arm gun's waiting part ahead of it.
+    const [split, whole] = entity.equipment().filter((mount) => mount.equipment?.id === 'Autocannon/20');
+    entity.arrangeEquipment('RT', [whole.mountId, split.mountId]);
+    expect(guns(entity)).toEqual(placed);
+    expect(guns(parseMtf(writeMtf(entity), new ParseContext('again.mtf', catalog)))).toEqual(placed);
+  });
+
+  it('armors a placed system by identity wherever the file lists its rows, as MtfFile does', () => {
+    const entity = parseMtf(minimalMtf()
+      // One armored row armors the whole gyro, and MtfFile matches the system name in any case.
+      + rows('Center Torso', ['gyro (ARMORED)', 'Gyro', 'Gyro', 'Gyro', ...Array(6).fill('Fusion Engine')]), new ParseContext('gyro.mtf', catalog));
+    const armored = [...entity.armoredSystemSlots()].filter((key) => key.startsWith('CT:'))
+      .map((key) => entity.getSystemSlotsForLocation('CT')[Number(key.slice(3))]);
+    expect(armored.map((slot) => slot.type === 'system' ? slot.systemType : slot.type)).toEqual(Array(4).fill('Gyro'));
+  });
+
+  it('finds a weapon quirk on any slot of its weapon in the packed rows, as MtfFile does', () => {
+    const parse = (quirk: string) => parseEntity(minimalMtf().replace('armor:Standard(Inner Sphere)',
+      `armor:Standard(Inner Sphere)\nweaponquirk:${quirk}`) + rows('Left Torso', ['-Empty-', 'Large Laser', 'Large Laser']),
+    'quirk.mtf', catalog).entity as ReturnType<typeof parseMtf>;
+    // The empty first row closes up, so the laser fills slots 0 and 1 and slot 2 is empty.
+    for (const slot of [0, 1]) {
+      const entity = parse(`accurate:LT:${slot}:Large Laser`);
+      expect(entity.weaponQuirks()).toEqual([{ name: 'accurate', location: 'LT', slot: 0, weaponName: 'Large Laser' }]);
+      expect(parseEntity(writeMtf(entity), 'again.mtf', catalog).entity.weaponQuirks()).toEqual(entity.weaponQuirks());
+    }
+    expect(parse('accurate:LT:2:Large Laser').weaponQuirks()).toEqual([]);
+  });
+
+  it('reads a split gun the same whatever order the file lists its sections in', () => {
+    const arm = rows('Right Arm', ['Shoulder', 'Upper Arm Actuator', ...Array(9).fill('Autocannon/20')]);
+    const torso = rows('Right Torso', Array(11).fill('Autocannon/20'));
+    expect(guns(parseMtf(minimalMtf() + torso + arm, new ParseContext('torso-first.mtf', catalog))))
+      .toEqual(guns(parseMtf(minimalMtf() + arm + torso, new ParseContext('arm-first.mtf', catalog))));
+  });
+
+  it('numbers mounts in the order the file lists its sections, so saved state still names the same weapon', () => {
+    // Saved runtime state addresses a component by its mount ID, so a file must keep the IDs it has always loaded with.
+    const weaponIds = (source: string) => parseMtf(source, new ParseContext('order.mtf', catalog)).equipment()
+      .filter((mount) => mount.equipment instanceof WeaponEquipment)
+      .map((mount) => [mount.equipment!.name, Number(mount.mountId.slice(1))] as const);
+    const left = rows('Left Torso', ['Medium Laser']);
+    const right = rows('Right Torso', ['Large Laser', 'Large Laser']);
+    const [rightFirstLarge, rightFirstMedium] = weaponIds(minimalMtf() + right + left);
+    expect([rightFirstLarge[0], rightFirstMedium[0]]).toEqual(['Large Laser', 'Medium Laser']);
+    expect(rightFirstLarge[1]).toBeLessThan(rightFirstMedium[1]);
+    const [leftFirstMedium, leftFirstLarge] = weaponIds(minimalMtf() + left + right);
+    expect([leftFirstMedium[0], leftFirstLarge[0]]).toEqual(['Medium Laser', 'Large Laser']);
+    expect(leftFirstMedium[1]).toBeLessThan(leftFirstLarge[1]);
+  });
+
+  it('reads a mount tag only on equipment that splits over critical slots, as MtfFile does', () => {
+    const entity = parseMtf(minimalMtf() + rows('Right Torso', ['Medium Laser#2', 'Medium Laser#2']), new ParseContext('lasers.mtf', catalog));
+    expect(entity.equipment().filter((mount) => mount.equipment?.id === 'Medium Laser').length).toBe(2);
+  });
+
+  for (const splitRowsOnTop of [true, false]) {
+    it(`keeps a split gun apart from a whole one in the torso with its rows ${splitRowsOnTop ? 'on top' : 'below'}`, () => {
+      const split = [...Array(2).fill('Autocannon/20#1')];
+      const whole = [...Array(10).fill('Autocannon/20#2')];
+      const source = minimalMtf() + rows('Right Arm', ['Shoulder', 'Upper Arm Actuator', ...Array(8).fill('Autocannon/20#1')])
+        + rows('Right Torso', splitRowsOnTop ? [...split, ...whole] : [...whole, ...split]);
+      const entity = parseMtf(source, new ParseContext('split.mtf', catalog));
+      const layout = guns(entity);
+      const written = writeMtf(entity);
+      // The split gun shares the torso with the whole one, so only its rows are tagged (MegaMek MtfFile.mountTags)
+      expect(written.match(/Autocannon\/20#1/gu)?.length).toBe(10);
+      expect(written.includes('Autocannon/20#2')).toBeFalse();
+      expect(guns(parseMtf(written, new ParseContext('again.mtf', catalog)))).toEqual(layout);
+    });
+  }
+
+  it('keeps two guns split over the same locations apart by their #N tags, and writes the tags back', () => {
+    const range = (location: string, from: number) => Array.from({ length: 5 }, (_, index) => `${location}${from + index}`);
+    const source = minimalMtf()
+      + rows('Right Arm', ['Shoulder', 'Upper Arm Actuator', ...Array(5).fill('Autocannon/20#1'), ...Array(5).fill('Autocannon/20#2')])
+      + rows('Right Torso', [...Array(5).fill('Autocannon/20#2'), ...Array(5).fill('Autocannon/20#1')]);
+    const entity = parseMtf(source, new ParseContext('tagged.mtf', catalog));
+    const tagged = [[...range('RA', 3), ...range('RT', 6)].join(','), [...range('RA', 8), ...range('RT', 1)].join(',')];
+    expect(guns(entity)).toEqual(tagged);
+    // Without the tags the first torso rows go to the first gun still waiting for slots, as in MtfFile.
+    expect(guns(parseMtf(source.replace(/#\d/gu, ''), new ParseContext('untagged.mtf', catalog)))).not.toEqual(tagged);
+    const written = writeMtf(entity);
+    expect(written).toContain('Autocannon/20#2');
+    expect(guns(parseMtf(written, new ParseContext('again.mtf', catalog)))).toEqual(tagged);
+  });
+
+  it('gives each enhancement the nearest weapon above it that can take it', () => {
+    const load = (lines: readonly string[]) => parseEntity(minimalMtf().replace('Config:Biped', 'Config:Biped\nera:3150')
+      + rows('Right Torso', lines), 'enhanced.mtf', catalog).entity as ReturnType<typeof parseMtf>;
+    const carried = (entity: ReturnType<typeof parseMtf>) => entity.equipment().filter((mount) => mount.equipment instanceof WeaponEquipment)
+      .map((weapon) => entity.getLinkingMounts(weapon).map((mount) => mount.equipment?.name).join('+'));
+    // A laser takes any number of insulators and one pulse module.
+    expect(carried(load(['Medium Laser', 'ISLaserInsulator', 'ISLaserInsulator', 'Medium Laser', 'ISLaserInsulator',
+      'ISRISCLaserPulseModule', 'Medium Laser']))).toEqual(['Laser Insulator+Laser Insulator', 'Laser Insulator+RISC Laser Pulse Module', '']);
+    // Every launcher carries one Artemis (TM p. 206): the second skips the launcher that already has one.
+    expect(carried(load([...Array(3).fill('LRM 15'), ...Array(3).fill('LRM 15'), 'ISArtemisIV', 'ISArtemisIV'])))
+      .toEqual(['Artemis IV FCS', 'Artemis IV FCS']);
+    // With no weapon above it that can take it, an enhancement takes the first one in its location that can.
+    expect(carried(load(['PPC Capacitor', ...Array(3).fill('PPC'), ...Array(3).fill('PPC')]))).toEqual(['PPC Capacitor', '']);
+    // Insulators above every laser stack on the first laser once each laser has one.
+    expect(carried(load(['ISLaserInsulator', 'ISLaserInsulator', 'Medium Laser'])))
+      .toEqual(['Laser Insulator+Laser Insulator']);
+    // A pulse module adds 2 heat (IO:AE p. 87); insulators take 1 off a laser only once, to a minimum of 1 (TO:AUE p. 134).
+    expect(load(['Medium Laser', 'ISLaserInsulator', 'ISLaserInsulator']).heatGeneration()).toBe(2);
+    expect(load(['Medium Laser', 'ISRISCLaserPulseModule', 'ISLaserInsulator']).heatGeneration()).toBe(4);
+    expect(load(['Small Laser', 'ISLaserInsulator']).heatGeneration()).toBe(1);
+    // The 2 heat is the modified laser's; a pulse module with no laser to modify adds none.
+    expect(load([...Array(3).fill('PPC'), 'ISRISCLaserPulseModule']).heatGeneration()).toBe(10);
+  });
+
+  it('reads a split weapon at its first row in the enhancement\'s location, not where the weapon starts', () => {
+    // The Extended LRM starts in the arm, but in the torso its rows stand between the LRM 5 and the Artemis.
+    const entity = parseEntity(minimalMtf().replace('Config:Biped', 'Config:Biped\nera:3150')
+      + rows('Left Arm', ['Shoulder', 'Upper Arm Actuator', ...Array(3).fill('Extended LRM 20')])
+      + rows('Left Torso', ['LRM 5', ...Array(5).fill('Extended LRM 20'), 'ISArtemisIV']), 'split.mtf', catalog).entity;
+    const artemis = entity.equipment().find((mount) => mount.equipment?.id === 'ISArtemisIV')!;
+    expect(entity.getLinkedMount(artemis)?.equipment?.id).toBe('Extended LRM 20');
+  });
+
+  it('links an enhancement in either location of a split weapon (TM pp. 57, 207)', () => {
+    // The Artemis sits in the arm, the Extended LRM's other location.
+    const entity = parseEntity(minimalMtf().replace('Config:Biped', 'Config:Biped\nera:3150')
+      + rows('Left Arm', ['Shoulder', 'Upper Arm Actuator', ...Array(3).fill('Extended LRM 20'), 'ISArtemisIV'])
+      + rows('Left Torso', Array(5).fill('Extended LRM 20')), 'split-arm.mtf', catalog).entity;
+    const artemis = entity.equipment().find((mount) => mount.equipment?.id === 'ISArtemisIV')!;
+    expect(entity.getLinkedMount(artemis)?.equipment?.id).toBe('Extended LRM 20');
+  });
+
+  it('loads a row with an unreadable mount tag as if it had none, and says so', () => {
+    const context = new ParseContext('garbled.mtf', catalog);
+    const entity = parseMtf(minimalMtf() + rows('Right Torso', ['Medium Laser#x', 'Medium Laser#007']), context);
+    expect(entity.equipment().filter((mount) => mount.placements?.[0]?.location === 'RT').map((mount) => mount.equipment?.id))
+      .toEqual(['Medium Laser', 'Medium Laser']);
+    expect(context.warnings.filter((warning) => warning.code === 'MTF_MOUNT_TAG').length).toBe(2);
+  });
+
+  it('reads a mount tag only where it ends the row, so the row keeps its other modifiers', () => {
+    const context = new ParseContext('modifiers.mtf', catalog);
+    const entity = parseMtf(minimalMtf() + rows('Right Torso', ['Medium Laser (R)#x', 'Medium Laser#x (R)',
+      'Autocannon/2#2 (ARMORED)']) + rows('Left Torso', ['Autocannon/2#2(ARMORED)']), context);
+    const mounts = (id: string) => entity.equipment().filter((mount) => mount.equipmentId === id);
+    // An unreadable tag ending the row is dropped, with a warning; the rear mounting before it stays.
+    expect(mounts('Medium Laser').map((mount) => mount.rearMounted)).toEqual([true]);
+    expect(context.warnings.filter((warning) => warning.code === 'MTF_MOUNT_TAG').length).toBe(1);
+    // A # before the modifiers is part of the name, as in MtfFile (#([1-9]\d*)$), and the modifiers still apply,
+    // with or without a space before them.
+    expect(mounts('Medium Laser#x').map((mount) => mount.rearMounted)).toEqual([true]);
+    expect(mounts('Autocannon/2#2').map((mount) => [mount.location, mount.armored])).toEqual([['RT', true], ['LT', true]]);
+    expect(mounts('Autocannon/2').length).toBe(0);
+  });
+
+  it('armors a targeting computer whose rows in different locations disagree', () => {
+    const context = new ParseContext('tc.mtf', catalog);
+    const entity = parseMtf(minimalMtf() + rows('Left Torso', ['ISTargeting Computer'])
+      + rows('Right Torso', ['ISTargeting Computer (ARMORED)']), context);
+    expect(entity.equipment().filter((mount) => mount.equipment?.id === 'ISTargeting Computer').map((mount) => mount.armored)).toEqual([true]);
+    expect(context.warnings.map((warning) => warning.code)).toContain('MTF_PARTIAL_COMPONENT_ARMOR');
+  });
+
+  it('armors a whole weapon whose rows disagree, and says so', () => {
+    for (const lines of [['Large Laser', 'Large Laser (ARMORED)'], ['Large Laser (ARMORED)', 'Large Laser']]) {
+      const context = new ParseContext('armor.mtf', catalog);
+      const entity = parseMtf(minimalMtf() + rows('Left Torso', lines), context);
+      expect(entity.equipment().filter((mount) => mount.equipment?.name === 'Large Laser').map((mount) => mount.armored)).toEqual([true]);
+      expect(context.warnings.map((warning) => warning.code)).toContain('MTF_PARTIAL_COMPONENT_ARMOR');
+    }
+  });
+
+  it('warns once for a component with only some armored rows, however many rows disagree', () => {
+    const context = new ParseContext('armor.mtf', catalog);
+    const lines = Array.from({ length: 10 }, (_, row) => row === 0 ? 'Autocannon/20 (ARMORED)' : 'Autocannon/20');
+    const entity = parseMtf(minimalMtf() + rows('Left Torso', lines), context);
+    expect(entity.equipment().filter((mount) => mount.equipment?.id === 'Autocannon/20').map((mount) => mount.armored)).toEqual([true]);
+    expect(context.warnings.filter((warning) => warning.code === 'MTF_PARTIAL_COMPONENT_ARMOR').length).toBe(1);
+  });
+
+  it('warns when the Weapons count disagrees with the weapons the critical rows hold', () => {
+    const source = (count: string) => minimalMtf()
+      + (count ? `Weapons:${count}\nMedium Laser, Left Torso\nMedium Laser, Left Torso\n\n` : '')
+      + rows('Left Torso', ['Medium Laser']);
+    const warnings = (count: string) => {
+      const context = new ParseContext('weapons.mtf', catalog);
+      parseMtf(source(count), context);
+      return context.warnings.filter((warning) => warning.code === 'MTF_WEAPON_COUNT_MISMATCH').map((warning) => warning.message);
+    };
+    expect(warnings('2')).toEqual(['The Weapons list names 2 weapons, but the critical slots hold 1.']);
+    expect(warnings('1')).toEqual([]);
+    expect(warnings('')).toEqual([]);
   });
 });

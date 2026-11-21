@@ -843,7 +843,9 @@ describe('EquipmentDialogRuntimeController', () => {
         const fire = jasmine.createSpy('fireSelectedWeapons').and.resolveTo({
             accepted: true, changed: false, prototypeHeat: [],
         });
-        const resolveFired = jasmine.createSpy('resolveFired').and.resolveTo();
+        const resolution = { deliveries: [], jammed: [], insulatorFailed: [], noLock: ['mount:medium-laser' as ComponentId], physical: [] };
+        const rollAttacks = jasmine.createSpy('rollAttacks').and.resolveTo(resolution);
+        const settleAttacks = jasmine.createSpy('settleAttacks').and.resolveTo();
         const member = {
             kind: 'cbt',
             id: 'tank-1',
@@ -862,15 +864,25 @@ describe('EquipmentDialogRuntimeController', () => {
             { cbtAutomationMode: () => 'no', options: () => ({ realPhases: false }) } as unknown as OptionsService,
             jasmine.createSpyObj<ToastService>('ToastService', ['showToast']),
             undefined,
-            { resolveFired, resolvesAttacks: () => true, inPhysicalPhase: () => false } as unknown as AttackResolutionPort,
+            { rollAttacks, settleAttacks, resolvesAttacks: () => true, inPhysicalPhase: () => false } as unknown as AttackResolutionPort,
         );
 
+        // The attacks are rolled before they fire, and a missed lock reaches the fire command.
         await controller.fire();
-        expect(resolveFired).not.toHaveBeenCalled();
+        expect(fire).toHaveBeenCalledWith('tank-1', jasmine.objectContaining({ noLock: ['mount:medium-laser'] }));
+        expect(settleAttacks).not.toHaveBeenCalled();
 
         fire.and.resolveTo({ accepted: true, changed: true, prototypeHeat: [] });
         await controller.fire();
-        expect(resolveFired).toHaveBeenCalledTimes(1);
+        expect(settleAttacks).toHaveBeenCalledOnceWith(member, resolution);
+
+        // Dismissing the attack dialog takes the attack back: nothing fires and no roll is settled.
+        fire.calls.reset();
+        settleAttacks.calls.reset();
+        rollAttacks.and.resolveTo('dismissed');
+        await controller.fire();
+        expect(fire).not.toHaveBeenCalled();
+        expect(settleAttacks).not.toHaveBeenCalled();
         controller.dispose();
     });
 

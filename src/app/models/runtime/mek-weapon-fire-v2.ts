@@ -10,10 +10,13 @@ import {
 } from '../bombast-laser-mode.model';
 import type { MekEntity } from '../entity/entities/mek/mek-entity';
 import { AmmoEquipment, WeaponEquipment } from '../equipment.model';
+import { locksOnTarget } from '../rules/weapon-attack-resolution';
 import {
     canPerformMekAction,
     type MekActionRuntimePort,
 } from './mek-action-availability';
+import { laserInsulatorAdjustedHeat } from '../laser-insulator.model';
+import { mekLaserInsulatorWeakened } from './component-laser-insulator';
 import { resolveComponentBayRuntime } from './component-bay-runtime';
 import { withAmmoShotsSpent } from './component-state-change';
 import {
@@ -70,6 +73,8 @@ export interface MekWeaponFireSelectionV2 {
     readonly weaponId: ComponentId;
     readonly ammoSourceId?: ComponentId;
     readonly expectedMunitionKey?: string;
+    /** The weapon failed to lock on: it counts as fired but spends no ammo and makes no heat (TW p. 138). */
+    readonly noLock?: true;
 }
 
 export type MekWeaponFireRuntimeViewV2 = MekActionRuntimePort & {
@@ -201,6 +206,10 @@ export function planMekWeaponFireV2(
             || runtime.componentJammed(weaponId)) {
             return rejected('UNAVAILABLE_WEAPON');
         }
+        if (raw.noLock === true) {
+            if (!locksOnTarget(weapon)) return rejected('INVALID_WEAPON');
+            continue;
+        }
 
         const ppc = ppcCapacitorFireTransition(entity, index, weaponId);
         if (ppc === false) return rejected('UNSUPPORTED_INTERACTION');
@@ -229,8 +238,11 @@ export function planMekWeaponFireV2(
         const riscLaserPulseHeat = mekRiscLaserPulseActive(index, runtime, weaponId)
             ? RISC_LASER_PULSE_HEAT_BONUS
             : 0;
-        heat += ((bombast === null ? weapon.heat : bombast.heat) + riscLaserPulseHeat)
-            * shotCount;
+        const weaponHeat = laserInsulatorAdjustedHeat(
+            (bombast?.heat ?? weapon.heat) + riscLaserPulseHeat,
+            mekLaserInsulatorWeakened(index, runtime, weaponId) === false,
+        );
+        heat += weaponHeat * shotCount;
         if (prototypeLaserMaximumExtraHeat(weapon.internalName) > 0) {
             const rolled = prototypeLaserHeatForRoll(
                 weapon.internalName,

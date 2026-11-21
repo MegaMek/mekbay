@@ -10,7 +10,8 @@ import type { TechRating } from '../../types';
 import { calculateHeatNeutralRequirement, calculatePowerAmplifierWeight } from '../cost/common';
 import { getEquipmentEngineWeight } from '../equipment-engine-weight';
 import { resolveLabArmorEquipment } from './armor-weight';
-import { ceilToHalfTon } from './weight-rounding';
+import { ceilToHalfTon, ceilToKilogram } from './weight-rounding';
+import { calculateVehicleTurretWeight } from './vehicle-weight';
 import {
     isConstructionSystemEquipment,
     isSupportVehicleBarArmor,
@@ -56,8 +57,8 @@ export function calculateSupportVehicleWeightBreakdown(entity: SupportVehicleEnt
       : 0), 0));
   const heatSinks = small ? 0 : calculateHeatNeutralRequirement(entity);
   const armor = calculateSupportVehicleArmorWeight(entity);
-  const turret = calculateTurretWeight(entity, false);
-  const dualTurret = calculateTurretWeight(entity, true);
+  const turret = calculateVehicleTurretWeight(entity, false);
+  const dualTurret = calculateVehicleTurretWeight(entity, true);
 
   let miscellaneous = 0;
   let weapons = 0;
@@ -71,7 +72,7 @@ export function calculateSupportVehicleWeightBreakdown(entity: SupportVehicleEnt
     } else if (equipment instanceof WeaponEquipment) {
       weapons += requireTonnage(entity, mount);
       if (small && equipment.isInfantryWeapon() && (mount.size ?? 1) > 1) {
-        ammo += ceilKg(((mount.size ?? 1) - 1) * equipment.infantry.ammoWeight);
+        ammo += ceilToKilogram(((mount.size ?? 1) - 1) * equipment.infantry.ammoWeight);
       }
     } else if (equipment instanceof MiscEquipment
       && !isConstructionSystemEquipment(equipment, 'support-vehicle')
@@ -100,7 +101,7 @@ export function calculateSupportVehicleStructureWeight(entity: SupportVehicleEnt
   const modifier = supportVehicleStructureMultiplier(entity.equipment().map(mount => mount.equipment));
   const raw = entity.tonnage() * getBaseChassisValue(entity)
     * (STRUCTURAL_RATING_MULTIPLIERS[entity.structuralTechRating()] ?? 1) * modifier;
-  return entity.weightClass() === 'Small Support' ? ceilKg(raw) : ceilToHalfTon(raw);
+  return entity.weightClass() === 'Small Support' ? ceilToKilogram(raw) : ceilToHalfTon(raw);
 }
 
 export function calculateSupportVehicleArmorWeight(entity: SupportVehicleEntity): number {
@@ -126,7 +127,7 @@ export function calculateSupportVehicleArmorWeight(entity: SupportVehicleEntity)
       raw += calculateRaw(mounted.armor, (allocation.front ?? 0) + (allocation.rear ?? 0), mounted.techRating);
     }
   }
-  return entity.weightClass() === 'Small Support' ? ceilKg(raw) : ceilToHalfTon(raw);
+  return entity.weightClass() === 'Small Support' ? ceilToKilogram(raw) : ceilToHalfTon(raw);
 }
 
 function getBaseChassisValue(entity: SupportVehicleEntity): number {
@@ -147,20 +148,6 @@ function getBaseChassisValue(entity: SupportVehicleEntity): number {
   }
 }
 
-function calculateTurretWeight(entity: SupportVehicleEntity, dual: boolean): number {
-  const exists = dual ? entity.hasDualTurret() : entity.hasTurret();
-  if (!exists) return 0;
-  const baseWeight = dual ? entity.baseChassisTurret2Weight() : entity.baseChassisTurretWeight();
-  if (entity.omni() && baseWeight >= 0) return baseWeight;
-  const locations = dual ? ['Front Turret'] : ['Turret', 'Rear Turret'];
-  const raw = entity.equipment().reduce((total, mount) => {
-    if (!locations.includes(mount.location) || mount.equipment instanceof AmmoEquipment) return total;
-    if (!dual && mount.equipment instanceof ArmorEquipment) return total;
-    return total + requireTonnage(entity, mount);
-  }, 0) / 10;
-  return entity.tonnage() < 5 ? ceilKg(raw) : ceilToHalfTon(raw);
-}
-
 function requireTonnage(
   entity: SupportVehicleEntity,
   mount: { equipmentId: string; getTonnage(owner: SupportVehicleEntity): number | undefined },
@@ -172,8 +159,4 @@ function requireTonnage(
 
 function roundKg(value: number): number {
   return Math.round(value * 1000) / 1000;
-}
-
-function ceilKg(value: number): number {
-  return Math.ceil(Math.round(value * 1_000_000) / 1000) / 1000;
 }

@@ -133,6 +133,14 @@ export class SvgFrameUtil {
         return width - this.innerFrameContract - this.frameStrokeWidth / 2;
     }
 
+    /** Y of the inner edge of the border along a frame's bottom-left notch: the floor of the content above it. */
+    public static innerNotchBottom(height: number, options: SVGFrameOptions = {}): number {
+        const nested = options.variant === 'nested';
+        const notch = this.createAngleCut(this.createCornerAngles(options.cornerAngleDegrees).bottomRight, this.bottomNotchDepth);
+        return height - (nested ? 0 : this.innerFrameContract) - notch.y
+            - (nested ? this.frameStrokeWidth / 2 : this.frameStrokeWidth) / 2;
+    }
+
     /** Creates only the frame utility's title tab for unboxed diagram headings. */
     public static createSVGFrameHeader(
         title: string,

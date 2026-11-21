@@ -19,6 +19,7 @@ import { shieldComponentModes } from './component-shield-mode';
 import { coolantPodComponentModes } from './component-coolant-pod';
 import {
     electronicComponentModes,
+    isBulkSwitchedPrototypeHeatSink,
 } from './component-electronic-suite';
 import { mobileHpgComponentModes } from './component-mobile-hpg';
 import { boobyTrapComponentModes } from './component-booby-trap';
@@ -32,7 +33,7 @@ export interface MekComponentModes {
 
 /** One direct rules path for pristine defaults and runtime mode validation. */
 export function mekComponentModes(
-    _entity: MekEntity,
+    entity: MekEntity,
     index: MekRuntimeIndex,
     componentId: ComponentId,
     ruleset: CBTRuleset,
@@ -59,7 +60,9 @@ export function mekComponentModes(
     if (hagModes !== null) return hagModes;
     const vibrobladeModes = vibrobladeComponentModes(equipment);
     if (vibrobladeModes !== null) return vibrobladeModes;
-    const electronicModes = electronicComponentModes(equipment);
+    const electronicModes = isBulkSwitchedPrototypeHeatSink(entity, equipment)
+        ? null
+        : electronicComponentModes(equipment);
     if (electronicModes !== null) return electronicModes;
     const machineGunArrayModes = machineGunArrayComponentModes(equipment);
     if (machineGunArrayModes !== null) return machineGunArrayModes;

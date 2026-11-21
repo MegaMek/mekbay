@@ -41,7 +41,10 @@ import {
 RUNTIME_HISTORY_MESSAGE,
 type RuntimeHistoryEventInput,
 type RuntimeHistoryTargetKind,
+type SerializedRuntimeHistory,
+type SerializedRuntimeHistoryMessage,
 } from './runtime-history';
+import { CBT_HISTORY_FIELD, CBT_HISTORY_TURN_FIELD } from './force-storage-vocabulary';
 
 interface MekHistoryUnitAccess {
     instanceIds(): readonly string[];
@@ -61,6 +64,49 @@ export function forceHistory(
     ...data: JsonValue[]
 ): RuntimeHistoryEventInput {
     return Object.freeze({ messageId, ...(data.length === 0 ? {} : { data: Object.freeze(data) }) });
+}
+
+/**
+ * History names a component or a 'Mek's critical slot by an ID or slot coordinate that it reads against the unit's
+ * current design. Once a unit's source has changed, that ID or coordinate may hold other equipment, so each such
+ * message of the unit becomes a plain "Updated equipment"; its location damage, and a non-'Mek's critical hits, which
+ * name its system damage tracks, stay as they were.
+ */
+export function anonymizeSourceChangedEquipmentHistory(
+    history: SerializedRuntimeHistory,
+    units: ReadonlyMap<string, CBTUnit>,
+    changedInstanceIds: ReadonlySet<string>,
+): SerializedRuntimeHistory {
+    if (changedInstanceIds.size === 0) return history;
+    const unitIds = history[CBT_HISTORY_FIELD.unitIds];
+    const namesEquipment = (message: SerializedRuntimeHistoryMessage, instanceId: string): boolean => {
+        switch (message[0]) {
+            case RUNTIME_HISTORY_MESSAGE.COMPONENT_STATUS:
+            case RUNTIME_HISTORY_MESSAGE.WEAPONS_FIRED:
+            case RUNTIME_HISTORY_MESSAGE.COMPONENT_MODE_CHANGED:
+            case RUNTIME_HISTORY_MESSAGE.AMMO_LOADOUT_RESET:
+                return true;
+            case RUNTIME_HISTORY_MESSAGE.DAMAGE_CRITICAL:
+            case RUNTIME_HISTORY_MESSAGE.REPAIR_CRITICAL:
+                return isCBTMekUnit(units.get(instanceId)!);
+            default:
+                return false;
+        }
+    };
+    const anonymized = (message: SerializedRuntimeHistoryMessage): SerializedRuntimeHistoryMessage => {
+        const instanceId = typeof message[1] === 'number' ? unitIds[message[1]] : undefined;
+        return instanceId !== undefined && changedInstanceIds.has(instanceId) && namesEquipment(message, instanceId)
+            ? Object.freeze([RUNTIME_HISTORY_MESSAGE.EQUIPMENT_CHANGED, message[1]!])
+            : message;
+    };
+    return Object.freeze({
+        ...history,
+        [CBT_HISTORY_FIELD.turns]: Object.freeze(history[CBT_HISTORY_FIELD.turns].map(turn => Object.freeze({
+            ...turn,
+            [CBT_HISTORY_TURN_FIELD.phases]: Object.freeze(turn[CBT_HISTORY_TURN_FIELD.phases]
+                .map(phase => Object.freeze(phase.map(anonymized)))),
+        }))),
+    });
 }
 
 export type RuntimeHistoryInput = RuntimeHistoryEventInput
@@ -134,25 +180,22 @@ export function heatHistory(
         readonly current: number;
         readonly pendingOverride?: number;
         readonly heatsinksOff: number;
+        readonly heatsinksOffNext?: number;
     }>,
     after: Readonly<{
         readonly current: number;
         readonly pendingOverride?: number;
         readonly heatsinksOff: number;
+        readonly heatsinksOffNext?: number;
     }>,
 ): RuntimeHistoryEventInput | undefined {
     if (before.current !== after.current) {
         return unitHistory(RUNTIME_HISTORY_MESSAGE.HEAT_CHANGED, instanceId, 0, before.current, after.current);
     }
     // Switching heat sinks moves a NEXT that follows the calculated heat; the switch is what the player did.
-    if (before.heatsinksOff !== after.heatsinksOff) {
-        return unitHistory(
-            RUNTIME_HISTORY_MESSAGE.HEAT_CHANGED,
-            instanceId,
-            2,
-            before.heatsinksOff,
-            after.heatsinksOff,
-        );
+    const switchOf = (heat: typeof before) => heat.heatsinksOffNext ?? heat.heatsinksOff;
+    if (switchOf(before) !== switchOf(after)) {
+        return unitHistory(RUNTIME_HISTORY_MESSAGE.HEAT_CHANGED, instanceId, 2, switchOf(before), switchOf(after));
     }
     const beforeTarget = nextHeat(before);
     const afterTarget = nextHeat(after);

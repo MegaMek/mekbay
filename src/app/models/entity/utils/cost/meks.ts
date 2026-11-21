@@ -6,8 +6,11 @@ import type { MekEntity, MekWithArmsEntity } from '../../entities/mek/mek-entity
 import { calculateArmorCost } from './common';
 import { amount, buildCostReport, multiplier } from './cost-report';
 import type { EntityCostEntry, EntityCostReport } from './cost-report';
+import { calculateMekGyroWeight } from '../weight/mek-weight';
 import {
   isImprovedJumpJetEquipment,
+  jumpJetKind,
+  isJumpJetEquipment,
   isAnyJumpBoosterEquipment,
   isPrototypeImprovedJumpJetEquipment,
 } from '../../../jump-equipment.model';
@@ -22,17 +25,19 @@ export function calculateMekCostReport(
   const structureCostPerTon = getMekStructureCostPerTon(entity);
   const structureCost = structureCostPerTon * tonnage * (entity.motiveType() === 'Tripod' ? 1.2 : 1);
   const gyro = entity.mountedGyro();
-  const gyroTonnage = Math.ceil(entity.originalWalkMP() * tonnage / 100);
   const myomerCost = getMekMyomerCost(entity) * tonnage;
-  const jumpJets = entity.installedJumpJetMP();
-  const improvedJumpJets = entity.equipment().some(mount =>
+  const jumpJets = entity.equipment().filter(mount => isJumpJetEquipment(mount.equipment));
+  const improvedJumpJets = jumpJets.some(mount =>
     isImprovedJumpJetEquipment(mount.equipment)
     && !isPrototypeImprovedJumpJetEquipment(mount.equipment));
-  const primaryJumpMP = entity.installedUmuMP() > 0 ? entity.installedUmuMP() : jumpJets;
+  // TechManual prices jump jets by how many are installed (TM p. 278); primitive prototype jets by the Jump MP they give
+  // (IO:AE p. 181), which a FrankenMek's lighter jets can make lower than their count (CO p. 213).
+  const primitivePrototype = jumpJets.some(mount => jumpJetKind(mount.equipment) === 'primitive-prototype');
+  const primaryJumpUnits = entity.installedUmuMP() || (primitivePrototype ? entity.installedJumpJetMP() : jumpJets.length);
   const mechanicalJumpBoosterMP = Math.round(entity.equipment().find(
     mount => isAnyJumpBoosterEquipment(mount.equipment),
   )?.size ?? 0);
-  const jumpCost = primaryJumpMP ** 2 * tonnage * (improvedJumpJets ? 500 : 200)
+  const jumpCost = primaryJumpUnits ** 2 * tonnage * (improvedJumpJets ? 500 : 200)
     + mechanicalJumpBoosterMP ** 2 * tonnage * 150;
   const heatSinkCost = (entity.heatSinkType() === 'Single' ? 2000 : 6000)
     * (entity.totalHeatSinks() - (entity.heatSinkType() === 'Single' ? 10 : 0));
@@ -45,7 +50,8 @@ export function calculateMekCostReport(
     amount('Structure', structureCost),
     amount('Actuators', calculateMekActuatorCost(entity)),
     amount('Engine', engine.installed ? (engine.baseCost * engine.rating * tonnage) / 75 : 0),
-    amount('Gyro', gyro.baseCost * gyroTonnage * gyro.costMultiplier),
+    // Each gyro type costs per ton of the gyro itself (TM p. 278), whose weight comes from the engine rating (TM p. 50).
+    amount('Gyro', gyro.baseCost * calculateMekGyroWeight(entity, engine.rating)),
     amount('Jump Jets', jumpCost),
     amount('Heatsinks', heatSinkCost),
     amount('Full Head Ejection System', entity.hasFullHeadEjectionSystem() ? 1725000 : 0),

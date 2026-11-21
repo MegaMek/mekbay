@@ -96,8 +96,7 @@ export function constructionEquipmentMessages(entity: BaseEntity): EntityValidat
     ] as const) {
         if (!sources.length) continue;
         const uncovered = compatible.filter(weapon => {
-            const source = entity.getLinkingMount(weapon);
-            return !source || !sources.includes(source) || !entity.canLinkEquipment(source, weapon);
+            return !entity.getLinkingMounts(weapon).some(source => sources.includes(source) && entity.canLinkEquipment(source, weapon));
         });
         if (sources.length !== compatible.length) {
             const unused = sources.filter(source => {

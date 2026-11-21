@@ -4,7 +4,7 @@
 import { UNPRINTED_PHYSICAL_ATTACKS } from '../../../models/rules/physical-attack-rules';
 import { mekMovesOnTracks } from '../../../models/chassis-equipment.model';
 import { formatProtectionCounter } from '../record-sheet-protection-counter';
-import { addInventoryText, appendInventoryBadges, appendInventoryRowButtons, INVENTORY_RANGE_VALUE_WIDTH, inventoryRangeButtons, inventoryRangeHeadings, STANDARD_INVENTORY_COLUMNS, fitInventoryText, inventoryCellLines, inventoryRowSpan, inventoryRowLineCount } from '../inventory-text-layout';
+import { addInventoryText, appendInventoryBadges, appendInventoryRowButtons, INVENTORY_RANGE_VALUE_WIDTH, inventoryRangeButtons, inventoryRangeHeadings, STANDARD_INVENTORY_COLUMNS, fitInventoryText, inventoryHeadingLift, inventoryCellLines, inventoryRowSpan, inventoryRowLineCount } from '../inventory-text-layout';
 import { INVENTORY_BADGE, RECORD_SHEET_FONT } from '../record-sheet-typography';
 
 import type { BaseEntity } from '../../../models/entity/base-entity';
@@ -43,8 +43,8 @@ MEK_CRITICAL_BRACKET_TOP,
 positionMekCriticalExtraHitPip,
 writeMekCriticalSlotLines,
 } from '../mek-critical-slot-rendering';
-import { appendRecordSheetAmmoProfile, markAmmoBefore, markAmmoInventory, measureRecordSheetAmmoProfile } from '../record-sheet-ammo-rendering';
-import { appendDataPanelEraIcon } from '../record-sheet-embedded-art';
+import { appendRecordSheetAmmoProfile, markAmmoBefore, measureRecordSheetAmmoProfile } from '../record-sheet-ammo-rendering';
+import { appendDataPanelFooter } from '../record-sheet-embedded-art';
 import { recordSheetQuirksText } from '../record-sheet-quirks';
 import {
     isPrintableMekInventoryEquipment,
@@ -76,14 +76,14 @@ addReferenceShade,
 addLine,
 addRecordSheetHeatProfile,
 addText,
-appendBattleValue,
-appendLegacyIdentityAnchors,
 circle,
 constructionMaterialSubtitle,
 createRoot,
 decoratePaperdollPips,
-addTemplateCaption,
 appendDataPanelFacts,
+condenseDataPanelCaption,
+valueXAfterCaptions,
+DATA_PANEL_CAPTION_SQUEEZE,
 appendDataPanelType,
 type DataPanelFact,
 formatRecordSheetTonnage,
@@ -103,6 +103,7 @@ makeDistributedPips,
 paperdollPipOptions,
 recordSheetAmmoProfile,
 recordSheetInventoryWeapons,
+recordSheetMountLocationCodes,
 setAttributes,
 setInventoryComponentIds,
 svgElement,
@@ -319,10 +320,8 @@ export function drawMekDataPanel(
     showQuirks = true,
     groupWeapons = false,
 ): void {
-    const group = addFrame(svg, "'MECH DATA", box, {
-        bottomLeftNotchWidth: box.width * 0.48,
-        cornerAngleDegrees: { topRight: 45, bottomLeft: 45 },
-    });
+    const frameOptions = { bottomLeftNotchWidth: box.width * 0.48, cornerAngleDegrees: { topRight: 45, bottomLeft: 45 } };
+    const group = addFrame(svg, "'MECH DATA", box, frameOptions);
     group.id = 'unitDataPanel';
     // Keep the authored columns inside the frame's right border and padding.
     const sx = (box.width - 6) / 220.4;
@@ -339,32 +338,35 @@ export function drawMekDataPanel(
     } else if (quadVeeLayout) {
         drawQuadVeeMekDataHeader(group, entity, { x, y, font });
     } else {
-        addText(group, 'Movement Points:', x(6), y(38), { size: font(RECORD_SHEET_FONT.body), weight: 700 }).id = 'movementPointsLabel';
+        condenseDataPanelCaption(addText(group, 'Movement Points:', x(6), y(38), { size: font(RECORD_SHEET_FONT.body), weight: 700 })).id = 'movementPointsLabel';
         const standard = { ...STANDARD_MOVEMENT_CALCULATION, ruleset };
         const boosted = { ...standard, forceTSM: true };
-        const movement = { labelX: 6, valueX: 56, anchor: 'middle' } as const;
+        const movement = { labelX: 6, valueX: 56 } as const;
         appendDataPanelFacts(group, [
             { ...movement, label: 'Walking:', baseline: 47, id: 'mpWalk', field: 'walk',
                 value: formatMovementWithMaximum(entity.computeWalkMP(standard), entity.computeWalkMP(boosted)) },
             { ...movement, label: 'Running:', baseline: 56, id: 'mpRun', field: 'run',
                 value: formatMovementWithMaximum(entity.computeRunMP({ ...RUN_WITHOUT_MASC_CALCULATION, ruleset }), entity.computeRunMP(boosted)) },
             { ...movement, label: entity.umuMP() > 0 ? 'Underwater:' : 'Jumping:', baseline: 65, id: 'mpJump', field: 'jump',
-                value: String(entity.umuMP() > 0 ? entity.umuMP() : entity.jumpMP()) },
+                value: String(entity.umuMP() > 0 ? entity.umuMP() : entity.jumpMP()),
+                // A 'Mek built without jump jets never jumps, so its row stays muted.
+                className: entity.umuMP() <= 0 && entity.jumpMP() <= 0 ? 'unavailableMoveMode' : undefined },
             ...mekDataPanelFacts(entity, [38, 47, 56, 65]),
         ], { x, y, font });
         if (mekMovesOnTracks(entity)) {
             // TW p. 143: Track MP equals the Walking MP. The printed sheet has no line for it; a live sheet offers
             // it beside Walking as a movement of its own.
-            addText(group, 'Tracked:', x(76), y(47), { size: font(7), weight: 700, class: 'screen-only' });
-            const tracked = addText(group, String(entity.computeWalkMP(standard)), x(108), y(47),
-                { size: font(RECORD_SHEET_FONT.body), anchor: 'middle', class: 'screen-only' });
+            const trackedCaption = condenseDataPanelCaption(
+                addText(group, 'Tracked:', x(76), y(47), { size: font(7), weight: 700, class: 'screen-only' }));
+            const tracked = addText(group, String(entity.computeWalkMP(standard)), valueXAfterCaptions([trackedCaption]), y(47),
+                { size: font(RECORD_SHEET_FONT.body), class: 'screen-only' });
             tracked.id = 'mpTracked';
         }
     }
     const inventoryTitleY = lamLayout ? 105.5 : quadVeeLayout ? 87.5 : 80.462;
     const inventoryHeadingY = lamLayout ? 116.3 : quadVeeLayout ? 98.3 : 91.262;
     addLine(group, x(3), y(inventoryTitleY - 10.5), box.width - x(3), y(inventoryTitleY - 10.5), '#111', 0.8 * fontScale);
-    addTemplateCaption(group, 'Weapons & Equipment Inventory', x(3), y(inventoryTitleY), {
+    addText(group, 'Weapons & Equipment Inventory', x(3), y(inventoryTitleY), {
         size: font(RECORD_SHEET_FONT.section), weight: 700,
     });
     addText(group, '(hexes)', x(171.132), y(inventoryTitleY), { size: font(RECORD_SHEET_FONT.inventory) });
@@ -384,10 +386,8 @@ export function drawMekDataPanel(
             heatProfileReference: quadVeeLayout ? 167.519 : undefined,
         }, stateKey));
 
-    addLine(group, x(3), y(275.143), box.width - x(3), y(275.143), '#111', 1.932 * fontScale);
-    appendBattleValue(group, entity.battleValue(ruleset), { x: x(13.845), valueX: x(32.79), y: y(287.143), size: font(9.67) });
-    appendLegacyIdentityAnchors(group, entity, box, ruleset);
-    appendDataPanelEraIcon(svg, group, entity.year(), { x, y }, 278.25);
+    appendDataPanelFooter(svg, group, { battleValue: entity.battleValue(ruleset), year: entity.year() },
+        { height: box.height, options: frameOptions }, { x, font }, box.width - x(3));
 }
 
 function drawLamMekDataHeader(
@@ -409,15 +409,15 @@ function drawLamMekDataHeader(
         { ...engineType, labelX: 6, valueX: 52.222, maxWidth: 60 },
         role,
     ], { x, y, font });
-    addText(group, 'Movement Points:', x(6), y(56), { size: font(RECORD_SHEET_FONT.body), weight: 700 }).id = 'movementPointsLabel';
+    condenseDataPanelCaption(addText(group, 'Movement Points:', x(6), y(56), { size: font(RECORD_SHEET_FONT.body), weight: 700 })).id = 'movementPointsLabel';
     // The mode columns print smaller than body text.
     group.setAttribute('data-mekbay-movement-badge-scale', formatNumber(scale.fontScale));
     // The headings select the conversion mode on a live sheet.
-    addText(group, 'BattleMech', x(6), y(65), { size: font(RECORD_SHEET_FONT.body), weight: 700 })
+    condenseDataPanelCaption(addText(group, 'BattleMech', x(6), y(65), { size: font(RECORD_SHEET_FONT.body), weight: 700 }))
         .setAttribute(CONVERSION_MODE_ATTRIBUTE, 'mek');
-    addText(group, 'AirMech', x(105.312), y(65), { size: font(RECORD_SHEET_FONT.body), weight: 700, anchor: 'middle' })
+    condenseDataPanelCaption(addText(group, 'AirMech', x(105.312), y(65), { size: font(RECORD_SHEET_FONT.body), weight: 700, anchor: 'middle' }))
         .setAttribute(CONVERSION_MODE_ATTRIBUTE, 'airmek');
-    addText(group, 'Fighter', x(163.968), y(65), { size: font(RECORD_SHEET_FONT.body), weight: 700 })
+    condenseDataPanelCaption(addText(group, 'Fighter', x(163.968), y(65), { size: font(RECORD_SHEET_FONT.body), weight: 700 }))
         .setAttribute(CONVERSION_MODE_ATTRIBUTE, 'fighter');
     const standard = { ...STANDARD_MOVEMENT_CALCULATION, ruleset };
     const walkMp = entity.computeWalkMP(standard);
@@ -430,31 +430,33 @@ function drawLamMekDataHeader(
         ['Running:', String(entity.computeRunMP({ ...RUN_WITHOUT_MASC_CALCULATION, ruleset })), 'Running:', String(airRun), 'Flanking:', String(fighterFlank), 'Max Thrust:'],
         ['Jumping:', String(entity.jumpMP()), '', '', '', '', ''],
     ];
+    // BattleMech, AirMech, fighter and thrust columns; each one's values start a space after its widest caption.
+    const modeColumns = [6, 58.656, 111.312, 163.968].map(captionX => ({ captionX: x(captionX), captions: [] as SVGTextElement[], values: [] as SVGTextElement[] }));
+    const movementFont = font(7.1);
+    const appendMode = (column: number, label: string, value: string, baseline: number): SVGTextElement => {
+        const { captionX, captions, values } = modeColumns[column];
+        captions.push(condenseDataPanelCaption(addText(group, label, captionX, baseline, { size: movementFont, weight: 700 })));
+        const node = addText(group, value, 0, baseline, { size: movementFont });
+        values.push(node);
+        return node;
+    };
     movementRows.forEach(([label, battleMek, airLabel, airMek, fighterLabel, fighterValue, thrustLabel], index) => {
         const baseline = y(index === 2 ? 91.966 : 74 + index * 9);
-        const movementFont = font(7.1);
-        addText(group, label, x(6), baseline, { size: movementFont, weight: 700 });
-        const battle = addText(group, battleMek, x(42), baseline, { size: movementFont, anchor: 'middle' });
+        const battle = appendMode(0, label, battleMek, baseline);
         if (index === 0) { battle.id = 'mpWalk'; battle.setAttribute('data-mekbay-field', 'walk'); }
         if (index === 1) { battle.id = 'mpRun'; battle.setAttribute('data-mekbay-field', 'run'); }
         if (index === 2) { battle.id = 'mpJump'; battle.setAttribute('data-mekbay-field', 'jump'); }
-        if (airLabel) addText(group, airLabel, x(58.656), baseline, { size: movementFont, weight: 700 });
-        if (airMek) {
-            const air = addText(group, airMek, x(94.656), baseline, { size: movementFont, anchor: 'middle' });
-            air.id = index === 0 ? 'mpAirMekWalk' : 'mpAirMekRun';
-        }
-        if (fighterLabel) addText(group, fighterLabel, x(111.312), baseline, { size: movementFont, weight: 700 });
-        if (fighterValue) {
-            const fighter = addText(group, fighterValue, x(147.312), baseline, { size: movementFont, anchor: 'middle' });
-            fighter.id = index === 0 ? 'mpAirMekCruise' : 'mpAirMekFlank';
-        }
+        if (airLabel) appendMode(1, airLabel, airMek, baseline).id = index === 0 ? 'mpAirMekWalk' : 'mpAirMekRun';
+        if (fighterLabel) appendMode(2, fighterLabel, fighterValue, baseline).id = index === 0 ? 'mpAirMekCruise' : 'mpAirMekFlank';
         if (thrustLabel) {
             const thrust = index === 0 ? entity.jumpMP() : Math.ceil(entity.jumpMP() * 1.5);
-            addText(group, thrustLabel, x(163.968), baseline, { size: movementFont, weight: 700 });
-            const thrustNode = addText(group, String(thrust), x(208.968), baseline, { size: movementFont, anchor: 'middle' });
-            thrustNode.id = index === 0 ? 'mpSafeThrust' : 'mpMaxThrust';
+            appendMode(3, thrustLabel, String(thrust), baseline).id = index === 0 ? 'mpSafeThrust' : 'mpMaxThrust';
         }
     });
+    for (const { captions, values } of modeColumns) {
+        const valueX = formatNumber(valueXAfterCaptions(captions));
+        values.forEach(value => value.setAttribute('x', valueX));
+    }
 }
 
 function drawQuadVeeMekDataHeader(
@@ -468,9 +470,9 @@ function drawQuadVeeMekDataHeader(
 ): void {
     const { x, y, font } = scale;
     const size = font(RECORD_SHEET_FONT.body);
-    addText(group, 'Movement Points:', x(6), y(38), { size, weight: 700 }).id = 'movementPointsLabel';
+    condenseDataPanelCaption(addText(group, 'Movement Points:', x(6), y(38), { size, weight: 700 })).id = 'movementPointsLabel';
     // The headings select the conversion mode on a live sheet.
-    addText(group, 'BattleMech', x(6.023), y(47), { size, weight: 700 }).setAttribute(CONVERSION_MODE_ATTRIBUTE, 'mek');
+    condenseDataPanelCaption(addText(group, 'BattleMech', x(6.023), y(47), { size, weight: 700 })).setAttribute(CONVERSION_MODE_ATTRIBUTE, 'mek');
 
     const battleRun = formatMovementWithMaximum(entity.runMP(), entity.maxRunMP());
     const cruise = entity.originalWalkMP() + (entity.motiveType() === 'Wheel' ? 1 : 0);
@@ -483,9 +485,10 @@ function drawQuadVeeMekDataHeader(
     ];
     // Each column follows the widest text of the one before it: a mode's values (two digits at least, both of a
     // boosted "9 [12]") end clear of the next mode's modifier badge, and the facts move right for what is left.
+    // Captions count at their condensed width.
     const widest = (texts: readonly string[], weight?: 700): number => Math.max(...texts.map(text => {
         const probe = addText(group, text, 0, 0, { size, weight });
-        const width = measureSvgTextCanvas(probe, text);
+        const width = measureSvgTextCanvas(probe, text) * (weight ? DATA_PANEL_CAPTION_SQUEEZE : 1);
         probe.remove();
         return width;
     }));
@@ -496,14 +499,14 @@ function drawQuadVeeMekDataHeader(
         + font(INVENTORY_BADGE.width) + size * 0.15;
     const vehicleValueX = vehicleX + widest(movementRows.map(row => row[3]), 700) + gap;
     const factsLeft = vehicleValueX + widest(['00', ...movementRows.map(row => row[4])]) + gap * 2;
-    addText(group, 'Vehicle', vehicleX, y(47), { size, weight: 700 }).setAttribute(CONVERSION_MODE_ATTRIBUTE, 'vehicle');
+    condenseDataPanelCaption(addText(group, 'Vehicle', vehicleX, y(47), { size, weight: 700 })).setAttribute(CONVERSION_MODE_ATTRIBUTE, 'vehicle');
     movementRows.forEach(([battleLabel, battleValue, battleId, vehicleLabel, vehicleValue, vehicleId, field], index) => {
         const baseline = y(56 + index * 9);
-        addText(group, battleLabel, x(6), baseline, { size, weight: 700 });
+        condenseDataPanelCaption(addText(group, battleLabel, x(6), baseline, { size, weight: 700 }));
         const battle = addText(group, battleValue, battleValueX, baseline, { size });
         battle.id = battleId;
         battle.setAttribute('data-mekbay-field', field);
-        if (vehicleLabel) addText(group, vehicleLabel, vehicleX, baseline, { size, weight: 700 });
+        if (vehicleLabel) condenseDataPanelCaption(addText(group, vehicleLabel, vehicleX, baseline, { size, weight: 700 }));
         if (vehicleValue) addText(group, vehicleValue, vehicleValueX, baseline, { size }).id = vehicleId;
     });
 
@@ -567,7 +570,7 @@ function appendMekInventoryRows(
             [row.damage, x(54)], [row.minimumRange ?? '', x(12)], ...row.ranges.map(value => [value, x(12)] as const)], font(size));
     const metrics = fitInventoryText(273.143 - geometry.firstBaselineReference, fontSize => {
         const equipment = equipmentRows.map(row => [rowLines(row, fontSize),
-            ...(row.linkedEquipment ? [rowLines({ ...row.linkedEquipment, ranges: [] }, fontSize, subrowWidth)] : []),
+            ...row.linkedEquipment.map(linked => rowLines({ ...linked, ranges: [] }, fontSize, subrowWidth)),
             ...row.alternativeModes.map(mode => rowLines(mode, fontSize, subrowWidth))]);
         const physical = physicalAttacks.map(row => rowLines(row, fontSize));
         const ammoLines = measureRecordSheetAmmoProfile(ammo, { width: x(209.38), fontSize: font(fontSize) }).lines;
@@ -577,13 +580,15 @@ function appendMekInventoryRows(
             + ammoLines.length + quirkLines.length + 2,
             badgeRows: [...equipment.flat(), ...physical], content: { equipment, physical, ammoLines, quirkLines } };
     });
-    const equipmentSpans = metrics.content.equipment.map(rows => rows.map(lines => inventoryRowSpan(lines, metrics.lineStep)));
-    const physicalSpans = metrics.content.physical.map(lines => inventoryRowSpan(lines, metrics.lineStep));
+    const rowSpan = (lines: number) => inventoryRowSpan(lines, metrics.lineStep, metrics.badgeHeight);
+    const equipmentSpans = metrics.content.equipment.map(rows => rows.map(rowSpan));
+    const physicalSpans = metrics.content.physical.map(rowSpan);
     const equipmentLineOffsets = equipmentSpans.map((_, i, rows) => rows.slice(0, i).flat().reduce((a, b) => a + b, 0));
     const equipmentDisplayLines = equipmentSpans.flat().reduce((a, b) => a + b, 0);
     const physicalOffsets = physicalSpans.map((_, i, rows) => rows.slice(0, i).reduce((a, b) => a + b, 0));
     const physicalLines = physicalSpans.reduce((a, b) => a + b, 0);
-    const firstBaseline = y(geometry.firstBaselineReference);
+    // The gap under the headings tightens with the fitted rows; everything below rises with it.
+    const firstBaseline = y(geometry.firstBaselineReference - inventoryHeadingLift(metrics.lineStep, metrics.fontSize));
     const rowStep = y(metrics.lineStep);
     const rowFont = font(metrics.fontSize);
     const addCell = (parent: SVGElement, value: string, x: number, y: number, options: Parameters<typeof addText>[4] = {}) =>
@@ -598,11 +603,6 @@ function appendMekInventoryRows(
         - Math.max(0, footerFlowLines - 1) * rowStep
         - rowStep * 0.5;
     const inventoryGroup = svgElement('g');
-    markAmmoInventory(inventoryGroup, {
-        top: firstBaseline - rowFont,
-        bottom: footerOrigin - rowStep,
-        contentBottom: Math.max(heatProfileY, firstBaseline + Math.max(0, equipmentDisplayLines - 1) * rowStep) + rowFont * 0.3,
-    });
     group.appendChild(inventoryGroup);
     const physicalGroup = svgElement('g');
     markAmmoBefore(physicalGroup);
@@ -673,12 +673,12 @@ function appendMekInventoryRows(
                 }));
         addRangeValues(row, [rowData?.minimumRange, ...ranges], localBaseline);
         if (rowData) {
-            const linked = isEquipment ? equipmentRows[index]?.linkedEquipment ?? null : null;
-            if (linked) {
+            const attachments = isEquipment ? equipmentRows[index].linkedEquipment : [];
+            attachments.forEach((linked, attachmentIndex) => {
                 const entry = svgElement('g');
-                setAttributes(entry, { class: 'inventoryEntry linked', id: `generated-inventory-linked-row@${index}` });
+                setAttributes(entry, { class: 'inventoryEntry linked', id: `generated-inventory-linked-row@${index}-${attachmentIndex}` });
                 setInventoryComponentIds(entry, linked.componentIds);
-                const linkedBaseline = localBaseline + equipmentSpans[index][0] * rowStep;
+                const linkedBaseline = localBaseline + equipmentSpans[index].slice(0, attachmentIndex + 1).reduce((a, b) => a + b, 0) * rowStep;
                 addCell(entry, linked.name, x(subrowX), linkedBaseline, { class: 'name', size: rowFont, maxWidth: x(subrowWidth) });
                 addCell(entry, linked.heat, x(103.626), linkedBaseline, {
                     class: 'heat', size: rowFont, anchor: 'middle', maxWidth: x(8),
@@ -688,18 +688,18 @@ function appendMekInventoryRows(
                 addCell(linkedDamage, linked.damage, x(111.2), linkedBaseline, { size: rowFont, maxWidth: x(54) });
                 entry.appendChild(linkedDamage);
                 row.appendChild(entry);
-            }
+            });
             alternativeModes.forEach((mode, modeIndex) => {
                 const alternative = svgElement('g');
                 alternative.setAttribute('class', 'alternativeMode');
                 alternative.setAttribute('data-mekbay-mode', mode.name);
                 alternative.setAttribute('data-mekbay-static-mode-profile', '1');
                 alternative.setAttribute('data-mekbay-mode-label-only', '1');
-                const alternativeY = equipmentSpans[index].slice(0, modeIndex + 1 + (linked ? 1 : 0))
+                const alternativeY = equipmentSpans[index].slice(0, modeIndex + 1 + attachments.length)
                     .reduce((a, b) => a + b, 0) * rowStep;
                 const modeBaseline = localBaseline + alternativeY;
                 appendInventoryRowButtons(alternative, modeBaseline, fontScale, rowStep,
-                    equipmentSpans[index][modeIndex + 1 + (linked ? 1 : 0)], buttons.band, buttons.ranges,
+                    equipmentSpans[index][modeIndex + 1 + attachments.length], buttons.band, buttons.ranges,
                     'alternativeModeButton');
                 const modeName = addCell(alternative, mode.name, x(subrowX), modeBaseline, {
                     class: 'name', size: rowFont, maxWidth: x(subrowWidth),
@@ -753,7 +753,7 @@ interface MekRecordSheetInventoryRow {
     readonly mountKey?: string;
     /** How many weapons a grouped inventory's row counts. */
     readonly quantity?: number;
-    readonly linkedEquipment: RecordSheetLinkedEquipment | null;
+    readonly linkedEquipment: readonly RecordSheetLinkedEquipment[];
     readonly alternativeModes: readonly RecordSheetInventoryAlternativeMode[];
     /** Equipment without a mount: design text only, which play never binds or changes. */
     readonly slotless?: true;
@@ -764,15 +764,7 @@ function mekRecordSheetInventoryRows(
     entity: MekEntity,
     stateKey: InventoryWeaponStateKey | null,
 ): readonly MekRecordSheetInventoryRow[] {
-    const mountsById = new Map(entity.equipment().map(mount => [String(mount.mountId), mount] as const));
-    const weaponRows: MekRecordSheetInventoryRow[] = recordSheetInventoryWeapons(entity).map(row => {
-        const firstId = row.componentIds[0];
-        const mount = firstId === undefined ? undefined : mountsById.get(firstId);
-        return Object.freeze({
-            ...row,
-            name: mount ? recordSheetInventoryMountName(entity, mount) : row.name,
-        });
-    });
+    const weaponRows: MekRecordSheetInventoryRow[] = [...recordSheetInventoryWeapons(entity)];
     const rangedMounts = new Set<EntityMountedEquipment>(entity.rangedWeapons());
     const equipmentRows: MekRecordSheetInventoryRow[] = entity.equipment()
         .filter(mount => !rangedMounts.has(mount)
@@ -781,14 +773,14 @@ function mekRecordSheetInventoryRows(
             const range = recordSheetElectronicWarfareRange(mount.equipment!);
             return Object.freeze({
                 name: recordSheetInventoryMountName(entity, mount),
-                location: formatEquipmentLocationCodes(mount.getOccupiedLocations()),
+                location: recordSheetMountLocationCodes(mount),
                 heat: '—',
                 damage: recordSheetEquipmentDamage(mount),
                 minimumRange: '—',
                 ranges: Object.freeze(['—', '—', range === undefined ? '—' : String(range)]),
                 componentIds: Object.freeze([String(mount.mountId)]),
                 ...(mount.isPhysicalWeapon() ? { mountKey: recordSheetWeaponMountKey(mount) } : {}),
-                linkedEquipment: null,
+                linkedEquipment: [],
                 alternativeModes: Object.freeze([]),
             });
         });
@@ -809,7 +801,7 @@ function mekSlotlessInventoryRows(entity: MekEntity): readonly MekRecordSheetInv
         minimumRange: '—',
         ranges: Object.freeze(['—', '—', '—']),
         componentIds: Object.freeze([]),
-        linkedEquipment: null,
+        linkedEquipment: [],
         alternativeModes: Object.freeze([]),
         slotless: true,
     });
@@ -1072,7 +1064,6 @@ export async function drawMekPaperdolls(svg: SVGSVGElement, entity: MekEntity, b
             titleWidth: 142.791, titleX: 13.745, titleY: 352.888,
             ribbonX: 25.723, ribbonY: 354.03, ribbonWidth: 122.512, ribbonCut: 3.712,
             subtitleX: 86.034, subtitleY: 375.445, subtitleId: 'structureType',
-            subtitleHorizontalScale: 0.990245,
         });
     const boxes = BIPED_MEK_PAPERDOLL_BOXES;
     const options = { pipLayout, fallbackPipLayout: 'distributed' as const, shieldValues,
@@ -1152,7 +1143,6 @@ function drawBipedDiagramValues(
         id: string,
         value: number,
         position: readonly [number, number],
-        horizontalScale: number,
         xCorrection: number,
         nameLines: readonly string[],
     ): void => {
@@ -1175,10 +1165,6 @@ function drawBipedDiagramValues(
             anchor: 'middle',
             class: 'diagram-value',
         });
-        label.setAttribute(
-            'transform',
-            `translate(${formatNumber(anchorX)} 0) scale(${formatNumber(horizontalScale)} 1) translate(${formatNumber(-anchorX)} 0)`,
-        );
         label.id = id;
         label.style.pointerEvents = 'none';
     };
@@ -1192,7 +1178,6 @@ function drawBipedDiagramValues(
             `textArmor_${rear ? `${location.code}R` : location.code}`,
             rear ? location.armor.rear : location.armor.front,
             position,
-            0.971555,
             0.1034,
             BIPED_ARMOR_NAME_LINES[code],
         );
@@ -1207,7 +1192,7 @@ function drawBipedDiagramValues(
     Object.entries(BIPED_STRUCTURE_VALUE_LABELS).forEach(([code, position]) => {
         const location = locations.get(code);
         if (location) addValue(labels.structure, `textIS_${code}`, location.internalPoints, position,
-            0.99483, 0.0877, BIPED_STRUCTURE_NAME_LINES[code]);
+            0.0877, BIPED_STRUCTURE_NAME_LINES[code]);
     });
     addText(labels.structure, 'Head', 32.126, 2.965, {
         size: 5.7662, weight: 700, class: 'diagram-value diagram-location-name',
@@ -1722,7 +1707,8 @@ async function drawCanonicalMekCriticalContents(
                 height: y(14),
             },
         );
-        const caseLabel = mekCriticalCaseLabel(entity, location);
+        // The printed heading names prototype CASE as CASE, as MegaMekLab prints it
+        const caseLabel = mekCriticalCaseLabel(entity, location)?.replace('CASE-P', 'CASE');
         if (caseLabel) {
             const caseX = locationLayout.headingX
                 + (MEK_CRITICAL_CASE_HEADING_OFFSETS[location] ?? 2);
@@ -2138,7 +2124,7 @@ function drawMekHeatDataContents(group: SVGGElement, entity: MekEntity, box: Box
     appendHeatSinkData(group, { count: entity.heatSinkCount(), type: entity.heatSinkType() }, { x, y, font },
         { rightX: 152, pipsX: 131.478 });
     if (family === 'lam') {
-        addText(group, '(AirMech +3)', x(152), y(37), { size: font(5.8), anchor: 'end', textLength: x(32.291) });
+        addText(group, '(AirMech +3)', x(152), y(37), { size: font(5.8), anchor: 'end' });
     }
 }
 

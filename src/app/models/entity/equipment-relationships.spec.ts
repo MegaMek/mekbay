@@ -14,16 +14,18 @@ describe('EquipmentRelationships', () => {
 
     const mounts = index(source, replacement);
     expect(relationships.linkedMount(source, mounts)).toBe(replacement);
-    expect(relationships.linkingMount(replacement, mounts)).toBe(source);
+    expect(relationships.linkingMounts(replacement, mounts)).toEqual([source]);
   });
 
-  it('rejects ambiguous or cyclic links', () => {
+  it('accepts multiple sources and rejects cycles', () => {
     const first = mount('first');
     const second = mount('second');
     const third = mount('third');
     const relationships = new EquipmentRelationships().withLink(first, second);
 
-    expect(() => relationships.withLink(third, second)).toThrowError(/already linked/);
+    const both = relationships.withLink(third, second);
+    expect(both.linkingMounts(second, index(first, second, third))).toEqual([first, third]);
+    expect(both.withoutLink(first).linkingMounts(second, index(first, second, third))).toEqual([third]);
     expect(() => relationships.withLink(second, first)).toThrowError(/cycle/);
     expect(() => relationships.withLink(first, first)).toThrowError(/itself/);
   });

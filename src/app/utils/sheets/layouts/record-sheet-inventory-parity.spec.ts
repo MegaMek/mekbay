@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 
 import { MiscEquipment, WeaponEquipment, createEquipment } from '../../../models/equipment.model';
-import { TestAeroSpaceFighterEntity, TestConvFighterEntity, TestDropShipEntity, TestBipedMekEntity, TestQuadVeeEntity, TestSupportTankEntity, TestTankEntity } from '../../../models/entity/testing/test-entities';
+import { TestAeroSpaceFighterEntity, TestSmallCraftEntity, TestConvFighterEntity, TestDropShipEntity, TestBipedMekEntity, TestQuadVeeEntity, TestSupportTankEntity, TestTankEntity } from '../../../models/entity/testing/test-entities';
 import { addTestEquipment, addTestEquipmentWithFlags } from '../../../models/entity/testing/test-mounted-equipment';
 import { createTestEquipmentRegistry } from '../../../models/entity/testing/test-equipment-registry';
 import { RecordSheetSvgGenerator } from '../record-sheet-svg-generator';
@@ -33,6 +33,86 @@ describe('record-sheet inventory content parity', () => {
                     .toBe(motive === 'Spheroid' ? 'Left/Right Fore:' : 'Left/Right Wing:');
             }
         }
+    });
+
+    it('prints each laser attachment with its own mount and heat on fighter and small craft sheets', async () => {
+        for (const entity of [new TestAeroSpaceFighterEntity(), new TestSmallCraftEntity()]) {
+            entity.setTonnage(100);
+            const weapon = addTestEquipment(entity, new WeaponEquipment({ id: 'Small Laser', name: 'Small Laser',
+                type: 'weapon', flags: ['F_LASER', 'F_ENERGY', 'F_RISC_LASER_PULSE_COMPATIBLE'], weapon: { damage: 3, heat: 1, ranges: [1, 2, 3, 4] } }), { location: 'Nose' });
+            const attachments = ['F_LASER_INSULATOR', 'F_RISC_LASER_PULSE_MODULE', 'F_LASER_INSULATOR'].map(flag => {
+                const pulse = flag === 'F_RISC_LASER_PULSE_MODULE';
+                const mount = addTestEquipment(entity, new MiscEquipment({ id: pulse ? 'ISRISCLaserPulseModule' : 'ISLaserInsulator',
+                    name: pulse ? 'Pulse Module' : 'Laser Insulator', type: 'misc',
+                    flags: ['F_WEAPON_ENHANCEMENT', pulse ? 'F_RISC_LASER_PULSE_MODULE' : 'F_LASER_INSULATOR'] }), { location: 'Nose' });
+                entity.linkEquipment(mount, weapon);
+                return mount;
+            });
+            const svg = await RecordSheetSvgGenerator.generate(entity, { ruleset: 'total-warfare' });
+            const heat = (id: string) => [...svg.querySelectorAll(`.inventoryEntry[data-mekbay-component-ids="${id}"] > .heat`)]
+                .map(field => field.textContent);
+            // An insulated laser's heat and its pulse module's carry MegaMekLab's insulator mark
+            expect(heat(weapon.mountId)).toEqual(['1*']);
+            expect(attachments.map(source => heat(source.mountId))).toEqual([[], ['2*'], []]);
+        }
+    });
+
+    it('prints a fighter MML with its Artemis line, then its LRM and SRM values with the Artemis bonus', async () => {
+        const entity = new TestAeroSpaceFighterEntity();
+        entity.setTonnage(50);
+        const mml = addTestEquipment(entity, new WeaponEquipment({ id: 'ISMML7', name: 'MML 7', type: 'weapon',
+            flags: ['F_MISSILE', 'F_ARTEMIS_COMPATIBLE'],
+            weapon: { heat: 4, ammoType: 'MML', rackSize: 7, av: [4, 4, 4, 0], ranges: [6, 7, 14, 21] } }), { location: 'Nose' });
+        const artemis = addTestEquipment(entity, new MiscEquipment({ id: 'ISArtemisIV', name: 'Artemis IV FCS', type: 'misc',
+            flags: ['F_WEAPON_ENHANCEMENT', 'F_ARTEMIS'] }), { location: 'Nose' });
+        entity.linkEquipment(artemis, mml);
+        const svg = await RecordSheetSvgGenerator.generate(entity, { ruleset: 'total-warfare' });
+        const row = svg.querySelector(`.inventoryEntry[data-mekbay-component-ids="${mml.mountId}"]`)!;
+        const values = (line: Element) => ['range_short', 'range_medium', 'range_long', 'range_extreme']
+            .map(field => line.querySelector(`:scope > .${field}`)?.textContent);
+        const modes = [...row.querySelectorAll(':scope > .alternativeMode')];
+
+        // Ungrouped, so no # column; MML 7 with Artemis IV is 6 and its SRM 12 (TW p. 303)
+        expect(row.querySelector(':scope > .quantity')).toBeNull();
+        expect(row.querySelector(':scope > .inventoryEntry.linked > .name')?.textContent).toBe('w/Artemis IV');
+        expect(modes.map(mode => mode.querySelector('.name')?.textContent)).toEqual(['LRM', 'SRM']);
+        expect(values(modes[0])).toEqual(['6', '6', '6', '—']);
+        expect(values(modes[1])).toEqual(['12', '—', '—', '—']);
+        expect(svg.querySelector('.inventoryEntry .name')?.textContent).not.toContain('Artemis IV FCS [E]');
+    });
+
+    it('prints an insulated chemical laser with its lower heat and its insulator on a fighter sheet', async () => {
+        // TO:AUE p. 134: laser insulators fit chemical lasers too, which are not F_LASER weapons.
+        const entity = new TestAeroSpaceFighterEntity();
+        entity.setTonnage(50);
+        const weapon = addTestEquipment(entity, new WeaponEquipment({ id: 'CLMediumChemLaser', name: 'Medium Chem Laser',
+            type: 'weapon', flags: ['F_ENERGY'], weapon: { damage: 5, heat: 2, ammoType: 'CHEMICAL_LASER', ranges: [3, 6, 9, 12] } }),
+        { location: 'Nose' });
+        const insulator = addTestEquipment(entity, new MiscEquipment({ id: 'ISLaserInsulator', name: 'Laser Insulator', type: 'misc',
+            flags: ['F_WEAPON_ENHANCEMENT', 'F_LASER_INSULATOR'] }), { location: 'Nose' });
+        entity.linkEquipment(insulator, weapon);
+        const svg = await RecordSheetSvgGenerator.generate(entity, { ruleset: 'total-warfare' });
+        const heat = (id: string) => [...svg.querySelectorAll(`.inventoryEntry[data-mekbay-component-ids="${id}"] > .heat`)]
+            .map(field => field.textContent);
+        expect(heat(weapon.mountId)).toEqual(['1*']);
+        expect(heat(insulator.mountId)).toEqual([]);
+    });
+
+    it('prints a DropShip bay heat with its laser insulators: 3 + 8 - 1 (TO:AUE p. 134)', async () => {
+        const entity = new TestDropShipEntity();
+        const laser = (id: string, name: string, heat: number) => addTestEquipment(entity, new WeaponEquipment({ id, name,
+            type: 'weapon', flags: ['F_LASER', 'F_ENERGY'], weapon: { damage: heat, heat, ranges: [3, 6, 9, 12] } }),
+        { location: 'Nose' });
+        const medium = laser('ISMediumLaser', 'Medium Laser', 3);
+        const large = laser('ISLargeLaser', 'Large Laser', 8);
+        const insulator = addTestEquipment(entity, new MiscEquipment({ id: 'ISLaserInsulator', name: 'Laser Insulator',
+            type: 'misc', flags: ['F_WEAPON_ENHANCEMENT', 'F_LASER_INSULATOR'] }), { location: 'Nose' });
+        entity.linkEquipment(insulator, large);
+        entity.addEquipmentBay('weapon-bay', { mounts: [medium, large] });
+        const svg = await RecordSheetSvgGenerator.generate(entity, { ruleset: 'total-warfare' });
+
+        expect([...svg.querySelectorAll(`.inventoryEntry[data-mekbay-component-ids="${medium.mountId} ${large.mountId}"] > .heat`)]
+            .map(field => field.textContent)).toEqual(['10']);
     });
 
     it('retains fighter VSTOL and small-cockpit features in both rulesets', async () => {
@@ -127,7 +207,7 @@ describe('record-sheet inventory content parity', () => {
         const linked = row.querySelector('.inventoryEntry.linked');
 
         expect(linked?.getAttribute('data-mekbay-component-ids')).toBe(artemis.mountId);
-        expect(linked?.querySelector('.name')?.textContent).toBe('Artemis V FCS');
+        expect(linked?.querySelector('.name')?.textContent).toBe('w/Artemis V');
         expect(linked?.classList.contains('alternativeMode')).toBeFalse();
         expect(row.querySelector(':scope > .range_long')?.textContent).toBe('21');
         expect(svg.querySelectorAll(`.inventoryEntry[data-mekbay-component-ids="${artemis.mountId}"]`).length).toBe(1);
@@ -147,7 +227,6 @@ describe('record-sheet inventory content parity', () => {
         expect([...cargo.querySelectorAll('text')].map(text => text.textContent)).toEqual([
             'Cargo:', 'Bay 1: Cargo (4) (1 Door)', 'Bay 2: Liquid Cargo (45.5) (1 Door)',
         ]);
-        expect(cargo.closest('[data-ammo-inventory]')).not.toBeNull();
         expect(cargo.querySelector('.inventoryEntry')).toBeNull();
         expect(cargo.textContent).not.toContain('Quarters');
     });

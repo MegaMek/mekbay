@@ -12,7 +12,7 @@ import { TestBed } from '@angular/core/testing';
 import { signal } from '@angular/core';
 import { OptionsService } from '../../../services/options.service';
 import { UnitFluffImageService } from '../../../services/catalogs/unit-fluff-image.service';
-import type { RecordSheetPipLayout } from '../../../models/options.model';
+import type { RecordSheetGroupWeapons, RecordSheetPipLayout } from '../../../models/options.model';
 import { RecordSheetSourceService } from '../../../services/record-sheet-source.service';
 import { RecordSheetSvgGenerator } from '../../../utils/sheets/record-sheet-svg-generator';
 import type { PageViewerMember } from './types';
@@ -21,10 +21,10 @@ import { PageViewerSheetSourceService } from './page-viewer-sheet-source.service
 describe('PageViewerSheetSourceService', () => {
     let source: jasmine.SpyObj<Pick<RecordSheetSourceService, 'load'>>;
     let service: PageViewerSheetSourceService;
-    const options = signal<{ recordSheetPipLayout: RecordSheetPipLayout; recordSheetGroupWeapons: boolean; printAllOptions: { paperSize: 'a4' | 'letter' }; CBTRules: CBTRuleset }>({ recordSheetPipLayout: 'classic', recordSheetGroupWeapons: false, printAllOptions: { paperSize: 'letter' }, CBTRules: 'total-warfare' });
+    const options = signal<{ recordSheetPipLayout: RecordSheetPipLayout; recordSheetGroupWeapons: RecordSheetGroupWeapons; printAllOptions: { paperSize: 'a4' | 'letter' }; CBTRules: CBTRuleset }>({ recordSheetPipLayout: 'classic', recordSheetGroupWeapons: 'disabled', printAllOptions: { paperSize: 'letter' }, CBTRules: 'total-warfare' });
 
     beforeEach(() => {
-        options.set({ recordSheetPipLayout: 'classic', recordSheetGroupWeapons: false, printAllOptions: { paperSize: 'letter' }, CBTRules: 'total-warfare' });
+        options.set({ recordSheetPipLayout: 'classic', recordSheetGroupWeapons: 'disabled', printAllOptions: { paperSize: 'letter' }, CBTRules: 'total-warfare' });
         source = jasmine.createSpyObj('RecordSheetSourceService', ['load']);
         source.load.and.callFake(async (entity, options) => ({
             svgs: [await RecordSheetSvgGenerator.generate(entity, { ruleset: 'total-warfare', ...options })],
@@ -167,14 +167,19 @@ describe('PageViewerSheetSourceService', () => {
         const ungrouped = member.recordSheet();
         expect(ungrouped?.querySelector('[data-mekbay-inventory-block]')).toBeNull();
 
-        options.update(value => ({ ...value, recordSheetGroupWeapons: true }));
+        // "Only previews" leaves live sheets ungrouped.
+        options.update(value => ({ ...value, recordSheetGroupWeapons: 'previews' }));
+        await service.load(member);
+        expect(member.recordSheet()).toBe(ungrouped);
+
+        options.update(value => ({ ...value, recordSheetGroupWeapons: 'enabled' }));
         await service.load(member);
         const grouped = member.recordSheet();
         expect(grouped).not.toBe(ungrouped);
         expect(grouped?.querySelector('[data-mekbay-inventory-block]')).not.toBeNull();
         expect(source.load.calls.mostRecent().args[1]?.groupWeapons).toBeTrue();
 
-        options.update(value => ({ ...value, recordSheetGroupWeapons: false }));
+        options.update(value => ({ ...value, recordSheetGroupWeapons: 'previews' }));
         await service.load(member);
         expect(member.recordSheet()).not.toBe(grouped);
         expect(member.recordSheet()?.querySelector('[data-mekbay-inventory-block]')).toBeNull();
@@ -200,6 +205,7 @@ function createMember(entityType: 'Mek' | 'Tank', entity: TestQuadMekEntity | Te
     const getUnitSnapshot = jasmine.createSpy('getUnitSnapshot').and.returnValue({ entity, ruleset: 'total-warfare' });
     const force = {
         getUnitSnapshot,
+        getEquipmentPanelSnapshot: () => null,
     } as unknown as CBTForce;
     return new CBTForceMember(`unit-${entityType}`, force, entity);
 }

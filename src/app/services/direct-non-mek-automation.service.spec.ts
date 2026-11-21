@@ -965,6 +965,19 @@ describe('DirectNonMekAutomationService', () => {
         expect(harness.runtime.query().crewState(pilotId).wounds).toBe(1);
     });
 
+    it('reduces a fighter ammunition explosion to 1 SI with operational CASE II (TO:AUE p.111)', async () => {
+        const harness = createHarness(true, 'case-ii', false, undefined, 'F_CASE_II');
+        setHeat(harness.runtime, 19);
+        spyOn(Math, 'random').and.returnValue(0);
+
+        await executeEndTurn(service, harness);
+
+        expect(harness.runtime.query().componentStatus(harness.ammoId!, 'committed')).toBe('destroyed');
+        const si = [...harness.runtime.getIndex().locations.values()]
+            .find(location => location.code === 'SI')!;
+        expect(si.internalPoints - harness.runtime.query().remainingInternal(si.id, 'committed')).toBe(1);
+    });
+
     it('always applies an aerospace ammunition-explosion crew hit when consciousness automation is off', async () => {
         automationModes['pilotHitsAndConsciousnessCheck'] = 'no';
         const harness = createHarness(true, 'pilot-automation-off');
@@ -1069,6 +1082,7 @@ function createHarness(
     suffix = '',
     commandConsole = false,
     seats?: (defaults: readonly CrewAssignmentPosition[]) => readonly CrewAssignmentPosition[],
+    caseFlag: 'F_CASE' | 'F_CASE_II' = 'F_CASE',
 ) {
     const ammo = new AmmoEquipment({
         id: 'Ammo_AC_10_Aero_Automation_Test',
@@ -1090,7 +1104,7 @@ function createHarness(
             location: 'Nose',
             shotsCount: 10,
         }));
-        addTestEquipmentWithFlags(entity, 'F_CASE', { location: 'Nose' });
+        addTestEquipmentWithFlags(entity, caseFlag, { location: 'Nose' });
     }
     const instanceId = `${withAmmo
         ? 'unit:aero-automation-ammo'

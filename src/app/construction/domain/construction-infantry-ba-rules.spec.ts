@@ -80,12 +80,12 @@ describe('battle armor attachment and infantry construction predicates', () => {
         const weapon = add(unit, rifle, { isAPM: true });
         expect(codes(unit)).toContain('BA_AP_ATTACHMENT');
         unit.reconcileEquipmentRelationships();
-        expect(unit.getLinkingMount(weapon)?.mountId).toBe(second.mountId);
+        expect(unit.getLinkingMounts(weapon)[0]?.mountId).toBe(second.mountId);
         expect(unit.getLinkedMount(first)).toBeUndefined();
         expect(codes(unit)).not.toContain('BA_AP_ATTACHMENT');
         const loaded = parseEntity(encodeNativeEntity(unit), 'ba.blk', registry).entity;
         const restored = loaded.equipment().find(m => m.equipmentId === rifle.id)!;
-        expect(loaded.getLinkingMount(restored)?.baMountLocation).toBe('RA');
+        expect(loaded.getLinkingMounts(restored)[0]?.baMountLocation).toBe('RA');
     });
 
     it('enforces support-weapon restrictions even when a native AP link exists', () => {

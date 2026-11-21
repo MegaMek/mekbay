@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 
 import { formatProtectionCounter } from '../record-sheet-protection-counter';
+import { RANDOM_HIT_BUTTON_SIZE } from '../paperdoll-generator';
 
 import type { BaseEntity } from '../../../models/entity/base-entity';
 import { isVehicleEntity } from '../../../models/entity/utils/entity-type-guards';
@@ -42,9 +43,13 @@ import {
 } from './vehicle-paperdoll-asset';
 
 
-/** The tops of a superheavy's turret armor labels in the diagram's lower-left corner: one line, or Rear above two. */
+/** The top of a single-turret superheavy's turret armor label in the diagram's lower-left corner. */
 const SUPERHEAVY_TURRET_LABEL_TOP = 340;
-const SUPERHEAVY_DUAL_TURRET_LABEL_TOP = 331;
+/**
+ * A dual-turret superheavy's two-line turret label and its hull's rear corner fill the lower left, so its random hit
+ * button takes the strip under the rear armor label, between the turret label and the logo.
+ */
+const SUPERHEAVY_DUAL_TURRET_RANDOM_HIT = Object.freeze({ x: 84, y: 342 });
 
 /** Tank, VTOL, and WiGE composition; motive type selects the paperdoll. */
 export class CombatVehicleRecordSheetLayout extends CompactRecordSheetLayout {
@@ -131,26 +136,24 @@ export class CombatVehicleRecordSheetLayout extends CompactRecordSheetLayout {
                 pipLayout: request.pipLayout,
                 assetUrl: combatVehiclePaperdollAsset(entity),
                 motiveArtId: this.motiveArtId(entity, family),
-                ...this.randomHitAbove(entity, family),
+                ...this.randomHitAt(entity, family),
             },
         );
-        this.drawDiagramLabels(diagram, entity, diagramBox, family);
+        this.drawDiagramLabels(diagram, entity, family);
         // A flying vehicle's Elevation tracker sits in the diagram's free upper-left corner, beside the nose; the random
         // hit button takes the lower-left one.
         const tracker = svgElement('g');
-        tracker.setAttribute('transform',
-            `scale(${formatNumber(diagramBox.width / 189)} ${formatNumber(diagramBox.height / 350)})`);
         drawElevationTracker(tracker, entity, 22, 80);
         diagram.appendChild(tracker);
         // Damage tracks still without a control on the sheet get hidden ones, once every control is drawn.
         appendVehicleDamageTrackBindings(svg, entity);
     }
 
-    /** A superheavy turret's armor label takes the logo's row at the lower left, so the random hit button sits above it. */
-    private randomHitAbove(entity: BaseEntity, family: CombatVehiclePaperdollFamily): { randomHitAbove?: number } {
+    /** A superheavy turret's armor label takes the logo's row at the lower left, so the random hit button moves off it. */
+    private randomHitAt(entity: BaseEntity, family: CombatVehiclePaperdollFamily): { randomHitAt?: { x: number; y: number } } {
         if (family !== 'vehicle' || !isVehicleEntity(entity) || !usesSixSideVehicleHull(entity)) return {};
-        if (entity.hasDualTurret()) return { randomHitAbove: SUPERHEAVY_DUAL_TURRET_LABEL_TOP };
-        return entity.hasTurret() ? { randomHitAbove: SUPERHEAVY_TURRET_LABEL_TOP } : {};
+        if (entity.hasDualTurret()) return { randomHitAt: SUPERHEAVY_DUAL_TURRET_RANDOM_HIT };
+        return entity.hasTurret() ? { randomHitAt: { x: 0, y: SUPERHEAVY_TURRET_LABEL_TOP - RANDOM_HIT_BUTTON_SIZE } } : {};
     }
 
     private motiveArtId(
@@ -168,32 +171,26 @@ export class CombatVehicleRecordSheetLayout extends CompactRecordSheetLayout {
     private drawDiagramLabels(
         group: SVGGElement,
         entity: BaseEntity,
-        box: Box,
         family: CombatVehiclePaperdollFamily,
     ): void {
         if (family === 'vtol') {
-            this.drawVtolDiagramLabels(group, entity, box);
+            this.drawVtolDiagramLabels(group, entity);
             return;
         }
         if (family === 'wige') {
-            this.drawWigeDiagramLabels(group, entity, box);
+            this.drawWigeDiagramLabels(group, entity);
             return;
         }
-        this.drawGroundVehicleDiagramLabels(group, entity, box);
+        this.drawGroundVehicleDiagramLabels(group, entity);
     }
 
     /** Exact MML ground-vehicle label transforms on the canonical 189×350 diagram. */
     private drawGroundVehicleDiagramLabels(
         group: SVGGElement,
         entity: BaseEntity,
-        box: Box,
     ): void {
         const labels = svgElement('g');
         labels.setAttribute('class', 'combat-vehicle-diagram-labels ground-vehicle-diagram-labels');
-        labels.setAttribute(
-            'transform',
-            `scale(${formatNumber(box.width / 189)} ${formatNumber(box.height / 350)})`,
-        );
         const armor = vehicleArmorReader(entity);
         const superheavy = usesSixSideVehicleHull(entity);
         const dualTurret = isVehicleEntity(entity) && entity.hasDualTurret();
@@ -206,8 +203,8 @@ export class CombatVehicleRecordSheetLayout extends CompactRecordSheetLayout {
             transform: superheavy
                 ? 'matrix(1.038 0 0 1.038 4.955 11.25) translate(-400.802 -35.489748) translate(485.9 61)'
                 : dualTurret
-                    ? 'matrix(.96 0 0 .96 14.791 32.25) matrix(1 0 0 -1 -406.254 751.728) matrix(.998 0 0 -1 489.135 744.945)'
-                    : `matrix(1.126742 0 0 1.129 90.697086 ${noTurret ? 24.010548 : 25.067548})`,
+                    ? 'matrix(.96 0 0 .96 14.791 32.25) matrix(1 0 0 -1 -406.254 751.728) matrix(1 0 0 -1489.135 744.945)'
+                    : `matrix(1.129 0 0 1.129 90.697086 ${noTurret ? 24.010548 : 25.067548})`,
             'font-family': 'Roboto',
             'font-size': superheavy || dualTurret ? 8.0431 : 7.74,
             'font-weight': superheavy || dualTurret ? 700 : 600,
@@ -231,8 +228,8 @@ export class CombatVehicleRecordSheetLayout extends CompactRecordSheetLayout {
                 'LS',
                 armor('LS', 'L'),
                 dualTurret
-                    ? 'matrix(.96 0 0 .96 14.791 32.25) matrix(1 0 0 -1 -406.254 751.728) matrix(0 .998 1 0 412.894 529.791)'
-                    : `matrix(0 -1.126742 1.129 0 6.926415 ${noTurret ? 234.648078 : 235.705078})`,
+                    ? 'matrix(.96 0 0 .96 14.791 32.25) matrix(1 0 0 -1 -406.254 751.728) matrix(0 1 1 0412.894 529.791)'
+                    : `matrix(0 -1.129 1.129 0 6.926415 ${noTurret ? 234.648078 : 235.705078})`,
                 dualTurret ? 65.6 : 63.083,
                 dualTurret ? 62.801 : 60.388,
                 dualTurret ? 8.0431 : 7.74,
@@ -243,8 +240,8 @@ export class CombatVehicleRecordSheetLayout extends CompactRecordSheetLayout {
                 'RS',
                 armor('RS', 'R'),
                 dualTurret
-                    ? 'matrix(.96 0 0 .96 14.791 32.25) matrix(1 0 0 -1 -406.254 751.728) matrix(0 -.998 -1 0 575.029 619.724)'
-                    : `matrix(0 1.126742 -1.129 0 183.127187 ${noTurret ? 136.911677 : 137.968677})`,
+                    ? 'matrix(.96 0 0 .96 14.791 32.25) matrix(1 0 0 -1 -406.254 751.728) matrix(0 -1 -1 0575.029 619.724)'
+                    : `matrix(0 1.129 -1.129 0 183.127187 ${noTurret ? 136.911677 : 137.968677})`,
                 dualTurret ? 68.214 : 68.285,
                 dualTurret ? 68.214 : 65.591,
                 dualTurret ? 8.0431 : 7.74,
@@ -256,7 +253,7 @@ export class CombatVehicleRecordSheetLayout extends CompactRecordSheetLayout {
             setAttributes(turretText, {
                 transform: superheavy
                     ? 'matrix(1.038 0 0 1.038 4.955 11.25) translate(-400.802 -35.489748) translate(404.3 351.437)'
-                    : 'matrix(1.126742 0 0 1.129 68.751584 158.858564)',
+                    : 'matrix(1.129 0 0 1.129 68.751584 158.858564)',
                 'font-family': 'Roboto',
                 'font-size': superheavy ? 8.0431 : 6.77,
                 'font-weight': superheavy ? 700 : 600,
@@ -267,6 +264,7 @@ export class CombatVehicleRecordSheetLayout extends CompactRecordSheetLayout {
             labels.appendChild(turretText);
         }
         if (dualTurret) this.appendDualTurretArmorLabels(labels, armor('FT'), armor('RT'), superheavy);
+        bakeLabelScales(labels);
         group.appendChild(labels);
     }
 
@@ -310,7 +308,7 @@ export class CombatVehicleRecordSheetLayout extends CompactRecordSheetLayout {
         setAttributes(rear, {
             transform: superheavy
                 ? 'matrix(1.038 0 0 1.038 4.955 11.25) translate(-400.802 -35.489748) translate(404.3 351.437)'
-                : 'matrix(.96 0 0 .96 14.791 32.25) matrix(1 0 0 -1 -406.254 751.728) matrix(.998 0 0 -1 469.784 599.879)',
+                : 'matrix(.96 0 0 .96 14.791 32.25) matrix(1 0 0 -1 -406.254 751.728) matrix(1 0 0 -1469.784 599.879)',
             'font-family': 'Roboto',
             'font-size': superheavy ? 8.0431 : 7.0377,
             'font-weight': 700,
@@ -324,7 +322,7 @@ export class CombatVehicleRecordSheetLayout extends CompactRecordSheetLayout {
         setAttributes(front, {
             transform: superheavy
                 ? 'matrix(1.038 0 0 1.038 4.955 11.25) translate(-400.802 -35.489748) translate(570.964 51.3)'
-                : 'matrix(.96 0 0 .96 14.791 32.25) matrix(1 0 0 -1 -406.254 751.728) matrix(.998 0 0 -1 454.732 695.167)',
+                : 'matrix(.96 0 0 .96 14.791 32.25) matrix(1 0 0 -1 -406.254 751.728) matrix(1 0 0 -1454.732 695.167)',
             'font-family': 'Roboto',
             'font-size': superheavy ? 8.0431 : 7.0377,
             'font-weight': 700,
@@ -338,13 +336,9 @@ export class CombatVehicleRecordSheetLayout extends CompactRecordSheetLayout {
         parent.appendChild(front);
     }
 
-    private drawVtolDiagramLabels(group: SVGGElement, entity: BaseEntity, box: Box): void {
+    private drawVtolDiagramLabels(group: SVGGElement, entity: BaseEntity): void {
         const labels = svgElement('g');
         labels.setAttribute('class', 'combat-vehicle-diagram-labels vtol-diagram-labels');
-        labels.setAttribute(
-            'transform',
-            `scale(${formatNumber(box.width / 189)} ${formatNumber(box.height / 350)})`,
-        );
         const armor = vehicleArmorReader(entity);
         if (isVehicleEntity(entity) && entity.hasTurret()) {
             const authored = svgElement('g');
@@ -375,7 +369,8 @@ export class CombatVehicleRecordSheetLayout extends CompactRecordSheetLayout {
             labels.appendChild(authored);
             // The authored rotor label sits at (559.589, 155.86) before the group's transform.
             this.appendRotorHitsCounter(labels, (559.589 - 398.478) * 1.006 + 3.363, (155.86 - 13.05) * 1.006 + 11.25);
-            group.appendChild(labels);
+            bakeLabelScales(labels);
+        group.appendChild(labels);
             return;
         }
         const frontRear = svgElement('text');
@@ -422,6 +417,7 @@ export class CombatVehicleRecordSheetLayout extends CompactRecordSheetLayout {
         appendTspan(rotor, formatProtectionCounter(armor('RO', 'Rotor')), 0, 16.232).id = 'textArmor_RO';
         labels.appendChild(rotor);
         this.appendRotorHitsCounter(labels, 163.55318, 114.93549);
+        bakeLabelScales(labels);
         group.appendChild(labels);
     }
 
@@ -438,13 +434,9 @@ export class CombatVehicleRecordSheetLayout extends CompactRecordSheetLayout {
         value.id = 'rotor_hits_counter';
     }
 
-    private drawWigeDiagramLabels(group: SVGGElement, entity: BaseEntity, box: Box): void {
+    private drawWigeDiagramLabels(group: SVGGElement, entity: BaseEntity): void {
         const labels = svgElement('g');
         labels.setAttribute('class', 'combat-vehicle-diagram-labels wige-diagram-labels');
-        labels.setAttribute(
-            'transform',
-            `scale(${formatNumber(box.width / 189)} ${formatNumber(box.height / 350)})`,
-        );
         const armor = vehicleArmorReader(entity);
         const frontRear = svgElement('text');
         setAttributes(frontRear, {
@@ -489,6 +481,7 @@ export class CombatVehicleRecordSheetLayout extends CompactRecordSheetLayout {
             appendTspan(turretText, formatProtectionCounter(turret), 0, 8.116).id = 'textArmor_TU';
             labels.appendChild(turretText);
         }
+        bakeLabelScales(labels);
         group.appendChild(labels);
     }
 
@@ -517,4 +510,37 @@ export class CombatVehicleRecordSheetLayout extends CompactRecordSheetLayout {
         appendTspan(text, formatProtectionCounter(value), valueX, 0).id = `textArmor_${code}`;
         parent.appendChild(text);
     }
+}
+
+/**
+ * MegaMekLab places these labels with transforms that also scale them, uniformly. Each label keeps its placement
+ * and rotation and takes the scale as font size and offsets, so no type is scaled. Transforms of groups holding
+ * only text are folded into their labels; any other group keeps its own.
+ */
+function bakeLabelScales(labels: SVGGElement): void {
+    const textOnly = (element: Element) => element.localName === 'g' && !element.querySelector(':not(text):not(tspan)');
+    const folded = new Set<SVGGElement>();
+    for (const text of Array.from(labels.querySelectorAll<SVGTextElement>('text'))) {
+        let matrix = DOMMatrix.fromMatrix(text.transform.baseVal.consolidate()?.matrix ?? new DOMMatrix());
+        let fontSize = Number(text.getAttribute('font-size'));
+        for (let parent: Element | null = text.parentElement; parent && parent !== labels && textOnly(parent);
+            parent = parent.parentElement) {
+            const group = parent as unknown as SVGGElement;
+            const own = group.transform.baseVal.consolidate()?.matrix;
+            if (own) matrix = DOMMatrix.fromMatrix(own).multiply(matrix);
+            fontSize ||= Number(group.getAttribute('font-size'));
+            folded.add(group);
+        }
+        const scale = Math.hypot(matrix.a, matrix.b);
+        text.setAttribute('transform', `matrix(${[matrix.a / scale, matrix.b / scale, matrix.c / scale, matrix.d / scale,
+            matrix.e, matrix.f].map(formatNumber).join(' ')})`);
+        if (fontSize) text.setAttribute('font-size', formatNumber(fontSize * scale));
+        for (const element of [text, ...Array.from(text.querySelectorAll('tspan'))]) {
+            for (const name of ['x', 'y', 'dx', 'dy', 'textLength']) {
+                const value = element.getAttribute(name);
+                if (value !== null && value.trim() !== '') element.setAttribute(name, formatNumber(Number(value) * scale));
+            }
+        }
+    }
+    folded.forEach(group => group.removeAttribute('transform'));
 }

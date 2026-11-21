@@ -182,6 +182,22 @@ export function resolveMekStructureDamage(
     return Object.freeze({ internalDamage, overflowDamage: incoming - absorbed });
 }
 
+/**
+ * Core p. 205: a point of damage that meets the last pip of composite structure also marks a pip in the bare composite
+ * structure it would transfer to. True when this location's structure damage ended on such a pip; the caller checks
+ * the next location.
+ */
+export function compositeStructurePipCarries(
+    ruleset: CBTRuleset,
+    kind: 'standard' | 'composite' | 'reinforced',
+    damage: number,
+    remainingInternal: number,
+    internalDamage: number,
+): boolean {
+    return ruleset === 'core-2026' && kind === 'composite' && damage > 0
+        && remainingInternal % 2 === 1 && internalDamage === remainingInternal;
+}
+
 function orientation(
     facingOffset: number,
     facingInstruction: string,

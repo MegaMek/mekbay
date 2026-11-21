@@ -22,7 +22,7 @@ export class PageViewerSheetSourceService {
         const pipLayout = this.options.options().recordSheetPipLayout;
         const pageFormat = this.options.options().printAllOptions.paperSize;
         const showQuirks = this.options.options().CBTOptionalRules?.quirks !== false;
-        const groupWeapons = this.options.options().recordSheetGroupWeapons;
+        const groupWeapons = this.options.options().recordSheetGroupWeapons === 'enabled';
         const unit = member.force.getUnitSnapshot(member.id);
         if (!unit) throw new Error('The selected CBT unit is no longer admitted');
         const pages = await member.loadRecordSheets(async () => {

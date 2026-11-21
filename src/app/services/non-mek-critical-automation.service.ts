@@ -4,11 +4,11 @@
 import { inject, Injectable } from '@angular/core';
 
 import type { AutomationReviewEvent } from '../models/automation-review.model';
-import { isCaseEquipment } from '../models/case-equipment.model';
 import type { CBTForce } from '../models/cbt-force.model';
 import type { CBTForceUnitCommandDispatch } from '../models/cbt-force.types';
 import { hasNonMekRuntime, type CBTNonMekUnitSnapshot } from '../models/cbt-unit-snapshot';
 import type { ComponentId, LocationId } from '../models/entity/entity-identifiers';
+import { asComponentId } from '../models/entity/entity-identifiers';
 import { supportVehicleBarRating } from '../models/entity/entities/support-vehicle';
 import type { VehicleMotiveType } from '../models/entity/types/motive';
 import { isAeroEntity, isProtoMekEntity, isVehicleEntity } from '../models/entity/utils/entity-type-guards';
@@ -327,8 +327,8 @@ export class NonMekCriticalAutomationService {
         target: Target,
     ): CriticalEffect {
         const perspective = perspectiveOf(target);
-        const caseProtected = [...snapshot.index.components.values()].some(component =>
-            isCaseEquipment(component.mount.equipment) && snapshot.query.componentStatus(component.id, perspective) === 'available');
+        const caseProtected = snapshot.entity.ammoCaseProtection(location.code, mount =>
+            snapshot.query.componentStatus(asComponentId(mount.mountId), perspective) === 'available') !== null;
         const rear = [...snapshot.index.locations.values()].find(candidate => candidate.code === 'Rear');
         const rearFace = rear?.armorFaceIds[0];
         if (caseProtected && rearFace !== undefined) {

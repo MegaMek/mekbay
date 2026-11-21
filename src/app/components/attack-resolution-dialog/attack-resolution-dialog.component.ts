@@ -9,6 +9,7 @@ import type { CBTForceMember } from '../../models/force-member.model';
 import { hitTableDice, physicalAttackAlwaysHits, type PhysicalAttackKind } from '../../models/rules/physical-attack-rules';
 import { heatWeaponDice, resolveHeatWeaponHit } from '../../models/rules/heat-weapon-rules';
 import { AIMED_SHOT_LEG_REROLLS, type AimedShotRoll } from '../../models/rules/aimed-shot-rules';
+import { LASER_INSULATOR_FAILURE_TARGET } from '../../models/laser-insulator.model';
 import {
     attackGroups,
     needsClusterRoll,
@@ -17,7 +18,7 @@ import {
     type TwoDice,
     type WeaponAttackProfile,
 } from '../../models/rules/weapon-attack-resolution';
-import { attackDamagePreview, readAttackHeat } from '../../models/runtime/attack-hit-location';
+import { attackDamageLedger, attackDamagePreview, readAttackThermalEffects, type AttackDamageLedger } from '../../models/runtime/attack-hit-location';
 import { attackDamageSource } from '../../models/rules/armor-damage-rules';
 import type { CBTRuleset } from '../../models/cbt-ruleset.model';
 import type { TnTargetUnitType } from '../../models/target-number-calculator.model';
@@ -72,6 +73,10 @@ export interface PhysicalAttackOutcome {
 export interface AttackResolution {
     readonly deliveries: readonly AttackDelivery[];
     readonly jammed: readonly ComponentId[];
+    /** Insulated lasers that suffer a critical hit (`LASER_INSULATOR_FAILURE_TARGET`). */
+    readonly insulatorFailed: readonly ComponentId[];
+    /** Weapons whose lock-on roll failed (`locksOnTarget`): they fire nothing and make no heat. */
+    readonly noLock: readonly ComponentId[];
     readonly physical: readonly PhysicalAttackOutcome[];
 }
 
@@ -95,6 +100,8 @@ interface WeaponRolls {
     readonly side?: MekHitArc;
     /** An aimed shot's roll, and the leg rerolls of one at a target in partial cover. */
     readonly aim?: Readonly<{ roll: HitLocationDice; rerolls: readonly TwoDice[] }>;
+    /** An insulated laser's failure roll, read after a to-hit roll of 2. */
+    readonly insulator?: TwoDice;
 }
 
 @Component({
@@ -113,8 +120,9 @@ export class AttackResolutionDialogComponent {
 
     protected readonly targets = computed(() => this.data.targets.map((target, t) => {
         // Hits are previewed in the order the struck unit takes them.
-        const deal = attackDamagePreview(target.defender, target.ruleset, target.unitType);
-        const weapons = target.profiles.map((profile, w) => reportWeapon(target, profile, this.rolls()[t][w], deal));
+        const ledger = attackDamageLedger();
+        const deal = attackDamagePreview(target.defender, target.ruleset, target.unitType, ledger);
+        const weapons = target.profiles.map((profile, w) => reportWeapon(target, profile, this.rolls()[t][w], deal, ledger));
         return {
             target,
             weapons,
@@ -137,6 +145,7 @@ export class AttackResolutionDialogComponent {
         const dice = diceForTotal(edit.total);
         this.updateWeapon(target, edit.weapon, rolls => edit.roll === 'to-hit' ? { ...rolls, toHit: dice }
             : edit.roll === 'cluster' ? { ...rolls, cluster: dice }
+            : edit.roll === 'insulator' ? { ...rolls, insulator: dice }
             : edit.roll === 'heat' ? { ...rolls, heat: heatDiceForTotal(rolls.heat, this.heatDiceUsed(target, edit.weapon), edit.total) }
             : edit.roll === 'aim' ? { ...rolls, aim: rolls.aim && { ...rolls.aim,
                 roll: rolls.aim.roll.length === 1 ? Object.freeze([edit.total] as const) : dice } }
@@ -157,13 +166,18 @@ export class AttackResolutionDialogComponent {
                 weapons: Object.freeze(target.profiles.map((profile, w) => deliveredWeapon(profile, this.rolls()[t][w]))),
             })] : [])),
             jammed: this.jammed(),
+            insulatorFailed: this.insulatorFailed(),
+            noLock: this.noLock(),
             physical: this.physical(),
         }));
     }
 
     /** Closing without sending still settles the rolls the attacker made, such as a jam or a missed DFA. */
     protected close(): void {
-        this.dialogRef.close(Object.freeze({ deliveries: Object.freeze([]), jammed: this.jammed(), physical: this.physical() }));
+        this.dialogRef.close(Object.freeze({
+            deliveries: Object.freeze([]), jammed: this.jammed(), insulatorFailed: this.insulatorFailed(),
+            noLock: this.noLock(), physical: this.physical(),
+        }));
     }
 
     private physical(): readonly PhysicalAttackOutcome[] {
@@ -185,6 +199,18 @@ export class AttackResolutionDialogComponent {
                 ? [profile.componentId] : [])));
     }
 
+    private insulatorFailed(): readonly ComponentId[] {
+        return Object.freeze(this.data.targets.flatMap((target, t) => target.profiles.flatMap((profile, w) =>
+            profile.componentId !== null && insulatorCheck(this.rolls()[t][w])?.failed ? [profile.componentId] : [])));
+    }
+
+    private noLock(): readonly ComponentId[] {
+        return Object.freeze(this.data.targets.flatMap((target, t) => target.profiles.flatMap((profile, w) =>
+            profile.componentId !== null && profile.allHit
+                && !resolveWeaponAttack(profile, this.rolls()[t][w].toHit, this.rolls()[t][w].cluster).hit
+                ? [profile.componentId] : [])));
+    }
+
     private heatDiceUsed(target: number, weapon: number): number {
         return heatDiceRead(this.data.targets[target].profiles[weapon], this.rolls()[target][weapon].heat);
     }
@@ -200,7 +226,7 @@ function rollWeapon(profile: WeaponAttackProfile): WeaponRolls {
     return Object.freeze({
         toHit: roll2D6(),
         cluster: roll2D6(),
-        clusterModifier: 0,
+        clusterModifier: profile.clusterModifier ?? 0,
         locations: Object.freeze(Array.from({ length: groups }, () => Object.freeze({
             dice: hitTableDice(profile.table) === 2 ? roll2D6() : Object.freeze([rollD6()] as const),
             aux: rollD6(),
@@ -212,7 +238,16 @@ function rollWeapon(profile: WeaponAttackProfile): WeaponRolls {
             roll: profile.aim.dice === 2 ? roll2D6() : Object.freeze([rollD6()] as const),
             rerolls: Object.freeze(Array.from({ length: profile.aim.rerollLegs ? AIMED_SHOT_LEG_REROLLS : 0 }, roll2D6)),
         }) } : {}),
+        ...(profile.insulated ? { insulator: roll2D6() } : {}),
     });
+}
+
+/** An insulated laser's failure roll, which only an unmodified to-hit roll of 2 calls for; undefined otherwise. */
+function insulatorCheck(rolls: WeaponRolls): NonNullable<AttackReportWeapon['insulator']> | undefined {
+    return rolls.insulator && rolls.toHit[0] + rolls.toHit[1] === 2 ? Object.freeze({
+        dice: rolls.insulator,
+        failed: rolls.insulator[0] + rolls.insulator[1] >= LASER_INSULATOR_FAILURE_TARGET,
+    }) : undefined;
 }
 
 /** The aimed shot of a weapon as rolled; undefined for a normal attack. */
@@ -254,6 +289,7 @@ function reportWeapon(
     profile: WeaponAttackProfile,
     rolls: WeaponRolls,
     deal: ReturnType<typeof attackDamagePreview>,
+    ledger: AttackDamageLedger,
 ): AttackReportWeapon {
     const source = attackDamageSource(profile);
     const cluster = needsClusterRoll(profile);
@@ -261,9 +297,10 @@ function reportWeapon(
     const heat = profile.heatWeapon;
     const heatDice = rolls.heat.slice(0, heatDiceRead(profile, rolls.heat));
     const aim = aimedShotRoll(profile, rolls);
-    // The heat the defender takes: none when the weapon's first roll strikes partial cover.
+    const insulator = insulatorCheck(rolls);
+    // Account for cover and the armor left by weapons earlier in the report.
     const heatValue = target.defender && outcome.heat > 0
-        ? readAttackHeat(target.defender, target.arc, [deliveredWeapon(profile, rolls)])
+        ? readAttackThermalEffects(target.defender, target.arc, [deliveredWeapon(profile, rolls)], attackDamageLedger(ledger)).heat
         : outcome.heat;
     return Object.freeze({
         name: profile.name,
@@ -272,14 +309,14 @@ function reportWeapon(
         toHit: rolls.toHit,
         hit: outcome.hit,
         jammed: outcome.jammed,
+        ...(insulator ? { insulator } : {}),
         cluster: cluster
             ? Object.freeze({ dice: rolls.cluster, modifier: rolls.clusterModifier, projectiles: profile.projectiles, hits: outcome.hits })
             : null,
         ...(profile.inferno ? { inferno: true } : {}),
-        ...(profile.noHitLocation ? { noHitLocation: true } : {}),
         ...(heat && (outcome.heat > 0 || heatDice.length > 0)
             ? { heat: Object.freeze({
-                dice: Object.freeze(heatDice), value: heatValue, ...(heatValue < outcome.heat ? { cover: true as const } : {}),
+                dice: Object.freeze(heatDice), value: heatValue, ...(heatValue < outcome.heat ? { reduced: true as const } : {}),
             }) }
             : {}),
         ...(aim ? { aim: attackReportAim(aim) } : {}),
@@ -308,7 +345,6 @@ function deliveredWeapon(profile: WeaponAttackProfile, rolls: WeaponRolls): Atta
         ...(profile.physical === 'brush-off' && outcome.hit ? { swarmRelease: true as const } : {}),
         ...((rolls.side ?? profile.arc) === undefined ? {} : { arc: rolls.side ?? profile.arc }),
         ...(profile.inferno ? { inferno: true as const } : {}),
-        ...(profile.noHitLocation ? { noHitLocation: true as const } : {}),
         ...(outcome.heat > 0 ? { heat: outcome.heat } : {}),
         ...(aim ? { aim } : {}),
         ...(outcome.hit && needsClusterRoll(profile) ? {

@@ -615,7 +615,9 @@ function renderIdentity(svg: SVGSVGElement, snapshot: NonMekRecordSheetSnapshot)
         techBase: formatTechBase(snapshot.techBase, snapshot.mixedTech),
         role: snapshot.role,
         movementType: snapshot.movementType,
-        mpWalk: snapshot.movement.walk,
+        // A battle armor sheet keeps its unburdened Ground MP in brackets while a DWP slows the suit
+        mpWalk: formatMovementWithMaximum(snapshot.movement.walk,
+            Number(svg.getElementById('mpWalk')?.getAttribute('data-mekbay-walk-maximum') ?? 0)),
         mpRun: run,
         mpJump: jump,
         mp_2: jump,

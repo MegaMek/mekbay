@@ -86,6 +86,12 @@ describe('Mek critical display', () => {
         const explicit = new TestBipedMekEntity();
         addTestEquipmentWithFlags(explicit, 'F_CASE', { location: 'LT' });
         expect(mekCriticalCaseLabel(explicit, 'LT')).toBe('CASE');
+        addTestEquipmentWithFlags(explicit, 'F_CASE_II', { location: 'RT' });
+        expect(mekCriticalCaseLabel(explicit, 'RT')).toBe('CASE II');
+        expect(mekCriticalCaseLabel(explicit, 'CT')).toBeNull();
+        // Prototype CASE can fail to vent, so it keeps its own name (IO:AE p. 65).
+        addTestEquipmentWithFlags(explicit, 'F_CASE_P', { location: 'CT' });
+        expect(mekCriticalCaseLabel(explicit, 'CT')).toBe('CASE-P');
 
         const clan = new TestBipedMekEntity();
         clan.techBase.set('Clan');

@@ -34,7 +34,7 @@ describe('construction weapon quirks', () => {
     entity.weaponQuirks.set([{ name: 'direct_torso_mount', ...weaponQuirkAddress(entity, mount) }]);
     for (const location of ['LT', 'LA', 'LT']) {
       mount = withWeaponQuirkReconciliation(entity, () =>
-        entity.moveEquipment(mount, location, [{ location, slotIndex: 4 }]),
+        entity.moveEquipment(mount, location, [{ location, slotIndex: location === 'LA' ? 4 : 0 }]),
       );
       expect(entity.applicableWeaponQuirks().length).toBe(location === 'LT' ? 1 : 0);
       const parsed = parseEntity(encodeNativeEntity(entity), 'weapon.mtf', registry).entity;

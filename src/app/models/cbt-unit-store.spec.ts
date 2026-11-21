@@ -6,6 +6,78 @@ import { CBTUnitStore } from './cbt-unit-store';
 import { BoobyTrapHandler } from './runtime/component-booby-trap';
 import type { SerializedCBTForceV2 } from './runtime/persistence-v2';
 import { createDirectBoobyTrapRuntimeFixture, emptyCBTEncounterSnapshot } from './runtime/testing/direct-mek-runtime-fixture';
+import type { CBTUnitService } from '../services/cbt-unit.service';
+import { asUnitUuid, makeUnitFileName } from '../services/unit-catalog/unit-catalog.types';
+import { CORE_2026_RULESET } from './cbt-ruleset.model';
+import { asComponentId } from './entity/entity-identifiers';
+import { TestTankEntity } from './entity/testing/test-entities';
+import { createTestEquipmentRegistry } from './entity/testing/test-equipment-registry';
+import { EntityMountedEquipment } from './entity/types';
+import { MiscEquipment } from './equipment.model';
+import { createNonMekUnit, restoreNonMekUnit } from './runtime/cbt-non-mek-unit';
+import { CBT_HISTORY_FIELD, CBT_HISTORY_TURN_FIELD } from './runtime/force-storage-vocabulary';
+import type { SerializedNonMekUnit } from './runtime/non-mek-unit-persistence';
+import { asForceId } from './runtime/persistence-v2';
+import { RUNTIME_HISTORY_MESSAGE } from './runtime/runtime-history';
+import { asSourceHashCanary } from './source-hash-canary';
+
+describe('a unit whose source changed at the unit store', () => {
+    it('loses only its own C3 endpoints and the history naming its equipment', async () => {
+        const c3 = new MiscEquipment({ id: 'TestC3i', name: 'C3i Computer', type: 'misc', flags: ['F_C3I'] });
+        const entity = new TestTankEntity(createTestEquipmentRegistry({ [c3.id]: c3 }));
+        const componentId = asComponentId('c3i');
+        entity.setEquipment([new EntityMountedEquipment({
+            mountId: componentId, equipmentId: c3.id, equipment: c3, allocation: { kind: 'location', location: 'Front' },
+            rearMounted: false, turretMounted: false, omniPodMounted: false, armored: false,
+        })]);
+        const uuid = asUnitUuid('019f6767-0dcb-7bb8-992f-aef08202f5e4');
+        entity.uuid.set(uuid);
+        entity.setTonnage(20);
+        const scenario = { id: 'megamek', ruleset: CORE_2026_RULESET } as const;
+        const current = asSourceHashCanary('BBBB');
+        const nativeSource = { file: makeUnitFileName(uuid, 'blk'), format: 'blk' as const, sourceHashCanary: current,
+            bytes: new ArrayBuffer(0) };
+        const ids = ['unit:a', 'unit:b', 'unit:c', 'unit:d'];
+        // Unit A was saved against an older source.
+        const units = ids.map(instanceId => {
+            const unit = createNonMekUnit(entity, { instanceId, uuid, deployment: { id: 'default' }, scenario,
+                initialStateProfileId: 'pristine-non-mek' }, nativeSource).serialize();
+            const saved = { ...unit, sourceHashCanary: instanceId === 'unit:a' ? asSourceHashCanary('AAAA') : current };
+            return { instanceId, stateRevision: unit.stateRevision, unit: saved };
+        });
+        const network = (id: string, first: string, second: string) => ({ id, networkType: 'c3i' as const, color: '#1565C0',
+            endpoints: [first, second].map(instanceId => ({ instanceId, componentId, role: 'peer' as const })) });
+        const destroyed = (unit: number) =>
+            [RUNTIME_HISTORY_MESSAGE.COMPONENT_STATUS, unit, `c:${componentId}`, 'destroyed', 'committed'] as const;
+        const damaged = [RUNTIME_HISTORY_MESSAGE.DAMAGE_INTERNAL, 0, 'i:front', 1, 'committed'] as const;
+        const envelope: SerializedCBTForceV2 = {
+            forceId: asForceId('force:source-change'), forceRevision: 0,
+            history: { [CBT_HISTORY_FIELD.unitIds]: ids, [CBT_HISTORY_FIELD.turns]: [{
+                [CBT_HISTORY_TURN_FIELD.turnNumber]: 1,
+                [CBT_HISTORY_TURN_FIELD.phases]: [[destroyed(0), damaged, destroyed(2)]],
+            }] },
+            units,
+            roster: { groups: [{ groupId: 'group:source-change', order: 0, name: 'Vehicles',
+                members: ids.map((instanceId, order) => ({ instanceId, order })) }] },
+            encounter: { networks: [network('network:ab', 'unit:a', 'unit:b'), network('network:cd', 'unit:c', 'unit:d')] },
+        };
+        const cbtUnits = {
+            restore: (saved: SerializedNonMekUnit, rules: typeof scenario) => Promise.resolve({
+                unit: restoreNonMekUnit(saved, entity, uuid, rules, nativeSource), warnings: [],
+            }),
+        } as unknown as CBTUnitService;
+
+        const restored = await new CBTUnitStore().restore(envelope, cbtUnits, scenario);
+
+        // Unit A's computer may now be other equipment: its network goes, the other one stays and nothing is reported.
+        expect(restored.envelope.encounter.networks.map(candidate => candidate.id)).toEqual(['network:cd']);
+        expect(restored.warnings).toEqual([]);
+        const phases: unknown = restored.envelope.history[CBT_HISTORY_FIELD.turns][0]![CBT_HISTORY_TURN_FIELD.phases];
+        expect(phases).toEqual([[
+            [RUNTIME_HISTORY_MESSAGE.EQUIPMENT_CHANGED, 0], damaged, destroyed(2),
+        ]]);
+    });
+});
 
 describe('equipment confirmation authority at the unit store', () => {
     for (const change of ['read-only', 'replacement', 'state', 'retirement'] as const) {

@@ -59,10 +59,15 @@ export function createNonMekUnit(
 export function restoreNonMekUnit(
     saved: SerializedNonMekUnit, entity: BaseEntity, uuid: UnitUuid, scenario: ScenarioRules,
     nativeSource?: NativeUnitSourceHandle,
+    diagnostics: { readonly onWarning?: (warning: Readonly<{ code: 'STATE_SKIPPED'; message: string }>) => void } = {},
 ): CBTNonMekUnit {
     verifySource(entity, uuid, nativeSource);
     if (saved.entity !== uuid) throw new Error('Persisted entity source does not match the loaded source');
     const prepared = restoreNonMekRuntime(saved, entity, scenarioRuleset(scenario), scenarioBoundRules(scenario));
+    if (prepared.skipped) diagnostics.onWarning?.({
+        code: 'STATE_SKIPPED',
+        message: `Saved state was skipped: ${prepared.skipped} entries name equipment the unit no longer has.`,
+    });
     return new CBTUnit<'non-mek'>({ uuid, instanceId: saved.instanceId, baselineRef: prepared.baselineRef,
         runtime: { kind: 'non-mek', binding: prepared.binding, state: prepared.state, deployment: freezeDeployment(saved.deployment) }, nativeSource });
 }

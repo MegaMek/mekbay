@@ -15,6 +15,7 @@ import {
 } from '../../utils/mek-critical-display.util';
 import { isCoolantPodEquipment } from './component-coolant-pod';
 import { recordSheetAmmoName } from '../../utils/record-sheet-ammo.util';
+import { recordSheetInventoryWeaponMounts } from '../../utils/sheets/record-sheet-svg-rendering';
 import type { CBTRuleset } from '../cbt-ruleset.model';
 import type { CrewMemberRuntimeState,CrewMemberState } from '../crew-member.model';
 import type { MekEntity } from '../entity/entities/mek/mek-entity';
@@ -239,6 +240,8 @@ export interface MekRecordSheetSnapshot {
     readonly criticalSlots: readonly MekRecordSheetCriticalSlot[];
     readonly shields: readonly MekRecordSheetShieldTrack[];
     readonly equipment: readonly EquipmentPanelComponent[];
+    /** The inventory's weapon order, as the generated sheet prints it, for a layout that prints weapons without IDs. */
+    readonly weaponOrder: readonly string[];
     readonly targets: readonly EquipmentPanelTarget[];
     readonly physicalAttacks: MekPhysicalAttackPresentation;
     readonly crew: readonly MekRecordSheetCrewPosition[];
@@ -621,6 +624,7 @@ export function projectMekRecordSheet(
         criticalSlots: Object.freeze(criticalSlots),
         shields: Object.freeze(shields),
         equipment,
+        weaponOrder: Object.freeze(recordSheetInventoryWeaponMounts(entity).map(mount => String(mount.mountId))),
         targets,
         physicalAttacks,
         crew: Object.freeze(crew),

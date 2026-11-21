@@ -26,9 +26,8 @@ export function positionMekCriticalExtraHitPip(text: SVGTextElement, pip: SVGEle
  */
 export function writeMekCriticalSlotLines(label: SVGTextElement, lines: readonly string[]): void {
   const maxWidth = Number(label.getAttribute('data-mekbay-max-width'));
-  const size = Number(label.getAttribute('font-size'));
   const fit = (element: SVGTextContentElement, value: string): void => {
-    if (maxWidth > 0) fitRecordSheetTextLine(element, value, size, maxWidth);
+    if (maxWidth > 0) fitRecordSheetTextLine(element, value, maxWidth, label);
   };
   if (lines.length === 1) {
     label.textContent = lines[0];
@@ -77,12 +76,11 @@ export function flowMekCriticalLocation(criticalGroup: SVGElement): void {
 
   criticalGroup.querySelectorAll<SVGElement>(':scope > .critical-equipment-bracket').forEach(bracket => {
     const [first, last] = (bracket.getAttribute('data-mekbay-slots') ?? '').split(' ').map(Number);
-    const top = baselines[first] - MEK_CRITICAL_BRACKET_TOP * step;
-    const height = baselines[last] - top;
-    const scale = (height + shifts[last] - shifts[first]) / height;
-    const offset = top + shifts[first] - scale * top;
-    if (shifts[first] === 0 && shifts[last] === 0) bracket.removeAttribute('transform');
-    else bracket.setAttribute('transform', `matrix(1 0 0 ${formatNumber(scale)} 0 ${formatNumber(offset)})`);
+    // The bracket follows its first and last rows; redrawing it keeps the stroke uniform.
+    const top = baselines[first] - MEK_CRITICAL_BRACKET_TOP * step + shifts[first];
+    const [, x, width] = /^M\s*(\S+)\s+\S+\s+h\s*(\S+)/u.exec(bracket.getAttribute('d') ?? '') ?? [];
+    bracket.setAttribute('d', `M ${x} ${formatNumber(top)} h ${width}`
+      + ` v ${formatNumber(baselines[last] + shifts[last] - top)} h ${formatNumber(-Number(width))}`);
   });
 
   const location = criticalGroup.getAttribute('data-loc');

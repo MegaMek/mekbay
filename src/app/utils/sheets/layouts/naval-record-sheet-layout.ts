@@ -101,7 +101,6 @@ export class NavalRecordSheetLayout extends CompactRecordSheetLayout {
                 groupWeapons: request.groupWeapons,
                 lastDetailBaseline: 254.58,
                 verticalContentScale: 0.992,
-                footerBaselineOffset: 3,
             },
         );
         drawCompactVehicleCrewPanel(
@@ -116,17 +115,18 @@ export class NavalRecordSheetLayout extends CompactRecordSheetLayout {
             drawClusterHitsReference(svg, referenceBox, cluster.clusterSizes, 'auto', recordSheetClusterNotes(cluster.equipment));
         }
         else addFrame(svg, 'NOTES', referenceBox);
+        // Each table gets its authored width, so its content is drawn at full size.
         drawNavalHitLocationReference(
             svg,
-            at({ x: 0.965, y: 360.988, width: 222.46, height: 214.6 }),
+            at({ x: 0.965, y: 360.988, width: 225.4, height: 214.6 }),
         );
         drawNavalMotiveReference(
             svg,
-            at({ x: 231.365, y: 360.983, width: 148.72, height: 214.6 }),
+            at({ x: 231.365, y: 360.983, width: 151.6, height: 214.6 }),
         );
         drawNavalCriticalReference(
             svg,
-            at({ x: 0.965, y: 583.593, width: 378.94, height: 141.9 }),
+            at({ x: 0.965, y: 583.593, width: 382, height: 141.9 }),
         );
         const diagramBox = { x: Number(svg.getAttribute('width')) - 189, y: 3, width: 189, height: 731 };
         const submarine = this.isSubmarine(entity);

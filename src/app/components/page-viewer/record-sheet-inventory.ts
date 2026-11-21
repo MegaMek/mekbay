@@ -22,7 +22,7 @@ import {
     recordSheetHeatProfileText,
     svgElement,
 } from '../../utils/sheets/record-sheet-svg-rendering';
-import { isRegroupingInventoryRow } from '../../utils/sheets/record-sheet-weapon-grouping';
+import { DESTROYED_WEAPON_STATE_ORDER, isRegroupingInventoryRow } from '../../utils/sheets/record-sheet-weapon-grouping';
 import type { RecordSheetBind } from './record-sheet-dom';
 
 const COMPONENT_IDS_ATTRIBUTE = 'data-mekbay-component-ids';
@@ -219,7 +219,7 @@ export function recordSheetInventoryStateKey(
     const target = targeted?.kind === 'target' && source !== null
         ? source.panel.targets.findIndex(candidate => candidate.targetId === targeted.targetId)
         : -1;
-    const order = status === 'destroyed' || status === 'missing' ? 3
+    const order = status === 'destroyed' || status === 'missing' ? DESTROYED_WEAPON_STATE_ORDER
         : status !== 'available' ? 2
             : selection.selected ? 1 : 0;
     return `${order}${String(target + 1).padStart(3, '0')}${JSON.stringify([status, selection, shows])}`;

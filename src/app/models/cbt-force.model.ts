@@ -508,6 +508,10 @@ export class CBTForce extends Force<never> {
                 throw new Error('The force unit changed. Reopen construction before saving its runtime edits.');
             }
             if (!refit && !commands?.length) return member;
+            if (refit && isMekEntity(refit.entity)) {
+                const [issue] = refit.entity.frankenMekDonorSizeIssues();
+                if (issue) throw new Error(issue.message);
+            }
             if (refit && !await this.injector.get(ForceCustomDesignsService).checkNative(this, refit.entity.uuid(), refit.source, member.id)) throw new Error('Refit cancelled.');
             if (requireRepaired && !constructionCanUpdateDesign(this.getUnitSnapshot(member.id)!)) throw new Error('Fully repair this unit and finish pending changes before updating its design.');
             const context = this.beginCBTForceMutation();

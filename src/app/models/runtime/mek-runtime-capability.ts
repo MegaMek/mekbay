@@ -14,6 +14,8 @@ export type MekRuntimeCapabilityBlockerCode =
     | 'NOT_NATIVE_MTF'
     | 'TRANSPORT_INTERACTION_REQUIRED'
     | 'COMPONENT_BAY_NOT_SUPPORTED'
+    | 'CRIT_SLOT_SHARING_INVALID'
+    | 'FRANKEN_SUPERHEAVY_DONOR'
     | 'HEAT_CONTEXT_NOT_SUPPORTED'
     | 'MECHANICS_CONTEXT_NOT_SUPPORTED';
 
@@ -102,6 +104,13 @@ export function evaluateMekRuntimeCapability(
     entity: MekEntity,
 ): MekRuntimeCapabilityDecision {
     const blockers: MekRuntimeCapabilityBlocker[] = [];
+    // Superheavy and ordinary donors can't be mixed (IO:AE p. 155)
+    for (const issue of entity.frankenMekDonorSizeIssues()) {
+        blockers.push(blocker('FRANKEN_SUPERHEAVY_DONOR', issue.message));
+    }
+    for (const issue of entity.criticalSlotSharingIssues()) {
+        blockers.push(blocker('CRIT_SLOT_SHARING_INVALID', issue.message));
+    }
     if (entity.transporters().length > 0) blockers.push(blocker(
         'TRANSPORT_INTERACTION_REQUIRED',
         'Transport occupancy is not yet owned by the retained Mek runtime',

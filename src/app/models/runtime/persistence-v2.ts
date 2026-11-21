@@ -378,6 +378,8 @@ export interface SerializedHeatStateV2 {
     readonly pendingOverride?: number;
     readonly pendingOffset?: number;
     readonly heatsinksOff?: number;
+    /** The switch set for the End Phase; absent when unchanged. */
+    readonly heatsinksOffNext?: number;
 }
 
 export interface SerializedCommonConditionStateV2 {
@@ -842,7 +844,7 @@ function validateV2Unit(
     validateCrew(record['crew'], `${path}.crew`, targets);
     if (record['heat'] !== undefined) {
         const heat = requireRecord(record['heat'], `${path}.heat`);
-        exactKeys(heat, ['heat', 'previous', 'pendingOverride', 'pendingOffset', 'heatsinksOff'], `${path}.heat`);
+        exactKeys(heat, ['heat', 'previous', 'pendingOverride', 'pendingOffset', 'heatsinksOff', 'heatsinksOffNext'], `${path}.heat`);
         if (!isHeatValue(heat['heat'])) {
             fail('INVALID_SHAPE', `${path}.heat.heat`, 'must be a canonical bounded heat value');
         }
@@ -863,6 +865,12 @@ function validateV2Unit(
                     `${path}.heat.heatsinksOff`,
                     'sparse heatsinks-off count must be a bounded positive integer',
                 );
+            }
+        }
+        if (heat['heatsinksOffNext'] !== undefined) {
+            const next = requireFiniteNumber(heat['heatsinksOffNext'], `${path}.heat.heatsinksOffNext`);
+            if (!Number.isSafeInteger(next) || next < 0 || next > MAX_MEK_HEATSINKS_OFF_V2) {
+                fail('INVALID_SHAPE', `${path}.heat.heatsinksOffNext`, 'must be a bounded non-negative integer');
             }
         }
     }

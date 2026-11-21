@@ -4,7 +4,7 @@
 import type { CBTRuleset } from '../cbt-ruleset.model';
 import { TestBattleArmorEntity, TestSupportTankEntity, TestTankEntity } from '../entity/testing/test-entities';
 import type { WeaponType } from '../weapon-types.model';
-import { FALL_DAMAGE, PHYSICAL_DAMAGE, resolveArmorDamage, rifleHitDamage } from './armor-damage-rules';
+import { FALL_DAMAGE, PHYSICAL_DAMAGE, reflectedHeat, resolveArmorDamage, rifleHitDamage } from './armor-damage-rules';
 
 describe('resolveArmorDamage', () => {
     const weapon = (...types: WeaponType[]) => ({ kind: 'weapon' as const, types });
@@ -20,9 +20,22 @@ describe('resolveArmorDamage', () => {
         expect(resolveArmorDamage('core-2026', 2, 10, 'REFLECTIVE', weapon('AE')).armorDamage).toBe(4);
         // Impact-resistant armor only softens falls.
         expect(resolveArmorDamage('core-2026', 5, 10, 'IMPACT_RESISTANT', weapon('DB')).armorDamage).toBe(5);
+        // Battle armor's laser-reflective armor halves energy damage, without the brittleness (TO:AUE p. 93).
+        expect(resolveArmorDamage('total-warfare', 4, 8, 'BA_REFLECTIVE', weapon('DE', 'H')).armorDamage).toBe(2);
+        expect(resolveArmorDamage('core-2026', 4, 8, 'BA_REFLECTIVE', weapon('DE')).armorDamage).toBe(2);
+        expect(resolveArmorDamage('core-2026', 2, 8, 'BA_REFLECTIVE', weapon('AE')).armorDamage).toBe(2);
         // Reactive armor runs out: the rest reaches the structure at full strength.
         expect(resolveArmorDamage('core-2026', 7, 2, 'REACTIVE', weapon('M')))
             .toEqual({ armorDamage: 2, remainingDamage: 3 });
+    });
+
+    it('halves damage to heat-dissipating armor only for heat-causing weapons under Core', () => {
+        expect(resolveArmorDamage('core-2026', 5, 3, 'HEAT_DISSIPATING', weapon('H')))
+            .toEqual({ armorDamage: 3, remainingDamage: 0 });
+        expect(resolveArmorDamage('core-2026', 5, 1, 'HEAT_DISSIPATING', weapon('H')))
+            .toEqual({ armorDamage: 1, remainingDamage: 3 });
+        expect(resolveArmorDamage('core-2026', 5, 8, 'HEAT_DISSIPATING', weapon('DE')).armorDamage).toBe(5);
+        expect(resolveArmorDamage('total-warfare', 5, 8, 'HEAT_DISSIPATING', weapon('H')).armorDamage).toBe(5);
     });
 
     it('applies the fall rules of impact-resistant and laser-reflective armor', () => {
@@ -42,6 +55,20 @@ describe('resolveArmorDamage', () => {
         expect(resolveArmorDamage('total-warfare', 7, 20, 'IMPACT_RESISTANT', PHYSICAL_DAMAGE).armorDamage).toBe(4);
         expect(resolveArmorDamage('core-2026', 1, 20, 'IMPACT_RESISTANT', PHYSICAL_DAMAGE).armorDamage).toBe(1);
         expect(resolveArmorDamage('total-warfare', 1, 20, 'IMPACT_RESISTANT', PHYSICAL_DAMAGE).armorDamage).toBe(1);
+    });
+});
+
+describe('reflectedHeat', () => {
+    it('halves the heat of reflected weapons on laser-reflective armor under TW only (TO:AUE p. 93)', () => {
+        const flamer = { kind: 'weapon' as const, types: ['DE', 'H'] as WeaponType[] };
+        const inferno = { kind: 'weapon' as const, types: ['M', 'H'] as WeaponType[] };
+        expect(reflectedHeat('total-warfare', 'REFLECTIVE', flamer, 5)).toBe(2);
+        expect(reflectedHeat('total-warfare', 'REFLECTIVE', flamer, 1)).toBe(1);
+        expect(reflectedHeat('total-warfare', 'REFLECTIVE', flamer, 0)).toBe(0);
+        expect(reflectedHeat('total-warfare', 'REFLECTIVE', inferno, 4)).toBe(4);
+        expect(reflectedHeat('total-warfare', 'STANDARD', flamer, 5)).toBe(5);
+        // Core p. 202 removed the heat-halving effect (Core changelog).
+        expect(reflectedHeat('core-2026', 'REFLECTIVE', flamer, 5)).toBe(5);
     });
 });
 

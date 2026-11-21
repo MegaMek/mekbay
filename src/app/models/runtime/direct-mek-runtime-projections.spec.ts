@@ -1,6 +1,7 @@
 // Copyright (C) 2026 The MegaMek Team
 // SPDX-License-Identifier: GPL-3.0-or-later
 
+import { restoreMekUnit } from './cbt-mek-unit';
 import type { WeaponAttackContext } from './equipment-panel';
 import {
     asEncounterTargetId,
@@ -36,6 +37,7 @@ import {
     createDirectEscalatingFailureRuntimeFixture,
     createDirectJetBoosterRuntimeFixture,
     createDirectLaserInsulatorRuntimeFixture,
+    createMultiAttachmentLaserFixture,
     createDirectLegAesRuntimeFixture,
     createDirectLegDamageFloorRuntimeFixture,
     createDirectMekRuntimeFixture,
@@ -1656,17 +1658,56 @@ describe('direct Mek entity/runtime projections', () => {
 
         expect(row().weapon?.heat).toBe(2);
         expect(row().weapon?.firingHeat).toBe(2);
+        const fire = () => fixture.instance.dispatch({ type: 'fire-weapons', selections: [{ weaponId: laser.id }] });
+        expect(fire().changed).toBeTrue();
+        expect(fixture.instance.snapshot().turn.weaponsHeat).toBe(2);
+        fixture.instance.dispatch({ type: 'end-turn', policy: 'automatic' });
         expect(fixture.instance.dispatch({
             type: 'set-component-status',
-
-
             componentId: insulator.id,
             status: 'disabled',
             target: 'committed',
         }).accepted).toBeTrue();
         expect(row().weapon?.heat).toBe(3);
         expect(row().weapon?.firingHeat).toBe(3);
+        expect(fire().changed).toBeTrue();
+        expect(fixture.instance.snapshot().turn.weaponsHeat).toBe(3);
     });
+
+    for (const ruleset of ['core-2026', 'total-warfare'] as const) {
+        it(`keeps two insulators and one pulse module independent through firing and force reload under ${ruleset}`, async () => {
+            const fixture = createMultiAttachmentLaserFixture(ruleset);
+            const laser = fixture.equipmentComponent('ISMediumLaser').id;
+            const module = fixture.equipmentComponent('Test RISC Laser Pulse Module').id;
+            const attached = fixture.instance.query().linkedSources(laser);
+            const insulators = attached.filter(id => id !== module);
+            expect(insulators.length).toBe(2);
+            let unit = fixture.instance;
+            const row = () => projectMekEquipmentPanel(fixture.entity, unit.getIndex(), ruleset,
+                unit.query(), emptyCBTEncounterSnapshot(), {}).components.find(component => component.componentId === laser)!;
+            expect(row().weapon?.heat).toBe(2);
+            expect(row().modifiers?.length).toBe(3);
+            expect(unit.dispatch({ type: 'set-component-mode', componentId: laser, mode: 'Pulse' }).changed).toBeTrue();
+            expect(unit.dispatch({ type: 'set-component-status', componentId: insulators[0], status: 'destroyed', target: 'committed' }).changed).toBeTrue();
+            unit = await restoreMekUnit(unit.serialize(), fixture.entity, fixture.identity, {
+                profileId: 'pristine', deployment: { id: 'default' }, scenario: { id: 'megamek', ruleset },
+            });
+            expect(unit.query().linkedSources(laser)).toEqual(attached);
+            expect(unit.query().componentStatus(insulators[0])).toBe('destroyed');
+            expect(unit.query().componentMode(laser)).toBe('Pulse');
+            expect(row().weapon?.effectiveWeaponTypes).toContain('P');
+            expect(row().weapon?.firingHeat).toBe(4);
+            expect(row().heatWeakened).toBeFalse();
+            expect(unit.dispatch({ type: 'fire-weapons', selections: [{ weaponId: laser }] }).changed).toBeTrue();
+            expect(unit.snapshot().turn.weaponsHeat).toBe(4);
+            expect(unit.dispatch({ type: 'set-component-status', componentId: insulators[1], status: 'disabled', target: 'committed' }).changed).toBeTrue();
+            expect(row().heatWeakened).toBeTrue();
+            expect(row().weapon?.firingHeat).toBe(5);
+            expect(unit.dispatch({ type: 'set-component-status', componentId: module, status: 'disabled', target: 'committed' }).changed).toBeTrue();
+            expect(row().weapon?.firingHeat).toBe(3);
+            expect(row().weapon?.effectiveWeaponTypes).not.toContain('P');
+        });
+    }
 
     it('applies Total Warfare semi-guided target movement through the direct V2 projection', () => {
         const fixture = createDirectMekRuntimeFixture('total-warfare');

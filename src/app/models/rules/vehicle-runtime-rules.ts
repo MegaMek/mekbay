@@ -87,11 +87,12 @@ export interface VehicleRuntimeRulesProjection {
 }
 
 /**
- * TW p. 149 excludes VTOLs and WiGEs from charging. Core supersedes the charge damage but does not address them,
- * so the limit holds under both rulesets. Aerospace is a separate entity family.
+ * TW p. 148 excludes VTOLs, WiGEs and airships from charging (fixed-wing support vehicles are aerospace), and a trailer
+ * cannot move under its own power to charge (TW p. 205). Core supersedes the charge damage but does not address them,
+ * so the limits hold under both rulesets.
  */
 export function vehicleHasChargeAttack(entity: VehicleEntity): boolean {
-    return !['VTOL', 'WiGE'].includes(entity.motiveType());
+    return !['VTOL', 'WiGE', 'Airship'].includes(entity.motiveType()) && !entity.effectiveIsTrailer();
 }
 
 export function projectVehicleRuntimeRules(

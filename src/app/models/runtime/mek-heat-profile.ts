@@ -5,9 +5,10 @@ import { compareText } from '../../utils/string.util';
 import { isRecord } from '../../utils/json-value.util';
 import {
     heatSinkDissipationRate,
+    isPrototypeDoubleHeatSinkEquipment,
     unsupportedMekHeatFlag,
 } from '../heat-equipment.model';
-import { isHeatDissipatingArmor } from '../construction-equipment.model';
+import { conflictingMekHeatSinkTypes } from '../entity/types/heat-sink';
 import { isLaserInsulatorEquipment } from '../laser-insulator.model';
 import { bombastLaserModes, isBombastLaserEquipment } from '../bombast-laser-mode.model';
 import type { CBTRuleset } from '../cbt-ruleset.model';
@@ -43,6 +44,8 @@ import {
     isPartialWingEquipment,
     isSuperCooledMyomerEquipment,
     jumpJetKind,
+    type JumpJetKind,
+    wholeJumpJetMp,
 } from '../jump-equipment.model';
 import {
     equipmentForComponent,
@@ -56,7 +59,7 @@ import {
 import { isMobileHpgEquipment } from '../aerospace-support-equipment.model';
 import { readBoundOptionalRules, type BoundOptionalRules } from './bound-optional-rules';
 
-export const MEK_HEAT_PROFILE_SCHEMA_VERSION = 3 as const;
+export const MEK_HEAT_PROFILE_SCHEMA_VERSION = 4 as const;
 
 export interface MekHeatSinkGroup {
     /** One installed mount. Multi-slot sinks therefore lose cooling only once. */
@@ -64,9 +67,9 @@ export interface MekHeatSinkGroup {
     readonly allocation: 'engine' | 'external';
     readonly units: number;
     readonly dissipationPerUnit: 1 | 2;
-    readonly dissipation: number;
     readonly criticalSlotIds: readonly CriticalSlotId[];
     readonly legMounted: boolean;
+    readonly prototype: boolean;
 }
 
 export interface MekHeatSystemGroup {
@@ -94,17 +97,12 @@ export interface MekEngineHeatProfile {
     }>;
 }
 
-export type MekJumpHeatKind =
-    | 'none'
-    | 'standard'
-    | 'improved'
-    | 'prototype-improved';
+export type MekJumpHeatKind = 'none' | JumpJetKind;
 
 export interface MekJumpHeatProfile {
     readonly installedMp: number;
     readonly kind: MekJumpHeatKind;
-    /** Conventional jump jets only. */
-    readonly componentIds: readonly ComponentId[];
+    readonly jets: readonly { readonly componentId: ComponentId; readonly mpContribution: number }[];
     /** Entity-authored alternate jump systems whose use generates no heat. */
     readonly boosterComponentIds: readonly ComponentId[];
     readonly criticalSlotIds: readonly CriticalSlotId[];
@@ -113,7 +111,6 @@ export interface MekJumpHeatProfile {
 export interface MekSuperCooledMyomerHeatProfile {
     readonly componentIds: readonly ComponentId[];
     readonly criticalSlotIds: readonly CriticalSlotId[];
-    readonly dissipationLossPerCriticalHit: 0 | 1 | 2;
 }
 
 export interface MekPartialWingHeatProfile {
@@ -186,9 +183,7 @@ export interface MekHeatProfile {
     /** Total Warfare adds one heat for every stand-up attempt; Core does not. */
     readonly heatPerStandAttempt: 0 | 1;
     readonly declaredHeatSinkUnits: number;
-    readonly baseDissipation: number;
-    /** V1 turns off anonymous sink pips at the engine sink rate. */
-    readonly dissipationPerDisabledSink: 0 | 1 | 2;
+    readonly bulkHeatSinkUnits: number;
     readonly heatSinks: readonly MekHeatSinkGroup[];
     readonly engine: MekEngineHeatProfile;
     readonly jump: MekJumpHeatProfile;
@@ -202,7 +197,7 @@ export type MekHeatProfileBlockerCode =
     | 'INVALID_DECLARED_HEAT_SINK_COUNT'
     | 'INVALID_HEAT_SINK_GROUP'
     | 'HEAT_SINK_COUNT_MISMATCH'
-    | 'MIXED_HEAT_SINK_DISSIPATION'
+    | 'MIXED_HEAT_SINK_TYPES'
     | 'EXTERNAL_HEAT_SINK_WITHOUT_CRITICALS'
     | 'ENGINE_SYSTEM_MISSING'
     | 'ENGINE_SYSTEM_WITHOUT_CRITICALS'
@@ -218,8 +213,7 @@ export type MekHeatProfileBlockerCode =
     | 'UNSUPPORTED_WEAPON_INTERACTION'
     | 'UNSUPPORTED_PPC_CAPACITOR_RELATION'
     | 'UNSUPPORTED_HEAT_AFFECTING_FLAG'
-    | 'UNSUPPORTED_HEAT_AFFECTING_RELATION'
-    | 'UNSUPPORTED_HEAT_AFFECTING_CONSTRUCTION';
+    | 'UNSUPPORTED_HEAT_AFFECTING_RELATION';
 
 export interface MekHeatProfileBlocker {
     readonly code: MekHeatProfileBlockerCode;
@@ -268,26 +262,22 @@ export function compileMekHeatProfile(
     const engine = compileEngine(entity, index, slotsByComponent, blockers);
     const jump = compileJump(entity, index, slotsByComponent, blockers);
     const declaredHeatSinkUnits = entity.totalHeatSinks();
-    const rates = new Set(heatSinks.map(group => group.dissipationPerUnit));
-    const disabledRate: 0 | 1 | 2 | undefined = rates.size === 1
-        ? [...rates][0]
-        : rates.size === 0 && declaredHeatSinkUnits === 0 ? 0 : undefined;
-    if (rates.size > 1) blockers.push(profileBlocker(
-        'MIXED_HEAT_SINK_DISSIPATION',
-        [...rates].sort().join('/'),
+    const bulkHeatSinkUnits = entity.bulkHeatSinkCount();
+    const conflictingTypes = conflictingMekHeatSinkTypes(entity.equipment().map(mount => mount.equipment));
+    if (conflictingTypes.length) blockers.push(profileBlocker(
+        'MIXED_HEAT_SINK_TYPES',
+        conflictingTypes.join('/'),
         heatSinks.map(group => group.componentId),
-        'The bounded heat profile cannot turn off anonymous pips across mixed sink dissipation rates',
+        `Incompatible heat-sink types: ${conflictingTypes.join(', ')}`,
     ));
 
     const superCooledMyomer = compileSuperCooledMyomer(
         index,
         slotsByComponent,
-        disabledRate ?? 1,
         blockers,
     );
     const partialWing = compilePartialWing(entity, index, slotsByComponent, blockers);
     const providers = compileHeatProviders(entity, index, ruleset, blockers);
-    classifyUnsupportedConstruction(index, blockers);
     classifyUnsupportedEquipmentHeat(index, blockers);
 
     const installedHeatSinkUnits = heatSinks.reduce((total, group) => total + group.units, 0);
@@ -306,13 +296,12 @@ export function compileMekHeatProfile(
         `Installed heat-sink units ${installedHeatSinkUnits} do not match declared count ${declaredHeatSinkUnits}`,
     ));
 
-    if (blockers.length > 0 || disabledRate === undefined) return unsupported(blockers);
+    if (blockers.length > 0) return unsupported(blockers);
     const profile: MekHeatProfile = Object.freeze({
         schemaVersion: MEK_HEAT_PROFILE_SCHEMA_VERSION,
         heatPerStandAttempt: ruleset === 'total-warfare' ? 1 : 0,
         declaredHeatSinkUnits,
-        baseDissipation: heatSinks.reduce((total, group) => total + group.dissipation, 0),
-        dissipationPerDisabledSink: disabledRate,
+        bulkHeatSinkUnits,
         heatSinks: Object.freeze(heatSinks),
         engine,
         jump,
@@ -404,12 +393,12 @@ function compileHeatSinks(
             allocation,
             units,
             dissipationPerUnit,
-            dissipation: units * dissipationPerUnit,
             criticalSlotIds,
             legMounted,
+            prototype: isPrototypeDoubleHeatSinkEquipment(equipment),
         }));
     }
-    return groups;
+    return groups.sort((left, right) => Number(left.legMounted) - Number(right.legMounted));
 }
 
 function compileEngine(
@@ -480,7 +469,7 @@ function compileJump(
     blockers: MekHeatProfileBlocker[],
 ): MekJumpHeatProfile {
     const kinds = new Set<Exclude<MekJumpHeatKind, 'none'>>();
-    const componentIds: ComponentId[] = [];
+    const jets: MekJumpHeatProfile['jets'][number][] = [];
     const boosterComponentIds: ComponentId[] = [];
     const criticalSlotIds: CriticalSlotId[] = [];
     for (const [componentId, component] of sortedComponents(index)) {
@@ -508,7 +497,7 @@ function compileJump(
             `Jump system ${equipment.id} has contradictory subtype flags`,
         ));
         else kinds.add(kind);
-        componentIds.push(componentId);
+        jets.push(Object.freeze({ componentId, mpContribution: entity.jumpJetMpContribution(component.mount) }));
         const slots = slotsByComponent.get(componentId) ?? Object.freeze([]);
         criticalSlotIds.push(...slots);
         if (slots.length === 0) blockers.push(profileBlocker(
@@ -518,6 +507,7 @@ function compileJump(
             `Jump system ${equipment.id} has no immutable critical-slot topology`,
         ));
     }
+    const componentIds = jets.map(jet => jet.componentId);
     const conventionalMp = entity.computeJumpMP({
         ...STANDARD_MOVEMENT_CALCULATION,
         ignoreModularArmor: true,
@@ -535,7 +525,7 @@ function compileJump(
         [],
         `Conventional jump MP ${conventionalMp} has no supported jump-jet component`,
     ));
-    if (conventionalMp === 0 && componentIds.length > 0) blockers.push(profileBlocker(
+    if (conventionalMp === 0 && wholeJumpJetMp(jets) > 0) blockers.push(profileBlocker(
         'JUMP_SYSTEM_WITHOUT_JUMP_MP',
         String(componentIds.length),
         componentIds,
@@ -564,7 +554,7 @@ function compileJump(
     return Object.freeze({
         installedMp,
         kind: componentIds.length === 0 || kinds.size !== 1 ? 'none' : [...kinds][0]!,
-        componentIds: Object.freeze(componentIds),
+        jets: Object.freeze(jets),
         boosterComponentIds: Object.freeze(boosterComponentIds),
         criticalSlotIds: freezeSortedUnique(criticalSlotIds),
     });
@@ -573,7 +563,6 @@ function compileJump(
 function compileSuperCooledMyomer(
     index: MekRuntimeIndex,
     slotsByComponent: ReadonlyMap<ComponentId, readonly CriticalSlotId[]>,
-    dissipationLossPerCriticalHit: 0 | 1 | 2,
     blockers: MekHeatProfileBlocker[],
 ): MekSuperCooledMyomerHeatProfile {
     const componentIds: ComponentId[] = [];
@@ -594,7 +583,6 @@ function compileSuperCooledMyomer(
     return Object.freeze({
         componentIds: Object.freeze(componentIds),
         criticalSlotIds: freezeSortedUnique(criticalSlotIds),
-        dissipationLossPerCriticalHit,
     });
 }
 
@@ -636,12 +624,10 @@ function compileHeatProviders(
     blockers: MekHeatProfileBlocker[],
 ): MekHeatProvider[] {
     const providers: MekHeatProvider[] = [];
-    const exactPpcRelations = new Set<string>();
-    const exactLaserInsulatorRelations = new Set<string>();
-    const exactRiscLaserRelations = new Set<string>();
+    const linkedCapacitors = new Set<ComponentId>();
     for (const [sourceId, targetId] of index.relationships.linkedTargetBySource) {
         if (isPpcCapacitorPair(entity, index, sourceId, targetId)) {
-            exactPpcRelations.add(relationKey(sourceId, targetId));
+            linkedCapacitors.add(sourceId);
             providers.push(Object.freeze({
                 kind: 'ppc-capacitor',
                 componentId: sourceId,
@@ -649,11 +635,9 @@ function compileHeatProviders(
                 heatWhileChargingOrCharged: 5,
                 firingHeatBonusWhenCharged: 5,
             }));
-        } else if (isMekRiscLaserPulsePair(index, sourceId, targetId)) {
-            exactRiscLaserRelations.add(relationKey(sourceId, targetId));
-        } else if (isMekLaserInsulatorPair(index, sourceId, targetId)) {
-            exactLaserInsulatorRelations.add(relationKey(sourceId, targetId));
-        } else if (relationTouchesHeatModifier(index, sourceId, targetId)) {
+        } else if (relationTouchesHeatModifier(index, sourceId, targetId)
+            && !isMekRiscLaserPulsePair(index, sourceId, targetId)
+            && !isMekLaserInsulatorPair(index, sourceId, targetId)) {
             blockers.push(profileBlocker(
                 'UNSUPPORTED_HEAT_AFFECTING_RELATION',
                 `linked:${sourceId}->${targetId}`,
@@ -694,7 +678,7 @@ function compileHeatProviders(
         providers.push(...escalatingFailureHeatProviders(equipment, componentId));
         if (equipment && isPpcCapacitorEquipment(equipment)) {
             const targetId = index.relationships.linkedTargetBySource.get(componentId);
-            if (!targetId || !exactPpcRelations.has(relationKey(componentId, targetId))) blockers.push(profileBlocker(
+            if (!linkedCapacitors.has(componentId)) blockers.push(profileBlocker(
                 'UNSUPPORTED_PPC_CAPACITOR_RELATION',
                 equipment.id,
                 targetId ? [componentId, targetId] : [componentId],
@@ -711,27 +695,6 @@ function compileHeatProviders(
             ));
             continue;
         }
-        const heatAffectingRelations = [...index.relationships.linkedTargetBySource]
-            .filter(([sourceId, targetId]) => {
-                if (sourceId !== componentId && targetId !== componentId) return false;
-                const source = equipmentForComponent(index, sourceId);
-                return isPpcCapacitorEquipment(source)
-                    || isRiscLaserPulseEnhancement(source)
-                    || isLaserInsulatorEquipment(source);
-            });
-        const exactSupportedRelationsOnly = heatAffectingRelations.length === 0
-            || (heatAffectingRelations.length === 1
-                && (exactPpcRelations.has(relationKey(
-                    heatAffectingRelations[0]![0],
-                    heatAffectingRelations[0]![1],
-                )) || exactRiscLaserRelations.has(relationKey(
-                    heatAffectingRelations[0]![0],
-                    heatAffectingRelations[0]![1],
-                )) || exactLaserInsulatorRelations.has(relationKey(
-                    heatAffectingRelations[0]![0],
-                    heatAffectingRelations[0]![1],
-                )))
-                && heatAffectingRelations[0]![1] === componentId);
         const bayClaims = index.relationships.bays.filter(bay =>
             bay.controllerId === componentId || bay.memberIds.includes(componentId));
         const modes = mekComponentModes(entity, index, componentId, ruleset).modes;
@@ -739,7 +702,7 @@ function compileHeatProviders(
         const exactBombast = !isBombastLaserEquipment(equipment)
             || (modes.length === bombastModes.length
                 && modes.every((mode, position) => mode === bombastModes[position]));
-        const unsupported = bayClaims.length > 1 || !exactBombast || !exactSupportedRelationsOnly;
+        const unsupported = bayClaims.length > 1 || !exactBombast;
         if (unsupported) blockers.push(profileBlocker(
             'UNSUPPORTED_WEAPON_INTERACTION',
             equipment.id,
@@ -771,13 +734,9 @@ function classifyUnsupportedEquipmentHeat(
                 `Component ${equipment.id} uses unsupported heat-affecting flag ${unsupportedFlag}`,
             ));
         }
-        const linkedTargetId = index.relationships.linkedTargetBySource.get(componentId);
-        const supportedRiscLaserPulse = linkedTargetId !== undefined
-            && isMekRiscLaserPulsePair(index, componentId, linkedTargetId);
         if (equipment instanceof MiscEquipment && equipment.operatingHeat !== 0
             && unsupportedFlag === undefined
             && escalatingFailureHeatProviders(equipment, componentId).length === 0
-            && !supportedRiscLaserPulse
             && stealthSystemHeat(equipment) === null
             && !isNovaCewsEquipment(equipment)
             && !isMobileHpgEquipment(equipment)
@@ -798,27 +757,6 @@ function stealthSystemHeat(equipment: Equipment): 6 | 10 | null {
             && !isNullSignatureEquipment(equipment)
             && !isVoidSignatureEquipment(equipment))) return null;
     return isChameleonShieldEquipment(equipment) ? 6 : 10;
-}
-
-function classifyUnsupportedConstruction(
-    index: MekRuntimeIndex,
-    blockers: MekHeatProfileBlocker[],
-): void {
-    const materials = new Map<string, string>();
-    for (const location of index.locations.values()) {
-        const armorEquipment = location.armor.armor;
-        if (isHeatDissipatingArmor(armorEquipment)) {
-            materials.set(`${armorEquipment.id}:heat-dissipating`, 'heat-dissipating armor');
-        }
-    }
-    for (const [feature, flag] of [...materials].sort(([left], [right]) => compareText(left, right))) {
-        blockers.push(profileBlocker(
-            'UNSUPPORTED_HEAT_AFFECTING_CONSTRUCTION',
-            feature,
-            [],
-            `Armor construction uses unsupported heat-affecting rule ${flag}`,
-        ));
-    }
 }
 
 function relationTouchesHeatModifier(
@@ -918,8 +856,4 @@ function compareProviders(left: MekHeatProvider, right: MekHeatProvider): number
         || compareText(left.componentId, right.componentId)
         || compareText(left.kind === 'ppc-capacitor' ? left.weaponId : '',
             right.kind === 'ppc-capacitor' ? right.weaponId : '');
-}
-
-function relationKey(sourceId: ComponentId, targetId: ComponentId): string {
-    return `${sourceId}\0${targetId}`;
 }

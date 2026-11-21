@@ -473,6 +473,19 @@ describe('CBTForce real-phase rewind', () => {
 });
 
 describe('CBTForce construction refits', () => {
+    it('keeps the original force unit when a refit crosses the superheavy donor boundary', async () => {
+        const { force } = await readyCloneForce();
+        const member = force.getCBTMembers()[0];
+        const before = force.getUnitSnapshot(member.id)!;
+        const { draft, source, origins } = refitCopy(member.entity);
+        draft.setStructureAt('LA', draft.structureAt('LA').withTonnage(105));
+        const bytes = new TextEncoder().encode(encodeNativeEntity(draft)).buffer as ArrayBuffer;
+        await expectAsync(force.applyConstruction(member, { entity: draft, source: { ...source, bytes }, origins }))
+            .toBeRejectedWithError(/LA has a 105-ton donor/);
+        expect(force.getUnitSnapshot(member.id)!.entity).toBe(before.entity);
+        expect(force.getUnitSnapshot(member.id)!.state).toBe(before.state);
+    });
+
     it('refuses a requested design update while the unit is damaged', async () => {
         const { force } = await readyCloneForce();
         const member = force.getCBTMembers()[0];

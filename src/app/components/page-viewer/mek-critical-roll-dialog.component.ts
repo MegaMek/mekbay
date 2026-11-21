@@ -133,7 +133,8 @@ export class MekCriticalRollDialogComponent {
     });
     readonly initialExplosionProtection = this.profile().explosionProtection;
     readonly initialExplosionProtectionNote = this.profile().explosionProtectionNote;
-    readonly explosionProtectionLabel = this.initialExplosionProtection === 'case-ii' ? '[CASE II]' : '[CASE]';
+    readonly explosionProtectionLabel = this.initialExplosionProtection === 'case-ii' ? '[CASE II]'
+        : this.initialExplosionProtection === 'case-p' ? '[CASE-P]' : '[CASE]';
 
     roll(): void {
         if (this.complete()) {

@@ -20,7 +20,9 @@ import {
   isJumpJetEquipment,
   isPartialWingEquipment,
   jumpJetKind,
+  standardJumpJetTonnage,
   partialWingJumpBonus,
+  wholeJumpJetMp,
 } from '../../../jump-equipment.model';
 import {
   isStandardTripleStrengthMyomerEquipment,
@@ -84,10 +86,12 @@ import {
   MEK_INTERNAL_STRUCTURE,
   MEK_REAR_ARMOR_LOCATIONS,
   MEK_SLOTS_PER_LOCATION,
+  MEK_WEIGHT_LIMITS,
   MekConfig,
   MekLocation,
   MekSystemType,
   resolveArmorEquipment,
+  resolveWeightClass,
   TechRatingSource,
 } from '../../types';
 import {
@@ -96,6 +100,7 @@ import {
   crewPositionCountForCockpitCrewType,
 } from '../../components/cockpit-data';
 import { buildMekIntrinsicActions } from '../../utils/mek-intrinsic-actions';
+import { mtfCriticalSectionOrder } from '../../parsers/mtf-codec';
 
 // ============================================================================
 // MekEntity - abstract base for all Mek-type entities
@@ -104,12 +109,6 @@ import { buildMekIntrinsicActions } from '../../utils/mek-intrinsic-actions';
 export interface MekStructureDonor {
   readonly name: string;
   readonly unitType: string | null;
-}
-
-function jumpJetTonnage(unitTonnage: number): number {
-  if (unitTonnage <= 55) return 0.5;
-  if (unitTonnage <= 85) return 1;
-  return 2;
 }
 
 const MEK_COCKPIT_FEATURES: Readonly<Partial<Record<CockpitType, EntityFeature>>> = {
@@ -133,6 +132,23 @@ const MEK_GYRO_FEATURES: Readonly<Partial<Record<GyroType, EntityFeature>>> = {
 /** Equipment fitted without a mount or critical slot; the record sheet still lists both in its inventory. */
 export const FULL_HEAD_EJECTION_SYSTEM: EntityFeature = 'Full Head Ejection System';
 export const RISC_HEAT_SINK_OVERRIDE_KIT: EntityFeature = 'RISC Heat Sink Override Kit';
+
+/**
+ * MTF rows name equipment but not the mount they belong to, and MekFileParser and MegaMek's MtfFile both give a row to
+ * a split weapon still waiting for slots. So within a location a split weapon's part goes before the other blocks of
+ * its weapon when its other part is read first, and after them when it is read later.
+ */
+function orderSplitPartsForReading(local: EntityMountedEquipment[], location: string, readOrder: readonly string[]): void {
+  const role = (mount: EntityMountedEquipment) => {
+    const other = mount.getOccupiedLocations().find(candidate => candidate !== location);
+    return other === undefined ? 1 : readOrder.indexOf(other) < readOrder.indexOf(location) ? 0 : 2;
+  };
+  for (const equipmentId of new Set(local.filter(mount => role(mount) !== 1).map(mount => mount.equipmentId))) {
+    const indexes = local.flatMap((mount, index) => mount.equipmentId === equipmentId ? [index] : []);
+    const ordered = indexes.map(index => local[index]).sort((a, b) => role(a) - role(b));
+    indexes.forEach((index, position) => { local[index] = ordered[position]; });
+  }
+}
 
 export abstract class MekEntity extends BaseEntity {
   abstract override get locationOrder(): readonly MekLocation[];
@@ -223,6 +239,12 @@ export abstract class MekEntity extends BaseEntity {
   hasFullHeadEjectionSystem = signal(false);
   hasRiscHeatSinkOverrideKit = signal(false);
   private readonly structureDonors = signal<ReadonlyMap<MekLocation, MekStructureDonor>>(new Map());
+  /**
+   * The structure rows each location's material occupied as loaded, with that material: a loader's record, never the
+   * editor's allocations. An editor restoring its own history keeps the record of the design it opened.
+   */
+  readonly loadedStructureRows =
+    signal<ReadonlyMap<MekLocation, { readonly material: MountedStructure; readonly rows: number }>>(new Map());
   private readonly explicitHybridStructure = signal(false);
 
   /**
@@ -240,6 +262,12 @@ export abstract class MekEntity extends BaseEntity {
   heatSinkType = computed<HeatSinkType>(() => getMekHeatSinkType(this.heatSinkEquipment()));
   /** Total installed heat sinks, including engine-integrated mounts. */
   totalHeatSinks = computed<number>(() => this.heatSinkCount());
+  /** On mixed designs the bulk switch controls singles, with prototype doubles switched at their own mounts. */
+  bulkHeatSinkCount = computed(() => {
+    const prototypes = this.equipment().filter(mount => isPrototypeDoubleHeatSinkEquipment(mount.equipment)).length;
+    const total = this.totalHeatSinks();
+    return total === prototypes ? total : total - prototypes;
+  });
 
   // NOTE: No `criticalSlots` signal!  The crit grid is DERIVED - see
   // `criticalSlotGrid` computed below.  Equipment `placements` on each
@@ -249,12 +277,37 @@ export abstract class MekEntity extends BaseEntity {
   //  COMPUTED - derived from signals
   // ═══════════════════════════════════════════════════════════════════════════
 
-  isSuperHeavy = computed(() => this.tonnage() > 100);
+  isSuperHeavy = computed(() => this.weightClass() === 'Super Heavy');
 
   /** FrankenMek construction may start with identical donor materials and tonnages. */
   readonly hasHybridStructure = computed(() => this.explicitHybridStructure() || this.uniformStructure() === null);
   /** Material-only heterogeneity used by MTF's `structure:Hybrid` marker. */
   readonly hasMixedStructureMaterials = computed(() => this.uniformStructureMaterial() === null);
+
+  /**
+   * The center torso sets the chassis tonnage (CO p. 213). A superheavy 'Mech may use only superheavy structure, made for
+   * 105 to 200 tons, so superheavy and ordinary donors can't be mixed (IO:AE p. 155).
+   */
+  frankenMekDonorSizeIssue(location: string, tonnage: number): EntityValidationMessage | undefined {
+    const donorIsSuperHeavy = resolveWeightClass(tonnage, MEK_WEIGHT_LIMITS) === 'Super Heavy';
+    if (location === 'CT' || donorIsSuperHeavy === this.isSuperHeavy()) return;
+    const required = this.isSuperHeavy() ? 'a superheavy donor (over 100 tons)' : 'a donor of 100 tons or less';
+    return {
+      severity: 'error', category: 'structure', code: 'FRANKEN_SUPERHEAVY_DONOR', location,
+      message: `${location} has a ${tonnage}-ton donor. The ${this.tonnage()}-ton center torso requires ${required}.`,
+    };
+  }
+
+  readonly frankenMekDonorSizeIssues = computed(() => {
+    const issues: EntityValidationMessage[] = [];
+    if (this.hasHybridStructure()) {
+      for (const [location, structure] of this.structureByLocation()) {
+        const issue = this.frankenMekDonorSizeIssue(location, structure.tonnage);
+        if (issue) issues.push(issue);
+      }
+    }
+    return issues;
+  });
 
   /** Native donor provenance, material and mass all participate in leg matching. */
   readonly hasMismatchedFrankenMekLegs = computed(() => {
@@ -354,7 +407,39 @@ export abstract class MekEntity extends BaseEntity {
     return this.structureDonors().get(location) ?? null;
   }
 
+  /** A loader records the rows each location's own structure occupies as the design's authored rows. */
+  retainLoadedStructureRows(): void {
+    const rows = new Map<MekLocation, { readonly material: MountedStructure; readonly rows: number }>();
+    for (const location of this.locationOrder) {
+      const material = this.structureAt(location);
+      const count = this.equipment().filter(mount => mount.equipment?.id === material.structure.id)
+        .reduce((sum, mount) => sum + (mount.placements?.filter(placement => placement.location === location).length ?? 0), 0);
+      if (count > 0) rows.set(location, { material, rows: count });
+    }
+    this.loadedStructureRows.set(rows);
+  }
+
+  /**
+   * The structure rows a FrankenMek location's donor design carries (CO p. 213): its rows as loaded while it keeps the
+   * loaded material, else 0, for the Internal Structure Distribution Table (CO p. 212) to supply.
+   */
+  donorStructureRowsAt(location: MekLocation): number {
+    const loaded = this.loadedStructureRows().get(location);
+    return loaded?.material.hasSameMaterialAs(this.structureAt(location)) ? loaded.rows : 0;
+  }
+
   protected override onTonnageChanged(tonnage: number): void {
+    if (this.structureByLocation().has('CT') && this.hasHybridStructure()) {
+      // As in MegaMekLab, a location without a donor built at the old chassis weight follows the chassis; donors keep theirs.
+      const chassis = this.structureAt('CT').tonnage;
+      for (const location of this.locationOrder) {
+        const structure = this.structureAt(location);
+        if (location === 'CT' || (structure.tonnage === chassis && !this.structureDonorAt(location))) {
+          this.setStructureAt(location, structure.withTonnage(tonnage));
+        }
+      }
+      return;
+    }
     const previous = this.structureByLocation();
     super.onTonnageChanged(tonnage);
     this.structureDonors.update(current => new Map(
@@ -636,27 +721,25 @@ export abstract class MekEntity extends BaseEntity {
     return this.hasMPReducingHardenedArmor() ? Math.max(0, runMP - 1) : runMP;
   }
 
+  jumpJetMpContribution(mount: EntityMountedEquipment): number {
+    if (!this.hasHybridStructure()) return 1;
+    const chassisTonnage = this.tonnage();
+    if (chassisTonnage <= 0) return 0;
+    if (mount.equipment?.hasFixedTonnage()) return 1;
+    const donorTonnage = Math.min(this.structureAt(mount.location).tonnage, chassisTonnage);
+    return standardJumpJetTonnage(donorTonnage) / standardJumpJetTonnage(chassisTonnage);
+  }
+
   readonly installedJumpJetMP = computed(() => {
     const jumpJets = this.equipment().filter(mount => isJumpJetEquipment(mount.equipment));
     if (!this.hasHybridStructure()) return jumpJets.length;
-
-    const chassisTonnage = this.tonnage();
-    if (chassisTonnage <= 0) return 0;
-
-    const movement = jumpJets.reduce((total, mount) => {
-      if (mount.equipment?.hasFixedTonnage()) return total + 1;
-      const locationTonnage = Math.min(
-        this.structureAt(mount.location).tonnage,
-        chassisTonnage,
-      );
-      return total + jumpJetTonnage(locationTonnage) / jumpJetTonnage(chassisTonnage);
-    }, 0);
+    const movement = wholeJumpJetMp(jumpJets.map(mount => ({ mpContribution: this.jumpJetMpContribution(mount) })));
     const kind = jumpJetKind(jumpJets[0]?.equipment);
     const improved = kind === 'improved' || kind === 'prototype-improved';
     const movementCap = improved
       ? Math.ceil(this.originalWalkMP() * 1.5)
       : this.originalWalkMP();
-    return Math.min(Math.floor(movement), movementCap);
+    return Math.min(movement, movementCap);
   });
 
   /** Whether this Mek uses the Land-Air Mek BV movement exception. */
@@ -837,17 +920,19 @@ export abstract class MekEntity extends BaseEntity {
       grid.set(loc, slots);
     }
 
-    // Overlay equipment placements. Superheavy Meks may share a physical slot
-    // between two canonical mounts (ammunition and eligible heat-sink loads).
+    // Retain every claimed placement, including invalid overlaps, so opening and saving a design is lossless.
     for (const mount of this.equipment()) {
       if (!mount.placements) continue;
       for (const p of mount.placements) {
         const slots = isMekLocation(p.location) ? grid.get(p.location) : undefined;
         if (slots && p.slotIndex >= 0 && p.slotIndex < MEK_SLOTS_PER_LOCATION) {
           const existing = slots[p.slotIndex];
-          slots[p.slotIndex] = existing.type === 'equipment'
-            ? this.appendEquipmentToCriticalSlot(p.location, existing, mount) ?? this.equipmentCriticalSlot(mount)
-            : this.equipmentCriticalSlot(mount);
+          slots[p.slotIndex] = {
+            type: 'equipment',
+            mounts: existing.type === 'equipment' ? [...existing.mounts, mount] : [mount],
+            armored: mount.armored || (existing.type === 'equipment' && existing.armored),
+            omniPod: mount.omniPodMounted || (existing.type === 'equipment' && existing.omniPod),
+          };
         }
       }
     }
@@ -857,9 +942,11 @@ export abstract class MekEntity extends BaseEntity {
 
   /** Pack logical equipment blocks upwards, preserving the fixed system template.
    * The optional order changes only this location, including its part of a split mount.
-   * Returns a plan so construction can preview exactly the same layout it commits.
+   * Returns a plan so construction can preview exactly the same layout it commits. With `overflow`, a block that no
+   * longer fits is collected there instead of failing the plan.
    */
-  planEquipmentOrder(location: string, order?: readonly string[], mounts: readonly EntityMountedEquipment[] = this.equipment()): Map<string, readonly MountPlacement[]> {
+  planEquipmentOrder(location: string, order?: readonly string[], mounts: readonly EntityMountedEquipment[] = this.equipment(),
+    overflow?: EntityMountedEquipment[]): Map<string, readonly MountPlacement[]> {
     const capacity = this.criticalSlotCapacity(location);
     const systems = this.getSystemSlotsForLocation(location);
     let free = Array.from({ length: capacity }, (_, index) => index).filter(index => systems[index]?.type !== 'system');
@@ -867,6 +954,7 @@ export abstract class MekEntity extends BaseEntity {
       .sort((a, b) => Math.min(...a.placements!.filter(p => p.location === location).map(p => p.slotIndex))
         - Math.min(...b.placements!.filter(p => p.location === location).map(p => p.slotIndex)));
     if (order) local.sort((a, b) => order.indexOf(a.mountId) - order.indexOf(b.mountId));
+    orderSplitPartsForReading(local, location, mtfCriticalSectionOrder(this));
     const result = new Map<string, readonly MountPlacement[]>();
     // Superheavy loads that share a slot in `mounts` move as one block.
     const shared = new Map<string, number[]>();
@@ -878,16 +966,22 @@ export abstract class MekEntity extends BaseEntity {
       const shareable = previous.length === 1 && local.some(other => other !== mount
         && localSlots(other).join(',') === key && this.canShareCriticalSlot(location, other, mount));
       const slots = (shareable ? shared.get(key) : undefined) ?? firstCriticalSlots(free, previous.length, mount.equipment?.isSpreadable);
-      if (slots.length !== previous.length) throw new Error(`${mount.displayName(true)} needs ${previous.length} contiguous critical slots in ${location}.`);
+      if (slots.length !== previous.length) {
+        if (!overflow) throw new Error(`${mount.displayName(true)} needs ${previous.length} contiguous critical slots in ${location}.`);
+        overflow.push(mount);
+        continue;
+      }
       if (shareable) shared.set(key, slots);
       free = free.filter(index => !slots.includes(index));
-      result.set(mount.mountId, [...mount.placements!.filter(p => p.location !== location), ...slots.map(slotIndex => ({ location, slotIndex }))]);
+      // The mount's other locations keep their place in its placement list.
+      let next = 0;
+      result.set(mount.mountId, mount.placements!.map(p => p.location === location ? { location, slotIndex: slots[next++] } : p));
     }
     return result;
   }
 
-  arrangeEquipment(location: string, order?: readonly string[]): void {
-    const plan = this.planEquipmentOrder(location, order);
+  arrangeEquipment(location: string, order?: readonly string[], overflow?: EntityMountedEquipment[]): void {
+    const plan = this.planEquipmentOrder(location, order, this.equipment(), overflow);
     this.updateEquipment(mounts => mounts.map(mount => {
       const placements = plan.get(mount.mountId);
       return placements && mount.allocation.kind === 'location'
@@ -917,7 +1011,13 @@ export abstract class MekEntity extends BaseEntity {
     return primitive ? Math.ceil(rating * 1.2 / 5) * 5 : rating;
   }
 
+  /** CO p. 213: the salvaged engine supplies whole Walking MP at the CT donor's tonnage. */
+  frankenMekWalkMP(tonnage = this.tonnage()): number {
+    return tonnage > 0 ? Math.floor(this.mountedEngine().rating / (tonnage * (this.mountedCockpit().isPrimitive ? 1.2 : 1))) : 0;
+  }
+
   protected override computeExpectedEngineRating(): number | null {
+    if (this.hasHybridStructure()) return null; // The retained rating need not be an exact multiple of the CT tonnage.
     return this.calculateEngineRating();
   }
 
@@ -963,14 +1063,9 @@ export abstract class MekEntity extends BaseEntity {
     }
 
     // Equipment placed on system slots (placement conflict)
-    const placementsBySlot = new Map<string, EntityMountedEquipment[]>();
     for (const mount of this.equipment()) {
       if (!mount.placements) continue;
       for (const p of mount.placements) {
-        const slotKey = `${p.location}:${p.slotIndex}`;
-        const mounts = placementsBySlot.get(slotKey) ?? [];
-        mounts.push(mount);
-        placementsBySlot.set(slotKey, mounts);
         const systemSlots = this.getSystemSlotsForLocation(p.location);
         if (p.slotIndex < systemSlots.length && systemSlots[p.slotIndex].type === 'system') {
           msgs.push({
@@ -982,26 +1077,23 @@ export abstract class MekEntity extends BaseEntity {
       }
     }
 
-    for (const [slotKey, mounts] of placementsBySlot) {
-      if (mounts.length < 2) continue;
-      let slot = this.equipmentCriticalSlot(mounts[0]);
-      for (const mount of mounts.slice(1)) {
-        const [location, index] = slotKey.split(':');
-        const sharedSlot = this.appendEquipmentToCriticalSlot(location, slot, mount);
-        if (sharedSlot) {
-          slot = sharedSlot;
-          continue;
-        }
-        msgs.push({
-          severity: 'error', category: 'crit', code: 'CRIT_SLOT_SHARING_INVALID',
-          message: `Critical slot ${Number(index) + 1} in ${location} cannot be shared by "${mounts.map(item => item.equipmentId).join('", "')}"`,
-          location,
+    return [...msgs, ...this.criticalSlotSharingIssues(), ...this.frankenMekDonorSizeIssues()];
+  });
+
+  readonly criticalSlotSharingIssues = computed(() => {
+    const issues: EntityValidationMessage[] = [];
+    for (const [location, slots] of this.criticalSlotGrid()) {
+      for (const [index, slot] of slots.entries()) {
+        if (slot.type !== 'equipment' || slot.mounts.length < 2) continue;
+        const [first, second] = slot.mounts;
+        if (slot.mounts.length === 2 && this.canShareCriticalSlot(location, first, second!)) continue;
+        issues.push({
+          severity: 'error', category: 'crit', code: 'CRIT_SLOT_SHARING_INVALID', location,
+          message: `Critical slot ${index + 1} in ${location} cannot be shared by "${slot.mounts.map(item => item.equipmentId).join('", "')}"`,
         });
-        break;
       }
     }
-
-    return msgs;
+    return issues;
   });
 
   // ═══════════════════════════════════════════════════════════════════════════
@@ -1024,7 +1116,7 @@ export abstract class MekEntity extends BaseEntity {
       }
       case 'CT': {
         const me = this.mountedEngine();
-        const layout = buildCTSystemLayout(me, this.gyroType());
+        const layout = buildCTSystemLayout(me, this.gyroType(), this.isSuperHeavy());
         // Torso-Mounted / VRRP cockpit adds Cockpit + Sensors to CT after engine/gyro
         if (this.mountedCockpit().hasTorsoSlots) {
           const firstEmpty = layout.indexOf(null);
@@ -1037,7 +1129,7 @@ export abstract class MekEntity extends BaseEntity {
       }
       case 'LT': case 'RT': {
         const me = this.mountedEngine();
-        const layout = buildSideTorsoSystemLayout(me);
+        const layout = buildSideTorsoSystemLayout(me, this.isSuperHeavy());
         // Torso-Mounted / VRRP cockpit adds Life Support at slot 0 of each side torso,
         // shifting engine slots down by 1. Matches Java's addTorsoMountedCockpit()
         // which explicitly does setCritical(LOC_*_TORSO, 0, LIFE_SUPPORT).
@@ -1063,56 +1155,25 @@ export abstract class MekEntity extends BaseEntity {
     }
   }
 
-  private equipmentCriticalSlot(
-    mount: EntityMountedEquipment,
-  ): Extract<CriticalSlotView, { type: 'equipment' }> {
-    return {
-      type: 'equipment', mounts: [mount],
-      armored: mount.armored,
-      omniPod: mount.omniPodMounted,
-    };
-  }
-
-  /** Whether `incoming` may join the slot `occupant` fills alone, as its second load. */
-  canShareCriticalSlot(
-    location: string,
-    occupant: EntityMountedEquipment,
-    incoming: EntityMountedEquipment,
-  ): boolean {
-    return this.appendEquipmentToCriticalSlot(location, this.equipmentCriticalSlot(occupant), incoming) !== null;
-  }
-
   /**
    * Superheavy torsos, arms and legs hold two slots' worth of ammunition or heat sinks per
    * slot (IO:AE pp. 155-157): two tons of ammunition for one weapon (munitions may differ),
    * two single heat sinks, or up to four compact heat sinks. Nothing else shares a slot.
    */
-  private appendEquipmentToCriticalSlot(
+  canShareCriticalSlot(
     location: string,
-    existing: Extract<CriticalSlotView, { type: 'equipment' }>,
+    occupant: EntityMountedEquipment,
     incoming: EntityMountedEquipment,
-  ): Extract<CriticalSlotView, { type: 'equipment' }> | null {
-    if (!this.isSuperHeavy() || location === 'HD' || existing.mounts.length >= 2
-      || existing.armored !== incoming.armored
-      || existing.omniPod !== incoming.omniPodMounted
-      || existing.mounts.some(mount => mount.mountId === incoming.mountId)) return null;
-
-    const incomingEquipment = incoming.equipment;
-    if (!incomingEquipment) return null;
-    if (incomingEquipment instanceof AmmoEquipment) {
-      if (!existing.mounts.every(mount => mount.equipment instanceof AmmoEquipment
-        && mount.equipment.ammoType === incomingEquipment.ammoType
-        && mount.equipment.rackSize === incomingEquipment.rackSize)) return null;
-    } else {
-      const kind = sharedSlotHeatSinkKind(incomingEquipment);
-      if (kind === null || !existing.mounts.every(mount => sharedSlotHeatSinkKind(mount.equipment) === kind)) return null;
+  ): boolean {
+    if (!this.isSuperHeavy() || location === 'HD' || occupant.mountId === incoming.mountId
+      || occupant.armored !== incoming.armored || occupant.omniPodMounted !== incoming.omniPodMounted) return false;
+    const a = occupant.equipment;
+    const b = incoming.equipment;
+    if (a instanceof AmmoEquipment && b instanceof AmmoEquipment) {
+      return a.ammoType === b.ammoType && a.rackSize === b.rackSize;
     }
-    const mounts = [...existing.mounts, incoming] as [EntityMountedEquipment, ...EntityMountedEquipment[]];
-    return {
-      type: 'equipment', mounts,
-      armored: mounts.some(mount => mount.armored),
-      omniPod: mounts.some(mount => mount.omniPodMounted),
-    };
+    const kind = sharedSlotHeatSinkKind(a);
+    return kind !== null && kind === sharedSlotHeatSinkKind(b);
   }
 
   private getArmSystemSlots(loc: string): CriticalSlotView[] {

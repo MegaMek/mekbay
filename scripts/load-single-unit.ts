@@ -183,11 +183,11 @@ function main(): void {
   );
   console.log(`  Implicit systems:  ${entity.implicitSystemEquipment().map(equipment => equipment.name).join(', ') || '<none>'}`);
   console.log(
-    `  Auto Clan CASE:    ${[...entity.automaticClanCaseLocations()]
+    `  Clan CASE (cost):  ${[...entity.automaticClanCaseLocations()]
       .map(location => formatEntityLocation(entity, location)).join(', ') || '<none>'}`,
   );
   console.log(
-    `  Implicit CASE cost: ${[...entity.implicitClanCaseLocations()]
+    `  Clan CASE (protects): ${[...entity.implicitClanCaseLocations()]
       .map(location => formatEntityLocation(entity, location)).join(', ') || '<none>'}`,
   );
 
@@ -239,7 +239,7 @@ function main(): void {
     const tonnage = mount.getTonnage(entity);
     const shots = mount.getAmmoShots();
     const linked = entity.getLinkedMount(mount)?.mountId;
-    const linking = entity.getLinkingMount(mount)?.mountId;
+    const linking = entity.getLinkingMounts(mount).map(source => source.mountId).join(',');
     const attributes = [
       `type=${mount.equipment?.type ?? '<unresolved>'}`,
       `location=${formatEntityLocation(entity, mount.location)}`,
@@ -256,7 +256,7 @@ function main(): void {
     console.log(`  ${mount.mountId}: ${mountedEquipmentLabel(mount)}`);
     console.log(`    ${attributes.join(' ')}`);
     console.log(`    cost=${cost === undefined ? '<variable/unresolved>' : formatDiagnosticNumber(cost)} BV=${formatDiagnosticNumber(bv)}`);
-    if (linked || linking) console.log(`    linked=${linked ?? '-'} linking=${linking ?? '-'}`);
+    if (linked || linking) console.log(`    linked=${linked ?? '-'} linking=${linking || '-'}`);
     if (entity instanceof MekEntity) {
       const placements = mount.placements?.map(placement =>
         `${placement.location}:${placement.slotIndex}`) ?? [mount.location];

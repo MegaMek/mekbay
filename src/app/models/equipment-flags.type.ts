@@ -296,6 +296,7 @@ export type EquipmentFlag =
     | "F_REMOTE_DRONE_COMMAND_CONSOLE"
     | "F_REPEATING"
     | "F_REUSABLE"
+    | "F_RISC_LASER_PULSE_COMPATIBLE"
     | "F_RISC_LASER_PULSE_MODULE"
     | "F_SALVAGE_ARM"
     | "F_SANTA_ANNA"

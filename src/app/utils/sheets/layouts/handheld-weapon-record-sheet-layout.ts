@@ -204,7 +204,7 @@ function drawHandheldInventory(group: SVGGElement, entity: BaseEntity, extra: nu
             const y = 43.389 + index * step;
             const lineCount = rowLines(name, entity.componentLocationLabel(row.location), damage, min, ranges, metrics.fontSize);
             // The entry row carries the to-hit badges and keeps their minimum height.
-            index += host === entry ? inventoryRowSpan(lineCount, step) : lineCount;
+            index += host === entry ? inventoryRowSpan(lineCount, step, metrics.badgeHeight) : lineCount;
             const buttons = inventoryRangeButtons(columns, value => value);
             appendInventoryRowButtons(host, y, 1, step, lineCount, buttons.band, buttons.ranges);
             addCell(host, name, xs[0], y, { class: 'name', size: RECORD_SHEET_FONT.inventory, maxWidth: nameWidth });

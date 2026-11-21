@@ -10,6 +10,7 @@ import type { CBTForce } from '../models/cbt-force.model';
 import type { CBTForceUnitCommandDispatch } from '../models/cbt-force.types';
 import { hasMekRuntime, type CBTUnitSnapshot } from '../models/cbt-unit-snapshot';
 import { createMekUnit } from '../models/runtime/cbt-mek-unit';
+import { type DamageSource } from '../models/rules/armor-damage-rules';
 import { riscOverrideKitMalfunction } from '../models/runtime/mek-automation-rules';
 
 import {
@@ -35,6 +36,8 @@ import { DialogsService } from './dialogs.service';
 import { SwarmService } from './swarm.service';
 import type { CBTForceMember } from '../models/force-member.model';
 import { attackDamagePreview } from '../models/runtime/attack-hit-location';
+import { MountedArmor } from '../models/entity/components/armor';
+import { ArmorEquipment } from '../models/equipment.model';
 
 describe('DirectMekAutomationService', () => {
     let resolveAutomation: jasmine.Spy;
@@ -121,7 +124,138 @@ describe('DirectMekAutomationService', () => {
     });
     }
 
+    it('rolls the prototype CASE vent check into the reviewed explosion (IO:AE p. 65)', async () => {
+        const instanceId = 'unit:automation:case-p';
+        const fixture = createDirectExplosionRuntimeFixture('total-warfare', { protection: 'prototype' }, instanceId);
+        const harness = createHarnessForFixture(fixture, 'total-warfare', instanceId);
+        const slot = [...fixture.index.slots.values()].find(candidate =>
+            candidate.componentIds.includes(fixture.equipmentComponent('Test Explosive Weapon').id))!;
+        // 1D6 = 1: the CASE fails to vent the explosion.
+        spyOn(Math, 'random').and.returnValue(0);
+
+        const prepared = await service.prepareCommand(harness.force, harness.instanceId, {
+            type: 'apply-mek-critical-roll', locationId: slot.locationId, target: 'committed',
+            results: slot.slotIndex < 6 ? [1, slot.slotIndex + 1] : [4, slot.slotIndex - 5],
+        });
+
+        expect(prepared.command).toEqual(jasmine.objectContaining({ prototypeCaseRoll: 1, applyExplosion: true }));
+        expect(prepared.criticalPlan?.kind === 'applied' && prepared.criticalPlan.explosion?.locations[0]?.protection)
+            .toBe('none');
+        expect(resolveAutomation.calls.mostRecent().args[1][0].description)
+            .toContain('CASE-P check: 1, it fails to vent the explosion.');
+    });
+
     const laser = { kind: 'weapon' as const, types: ['DE' as const] };
+    /** The outside heat the Heat Phase will apply. */
+    const appliedOutsideHeat = (harness: ReturnType<typeof createHarness>) => {
+        const result = harness.fixture.instance.query().heatProjection();
+        return result.kind === 'supported'
+            ? result.projection.committedSources.find(source => source.id === 'outside-heat')?.value ?? 0 : 0;
+    };
+
+    for (const ruleset of ['core-2026', 'total-warfare'] as const) {
+        it(`reads heat-dissipating armor as each hit strikes, past the attack's transferred damage, under ${ruleset}`, async () => {
+            const harness = createHarness(ruleset);
+            harness.fixture.entity.setUniformArmor(new MountedArmor({ armor: new ArmorEquipment({
+                id: 'Test HD armor', name: 'Heat-Dissipating', type: 'armor', armor: { type: 'HEAT_DISSIPATING' },
+            }) }));
+            const query = () => harness.fixture.instance.query();
+            const location = (code: string) => [...harness.fixture.index.locations.values()].find(row => row.code === code)!;
+            const front = (code: string) => location(code).armorFaceIds
+                .find(faceId => harness.fixture.index.armorFaces.get(faceId)!.face === 'front')!;
+            const plasma = { kind: 'weapon' as const, types: ['H' as const] };
+            const heat = { location: 'LT', rear: false, damage: 0, arc: 'front' as const, throughArmorCritical: false, source: plasma, outsideHeat: 5 };
+            // The arm is destroyed and its transferred damage strips the torso's front armor between the two heat hits.
+            const transfer = query().remainingArmor(front('LA'), 'preview') + query().remainingInternal(location('LA').id, 'preview')
+                + query().remainingArmor(front('LT'), 'preview');
+            spyOn(Math, 'random').and.returnValue(0);
+
+            expect(await service.applyWeaponHits(harness.force, harness.instanceId, [
+                heat,
+                { location: 'LA', rear: false, damage: transfer, arc: 'front', throughArmorCritical: false, source: laser },
+                heat,
+                { outsideHeat: 4 },
+            ], 'pending', harness.dispatch)).toBeTrue();
+
+            expect(query().remainingArmor(front('LT'), 'preview')).toBe(0);
+            // The first hit meets the torso's armor (Core p. 201): Core p. 202 negates it, TW (IO:AE p. 81) halves it. The
+            // second strikes the stripped torso whole. Heat without a location meets any heat-dissipating armor under
+            // Core, and needs every location's under TW.
+            expect(appliedOutsideHeat(harness)).toBe(ruleset === 'core-2026' ? 0 + 5 + 0 : 2 + 5 + 4);
+        });
+
+        it(`halves a flamer's heat on laser-reflective armor that still stands, under ${ruleset}`, async () => {
+            const harness = createHarness(ruleset);
+            harness.fixture.entity.setArmorAt('RT', new MountedArmor({ armor: new ArmorEquipment({
+                id: 'Test reflective armor', name: 'Laser Reflective', type: 'armor', armor: { type: 'REFLECTIVE' },
+            }) }));
+            const torso = [...harness.fixture.index.locations.values()].find(row => row.code === 'RT')!;
+            const face = torso.armorFaceIds.find(faceId => harness.fixture.index.armorFaces.get(faceId)!.face === 'front')!;
+            const flamer = { kind: 'weapon' as const, types: ['DE' as const, 'H' as const] };
+            const inferno = { kind: 'weapon' as const, types: ['M' as const, 'H' as const] };
+            const autocannon = { kind: 'weapon' as const, types: ['DB' as const] };
+            const heat = (source: DamageSource, outsideHeat: number, damage = 0) => ({ location: 'RT', rear: false,
+                damage, arc: 'front' as const, throughArmorCritical: false, source, outsideHeat });
+            spyOn(Math, 'random').and.returnValue(0);
+            // The flamer's 5 heat halves; an inferno is not a reflected weapon; once the armor is gone the flamer is whole.
+            expect(await service.applyWeaponHits(harness.force, harness.instanceId, [heat(flamer, 5), heat(inferno, 2),
+                heat(autocannon, 0, harness.fixture.instance.query().remainingArmor(face, 'preview')), heat(flamer, 3)],
+            'pending', harness.dispatch)).toBeTrue();
+            expect(appliedOutsideHeat(harness)).toBe(ruleset === 'core-2026' ? 5 + 2 + 3 : 2 + 2 + 3);
+        });
+
+        it(`reads heat without a location against the armor as it strikes, under ${ruleset}`, async () => {
+            // Under Core any heat-dissipating armor negates it, so only the right arm carries it; under TW every location
+            // must keep it. The armor counts as it is when the heat strikes (Core p. 201), so a laser stripping the right
+            // arm afterwards leaves the heat reduced.
+            const result = async (order: 'heat first' | 'laser first' | 'heat only') => {
+                const harness = createHarness(ruleset);
+                const heatDissipating = new MountedArmor({ armor: new ArmorEquipment({
+                    id: 'Test HD armor', name: 'Heat-Dissipating', type: 'armor', armor: { type: 'HEAT_DISSIPATING' },
+                }) });
+                if (ruleset === 'core-2026') harness.fixture.entity.setArmorAt('RA', heatDissipating);
+                else harness.fixture.entity.setUniformArmor(heatDissipating);
+                const arm = [...harness.fixture.index.locations.values()].find(row => row.code === 'RA')!;
+                const face = arm.armorFaceIds.find(faceId => harness.fixture.index.armorFaces.get(faceId)!.face === 'front')!;
+                const strip = { location: 'RA', rear: false, damage: harness.fixture.instance.query().remainingArmor(face, 'preview'),
+                    arc: 'front' as const, throughArmorCritical: false, source: laser };
+                const inferno = { outsideHeat: 4 };
+                expect(await service.applyWeaponHits(harness.force, harness.instanceId,
+                    order === 'heat first' ? [inferno, strip] : order === 'laser first' ? [strip, inferno] : [inferno],
+                    'pending', harness.dispatch)).toBeTrue();
+                return appliedOutsideHeat(harness);
+            };
+            spyOn(Math, 'random').and.returnValue(0);
+            expect(await result('heat only')).toBe(ruleset === 'core-2026' ? 0 : 2);
+            expect(await result('heat first')).toBe(ruleset === 'core-2026' ? 0 : 2);
+            expect(await result('laser first')).toBe(4);
+        });
+    }
+
+    for (const ruleset of ['core-2026', 'total-warfare'] as const) {
+        it(`reads heat-dissipating armor where a hit on a missing arm transfers, under ${ruleset}`, async () => {
+            // Core: damage to a missing arm transfers to the torso on the same side, against its armor.
+            const harness = createHarness(ruleset);
+            harness.fixture.entity.setUniformArmor(new MountedArmor({ armor: new ArmorEquipment({
+                id: 'Test HD armor', name: 'Heat-Dissipating', type: 'armor', armor: { type: 'HEAT_DISSIPATING' },
+            }) }));
+            const query = () => harness.fixture.instance.query();
+            const location = (code: string) => [...harness.fixture.index.locations.values()].find(row => row.code === code)!;
+            const front = location('RA').armorFaceIds.find(faceId => harness.fixture.index.armorFaces.get(faceId)!.face === 'front')!;
+            const durability = query().remainingArmor(front, 'preview') + query().remainingInternal(location('RA').id, 'preview');
+            spyOn(Math, 'random').and.returnValue(0);
+
+            expect(await service.applyWeaponHits(harness.force, harness.instanceId, [
+                { location: 'RA', rear: false, damage: durability, arc: 'front', throughArmorCritical: false, source: laser },
+                { location: 'RA', rear: false, damage: 0, arc: 'front', throughArmorCritical: false, source: laser, outsideHeat: 5 },
+            ], 'pending', harness.dispatch)).toBeTrue();
+
+            expect(query().locationStatus(location('RA').id, 'preview')).toBe('destroyed');
+            // The heat meets the right torso's front armor it transferred to.
+            expect(harness.fixture.instance.snapshot().pendingCombat.outsideHeat).toBe(ruleset === 'core-2026' ? undefined : 2);
+            expect(appliedOutsideHeat(harness)).toBe(ruleset === 'core-2026' ? 0 : 2);
+        });
+    }
 
     it('applies accepted weapon hits as pending damage, transferring inward and wounding on head hits', async () => {
         const harness = createHarness('total-warfare');

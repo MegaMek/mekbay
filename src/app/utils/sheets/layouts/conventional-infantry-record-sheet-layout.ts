@@ -29,7 +29,6 @@ import {
   addReferenceShade,
   addText,
   appendBattleValue,
-  appendLegacyIdentityAnchors,
   drawClusterHitsReference,
   drawElevationTracker,
   drawGeneratedFooter,
@@ -192,7 +191,6 @@ export class ConventionalInfantryRecordSheetLayout extends CompactRecordSheetLay
     });
     // VTOL infantry's Elevation tracker, beside its movement type under the trooper box, clear of the frame's corner.
     drawElevationTracker(group, entity, x(538), y(143), { width: 36, height: 20 });
-    appendLegacyIdentityAnchors(group, entity, frameBox, request.ruleset);
   }
 }
 

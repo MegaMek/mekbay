@@ -43,7 +43,9 @@ import { BOMBAST_LASER_CHARGED_STATE,BOMBAST_LASER_CHARGING_STATE,isCoreBombastL
 import { BOOBY_TRAP_ARMED_MODE,BOOBY_TRAP_DETONATED_MODE,isBoobyTrapDetonated } from './component-booby-trap';
 import { isC3EmergencyMasterComponent } from './component-c3-emergency-master';
 import { COOLANT_POD_ACTIVE_MODE,COOLANT_POD_READY_MODE,isCoolantPodEquipment } from './component-coolant-pod';
-import { effectiveEcmMode,electronicClaims,isEcmRuntimeMode,isNovaCewsEquipment,isPowerControlledEquipment,planElectronicModeRequest,planElectronicSettlement,type ElectronicComponentFact } from './component-electronic-suite';
+import { struckOutsideHeat } from '../rules/armor-damage-rules';
+import { isPrototypeDoubleHeatSinkEquipment } from '../heat-equipment.model';
+import { powerEffectivelyEnabled,effectiveEcmMode,electronicClaims,isBulkSwitchedPrototypeHeatSink,isEcmRuntimeMode,isNovaCewsEquipment,isPowerControlledEquipment,planElectronicModeRequest,planElectronicSettlement,settlePowerMode,type ElectronicComponentFact } from './component-electronic-suite';
 import { componentEscalatingFailureDefinition,editEscalatingFailureComponentState,isBattleArmorMyomerBoosterEquipment,movementBoosterUsableWhile,settleEscalatingFailureComponentState,type ComponentEscalatingFailureDefinition } from './component-escalating-failure';
 import { effectiveMachineGunArrayMode,isMachineGunArrayController,isMachineGunArrayEquipment,isMachineGunArrayLifecycleState,isMachineGunArrayTransition,machineGunArrayLifecycleState,MGA_LINKED_MODE,nextMachineGunArrayState,settledMachineGunArrayState } from './component-machine-gun-array';
 import { HPG_IDLE_MODE,isMobileHpgMode,mobileHpgBlocksMovement,mobileHpgBlocksWeaponAttacks,mobileHpgMode,mobileHpgModeChangeReason,mobileHpgOperatingHeat,settleMobileHpgMode,type MobileHpgComponentFact } from './component-mobile-hpg';
@@ -69,7 +71,7 @@ import type { CBTUnitCommand } from './unit-command';
 import type { MekEntity } from '../entity/entities/mek/mek-entity';
 import type { MekSystemType } from '../entity/types';
 import { isModularArmorEquipment,MODULAR_ARMOR_POINTS_PER_MOUNT } from '../modular-armor.model';
-import { isHeatValue,sameNextHeat,withEditedHeat,withFiredWeapons,withNextHeat,withPendingCombatDelta,withPendingHeat,type CBTUnitCommandResult,type CBTUnitQueryPort,type RuntimeStatePerspective } from './cbt-unit-runtime';
+import { heatSinkSwitchIsImmediate,isHeatValue,sameNextHeat,settleHeatSinkSwitch,withEditedHeat,withHeatSinkSwitch,withFiredWeapons,withNextHeat,withPendingCombatDelta,withPendingHeat,type CBTUnitCommandResult,type CBTUnitQueryPort,type RuntimeStatePerspective } from './cbt-unit-runtime';
 import type { MekCombatModifierProjectionResult } from './mek-combat-modifiers';
 import { projectMekBlowOffV2,projectMekCriticalChanceV2,projectMekCriticalRollProfileV2,projectMekCriticalRollV2,projectPendingMekCriticalExplosionV2,type MekBlowOffPlanV2,type MekCriticalChanceProfileV2,type MekCriticalRollPlanV2,type MekCriticalRollProfileV2,type MekCriticalRuntimeViewV2,type MekEquipmentExplosionPlanV2 } from './mek-critical-hit-v2';
 import { mekCriticalSlotDirectHitThreshold,mekCriticalSlotHittable,mekCriticalSlotMaximumHits } from './mek-critical-slot-rules';
@@ -129,6 +131,7 @@ export interface MekUnitQueryPort extends CBTUnitQueryPort {
         results: readonly number[],
         target: 'committed' | 'pending',
         hotLoadExplosion?: HotLoadExplosionRoll,
+        prototypeCaseRoll?: number,
     ): MekCriticalRollPlanV2;
     mekDestruction(): MekDestructionProjectionResultV2;
     mekRuleCheck(key: MekRuleCheckKeyV2): MekRuleCheckStateV2 | undefined;
@@ -187,7 +190,7 @@ export interface MekUnitQueryPort extends CBTUnitQueryPort {
     /** A LAM's or QuadVee's current mode; BattleMech mode for every other Mek. */
     conversionMode(): MekConversionMode;
     linkedTarget(componentId: ComponentId): ComponentId | undefined;
-    linkedSource(componentId: ComponentId): ComponentId | undefined;
+    linkedSources(componentId: ComponentId): readonly ComponentId[];
     baysForMember(componentId: ComponentId): readonly MekIndexedBay[];
     baysControlledBy(componentId: ComponentId): readonly MekIndexedBay[];
     /** Entity-bound immutable C3 endpoint identities; no mounted/index projection escapes. */
@@ -504,6 +507,7 @@ class MekRuntimeQuery {
                 locationId: LocationId,
                 target: 'committed' | 'pending',
             ) => projectMekCriticalRollProfileV2(
+                unit.entity,
                 unit.index,
                 unit.ruleset,
                 criticalView(),
@@ -515,6 +519,7 @@ class MekRuntimeQuery {
                 results: readonly number[],
                 target: 'committed' | 'pending',
                 hotLoadExplosion?: HotLoadExplosionRoll,
+                prototypeCaseRoll?: number,
             ) => projectMekCriticalRollV2(
                 unit.entity,
                 unit.index,
@@ -524,6 +529,7 @@ class MekRuntimeQuery {
                 results,
                 target,
                 hotLoadExplosion,
+                prototypeCaseRoll,
             ),
             mekDestruction: mechanicsProjection,
             mekRuleCheck: (key: MekRuleCheckKeyV2) => {
@@ -751,8 +757,8 @@ class MekRuntimeQuery {
             },
             linkedTarget: (componentId: ComponentId) => requireComponent(unit, componentId, () =>
                 unit.index.relationships.linkedTargetBySource.get(componentId)),
-            linkedSource: (componentId: ComponentId) => requireComponent(unit, componentId, () =>
-                unit.index.relationships.linkedSourceByTarget.get(componentId)),
+            linkedSources: (componentId: ComponentId) => requireComponent(unit, componentId, () =>
+                unit.index.relationships.linkedSourcesByTarget.get(componentId) ?? Object.freeze([])),
             baysForMember: (componentId: ComponentId) => requireComponent(unit, componentId, () =>
                 unit.index.relationships.bays.filter(bay => bay.memberIds.includes(componentId))),
             baysControlledBy: (componentId: ComponentId) => requireComponent(unit, componentId, () =>
@@ -870,8 +876,10 @@ function reduceSelectedWeaponFire(
         return unchanged(state);
     }
 
+    const noLock = new Set(command.noLock ?? []);
     const selections = selected.map(([weaponId, component]): MekWeaponFireSelectionV2 => Object.freeze({
         weaponId,
+        ...(noLock.has(weaponId) ? { noLock: true as const } : {}),
         ...(component.ammo?.preferredSourceId === undefined
             ? {}
             : { ammoSourceId: component.ammo.preferredSourceId }),
@@ -1192,6 +1200,7 @@ function reduce(
                 command.results,
                 command.target,
                 command.hotLoadExplosion,
+                command.prototypeCaseRoll,
             );
             if (plan.kind === 'invalid') return unchanged(state);
             if (plan.kind === 'not-applied') return unchanged(state);
@@ -1706,15 +1715,22 @@ function reduce(
                 return unchanged(state);
             }
             if (!positiveInteger(command.amount) || !isStateMutationTarget(command.target)) return unchanged(state);
+            const perspective = command.target === 'pending' ? 'preview' : 'committed';
+            // The heat meets the armor where it strikes as it is now, past the damage before it and before its own
+            // (Core p. 201); the Heat Phase only adds the turn's heat within the cap.
+            const heat = struckOutsideHeat(unit, command.amount, command.location ?? null,
+                face => face.maximumPoints - armorDamage(state, face.id, perspective),
+                locationId => runtimeLocationStatus(unit, state, locationId, perspective) === 'destroyed', command.source);
+            if (heat === 0) return unchanged(state);
             // Heat from a pending attack waits with its damage: committed with it, cancelled with it until APPLY HEAT
             // applies it; the player applied and confirmed that heat, so it stays.
             if (command.target === 'pending') {
-                const outsideHeat = addOutsideHeat(state.pendingCombat.outsideHeat ?? 0, command.amount);
+                const outsideHeat = addOutsideHeat(state.pendingCombat.outsideHeat ?? 0, heat);
                 changed = outsideHeat === state.pendingCombat.outsideHeat
                     ? null
                     : { ...state, pendingCombat: Object.freeze({ ...state.pendingCombat, outsideHeat }) };
             } else {
-                const outsideHeat = addOutsideHeat(state.turn.outsideHeat ?? 0, command.amount);
+                const outsideHeat = addOutsideHeat(state.turn.outsideHeat ?? 0, heat);
                 changed = outsideHeat === state.turn.outsideHeat
                     ? null
                     : { ...state, turn: canonicalizeMekTurnStateV2({ ...state.turn, outsideHeat }) };
@@ -1732,15 +1748,10 @@ function reduce(
             if (command.heatsinksOff > capability.maxHeatsinksOff) {
                 return unchanged(state);
             }
-            changed = state.heat.heatsinksOff === command.heatsinksOff
+            changed = (state.heat.heatsinksOffNext ?? state.heat.heatsinksOff) === command.heatsinksOff
                 ? null
-                : {
-                    ...state,
-                    heat: canonicalizeMekHeatStateV2({
-                        ...state.heat,
-                        heatsinksOff: command.heatsinksOff,
-                    }),
-                };
+                : { ...state, heat: canonicalizeMekHeatStateV2(withHeatSinkSwitch(state.heat, command.heatsinksOff,
+                    heatSinkSwitchIsImmediate(state.turn, state.movementPsr.movement != null))) };
             break;
         }
         case 'apply-heat': {
@@ -3072,7 +3083,9 @@ function endTurn(
     const shieldsSettled = lowerCoreShields(unit, arraysSettled);
     const coolantSettled = settleCoolantPods(unit, shieldsSettled);
     const hpgSettled = settleMobileHpgs(unit, coolantSettled);
-    const electronicSettled = settleElectronicSuites(unit, hpgSettled, statusTopology);
+    const suitesSettled = settleElectronicSuites(unit, hpgSettled, statusTopology);
+    const electronicSettled = suitesSettled.heat.heatsinksOffNext === undefined ? suitesSettled
+        : { ...suitesSettled, heat: canonicalizeMekHeatStateV2(settleHeatSinkSwitch(suitesSettled.heat)) };
     const stealthSettled = settleStealthSystems(unit, electronicSettled, statusTopology, true);
     const committed = commitPending(unit, entity, index, stealthSettled) ?? stealthSettled;
     const deathsSettled = commitCrewDeaths(committed);
@@ -3538,6 +3551,10 @@ function reduceElectronicComponentMode(
     if (plan.kind === 'not-electronic') return Object.freeze({ kind: 'not-electronic' });
     if (plan.kind === 'invalid') return Object.freeze({ kind: 'invalid' });
     if (plan.kind === 'unchanged') return Object.freeze({ kind: 'handled', state: null });
+    // A heat sink switches as the bulk heat-sink switch does: at once until the unit's first move of the game, otherwise
+    // in the End Phase (Core p. 103; TW p. 160; `heatSinkSwitchIsImmediate`).
+    const atOnce = isPrototypeDoubleHeatSinkEquipment(equipment)
+        && heatSinkSwitchIsImmediate(state.turn, state.movementPsr.movement != null);
     let next = state;
     for (const update of plan.updates) {
         const defaultMode = mekComponentModes(
@@ -3546,7 +3563,8 @@ function reduceElectronicComponentMode(
             update.componentId,
             unit.ruleset,
         ).defaultMode;
-        next = withComponentMode(next, update.componentId, update.mode, defaultMode) ?? next;
+        const mode = atOnce ? settlePowerMode(update.mode) : update.mode;
+        next = withComponentMode(next, update.componentId, mode, defaultMode) ?? next;
     }
     if (next === state) return Object.freeze({ kind: 'handled', state: null });
     return Object.freeze({
@@ -3574,15 +3592,19 @@ function buildMekElectronicFacts(
         if (component.kind !== 'equipment' || !component.mount.equipment) return [];
         const equipment = component.mount.equipment;
         const claims = electronicClaims(equipment);
-        if (!claims.ecm && !claims.probe && !isPowerControlledEquipment(equipment)) return [];
+        if ((!claims.ecm && !claims.probe && !isPowerControlledEquipment(equipment))
+            || isBulkSwitchedPrototypeHeatSink(unit.entity, equipment)) return [];
         return [Object.freeze({
             componentId,
             equipment,
             mode: state.components.get(componentId)?.mode,
-            operational: !unavailable && status.component(componentId).status === 'available',
+            operational: (!unavailable || !state.destroyed && isPrototypeDoubleHeatSinkEquipment(equipment))
+                && status.component(componentId).status === 'available',
         })];
     }));
 }
+
+
 
 function settleElectronicSuites(
     unit: MekRuntimeSource,
@@ -5064,7 +5086,8 @@ function buildHeatKernelInput(
         outsideHeat: outsideHeatThisTurn(state),
         movement: movement === undefined || movement === null
             ? null
-            : Object.freeze({ mode: movement.mode, distance: movement.distance }),
+            : Object.freeze({ mode: movement.mode, distance: movement.distance,
+                ...(movement.jumpJetsFired === undefined ? {} : { jumpJetsFired: movement.jumpJetsFired }) }),
         standAttempts: state.movementPsr.standAttempts,
         ...(state.conversionMode === undefined ? {} : { conversionMode: state.conversionMode }),
         destroyed: state.destroyed,
@@ -5084,6 +5107,9 @@ function buildHeatKernelInput(
         activeElectronicComponents,
         activeMobileHpgComponents,
         activeCoolantPodComponents,
+        disabledPrototypeHeatSinks: new Set(electronicFacts.filter(fact =>
+            isPrototypeDoubleHeatSinkEquipment(fact.equipment) && !powerEffectivelyEnabled(fact.mode))
+            .map(fact => fact.componentId)),
         ppcCapacitors,
     });
 }

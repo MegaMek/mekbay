@@ -6,6 +6,7 @@ import { addTestEquipment } from '../../models/entity/testing/test-mounted-equip
 import { MiscEquipment, WeaponEquipment } from '../../models/equipment.model';
 import { RecordSheetSvgGenerator } from './record-sheet-svg-generator';
 import {
+    DESTROYED_WEAPON_STATE_ORDER,
     drawRecordSheetInventory,
     groupRecordSheetWeaponRows,
     isRegroupingInventoryRow,
@@ -17,7 +18,7 @@ describe('record-sheet weapon grouping', () => {
         name,
         componentIds: [id],
         ...(mountKey === undefined ? {} : { mountKey }),
-        linkedEquipment: linked === undefined ? null : { name: 'Artemis IV', componentIds: [linked] },
+        linkedEquipment: linked === undefined ? [] : [{ name: 'Artemis IV', componentIds: [linked] }],
     });
 
     it('counts identical weapons on one row and leaves other equipment uncounted, in place', () => {
@@ -46,11 +47,32 @@ describe('record-sheet weapon grouping', () => {
             row('d', 'LRM 10', 'LT', 'artemis-d'),
         ], componentId => states[componentId] ?? '0');
 
-        expect(rows.map(grouped => [grouped.quantity, grouped.componentIds, grouped.linkedEquipment?.componentIds])).toEqual([
+        expect(rows.map(grouped => [grouped.quantity, grouped.componentIds, grouped.linkedEquipment[0].componentIds])).toEqual([
             [1, ['b'], ['artemis-b']],
             [1, ['d'], ['artemis-d']],
             [2, ['a', 'c'], ['artemis-a', 'artemis-c']],
         ]);
+    });
+
+    it('prints a destroyed weapon split out of its group without its ammo lines', () => {
+        const states: Record<string, string> = { a: '0', b: '0', c: `${DESTROYED_WEAPON_STATE_ORDER}destroyed` };
+        const mml = (id: string) => ({ ...row(id, 'MML 7', 'LT'), alternativeModes: ['LRM', 'SRM'] });
+        const rows = groupRecordSheetWeaponRows([mml('a'), mml('b'), mml('c')], componentId => states[componentId] ?? '0');
+
+        expect(rows.map(grouped => [grouped.quantity, grouped.componentIds, grouped.alternativeModes])).toEqual([
+            [2, ['a', 'b'], ['LRM', 'SRM']],
+            [1, ['c'], []],
+        ]);
+    });
+
+    it('groups corresponding attachment IDs and splits on the state of any insulator', () => {
+        const weapon = (id: string) => ({ ...row(id, 'Laser', 'LA'),
+            linkedEquipment: ['insulator', 'module', 'insulator'].map((name, index) => ({ name, componentIds: [`${id}-${index}`] })) });
+        const groups = groupRecordSheetWeaponRows(['a', 'b', 'c'].map(weapon), id => id === 'b-2' ? 'destroyed' : '');
+        const pristine = groups.find(group => group.quantity === 2)!;
+        expect(pristine.componentIds).toEqual(['a', 'c']);
+        expect(pristine.linkedEquipment.map(source => source.componentIds)).toEqual([['a-0', 'c-0'], ['a-1', 'c-1'], ['a-2', 'c-2']]);
+        expect(groups.length).toBe(2);
     });
 
     it('draws a grouped inventory again only when a weapon state changed', () => {

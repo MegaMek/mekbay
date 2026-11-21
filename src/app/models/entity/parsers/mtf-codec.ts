@@ -2,10 +2,11 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 // Author: Drake
 
-import type { MiscEquipment } from '../../equipment.model';
 import { EquipmentRegistry } from '../../equipment-lookup';
-import { ArmorEquipment } from '../../equipment.model';
-import type { CockpitType, EngineType, EntityTechBase, EquipmentTechBase } from '../types';
+import { ArmorEquipment, type MiscEquipment, WeaponEquipment } from '../../equipment.model';
+import type { CockpitType, EngineType, EntityMountedEquipment, EntityTechBase, EquipmentTechBase, MekLocation } from '../types';
+import { isQuadMekConfig } from '../types/mek';
+import type { MekEntity } from '../entities/mek/mek-entity';
 import type { HeatSinkType } from '../types/heat-sink';
 import { COCKPIT_DATA } from '../components/cockpit-data';
 import { GYRO_DATA, type GyroType } from '../components/gyro-data';
@@ -223,4 +224,44 @@ export function encodeMtfHeatSinkType(equipment: MiscEquipment | null): string {
     return `${equipment.tech.base === 'Clan' ? 'Clan' : 'IS'} Double`;
   }
   return 'Single';
+}
+
+/** MTF crit-section order: biped */
+const CRIT_ORDER_BIPED: readonly MekLocation[] = ['LA', 'RA', 'LT', 'RT', 'CT', 'HD', 'LL', 'RL'];
+/** MTF crit-section order: quad */
+const CRIT_ORDER_QUAD: readonly MekLocation[] = ['FLL', 'FRL', 'LT', 'RT', 'CT', 'HD', 'RLL', 'RRL'];
+/** MTF crit-section order: tripod */
+const CRIT_ORDER_TRIPOD: readonly MekLocation[] = ['LA', 'RA', 'LT', 'RT', 'CT', 'HD', 'LL', 'RL', 'CL'];
+
+/**
+ * The order MTF files list their critical sections. Split weapons claim rows and mount tags are numbered in this
+ * order; MtfFile reads the legs first, but a leg never shares a split weapon.
+ */
+export function mtfCriticalSectionOrder(entity: Pick<MekEntity, 'chassisConfig'>): readonly MekLocation[] {
+  return entity.chassisConfig === 'Tripod' ? CRIT_ORDER_TRIPOD : isQuadMekConfig(entity.chassisConfig) ? CRIT_ORDER_QUAD : CRIT_ORDER_BIPED;
+}
+
+/** The weapons an MTF `Weapons:` list names. */
+export function mtfListedWeapons(entity: MekEntity): EntityMountedEquipment[] {
+  return entity
+    .equipment()
+    .filter((m) => m.allocation.kind === 'location' && m.location !== 'None' && m.equipment instanceof WeaponEquipment);
+}
+
+/**
+ * A split weapon's rows may end in a mount tag, `Autocannon/20 (R)#2`: rows of one equipment type with the same number
+ * belong to one mount. As in MtfFile, a tag is read only where it ends the row: `#` and a positive number without
+ * leading zeros. Any other `#` word ending the row without a parenthesis is an unreadable tag; a `#` elsewhere, with
+ * nothing after it, or before a modifier such as `#2(ARMORED)`, stays part of the row, so the modifiers still apply.
+ */
+export function splitMtfMountTag(row: string): { text: string; tag?: number; malformed?: string } {
+  const suffix = /#([^\s#()]+)$/u.exec(row);
+  if (!suffix) return { text: row };
+  const text = row.slice(0, suffix.index);
+  return /^[1-9]\d{0,8}$/u.test(suffix[1]) ? { text, tag: Number(suffix[1]) } : { text, malformed: suffix[0] };
+}
+
+/** Mount tags number the mounts of one equipment type, however the file spells its name. */
+export function mtfMountKey(mount: EntityMountedEquipment): string {
+  return mount.equipment?.id ?? mount.equipmentId;
 }

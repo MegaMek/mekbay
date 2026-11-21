@@ -366,8 +366,8 @@ export class BVCalculator {
     if (applyRear && this.frontDecided && this.isNominalRear(mount)) value *= 0.5;
     if (this.hasEquipment(isDroneOperatingSystemEquipment)) value *= DRONE_WEAPON_BV_MULTIPLIER;
     if (equipment instanceof WeaponEquipment) {
-      const linkedBy = this.entity.getLinkingMount(mount);
-      if (linkedBy?.equipment instanceof MiscEquipment && this.isWorking(linkedBy)) {
+      for (const linkedBy of this.entity.getLinkingMounts(mount)) {
+        if (!(linkedBy.equipment instanceof MiscEquipment) || !this.isWorking(linkedBy)) continue;
         const system = linkedBy.equipment;
         if (isPpcEquipment(equipment) && isPpcCapacitorEquipment(system)) {
           value += getPpcCapacitorBV(mount);

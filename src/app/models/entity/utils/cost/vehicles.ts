@@ -11,10 +11,9 @@ import {
   calculatePowerAmplifierWeight,
   hasAnyEquipmentFlag,
   nextHalfTon,
-  standardRound,
 } from './common';
 import { amount, buildCostReport, multiplier, type EntityCostEntry, type EntityCostReport } from './cost-report';
-import { isPpcCapacitorEquipment } from '../../../ppc-capacitor.model';
+import { calculateVehicleTurretWeight } from '../weight/vehicle-weight';
 import {
   isFlotationOrSealingEquipment,
   isOffRoadEquipment,
@@ -57,7 +56,9 @@ export function calculateVehicleCostReport(
   const freeHeatSinks = supportVehicle ? 0 : engine.weightFreeHeatSinks;
   entries.push(amount('Heatsinks', Math.max(0,
     calculateVehicleHeatSinkRequirement(entity) - freeHeatSinks) * 2000));
-  entries.push(amount('Turrets', calculateVehicleTurretWeight(entity) * 5000));
+  // TM p. 279: 5,000 x turret tonnage, the same turret tonnage the vehicle's weight counts.
+  entries.push(amount('Turrets',
+    (calculateVehicleTurretWeight(entity, false) + calculateVehicleTurretWeight(entity, true)) * 5000));
   entries.push(...equipment, amount('Extra Seats', entity.extraSeats() * 100));
 
   if (!supportVehicle) {
@@ -131,19 +132,4 @@ function getVehicleTonnageMultiplier(entity: VehicleEntity): number {
 
 function calculateVehicleHeatSinkRequirement(entity: VehicleEntity): number {
   return calculateHeatNeutralRequirement(entity);
-}
-
-function calculateVehicleTurretWeight(entity: VehicleEntity): number {
-  const tonnage = entity.mountedWeapons().reduce((total, mount) => {
-    const inTurret = mount.location === 'Turret'
-      || mount.location === 'Front Turret'
-      || mount.location === 'Rear Turret';
-    if (!inTurret) return total;
-    const enhancement = entity.getLinkingMount(mount);
-    const capacitorTonnage = enhancement && isPpcCapacitorEquipment(enhancement.equipment)
-      ? enhancement.getTonnage(entity) ?? 0
-      : 0;
-    return total + ((mount.getTonnage(entity) ?? 0) + capacitorTonnage) / 10;
-  }, 0);
-  return standardRound(tonnage, entity);
 }

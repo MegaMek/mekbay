@@ -107,6 +107,11 @@ export function createComponentPpcCapacitorDefinition(input: {
     });
 }
 
+export function ppcCapacitorForWeapon(index: MekRuntimeIndex, weaponId: ComponentId): ComponentId | undefined {
+    return index.relationships.linkedSourcesByTarget.get(weaponId)?.find(id =>
+        isPpcCapacitorEquipment(equipmentForComponent(index, id)));
+}
+
 export function ppcCapacitorWeaponId(
     entity: MekEntity,
     index: MekRuntimeIndex,
@@ -114,7 +119,6 @@ export function ppcCapacitorWeaponId(
 ): ComponentId | undefined {
     const weaponId = index.relationships.linkedTargetBySource.get(capacitorId);
     return weaponId !== undefined
-        && index.relationships.linkedSourceByTarget.get(weaponId) === capacitorId
         && isPpcCapacitorPair(entity, index, capacitorId, weaponId)
         ? weaponId
         : undefined;
@@ -138,8 +142,7 @@ export function isPpcCapacitorPair(
         || weapon.isSplitAcrossLocations
         || !isPpcCapacitorEquipment(capacitor.equipment)
         || !isPpcCapacitorCompatibleWeapon(weapon.equipment)
-        || index.relationships.linkedTargetBySource.get(capacitorId) !== weaponId
-        || index.relationships.linkedSourceByTarget.get(weaponId) !== capacitorId) return false;
+        || index.relationships.linkedTargetBySource.get(capacitorId) !== weaponId) return false;
     return weapon.equipment.id !== 'CLERPPC' || entity.year() >= 3101;
 }
 
@@ -149,8 +152,8 @@ export function ppcCapacitorFireTransition(
     index: MekRuntimeIndex,
     weaponId: ComponentId,
 ): PpcCapacitorFireTransition | null | false {
-    const sourceId = index.relationships.linkedSourceByTarget.get(weaponId);
-    if (sourceId === undefined || !isPpcCapacitorEquipment(equipmentForComponent(index, sourceId))) {
+    const sourceId = ppcCapacitorForWeapon(index, weaponId);
+    if (sourceId === undefined) {
         return null;
     }
     if (!isPpcCapacitorPair(entity, index, sourceId, weaponId)) return false;
@@ -162,8 +165,8 @@ export function ppcCapacitorChargingForWeapon(
     runtime: PpcCapacitorRuntimeView,
     weaponId: ComponentId,
 ): boolean {
-    const sourceId = index.relationships.linkedSourceByTarget.get(weaponId);
-    if (sourceId === undefined || !isPpcCapacitorEquipment(equipmentForComponent(index, sourceId))) {
+    const sourceId = ppcCapacitorForWeapon(index, weaponId);
+    if (sourceId === undefined) {
         return false;
     }
     const lifecycle = runtime.componentPpcCapacitor(sourceId);
@@ -229,7 +232,7 @@ export function ppcCapacitorChargedForWeapon(
     runtime: Pick<ReturnType<CBTMekUnit['query']>, 'componentStatus' | 'componentPpcCapacitor'>,
     weaponId: ComponentId,
 ): boolean {
-    const capacitorId = index.relationships.linkedSourceByTarget.get(weaponId);
+    const capacitorId = ppcCapacitorForWeapon(index, weaponId);
     if (capacitorId === undefined
         || !isPpcCapacitorPair(entity, index, capacitorId, weaponId)
         || runtime.componentStatus(capacitorId) !== 'available'

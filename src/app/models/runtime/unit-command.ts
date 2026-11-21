@@ -11,6 +11,7 @@ import type { EquipmentStatus } from '../equipment-status.model';
 import type { PrototypeLaserHeatRoll } from '../prototype-laser-heat.model';
 import type { StealthState } from '../stealth-equipment.model';
 import type { SystemDamageKind } from '../rules/system-damage-rules';
+import type { DamageSource } from '../rules/armor-damage-rules';
 import type { UnitConditionKey } from '../unit-condition.model';
 import type { BOMBAST_LASER_CHARGING_STATE } from './component-bombast-laser';
 import type { PPC_CAPACITOR_CHARGING_STATE } from './component-ppc-capacitor';
@@ -35,6 +36,8 @@ export interface CBTUnitSelectedWeaponFireCommand {
     readonly type: 'fire-selected-weapons';
     /** Under the full phase system: the selected attacks of the phase being resolved; absent, every selected attack. */
     readonly attacks?: 'weapons' | 'physical';
+    /** Weapons that failed to lock on (`locksOnTarget`): they count as fired but spend no ammo and make no heat. */
+    readonly noLock?: readonly ComponentId[];
     readonly prototypeHeatRolls?: readonly PrototypeLaserHeatRoll[];
 }
 
@@ -95,6 +98,8 @@ export type CBTUnitCommand =
     | {
         readonly type: 'apply-mek-critical-roll';
         readonly hotLoadExplosion?: import('./mek-critical-hit-v2').HotLoadExplosionRoll;
+        /** The 1D6 vent roll of prototype CASE the explosion meets (IO:AE p. 65); absent, it vents as CASE. */
+        readonly prototypeCaseRoll?: number;
         readonly locationId: LocationId;
         readonly results: readonly number[];
         readonly target: 'committed' | 'pending';
@@ -261,6 +266,13 @@ export type CBTUnitCommand =
     | {
         /** Heat from outside sources such as inferno missiles (TW p. 159), capped per turn. */
         readonly type: 'add-outside-heat';
+        /**
+         * Where the heat strikes, whose armor reduces it as it strikes (`struckOutsideHeat`); none for heat without a
+         * hit location.
+         */
+        readonly location?: Readonly<{ code: string; rear: boolean }>;
+        /** The weapon that delivered it, for armor that reflects some weapons' heat (`reflectedHeat`). */
+        readonly source?: DamageSource;
         readonly amount: number;
         readonly target: 'committed' | 'pending';
     }

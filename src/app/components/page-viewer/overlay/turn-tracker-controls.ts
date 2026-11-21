@@ -474,6 +474,22 @@ export abstract class TurnTrackerControls {
                 || entityMovement.distance > this.entityMovementMaximum(entityMovement.mode));
     });
 
+    readonly jumpJetChoice = computed(() => {
+        const runtime = this.runtime();
+        const movement = runtime?.snapshot().movement;
+        const range = movement?.kind === 'supported' ? movement.declaration?.jumpJets : undefined;
+        return range && range.maximum > range.minimum
+            ? { ...range, fired: runtime?.currentMovement()?.jumpJetsFired ?? range.minimum } : null;
+    });
+
+    setJumpJetsFired(event: Event): void {
+        const control = event.target as HTMLInputElement;
+        const choice = this.jumpJetChoice();
+        if (choice && control.value && control.validity.valid) {
+            void this.runtime()?.setJumpJetsFired(control.valueAsNumber);
+        } else if (choice) control.value = String(choice.fired);
+    }
+
     readonly moveDistance = computed(() => {
         const runtime = this.runtime();
         if (runtime) return runtime.movementDistance();

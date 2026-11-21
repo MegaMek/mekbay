@@ -51,29 +51,8 @@ export interface GyroTypeDescriptor {
 
   // ── Cost ──
 
-  /**
-   * Base cost multiplier in C-bills.
-   *
-   * The actual gyro cost is:
-   *   `baseCost * gyroTonnage * costMultiplier`
-   * where `gyroTonnage = ceil(walkMP * tonnage / 100)`.
-   *
-   * For most types the formula is `baseCost * gyroTonnage`.
-   * See `costMultiplier` for types that scale differently.
-   */
+  /** C-bills per ton of the gyro's own weight (TM p. 278); see `calculateMekGyroWeight`. */
   readonly baseCost: number;
-
-  /**
-   * Additional multiplier applied after `baseCost * gyroTonnage`.
-   *
-   * - Standard: 1.0  =>  300,000 x tonnage x 1.0
-   * - XL:       0.5  =>  750,000 x tonnage x 0.5
-   * - Compact:  1.5  =>  400,000 x tonnage x 1.5
-   * - Heavy Duty: 2  =>  500,000 x tonnage x 2.0
-   * - Superheavy: 2  =>  500,000 x tonnage x 2.0
-   * - None:     0    =>  no cost
-   */
-  readonly costMultiplier: number;
 
   // ── BV ──
 
@@ -117,7 +96,6 @@ export const GYRO_DATA: Readonly<Record<GyroType, GyroTypeDescriptor>> = {
     criticalSlots: 4,
     weightMultiplier: 1,
     baseCost: 300_000,
-    costMultiplier: 1.0,
     bvMultiplier: 0.5,
     tech: {
       techBase: 'All', rating: 'D',
@@ -136,7 +114,6 @@ export const GYRO_DATA: Readonly<Record<GyroType, GyroTypeDescriptor>> = {
     criticalSlots: 6,
     weightMultiplier: 0.5,
     baseCost: 750_000,
-    costMultiplier: 0.5,
     bvMultiplier: 0.5,
     tech: {
       techBase: 'IS', rating: 'E',
@@ -155,7 +132,6 @@ export const GYRO_DATA: Readonly<Record<GyroType, GyroTypeDescriptor>> = {
     criticalSlots: 2,
     weightMultiplier: 1.5,
     baseCost: 400_000,
-    costMultiplier: 1.5,
     bvMultiplier: 0.5,
     tech: {
       techBase: 'IS', rating: 'E',
@@ -174,7 +150,6 @@ export const GYRO_DATA: Readonly<Record<GyroType, GyroTypeDescriptor>> = {
     criticalSlots: 4,
     weightMultiplier: 2,
     baseCost: 500_000,
-    costMultiplier: 2.0,
     bvMultiplier: 1.0,
     tech: {
       techBase: 'IS', rating: 'E',
@@ -193,7 +168,6 @@ export const GYRO_DATA: Readonly<Record<GyroType, GyroTypeDescriptor>> = {
     criticalSlots: 0,
     weightMultiplier: 0,
     baseCost: 0,
-    costMultiplier: 0,
     bvMultiplier: 0.0, //This is 0, but if paired with an Interface cockpit it provides a BV multiplier of 0.5 (must be handled at calc time)
     tech: {
       techBase: 'All', rating: 'A',
@@ -212,7 +186,6 @@ export const GYRO_DATA: Readonly<Record<GyroType, GyroTypeDescriptor>> = {
     criticalSlots: 2,
     weightMultiplier: 2,
     baseCost: 500_000,
-    costMultiplier: 2.0,
     bvMultiplier: 0.5,
     tech: {
       techBase: 'IS', rating: 'D',

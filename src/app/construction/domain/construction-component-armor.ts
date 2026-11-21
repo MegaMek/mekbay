@@ -5,6 +5,7 @@ import type { BaseEntity } from '../../models/entity/base-entity';
 import { MekEntity } from '../../models/entity/entities/mek/mek-entity';
 import type { EntityMountedEquipment, EntityValidationMessage, MekSystemType } from '../../models/entity/types';
 import { AmmoEquipment } from '../../models/equipment.model';
+import { constructionSystemComponents, constructionSystemSlotKeys } from './construction-system-rules';
 
 /** TO: AU&E p. 95; IO: Alternate Eras, Interface Cockpits and Superheavy Meks. */
 export function constructionComponentArmorIssue(
@@ -43,6 +44,17 @@ export function constructionComponentArmorMessages(entity: BaseEntity): EntityVa
     if (!mounts.length && !systems.size) return [];
     const chassisIssue = constructionComponentArmorIssue(entity, 'Engine');
     if (chassisIssue) return [chassisIssue];
-    return [...mounts, ...systems].map(component => constructionComponentArmorIssue(entity, component))
+    const issues = [...mounts, ...systems].map(component => constructionComponentArmorIssue(entity, component))
         .filter(issue => issue !== null);
+    if (entity instanceof MekEntity) {
+        const slots = constructionSystemSlotKeys(entity);
+        const armored = entity.armoredSystemSlots();
+        for (const keys of constructionSystemComponents(slots).values()) {
+            if (!keys.some(key => armored.has(key)) || keys.every(key => armored.has(key))) continue;
+            issues.push({ severity: 'error', category: 'equipment', code: 'PARTIAL_COMPONENT_ARMOR',
+                message: `${slots.get(keys[0])}: component armor covers every critical slot of the component (TO:AUE p. 95).`,
+                location: keys[0].slice(0, keys[0].indexOf(':')) });
+        }
+    }
+    return issues;
 }
