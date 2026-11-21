@@ -28,13 +28,15 @@
                 (click)="handleChoiceClick($event, choice)"
                 (keydown)="handleChoiceKeydown($event, choice)"
             />
-            <text
-                class="directional-label"
-                [attr.x]="labelPosition(index).x"
-                [attr.y]="labelPosition(index).y"
-                text-anchor="middle"
-                dominant-baseline="middle"
-            >{{ choice.label }}</text>
+            @for (line of labelLines(choice); let lineIndex = $index, lines = $count; track lineIndex) {
+                <text
+                    class="directional-label"
+                    [attr.x]="labelPosition(index).x"
+                    [attr.y]="labelPosition(index).y + (lineIndex - (lines - 1) / 2) * lineHeight"
+                    text-anchor="middle"
+                    dominant-baseline="middle"
+                >{{ line }}</text>
+            }
         }
         <circle class="directional-center" [attr.cx]="center" [attr.cy]="center" [attr.r]="innerRadius" />
         <circle class="directional-border" [attr.cx]="center" [attr.cy]="center" [attr.r]="diameter / 2 - 2" />

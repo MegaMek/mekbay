@@ -42,6 +42,10 @@ import {
 } from './vehicle-paperdoll-asset';
 
 
+/** The tops of a superheavy's turret armor labels in the diagram's lower-left corner: one line, or Rear above two. */
+const SUPERHEAVY_TURRET_LABEL_TOP = 340;
+const SUPERHEAVY_DUAL_TURRET_LABEL_TOP = 331;
+
 /** Tank, VTOL, and WiGE composition; motive type selects the paperdoll. */
 export class CombatVehicleRecordSheetLayout extends CompactRecordSheetLayout {
     public constructor() {
@@ -127,18 +131,26 @@ export class CombatVehicleRecordSheetLayout extends CompactRecordSheetLayout {
                 pipLayout: request.pipLayout,
                 assetUrl: combatVehiclePaperdollAsset(entity),
                 motiveArtId: this.motiveArtId(entity, family),
-                // WiGE hulls leave room beside the nose for a control close to the armor.
+                ...this.randomHitAbove(entity, family),
             },
         );
         this.drawDiagramLabels(diagram, entity, diagramBox, family);
-        // A flying vehicle's Elevation tracker sits in the diagram's free lower-left corner.
+        // A flying vehicle's Elevation tracker sits in the diagram's free upper-left corner, beside the nose; the random
+        // hit button takes the lower-left one.
         const tracker = svgElement('g');
         tracker.setAttribute('transform',
             `scale(${formatNumber(diagramBox.width / 189)} ${formatNumber(diagramBox.height / 350)})`);
-        drawElevationTracker(tracker, entity, 22, 312);
+        drawElevationTracker(tracker, entity, 22, 80);
         diagram.appendChild(tracker);
         // Damage tracks still without a control on the sheet get hidden ones, once every control is drawn.
         appendVehicleDamageTrackBindings(svg, entity);
+    }
+
+    /** A superheavy turret's armor label takes the logo's row at the lower left, so the random hit button sits above it. */
+    private randomHitAbove(entity: BaseEntity, family: CombatVehiclePaperdollFamily): { randomHitAbove?: number } {
+        if (family !== 'vehicle' || !isVehicleEntity(entity) || !usesSixSideVehicleHull(entity)) return {};
+        if (entity.hasDualTurret()) return { randomHitAbove: SUPERHEAVY_DUAL_TURRET_LABEL_TOP };
+        return entity.hasTurret() ? { randomHitAbove: SUPERHEAVY_TURRET_LABEL_TOP } : {};
     }
 
     private motiveArtId(

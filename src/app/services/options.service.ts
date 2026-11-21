@@ -54,6 +54,7 @@ const DEFAULT_OPTIONS: Options = {
   // Theme
   colorScheme: 'default',
   pickerStyle: 'default',
+  linearPickerLayout: 'vertical',
   swipeToNextSheet: 'horizontal',
   recordSheetDoubleTapZoomReset: 'contextual',
   recordSheetPipLayout: 'classic',
@@ -287,6 +288,7 @@ export class OptionsService {
   public options = signal<Options>({
     colorScheme: DEFAULT_OPTIONS.colorScheme,
     pickerStyle: DEFAULT_OPTIONS.pickerStyle,
+    linearPickerLayout: DEFAULT_OPTIONS.linearPickerLayout,
     canvasInput: DEFAULT_OPTIONS.canvasInput,
     mouseWheelAction: DEFAULT_OPTIONS.mouseWheelAction,
     swipeToNextSheet: DEFAULT_OPTIONS.swipeToNextSheet,
@@ -341,6 +343,11 @@ export class OptionsService {
     this.options.set({
       colorScheme: resolveColorScheme(saved),
       pickerStyle: saved?.pickerStyle ?? DEFAULT_OPTIONS.pickerStyle,
+      linearPickerLayout: resolveSavedValue(
+        saved?.linearPickerLayout,
+        DEFAULT_OPTIONS.linearPickerLayout,
+        OPTION_VALUES.linearPickerLayout,
+      ),
       canvasInput: saved?.canvasInput ?? DEFAULT_OPTIONS.canvasInput,
       mouseWheelAction: resolveSavedValue(
         saved?.mouseWheelAction,

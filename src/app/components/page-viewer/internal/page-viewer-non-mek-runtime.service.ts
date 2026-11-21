@@ -356,6 +356,7 @@ export class PageViewerNonMekRuntimeService {
             max: Math.max(limit, selected),
             selected,
             title: `Turn ${turn} ${VELOCITY_RECORD_LABELS[field]}`,
+            linear: true,
         }, write);
     }
 

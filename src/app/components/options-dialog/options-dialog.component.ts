@@ -25,6 +25,7 @@ import type {
     DisplayUnitNameFormat,
     ForceViewerBVPVDisplay,
     ForceViewerBVPVDisplayDamage,
+    LinearPickerLayout,
     RecordSheetDoubleTapZoomResetMode,
     RecordSheetPipLayout,
 } from '../../models/options.model';
@@ -463,6 +464,10 @@ export class OptionsDialogComponent {
     onPickerStyleChange(event: Event) {
         const value = (event.target as HTMLSelectElement).value as 'radial' | 'linear';
         this.optionsService.setOption('pickerStyle', value);
+    }
+
+    onLinearPickerLayoutChange(event: Event) {
+        this.optionsService.setOption('linearPickerLayout', (event.target as HTMLSelectElement).value as LinearPickerLayout);
     }
 
     onUnitDisplayNameChange(event: Event) {

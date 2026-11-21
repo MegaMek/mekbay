@@ -362,7 +362,7 @@ export class PageViewerOverlayService {
 
     /**
      * Picks a number in the user's picker style: the dial, or a list of `choices` (every value by default) when linear.
-     * The picker closes before `pick` runs.
+     * `linear` always picks from the list. The picker closes before `pick` runs.
      */
     openNumberPicker(
         unitId: string,
@@ -375,6 +375,7 @@ export class PageViewerOverlayService {
             threshold?: number;
             targetType?: PickerTargetType;
             choices?: readonly PickerChoice[];
+            linear?: boolean;
         }>,
         pick: (value: number) => void,
     ): void {
@@ -382,7 +383,7 @@ export class PageViewerOverlayService {
             this.closePicker();
             pick(value);
         };
-        if (this.options.options().pickerStyle === 'linear') {
+        if (options.linear || this.options.options().pickerStyle === 'linear') {
             this.openChoicePicker(unitId, event, {
                 values: options.choices
                     ? [...options.choices]
@@ -392,6 +393,7 @@ export class PageViewerOverlayService {
                     })),
                 selected: options.selected,
                 title: options.title,
+                style: 'linear',
                 targetType: options.targetType,
                 onPick: choice => apply(Number(choice.value)),
             });
@@ -456,8 +458,8 @@ export class PageViewerOverlayService {
     }
 
     /**
-     * Asks for the attack direction (the compass for four arcs, a list otherwise), then shows where `roll` lands the
-     * hit on the button's sheet.
+     * Asks for the attack direction on the compass, whatever the picker style, then shows where `roll` lands the hit
+     * on the button's sheet. `arcs` run clockwise from the front.
      */
     openRandomHitPicker(
         unitId: string,
@@ -468,7 +470,11 @@ export class PageViewerOverlayService {
     ): void {
         this.randomHitResult.clear();
         const rect = button.getBoundingClientRect();
-        const config = {
+        this.openPicker(unitId, button, () => this.pickerFactory.createDirectionalPicker({
+            values: arcs.map(arc => ({
+                label: arc.split('-').map(word => word[0].toUpperCase() + word.slice(1)).join(' '),
+                value: arc,
+            })),
             position: { x: rect.left + rect.width / 2, y: rect.top + rect.height / 2 },
             lightTheme: this.lightTheme(),
             initialEvent: event instanceof PointerEvent ? event : undefined,
@@ -482,17 +488,7 @@ export class PageViewerOverlayService {
                 }
             },
             onCancel: () => this.closePicker(),
-        };
-        this.openPicker(unitId, button, () => arcs.length === 4
-            ? this.pickerFactory.createDirectionalPicker(config)
-            : this.pickerFactory.createChoicePicker({
-                ...config,
-                title: 'Attack direction',
-                values: arcs.map(arc => ({
-                    label: arc.split('-').map(word => word[0].toUpperCase() + word.slice(1)).join(' '),
-                    value: arc,
-                })),
-            }));
+        }));
     }
 
     /** Opens a sheet state menu on its control, closing any other picker or menu; a cancel closes it. */

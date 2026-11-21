@@ -11,6 +11,7 @@ import { INITIATIVE_ORDER_MODES, type InitiativeOrderMode } from './rules/initia
 export const OPTION_VALUES = {
     colorScheme: ['default', 'night'],
     pickerStyle: ['default', 'radial', 'linear'],
+    linearPickerLayout: ['diagonal', 'vertical'],
     canvasInput: ['all', 'touch', 'pen'],
     mouseWheelAction: ['scroll', 'zoom'],
     swipeToNextSheet: ['vertical', 'horizontal', 'disabled'],
@@ -47,6 +48,7 @@ export type AvailabilitySource = OptionValue<'availabilitySource'>;
 export type RecordSheetDoubleTapZoomResetMode = OptionValue<'recordSheetDoubleTapZoomReset'>;
 export type RecordSheetPipLayout = OptionValue<'recordSheetPipLayout'>;
 export type ColorScheme = OptionValue<'colorScheme'>;
+export type LinearPickerLayout = OptionValue<'linearPickerLayout'>;
 export type UnitSearchViewMode = OptionValue<'unitSearchViewMode'>;
 export type AutomationMode = OptionValue<'automationMode'>;
 export type CBTUnitViewMode = OptionValue<'cbtUnitViewMode'>;
@@ -147,6 +149,8 @@ export type OptionalRules = Readonly<Partial<Omit<CBTOptionalRules, keyof BoundO
 export interface Options {
     colorScheme: ColorScheme;
     pickerStyle: OptionValue<'pickerStyle'>;
+    /** How the linear picker lays out its list: straight down, or toward the farthest screen corner. */
+    linearPickerLayout: LinearPickerLayout;
     canvasInput: OptionValue<'canvasInput'>;
     mouseWheelAction: MouseWheelAction;
     swipeToNextSheet: OptionValue<'swipeToNextSheet'>;

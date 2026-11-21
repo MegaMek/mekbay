@@ -44,6 +44,8 @@ export interface PaperdollOptions {
   silhouetteFill?: string;
   silhouetteStroke?: string;
   silhouetteStrokeWidth?: string;
+  /** Where an armor paperdoll's random hit button goes, in place of its asset's own spot. */
+  randomHit?: RandomHitButtonPlacement;
   /** A family's authored pip map; omitted for automatically distributed profiles. */
   canonicalPips?: (
     type: PaperdollPlaceholderType,
@@ -145,14 +147,18 @@ interface PaperdollAssetCacheEntry {
 
 const MAX_PAPERDOLL_ASSET_CACHE_ENTRIES = 32;
 
-interface RandomHitButtonPlacement {
+export interface RandomHitButtonPlacement {
   readonly transform: string;
   readonly hitRadius?: number;
 }
 
+/** The random hit button's square, in its own coordinates, with the button centred in it. */
+export const RANDOM_HIT_BUTTON_SIZE = 28;
+
 /**
  * Where each armor paperdoll shows its random hit button, in the asset's own coordinates, clear of its artwork and
- * labels. Paperdolls without an entry (rear, structure and damage-transfer diagrams) have no button.
+ * labels. Paperdolls without an entry (rear, structure and damage-transfer diagrams) have no button; vehicle diagrams
+ * pass theirs, level with their Catalyst logo.
  */
 const RANDOM_HIT_BUTTONS: Readonly<Record<string, RandomHitButtonPlacement>> = Object.freeze({
   'biped-armor.svg': { transform: 'translate(80 206)' },
@@ -170,24 +176,6 @@ const RANDOM_HIT_BUTTONS: Readonly<Record<string, RandomHitButtonPlacement>> = O
   'jumpship.svg': { transform: 'translate(4 1)' },
   'warship.svg': { transform: 'translate(4 1)' },
   'spacestation.svg': { transform: 'translate(4 1)' },
-  'vehicle-noturret.svg': { transform: 'translate(161 1)' },
-  'vehicle-turret.svg': { transform: 'translate(161 1)' },
-  'vehicle-dualturret.svg': { transform: 'translate(161 1)' },
-  'vehicle-superheavy-noturret.svg': { transform: 'translate(161 1)' },
-  'vehicle-superheavy-turret.svg': { transform: 'translate(161 1)' },
-  'vehicle-superheavy-dualturret.svg': { transform: 'translate(161 1)' },
-  'naval-noturret.svg': { transform: 'translate(161 1)' },
-  'naval-turret.svg': { transform: 'translate(161 1)' },
-  'naval-dualturret.svg': { transform: 'translate(161 1)' },
-  'naval-superheavy-noturret.svg': { transform: 'translate(161 1)' },
-  'naval-superheavy-turret.svg': { transform: 'translate(161 1)' },
-  'naval-superheavy-dualturret.svg': { transform: 'translate(161 1)' },
-  'vtol-noturret.svg': { transform: 'translate(161 1)' },
-  'vtol-turret.svg': { transform: 'translate(161 1)' },
-  // WiGE hulls leave room beside the nose for a control close to the armor.
-  'wige-noturret.svg': { transform: 'translate(18 88)' },
-  'wige-turret.svg': { transform: 'translate(18 88)' },
-  'wige-dualturret.svg': { transform: 'translate(18 88)' },
   // Below the heading, beside the right shoulder; the assets keep their authored coordinates.
   'protomek-biped.svg': { transform: 'translate(75 10)' },
   'protomek-glider.svg': { transform: 'translate(75 10)' },
@@ -336,7 +324,9 @@ export class PaperdollGenerator {
         });
       });
     }
-    const randomHit = type === 'armor' ? RANDOM_HIT_BUTTONS[assetUrl.slice(assetUrl.lastIndexOf('/') + 1)] : undefined;
+    const randomHit = type === 'armor'
+      ? options.randomHit ?? RANDOM_HIT_BUTTONS[assetUrl.slice(assetUrl.lastIndexOf('/') + 1)]
+      : undefined;
     if (randomHit) sourceGroup.appendChild(this.createRandomHitButton(randomHit));
     // The painted location contours own interaction; labels, details and pips
     // must let pointer events reach those contours below them.
@@ -1356,8 +1346,8 @@ export class PaperdollGenerator {
     const hitArea = document.createElementNS(SVG_NAMESPACE, 'circle');
     for (const [name, value] of [
       ['class', 'mek-random-hit-area'],
-      ['cx', '14'],
-      ['cy', '14'],
+      ['cx', String(RANDOM_HIT_BUTTON_SIZE / 2)],
+      ['cy', String(RANDOM_HIT_BUTTON_SIZE / 2)],
       ['r', String(hitRadius)],
       ['fill', 'transparent'],
     ]) {

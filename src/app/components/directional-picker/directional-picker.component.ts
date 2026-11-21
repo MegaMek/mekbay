@@ -9,13 +9,7 @@ const CENTER = DIAMETER / 2;
 const INNER_RADIUS = 30;
 const OUTER_RADIUS = 78;
 const HOLD_DELAY_MS = 300;
-
-export const DIRECTIONAL_PICKER_CHOICES: readonly PickerChoice[] = Object.freeze([
-    Object.freeze({ label: 'Front', value: 'front' }),
-    Object.freeze({ label: 'Right', value: 'right' }),
-    Object.freeze({ label: 'Rear', value: 'rear' }),
-    Object.freeze({ label: 'Left', value: 'left' }),
-]);
+const LINE_HEIGHT = 14;
 
 @Component({
     selector: 'directional-picker',
@@ -25,7 +19,8 @@ export const DIRECTIONAL_PICKER_CHOICES: readonly PickerChoice[] = Object.freeze
 })
 export class DirectionalPickerComponent implements ChoicePickerComponent {
     readonly title = input<string | null>(null);
-    readonly values = signal<PickerChoice[]>([...DIRECTIONAL_PICKER_CHOICES]);
+    /** The directions clockwise from the front, which points up; each takes an equal sector. */
+    readonly values = signal<PickerChoice[]>([]);
     readonly selected = input<PickerValue | null>(null);
     readonly position = input<PickerPosition>({ x: 0, y: 0 });
     readonly lightTheme = input(false);
@@ -38,6 +33,7 @@ export class DirectionalPickerComponent implements ChoicePickerComponent {
     readonly diameter = DIAMETER;
     readonly center = CENTER;
     readonly innerRadius = INNER_RADIUS;
+    readonly lineHeight = LINE_HEIGHT;
 
     private holdTimeout: number | null = null;
     private pointerDownInside = false;
@@ -48,8 +44,9 @@ export class DirectionalPickerComponent implements ChoicePickerComponent {
     }
 
     sectorPath(index: number): string {
-        const startAngle = -135 + index * 90;
-        const endAngle = startAngle + 90;
+        const span = 360 / this.values().length;
+        const startAngle = -90 - span / 2 + index * span;
+        const endAngle = startAngle + span;
         const outerStart = this.pointOnCircle(OUTER_RADIUS, startAngle);
         const outerEnd = this.pointOnCircle(OUTER_RADIUS, endAngle);
         const innerEnd = this.pointOnCircle(INNER_RADIUS, endAngle);
@@ -58,7 +55,12 @@ export class DirectionalPickerComponent implements ChoicePickerComponent {
     }
 
     labelPosition(index: number): PickerPosition {
-        return this.pointOnCircle((INNER_RADIUS + OUTER_RADIUS) / 2, -90 + index * 90);
+        return this.pointOnCircle((INNER_RADIUS + OUTER_RADIUS) / 2, -90 + index * 360 / this.values().length);
+    }
+
+    /** One word per line, so "Front Right" fits a sixth of the circle. */
+    labelLines(choice: PickerChoice): string[] {
+        return choice.label.split(' ');
     }
 
     setHoveredChoice(choice: PickerChoice): void {

@@ -16,7 +16,7 @@ import type { Equipment } from '../../../models/equipment.model';
 import { isHeatSinkEquipment } from '../../../models/heat-equipment.model';
 import { isJumpJetEquipment,isUmuEquipment } from '../../../models/jump-equipment.model';
 import { buildNonMekRuntimeIndex } from '../../../models/runtime/non-mek-runtime-index';
-import { PaperdollGenerator, type PaperdollPipLayout } from '../paperdoll-generator';
+import { PaperdollGenerator, RANDOM_HIT_BUTTON_SIZE, type PaperdollPipLayout } from '../paperdoll-generator';
 import { SvgFrameUtil } from '../svg-frame.util';
 import {
     appendRecordSheetAmmoProfile,
@@ -100,6 +100,8 @@ export interface CompactVehicleDiagramPresentation {
     /** Replaces the source artwork's authored root transform for a template variant. */
     readonly authoredRootTransform?: string;
     readonly catalystY?: number;
+    /** The top of a label in the logo's row at the lower left; the random hit button sits just above it instead. */
+    readonly randomHitAbove?: number;
 }
 
 /** MML's vehicle title uses the support size, motive family and vessel designation. */
@@ -732,6 +734,7 @@ export async function drawCompactVehicleDiagram(
         0,
         { subtitleId: 'armorType' },
     );
+    const catalystY = presentation.catalystY ?? box.height - 24.413;
     const armorValues: Record<string, number> = {};
     const structureValues: Record<string, number> = {};
     for (const location of entity.damageLocations()) {
@@ -752,6 +755,12 @@ export async function drawCompactVehicleDiagram(
                 preserveAuthoredCoordinates: true,
                 scale: false,
                 pipLayout: presentation.pipLayout,
+                // At the left edge, in reach below the viewer's toolbar, level with the Catalyst logo's middle.
+                randomHit: {
+                    transform: `translate(0 ${formatNumber(presentation.randomHitAbove === undefined
+                        ? catalystY + CATALYST_LOGO_MIDDLE - RANDOM_HIT_BUTTON_SIZE / 2
+                        : presentation.randomHitAbove - RANDOM_HIT_BUTTON_SIZE)})`,
+                },
                 pipOptions: {
                     ...paperdollPipOptions(presentation.pipLayout, 4, 0.72),
                     strokeWidth: 0.5,
@@ -784,7 +793,7 @@ export async function drawCompactVehicleDiagram(
         decoratePaperdollPips(paperdoll);
         revealVehicleMotiveArt(paperdoll, presentation.motiveArtId);
         group.appendChild(paperdoll);
-        appendVehicleDiagramCatalyst(group, box, presentation.catalystY);
+        appendVehicleDiagramCatalyst(group, catalystY);
         svg.appendChild(group);
         return group;
     } catch {
@@ -794,7 +803,7 @@ export async function drawCompactVehicleDiagram(
     fallback.setAttribute('transform', 'translate(0 27)');
     drawDamageLocationGrid(fallback, entity.damageLocations(), { x: 6, y: 23, width: box.width - 12, height: box.height - 55 }, 3);
     group.appendChild(fallback);
-    appendVehicleDiagramCatalyst(group, box, presentation.catalystY);
+    appendVehicleDiagramCatalyst(group, catalystY);
     svg.appendChild(group);
     return group;
 }
@@ -808,10 +817,14 @@ function revealVehicleMotiveArt(
     }
 }
 
-function appendVehicleDiagramCatalyst(group: SVGGElement, box: Box, y = box.height - 24.413): void {
+/** The Catalyst logo's scale on vehicle diagrams, and its framed mark's middle below its top (14.486 unscaled). */
+const CATALYST_SCALE = 1.015;
+const CATALYST_LOGO_MIDDLE = 14.486 * CATALYST_SCALE;
+
+function appendVehicleDiagramCatalyst(group: SVGGElement, y: number): void {
     const catalyst = svgElement('g');
     catalyst.setAttribute('class', 'compact-vehicle-catalyst');
-    catalyst.setAttribute('transform', `translate(139 ${formatNumber(y)}) scale(1.015)`);
+    catalyst.setAttribute('transform', `translate(139 ${formatNumber(y)}) scale(${CATALYST_SCALE})`);
     catalyst.appendChild(createCatalystGameLabsLogo());
     group.appendChild(catalyst);
 }

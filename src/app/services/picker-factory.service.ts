@@ -20,7 +20,7 @@ import { RotatingPickerComponent } from '../components/rotating-picker/rotating-
 import { LinearPickerHorizontalComponent } from '../components/linear-picker/linear-picker-horizontal.component';
 import { LinearPickerVerticalComponent } from '../components/linear-picker/linear-picker-vertical.component';
 import { RadialPickerComponent } from '../components/radial-picker/radial-picker.component';
-import { DirectionalPickerComponent, DIRECTIONAL_PICKER_CHOICES } from '../components/directional-picker/directional-picker.component';
+import { DirectionalPickerComponent } from '../components/directional-picker/directional-picker.component';
 import { outputToObservable } from '@angular/core/rxjs-interop';
 
 /*
@@ -96,8 +96,9 @@ export interface ChoicePickerConfig extends BasePickerConfig {
     onPick: (choice: PickerChoice) => void;
 }
 
-/** Configuration for the fixed four-direction hit-location picker. */
+/** Configuration for the circular attack-direction picker: the directions clockwise from the front. */
 export interface DirectionalPickerConfig extends BasePickerConfig {
+    values: PickerChoice[];
     onPick: (choice: PickerChoice) => void;
 }
 
@@ -180,10 +181,7 @@ export class PickerFactoryService {
             environmentInjector: this.envInjector,
             elementInjector: this.injector,
         });
-        return this.configureChoicePicker(compRef, {
-            ...config,
-            values: [...DIRECTIONAL_PICKER_CHOICES],
-        });
+        return this.configureChoicePicker(compRef, config);
     }
 
     /**
@@ -203,6 +201,7 @@ export class PickerFactoryService {
             environmentInjector: this.envInjector,
             elementInjector: this.injector
         });
+        compRef.setInput('layout', this.optionsService.options().linearPickerLayout);
         return this.configureChoicePicker(compRef, config);
     }
 

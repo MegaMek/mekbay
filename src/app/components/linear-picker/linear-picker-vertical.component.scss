@@ -29,7 +29,7 @@
     left: 100%;
 }
 
-.value-cell {
+.linear-picker-vertical .value-cell {
     padding: 2px 8px;
 }
 
@@ -39,7 +39,7 @@
     text-align: right;
 }
 
-.value-cell.selected {
+.linear-picker-vertical .value-cell.selected {
     padding-top: 4px !important;
     padding-bottom: 4px !important;
 }
@@ -48,4 +48,60 @@
     background: #fff;
     color: #000;
     border-color: #000;
+}
+
+.value-label {
+    display: inline-block;
+}
+
+// A strip from the anchor toward the farthest screen corner; its labels stay upright.
+.linear-picker-diagonal {
+    display: flex;
+    flex-direction: row;
+    transform-origin: 0 0;
+    transform: rotate(var(--diagonal-angle)) translate(var(--diagonal-start), -50%);
+
+    .value-cell {
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        box-sizing: border-box;
+        width: var(--diagonal-cell-length);
+        height: var(--diagonal-thickness);
+    }
+
+    .value-cell + .value-cell {
+        border-left: 1px solid rgb(128 128 128 / 50%);
+    }
+
+    .value-label {
+        transform: rotate(calc(-1 * var(--diagonal-angle)));
+    }
+}
+
+.linear-picker-diagonal-title {
+    position: fixed;
+    z-index: 9999;
+    transform: translate(-50%, -50%);
+    pointer-events: none;
+    padding: 2px 12px;
+    border: 2px solid #000;
+    background: #000;
+    color: #fff;
+    font-family: 'Roboto', sans-serif;
+    font-size: 0.8em;
+    font-weight: bold;
+    white-space: nowrap;
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+
+    &.light-theme {
+        background: #fff;
+        color: #000;
+    }
+}
+
+.linear-picker-diagonal:not(.placed),
+.linear-picker-diagonal-title:not(.placed) {
+    visibility: hidden;
 }

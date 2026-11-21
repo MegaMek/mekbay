@@ -79,7 +79,8 @@ svg:where(.mekbay-sheet):not(:root),
 }
 
 :where(.mekbay-sheet) .bombLabel,
-:where(.mekbay-sheet) .velocityValue {
+:where(.mekbay-sheet) .velocityValue,
+:where(.mekbay-sheet) .elevationTrackValue {
   pointer-events: none;
 }
 

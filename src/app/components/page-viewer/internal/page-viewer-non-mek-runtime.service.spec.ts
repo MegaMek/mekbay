@@ -378,6 +378,38 @@ describe('PageViewerNonMekRuntimeService Elevation picker', () => {
     });
 });
 
+describe('PageViewerNonMekRuntimeService velocity record picker', () => {
+    it('picks from a vertical list whatever the picker style', () => {
+        const picker = jasmine.createSpy('createChoicePicker').and.returnValue({ destroy: () => {} });
+        const dispatch = jasmine.createSpy('dispatchUnitCommand').and.resolveTo({ accepted: true, changed: true });
+        const context = { owner: {}, state: createPristineNonMekUnitState(new TestAeroSpaceFighterEntity()) };
+        TestBed.configureTestingModule({ providers: [
+            PageViewerNonMekRuntimeService,
+            { provide: PickerFactoryService, useValue: { createChoicePicker: picker } },
+            { provide: OptionsService, useValue: { options: () => ({ pickerStyle: 'default' }) } },
+            { provide: PageViewerZoomPanService, useValue: { cancelGesture: () => {} } },
+            PageViewerOverlayService,
+            ...[DialogsService, ForcePilotEditorService, LoggerService, OverlayManagerService, ToastService, UnitNameService]
+                .map(provide => ({ provide, useValue: {} })),
+        ] });
+        const member = {
+            id: 'asf-1',
+            force: { dispatchUnitCommand: dispatch },
+            nonMekRecordSheetSnapshot: () => ({ editContext: context, velocityRecord: [{ turn: 1, field: 'velocity', value: 3 }] }),
+        } as unknown as CBTForceMember;
+        TestBed.inject(PageViewerNonMekRuntimeService).handle(member,
+            { kind: 'velocity-record', turn: 2, field: 'velocity', context }, new MouseEvent('click'));
+
+        const config = picker.calls.mostRecent().args[0] as ChoicePickerConfig;
+        expect(config.style).toBe('linear');
+        expect(config.horizontal).toBeFalse();
+        expect(config.selected).toBe(3);
+        expect(config.values.map(choice => choice.value)).toEqual(Array.from({ length: 31 }, (_, value) => value));
+        config.onPick({ label: '4', value: 4 });
+        expect(dispatch).toHaveBeenCalledOnceWith('asf-1', { type: 'set-velocity-record', turn: 2, field: 'velocity', value: 4 }, context);
+    });
+});
+
 describe('PageViewerNonMekRuntimeService aggregate infantry edits', () => {
     function select(maximum: number, committed: number, preview: number, strength: number, pending: boolean) {
         const context = { owner: {}, state: createPristineNonMekUnitState(new TestInfantryEntity()) };
