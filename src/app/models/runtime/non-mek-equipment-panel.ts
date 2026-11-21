@@ -424,8 +424,8 @@ function projectComponent(
         ? undefined
         : projectAmmo(entity, mount, ruleset, state, query, componentId, loadouts);
     const targeting = state.attackerTargeting.components.get(componentId);
-    const feedingSources = ammoSourceCandidates.filter(candidate => ammoSourceFeedsWeapon(
-        candidate.source.componentId, index.components.get(candidate.source.componentId)?.mount, componentId));
+    const feedingSources = equipment instanceof WeaponEquipment ? ammoSourceCandidates.filter(candidate => ammoSourceFeedsWeapon(
+        candidate.source.componentId, index.components.get(candidate.source.componentId)?.mount, componentId, equipment)) : [];
     const ammoSources = equipment instanceof WeaponEquipment && !mount.isPhysicalWeapon()
         ? compatibleAmmoSources(
             feedingSources,

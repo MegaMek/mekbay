@@ -57,7 +57,7 @@ import type { TargetRegistrySnapshot } from './encounter-runtime';
 import { RuntimeEquipmentStatusKernel,type RuntimeEquipmentCommittedState,type RuntimeEquipmentStatusTopology } from './equipment-status-kernel';
 import { buildEquipmentStatusTopology } from './equipment-status-topology';
 import { canPerformMekAction } from './mek-action-availability';
-import { mekAmmoCapacity,mekAmmoDefaultMunitionKey,mekAmmoLoadout,mekAmmoLoadouts,mekIntrinsicMagazine,weaponAcceptsAmmo,type AmmoLoadout } from './mek-ammo';
+import { ammoSourceFeedsWeapon,mekAmmoCapacity,mekAmmoDefaultMunitionKey,mekAmmoLoadout,mekAmmoLoadouts,weaponAcceptsAmmo,type AmmoLoadout } from './mek-ammo';
 import { mekComponentModes } from './mek-component-rules';
 import { GAUSS_POWERED_UP,isSparseMekGaussPowerState,nextGaussPowerState,settledGaussPowerState,type MekGaussPowerState } from './mek-gauss-power';
 import { isMekLocationPhysicallyDestroyed,isMekLocationPhysicallyDestroyedFromView,mekLocationDestructionParentId } from './mek-location-state-kernel';
@@ -982,8 +982,7 @@ function buildAttackerTargetingContext(
             const selectedMode = effectiveComponentMode(unit, state, componentId);
             const sources = [...index.components]
                 .filter(([sourceId, source]) => source.kind === 'equipment'
-                    && (source.mount.equipment instanceof AmmoEquipment
-                        || mekIntrinsicMagazine(entity, index, sourceId, ruleset)?.ownerComponentId === componentId))
+                    && ammoSourceFeedsWeapon(sourceId, source.mount, componentId, weapon))
                 .map(([sourceId]) => Object.freeze({
                     componentId: sourceId,
                     munitionKeys: Object.freeze(mekAmmoLoadouts(entity, index, sourceId, ruleset)

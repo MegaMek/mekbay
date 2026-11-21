@@ -147,6 +147,10 @@ export interface WeaponAttackFacts {
     readonly aim?: Readonly<{ location: string; dice: 1 | 2 }>;
     /** The laser has a working laser insulator. */
     readonly insulated?: boolean;
+    /** The weapon fires indirectly, as the target's calculator declares. */
+    readonly indirect?: boolean;
+    /** The attacker is inside hostile ECM (its 'jammed' condition), which nullifies Artemis (TW p. 134). */
+    readonly ecmJammed?: boolean;
 }
 
 export interface WeaponAttackOutcome {
@@ -163,7 +167,9 @@ export interface WeaponAttackOutcome {
 
 /**
  * A Streak launcher, or an iATM fired directly, locks on: on a hit every missile strikes, and a missed lock fires
- * nothing and makes no heat (TW p. 138; IO:AE p. 60). MekBay has no indirect fire, the iATM's other mode.
+ * nothing and makes no heat (TW p. 138; IO:AE p. 60). An attack's lock-on also needs direct fire (`weaponAttackProfile`):
+ * an iATM firing indirectly "resolves the attack like a standard LRM ... and must roll on the appropriate Cluster Hits
+ * Table" (IO:AE p. 60), and "Streak LRMs may not be fired indirectly" (TO:AUE p. 139).
  * The Fusillade, the ProtoMek launcher that fires iATM munitions, does not: "Fusillade launchers lack the Streak-like
  * features ... will fire even if the attack roll fails, and must roll on the 3 column of the Cluster Hits Table"
  * (IO:AE p. 59).
@@ -175,7 +181,8 @@ export function locksOnTarget(equipment: WeaponEquipment): boolean {
 
 /**
  * The Fusillade's integral Artemis IV: "A +2 modifier applies to the Cluster Hits Table roll result, to account for the
- * integral Artemis, unless hostile ECM interferes" (IO:AE p. 59).
+ * integral Artemis, unless hostile ECM interferes" (IO:AE p. 59). The attack starts without it when the attacker is
+ * jammed, the ECM state every Artemis reads (`activeArtemisKind`).
  */
 const FUSILLADE_ARTEMIS_CLUSTER_MODIFIER = 2;
 
@@ -197,11 +204,12 @@ export function weaponAttackProfile(facts: WeaponAttackFacts, rules: CBTGameRule
             partialCover: facts.partialCover,
             damagePerHit,
             projectiles: Math.max(1, projectiles),
-            allHit: locksOnTarget(equipment),
+            allHit: locksOnTarget(equipment) && facts.indirect !== true,
             groupSize: Math.max(damagePerHit, groupSize),
             ...(equipment.ammoType === 'RIFLE' ? { rifle: true as const } : {}),
             ...(facts.insulated ? { insulated: true as const } : {}),
-            ...(isFusilladeLauncher(equipment) ? { clusterModifier: FUSILLADE_ARTEMIS_CLUSTER_MODIFIER } : {}),
+            ...(isFusilladeLauncher(equipment) && facts.ecmJammed !== true
+                ? { clusterModifier: FUSILLADE_ARTEMIS_CLUSTER_MODIFIER } : {}),
         });
     // Each inferno missile that hits is its own group: one hit-location roll, no damage. Core p. 192 skips the roll, but
     // partial cover and heat-dissipating armor can depend on it (Xotl, Core Rulebook forum ruling, 19 Oct 2026).

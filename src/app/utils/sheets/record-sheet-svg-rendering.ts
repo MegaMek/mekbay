@@ -2,8 +2,8 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 import { RECORD_SHEET_CAP_HEIGHT, RECORD_SHEET_FONT } from './record-sheet-typography';
 
-import { ATM_AMMO_PROFILES, MML_AMMO_PROFILES, type AmmoWeaponProfile } from '../../models/ammo-weapon-profile.model';
-import { artemisKind, isArtemisEquipment, type ArtemisKind } from '../../models/artemis-equipment.model';
+import { ATM_AMMO_PROFILES, MML_AMMO_PROFILES, resolveAmmoWeaponProfile, type AmmoWeaponProfile } from '../../models/ammo-weapon-profile.model';
+import { artemisKind, firesArtemisAmmo, isArtemisEquipment, type ArtemisKind } from '../../models/artemis-equipment.model';
 import { aerospaceMineDispenserCapacity } from '../../models/aerospace-support-equipment.model';
 import { sensorEquipmentKind } from '../../models/sensor-equipment.model';
 import { isApolloEquipment } from '../../models/apollo-mode.model';
@@ -14,8 +14,8 @@ import type { BaseEntity, HeatDissipationBoost } from '../../models/entity/base-
 import type { CBTRuleset } from '../../models/cbt-ruleset.model';
 import { asComponentId } from '../../models/entity/entity-identifiers';
 import type { EntityDamageLocation, EntityMountedEquipment, EntityMountedWeapon, EntityTechBase } from '../../models/entity/types';
-import type { Equipment, WeaponEquipment } from '../../models/equipment.model';
-import { isPpcCapacitorEquipment, PPC_CAPACITOR_HEAT_BONUS } from '../../models/ppc-capacitor.model';
+import { AmmoEquipment, ammoMatchesWeapon, type Equipment, type WeaponEquipment } from '../../models/equipment.model';
+import { isPpcCapacitorEquipment, PPC_CAPACITOR_DAMAGE_BONUS, PPC_CAPACITOR_HEAT_BONUS } from '../../models/ppc-capacitor.model';
 import { isLaserInsulatorEquipment, laserInsulatorAdjustedHeat } from '../../models/laser-insulator.model';
 import { isRiscLaserPulseModule, RISC_LASER_PULSE_HEAT_BONUS } from '../../models/risc-laser-mode.model';
 import { isWeaponEnhancementEquipment } from '../../models/weapon-enhancement.model';
@@ -393,7 +393,11 @@ export function recordSheetInventoryWeapons(entity: BaseEntity): readonly {
 }[] {
   return Object.freeze(recordSheetInventoryWeaponMounts(entity).map((mount) => {
     const semanticDamage = defaultRecordSheetWeaponDamageText(mount.equipment, entity.getEquipmentRegistry());
-    const { heat, insulated, artemis, linkedEquipment } = recordSheetWeaponAttachments(entity, mount, semanticDamage);
+    const { heat, insulated, linkedEquipment } = recordSheetWeaponAttachments(entity, mount, semanticDamage);
+    // Any of the unit's bins can feed a weapon not in a bay
+    const bins = entity.equipment().flatMap(bin => bin.equipment instanceof AmmoEquipment
+      && ammoMatchesWeapon(mount.equipment, bin.equipment) ? [bin.equipment] : []);
+    const artemis = (munition: AmmoWeaponProfile | null) => recordSheetWeaponArtemis(entity, mount, bins, munition);
     const ammoModes = recordSheetAlternativeModes(mount.equipment, artemis);
     return Object.freeze({
       name: recordSheetInventoryMountName(entity, mount),
@@ -410,7 +414,7 @@ export function recordSheetInventoryWeapons(entity: BaseEntity): readonly {
       mountKey: recordSheetWeaponMountKey(mount),
       linkedEquipment,
       alternativeModes: ammoModes,
-      aerospace: ammoModes.length > 0 ? null : aerospaceAttackValues(mount.equipment, null, artemis),
+      aerospace: ammoModes.length > 0 ? null : aerospaceAttackValues(mount.equipment, null, artemis(null)),
     });
   }));
 }
@@ -425,9 +429,20 @@ function recordSheetInsulatedHeatText(heat: number, insulated: boolean): string 
   return `${recordSheetHeatText(heat)}${insulated ? '*' : ''}`;
 }
 
-/** The Artemis system linked to a weapon; a sheet prints the values it gives when firing its own missiles. */
-export function recordSheetWeaponArtemis(entity: BaseEntity, mount: EntityMountedWeapon): ArtemisKind | null {
-  return artemisKind(entity.getLinkingMounts(mount).find(source => isArtemisEquipment(source.equipment))?.equipment);
+/**
+ * The Artemis system linked to a weapon, whose values a sheet prints when one of the bins the weapon fires from holds
+ * that system's own missiles of `munition` (any munition when null): a launcher "loaded with normal ammo ... functions
+ * as a normal launcher" (TW p. 130).
+ */
+export function recordSheetWeaponArtemis(
+  entity: BaseEntity,
+  mount: EntityMountedWeapon,
+  bins: readonly AmmoEquipment[],
+  munition: AmmoWeaponProfile | null,
+): ArtemisKind | null {
+  const kind = artemisKind(entity.getLinkingMounts(mount).find(source => isArtemisEquipment(source.equipment))?.equipment);
+  return kind !== null && bins.some(ammo => (munition === null || resolveAmmoWeaponProfile(ammo) === munition)
+    && firesArtemisAmmo(kind, ammo)) ? kind : null;
 }
 
 /** Standard-mode heat and a separate printable line for each installed weapon attachment. */
@@ -438,7 +453,6 @@ export function recordSheetWeaponAttachments(entity: BaseEntity, mount: EntityMo
     return {
       heat: laserInsulatorAdjustedHeat(mount.equipment.heat, insulated),
       insulated,
-      artemis: recordSheetWeaponArtemis(entity, mount),
       linkedEquipment: attachments.map(source => recordSheetLinkedEquipment(entity, mount, source, semanticDamage, insulated)),
     };
 }
@@ -459,6 +473,8 @@ export interface RecordSheetLinkedEquipment {
   readonly name: string;
   readonly heat: string;
   readonly damage: string;
+  /** The aerospace attack values of a firing profile the enhancement adds; absent when it adds none. */
+  readonly aerospace?: AerospaceAttackValues;
 }
 
 /**
@@ -491,6 +507,9 @@ function recordSheetLinkedEquipment(
       ...line,
       heat: String(weapon.heat + PPC_CAPACITOR_HEAT_BONUS),
       damage: formatRecordSheetWeaponDamageText(weapon, damage ?? semanticDamage ?? defaultRecordSheetWeaponDamageText(weapon, entity.getEquipmentRegistry())),
+      // A charged capacitor "adds 5 points to its normal damage value" at each range the PPC reaches (TO:AUE p. 149)
+      aerospace: aerospaceAttackValues(weapon, null)
+        .map(value => value > 0 ? value + PPC_CAPACITOR_DAMAGE_BONUS : 0) as [number, number, number, number],
     });
   }
   if (isRiscLaserPulseModule(enhancement)) {
@@ -529,12 +548,15 @@ function recordSheetWeaponRanges(weapon: WeaponEquipment): readonly number[] {
   return weapon.ammoType.includes('TORPEDO') ? weapon.weapon.wRanges : weapon.ranges;
 }
 
-function recordSheetAlternativeModes(weapon: WeaponEquipment, artemis: ArtemisKind | null): readonly RecordSheetInventoryAlternativeMode[] {
+function recordSheetAlternativeModes(
+  weapon: WeaponEquipment,
+  artemis: (munition: AmmoWeaponProfile) => ArtemisKind | null,
+): readonly RecordSheetInventoryAlternativeMode[] {
   return Object.freeze(
     recordSheetAmmoProfiles(weapon).map((profile) =>
       Object.freeze({
         name: profile.displayName,
-        aerospace: aerospaceAttackValues(weapon, profile, artemis),
+        aerospace: aerospaceAttackValues(weapon, profile, artemis(profile)),
         damage: recordSheetModeDamage(profile),
         minimumRange: profile.minimumRange > 0 ? String(profile.minimumRange) : '—',
         ranges: Object.freeze(profile.ranges.slice(0, 3).map((range) => String(range))) as readonly [

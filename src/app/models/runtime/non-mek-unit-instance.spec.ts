@@ -2885,6 +2885,23 @@ describe('NonMekUnitInstance Fusillade on the canon Sprite 3', () => {
         expect(restoreNonMekRuntimeForTest(saved, entity, CORE_2026_RULESET).query().remainingAmmo(first)).toBe(0);
     });
 
+    it('never feeds a launcher from a matching bin: one-shot weapons "can only be fired once in a scenario" (TW p. 114)', () => {
+        const entity = parseEntity(SPRITE_3.replace('EIInterface', 'EIInterface\nClan Ammo iATM-3 (20)'), 'Sprite 3.blk', registry).entity;
+        entity.uuid.set(UUID);
+        const runtime = createNonMekRuntimeForTest('unit:sprite-3-bin', baseline(), entity, CORE_2026_RULESET);
+        const components = [...runtime.getIndex().components.values()];
+        const weaponId = components.find(component => component.mount.equipment?.internalName === 'Fusillade')!.id;
+        const binId = components.find(component => component.mount.equipment?.internalName === 'Clan Ammo iATM-3')!.id;
+        const targets: TargetRegistrySnapshot = Object.freeze({ revision: 0, targets: Object.freeze([]) });
+
+        const row = projectNonMekEquipmentPanel(entity, runtime.getIndex(), CORE_2026_RULESET, runtime.snapshot(),
+            runtime.query(), targets, {}).components.find(component => component.componentId === weaponId)!;
+        expect(row.weapon?.ammoSources.map(source => source.componentId)).toEqual([weaponId]);
+        expect(runtime.dispatchAttackerTargeting({ type: 'edit-attacker-targeting', edit: {
+            kind: 'set-component-ammo', componentId: weaponId, ammo: { munitionKey: 'Clan Ammo iATM-3', preferredSourceId: binId },
+        } }, targets, false).changed).toBeFalse();
+    });
+
     it('loads and fires Improved Magnetic Pulse missiles at High Explosive range, 1 point each (IO:AE p. 61)', () => {
         const entity = parseEntity(SPRITE_3, 'Sprite 3.blk', registry).entity;
         entity.uuid.set(UUID);

@@ -1129,9 +1129,23 @@ export async function restoreSerializedCBTUnitV2(
                 current: { heatsinksOff },
             });
         }
-        const heatsinksOffNext = saved.heat.heatsinksOffNext === undefined
+        const savedHeatsinksOffNext = saved.heat.heatsinksOffNext === undefined
             ? undefined
             : requireNonnegativeInteger(saved.heat.heatsinksOffNext, '$.heat.heatsinksOffNext');
+        // The pending switch is clamped to the heat sinks the design has, as the current one is, and dropped once it no
+        // longer changes the switch.
+        const clampedHeatsinksOffNext = savedHeatsinksOffNext === undefined
+            ? undefined
+            : Math.min(savedHeatsinksOffNext, entity.bulkHeatSinkCount());
+        if (clampedHeatsinksOffNext !== savedHeatsinksOffNext) {
+            warn(accumulator, {
+                code: 'DAMAGE_CLAMPED',
+                message: 'Saved pending heat-sink switch exceeds the heat sinks the unit has.',
+                saved: { heatsinksOffNext: savedHeatsinksOffNext },
+                current: { heatsinksOffNext: clampedHeatsinksOffNext },
+            });
+        }
+        const heatsinksOffNext = clampedHeatsinksOffNext === heatsinksOff ? undefined : clampedHeatsinksOffNext;
         try {
             heat = canonicalizeMekHeatStateV2({
                 current,

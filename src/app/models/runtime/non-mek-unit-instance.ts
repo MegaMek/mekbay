@@ -921,7 +921,7 @@ export function reduceNonMekSelectedWeaponFire(binding: NonMekRuntimeBinding, st
         );
         if (!source
             || !loadout
-            || !ammoSourceFeedsWeapon(sourceId, source.mount, weaponId)
+            || !ammoSourceFeedsWeapon(sourceId, source.mount, weaponId, weapon)
             || loadout.munitionKey !== ammoSelection.munitionKey
             || query.componentStatus(sourceId, 'committed') !== 'available'
             || !weaponAcceptsAmmo(weapon, loadout.equipment, mode)) {
@@ -1035,7 +1035,7 @@ export function nonMekWeaponTargetSubject(
     let selectedAmmo: AmmoEquipment | null = null;
     for (const source of sources) {
         if (selection?.preferredSourceId !== undefined && source.componentId !== selection.preferredSourceId) continue;
-        if (!ammoSourceFeedsWeapon(source.componentId, index.components.get(source.componentId)?.mount, componentId)) continue;
+        if (!ammoSourceFeedsWeapon(source.componentId, index.components.get(source.componentId)?.mount, componentId, weapon)) continue;
         const munitionKey = selection?.munitionKey ?? source.current.munitionKey;
         const loadout = source.loadouts.find(candidate => candidate.munitionKey === munitionKey
             && weaponAcceptsAmmo(weapon, candidate.equipment, mode));
@@ -2167,7 +2167,7 @@ function buildNonMekAttackerTargetingContext(
                 component.id,
             );
             const sources = ammoSources.flatMap(source => {
-                if (!ammoSourceFeedsWeapon(source.componentId, source.mount, component.id)) return [];
+                if (!ammoSourceFeedsWeapon(source.componentId, source.mount, component.id, weapon)) return [];
                 const munitionKeys = source.loadouts
                     .filter(loadout => weaponAcceptsAmmo(weapon, loadout.equipment, selectedMode))
                     .map(loadout => loadout.munitionKey);

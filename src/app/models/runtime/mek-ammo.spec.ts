@@ -10,6 +10,8 @@ import { EntityMountedEquipment } from '../entity/types';
 import { AmmoEquipment, WeaponEquipment } from '../equipment.model';
 import { entityAmmoSelectionCompatibilityFacts, mekAmmoCapacity, mekAmmoLoadout, mekAmmoLoadouts } from './mek-ammo';
 import { buildMekRuntimeIndex } from './mek-runtime-index';
+import { resolveMekTargetingAmmo } from './mek-targeting-rules';
+import type { MekUnitQueryPort } from './unit-instance';
 
 describe('Mek ammo loadout queries', () => {
     const standard = new AmmoEquipment({
@@ -49,6 +51,16 @@ describe('Mek ammo loadout queries', () => {
         expect(mekAmmoLoadout(entity, index, asComponentId('ammo:0'), CORE_2026_RULESET, standard.id)?.equipment)
             .toBe(standard);
         expect(alternatives).not.toHaveBeenCalled();
+    });
+
+    it('feeds a one-shot launcher only its own shot, never a matching bin (TW p. 114)', () => {
+        const { entity, index } = fixture();
+        const query = { ammoLoadout: () => ({ munitionKey: standard.id }), componentMode: () => undefined } as unknown as MekUnitQueryPort;
+        const launcher = asComponentId('ammo:1');
+        const fire = (preferredSourceId: string) => resolveMekTargetingAmmo(entity, index, CORE_2026_RULESET, query, launcher,
+            { munitionKey: standard.id, preferredSourceId: asComponentId(preferredSourceId) });
+        expect(fire('ammo:0')).toBeNull();
+        expect(fire('ammo:1')).toBe(standard);
     });
 
     for (const ruleset of [CORE_2026_RULESET, TOTAL_WARFARE_RULESET]) {

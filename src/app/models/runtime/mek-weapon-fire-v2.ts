@@ -9,7 +9,7 @@ import {
     isBombastLaserEquipment,
 } from '../bombast-laser-mode.model';
 import type { MekEntity } from '../entity/entities/mek/mek-entity';
-import { AmmoEquipment, WeaponEquipment } from '../equipment.model';
+import { WeaponEquipment } from '../equipment.model';
 import { locksOnTarget } from '../rules/weapon-attack-resolution';
 import {
     canPerformMekAction,
@@ -45,8 +45,8 @@ import type { MekRuntimeIndex } from './mek-runtime-index';
 import { equipmentForComponent } from './mek-runtime-index';
 import { componentHeatSourceId } from './turn-heat-ledger';
 import {
+    ammoSourceFeedsWeapon,
     mekAmmoLoadout,
-    mekIntrinsicMagazine,
     weaponAcceptsAmmo,
 } from './mek-ammo';
 import { rapidFireAutocannonShotCount } from './component-rapid-fire-autocannon';
@@ -453,10 +453,8 @@ function selectedAmmoSpend(
     }
     const sourceId = selection.ammoSourceId;
     const source = index.components.get(sourceId);
-    const sourceEquipment = equipmentForComponent(index, sourceId);
-    const intrinsicMagazine = mekIntrinsicMagazine(entity, index, sourceId, ruleset);
     if (source?.kind !== 'equipment'
-        || (!(sourceEquipment instanceof AmmoEquipment) && intrinsicMagazine?.ownerComponentId !== weaponId)
+        || !ammoSourceFeedsWeapon(sourceId, source.mount, weaponId, weapon)
         || runtime.componentStatus(sourceId, 'committed') !== 'available') {
         return rejected('INVALID_AMMO_SOURCE');
     }
@@ -471,7 +469,6 @@ function selectedAmmoSpend(
     if (!selected || !weaponAcceptsAmmo(weapon, selected.equipment, runtime.componentMode(weaponId))) {
         return rejected('INCOMPATIBLE_AMMO');
     }
-    if (intrinsicMagazine && sourceId !== weaponId) return rejected('INVALID_AMMO_SOURCE');
     return Object.freeze({
         accepted: true,
         spend: Object.freeze({

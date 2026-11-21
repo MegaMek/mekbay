@@ -2,12 +2,15 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 // Author: Drake
 
+import { AmmoEquipment } from '../../../equipment.model';
 import {
+  TestAeroSpaceFighterEntity as AeroSpaceFighterEntity,
   TestConvFighterEntity as ConvFighterEntity,
+  TestDropShipEntity as DropShipEntity,
   TestFixedWingSupportEntity as FixedWingSupportEntity,
   TestSmallCraftEntity as SmallCraftEntity,
 } from '../../testing/test-entities';
-import { addTestEquipmentWithFlags } from '../../testing/test-mounted-equipment';
+import { addTestEquipment, addTestEquipmentWithFlags } from '../../testing/test-mounted-equipment';
 import { writeBlkAero } from '../../writers/blk-aero-writer';
 
 describe('AeroEntity movement', () => {
@@ -145,6 +148,19 @@ describe('AeroEntity ammunition CASE', () => {
     expect(entity.ammoCaseProtection('Nose')).toBe('case-ii');
     expect(entity.ammoCaseProtection('Fuselage')).toBe('case');
     expect(entity.ammoCaseProtection('Left Wing')).toBe('case');
+  });
+
+  it('builds CASE into a Clan fighter, but not a Small Craft or DropShip, which "may not carry CASE" (TM p. 210)', () => {
+    const ammo = new AmmoEquipment({ id: 'Clan Test Ammo', name: 'Test Ammo', type: 'ammo', stats: { explosive: true } });
+    const [fighter, smallCraft, dropShip] = [new AeroSpaceFighterEntity(), new SmallCraftEntity(), new DropShipEntity()];
+    for (const entity of [fighter, smallCraft, dropShip]) {
+      entity.techBase.set('Clan');
+      addTestEquipment(entity, ammo, { location: 'Nose' });
+    }
+
+    expect(fighter.ammoCaseProtection('Nose')).toBe('case');
+    expect(smallCraft.ammoCaseProtection('Nose')).toBeNull();
+    expect(dropShip.ammoCaseProtection('Nose')).toBeNull();
   });
 });
 

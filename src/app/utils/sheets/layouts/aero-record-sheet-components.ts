@@ -299,7 +299,8 @@ export function aeroInventoryWeaponRows(
         componentIds: row.componentIds,
         subRows: [
             ...row.linkedEquipment.map((linked): AeroInventorySubRow => ({
-                kind: 'linked', name: linked.name, heat: linked.heat, damageByRange: AERO_NO_VALUES,
+                kind: 'linked', name: linked.name, heat: linked.heat,
+                damageByRange: linked.aerospace === undefined ? AERO_NO_VALUES : aeroValueTexts(linked.aerospace),
                 componentIds: linked.componentIds,
             })),
             ...row.alternativeModes.map((mode): AeroInventorySubRow => ({

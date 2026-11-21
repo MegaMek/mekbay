@@ -1,7 +1,7 @@
 // Copyright (C) 2026 The MegaMek Team
 // SPDX-License-Identifier: GPL-3.0-or-later
 
-import { MiscEquipment, WeaponEquipment, createEquipment } from '../../../models/equipment.model';
+import { AmmoEquipment, MiscEquipment, WeaponEquipment, createEquipment } from '../../../models/equipment.model';
 import { TestAeroSpaceFighterEntity, TestSmallCraftEntity, TestConvFighterEntity, TestDropShipEntity, TestBipedMekEntity, TestQuadVeeEntity, TestSupportTankEntity, TestTankEntity } from '../../../models/entity/testing/test-entities';
 import { addTestEquipment, addTestEquipmentWithFlags } from '../../../models/entity/testing/test-mounted-equipment';
 import { createTestEquipmentRegistry } from '../../../models/entity/testing/test-equipment-registry';
@@ -57,7 +57,7 @@ describe('record-sheet inventory content parity', () => {
         }
     });
 
-    it('prints a fighter MML with its Artemis line, then its LRM and SRM values with the Artemis bonus', async () => {
+    it('prints a fighter MML with its Artemis line, then its LRM and SRM values, with the bonus for Artemis missiles only', async () => {
         const entity = new TestAeroSpaceFighterEntity();
         entity.setTonnage(50);
         const mml = addTestEquipment(entity, new WeaponEquipment({ id: 'ISMML7', name: 'MML 7', type: 'weapon',
@@ -66,18 +66,24 @@ describe('record-sheet inventory content parity', () => {
         const artemis = addTestEquipment(entity, new MiscEquipment({ id: 'ISArtemisIV', name: 'Artemis IV FCS', type: 'misc',
             flags: ['F_WEAPON_ENHANCEMENT', 'F_ARTEMIS'] }), { location: 'Nose' });
         entity.linkEquipment(artemis, mml);
+        // Its LRM bin holds Artemis missiles, its SRM bin normal ones, which fire "as a normal launcher" (TW p. 130)
+        for (const [id, flag, munition] of [['IS Ammo MML-7 LRM Artemis-capable', 'F_MML_LRM', 'M_ARTEMIS_CAPABLE'],
+            ['IS Ammo MML-7 SRM', 'F_MML_SRM', 'M_STANDARD']] as const) {
+            addTestEquipment(entity, new AmmoEquipment({ id, name: id, type: 'ammo', flags: [flag],
+                ammo: { type: 'MML', rackSize: 7, shots: 17, munitionType: [munition] } }), { location: 'Fuselage' });
+        }
         const svg = await RecordSheetSvgGenerator.generate(entity, { ruleset: 'total-warfare' });
         const row = svg.querySelector(`.inventoryEntry[data-mekbay-component-ids="${mml.mountId}"]`)!;
         const values = (line: Element) => ['range_short', 'range_medium', 'range_long', 'range_extreme']
             .map(field => line.querySelector(`:scope > .${field}`)?.textContent);
         const modes = [...row.querySelectorAll(':scope > .alternativeMode')];
 
-        // Ungrouped, so no # column; MML 7 with Artemis IV is 6 and its SRM 12 (TW p. 303)
+        // Ungrouped, so no # column; MML 7 with Artemis IV is 6, and its SRM without it 8 (TW p. 303)
         expect(row.querySelector(':scope > .quantity')).toBeNull();
         expect(row.querySelector(':scope > .inventoryEntry.linked > .name')?.textContent).toBe('w/Artemis IV');
         expect(modes.map(mode => mode.querySelector('.name')?.textContent)).toEqual(['LRM', 'SRM']);
         expect(values(modes[0])).toEqual(['6', '6', '6', '—']);
-        expect(values(modes[1])).toEqual(['12', '—', '—', '—']);
+        expect(values(modes[1])).toEqual(['8', '—', '—', '—']);
         expect(svg.querySelector('.inventoryEntry .name')?.textContent).not.toContain('Artemis IV FCS [E]');
     });
 
@@ -98,21 +104,22 @@ describe('record-sheet inventory content parity', () => {
         expect(heat(insulator.mountId)).toEqual([]);
     });
 
-    it('prints a DropShip bay heat with its laser insulators: 3 + 8 - 1 (TO:AUE p. 134)', async () => {
-        const entity = new TestDropShipEntity();
-        const laser = (id: string, name: string, heat: number) => addTestEquipment(entity, new WeaponEquipment({ id, name,
-            type: 'weapon', flags: ['F_LASER', 'F_ENERGY'], weapon: { damage: heat, heat, ranges: [3, 6, 9, 12] } }),
-        { location: 'Nose' });
-        const medium = laser('ISMediumLaser', 'Medium Laser', 3);
-        const large = laser('ISLargeLaser', 'Large Laser', 8);
-        const insulator = addTestEquipment(entity, new MiscEquipment({ id: 'ISLaserInsulator', name: 'Laser Insulator',
-            type: 'misc', flags: ['F_WEAPON_ENHANCEMENT', 'F_LASER_INSULATOR'] }), { location: 'Nose' });
-        entity.linkEquipment(insulator, large);
-        entity.addEquipmentBay('weapon-bay', { mounts: [medium, large] });
+    it('prints a fighter PPC capacitor line with the charged values, 5 more at each range (TO:AUE p. 149)', async () => {
+        const entity = new TestAeroSpaceFighterEntity();
+        entity.setTonnage(50);
+        const ppc = addTestEquipment(entity, new WeaponEquipment({ id: 'ISERPPC', name: 'ER PPC', type: 'weapon',
+            flags: ['F_ENERGY', 'F_DIRECT_FIRE', 'F_PPC', 'F_PPC_CAPACITOR_COMPATIBLE'],
+            weapon: { damage: 10, heat: 15, av: [10, 10, 10, 0], ranges: [0, 7, 14, 23] } }), { location: 'Left Wing' });
+        const capacitor = addTestEquipment(entity, new MiscEquipment({ id: 'ISPPCCapacitor', name: 'PPC Capacitor',
+            type: 'misc', flags: ['F_WEAPON_ENHANCEMENT', 'F_PPC_CAPACITOR'] }), { location: 'Left Wing' });
+        entity.linkEquipment(capacitor, ppc);
         const svg = await RecordSheetSvgGenerator.generate(entity, { ruleset: 'total-warfare' });
+        const values = (line: Element | null) => ['heat', 'range_short', 'range_medium', 'range_long', 'range_extreme']
+            .map(field => line?.querySelector(`:scope > .${field}`)?.textContent);
+        const row = svg.querySelector(`.inventoryEntry[data-mekbay-component-ids="${ppc.mountId}"]`)!;
 
-        expect([...svg.querySelectorAll(`.inventoryEntry[data-mekbay-component-ids="${medium.mountId} ${large.mountId}"] > .heat`)]
-            .map(field => field.textContent)).toEqual(['10']);
+        expect(values(row)).toEqual(['15', '10', '10', '10', '—']);
+        expect(values(row.querySelector(':scope > .inventoryEntry.linked'))).toEqual(['20', '15', '15', '15', '—']);
     });
 
     it('retains fighter VSTOL and small-cockpit features in both rulesets', async () => {

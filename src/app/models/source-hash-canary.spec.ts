@@ -32,6 +32,15 @@ describe('source hash canary', () => {
         expect(await nativeSourceHashCanary(source.replace('100', '95'), 'mtf')).not.toBe(baseline);
     });
 
+    it('changes the canary of an MTF whose critical rows pack into an empty row, and of no other', async () => {
+        // State saved while MekBay read rows where the file puts them names other slots once the parser packs them, so
+        // that file must lose the canary it had then (287k); one whose empty rows only precede placed systems keeps it.
+        const holed = 'Chassis:Test\nModel:T-1\nMass:50\n\nLeft Torso:\n-Empty-\nMedium Laser\n';
+        const head = 'Chassis:Test\nModel:T-1\nMass:50\n\nHead:\nLife Support\nSensors\nCockpit\n-Empty-\nSensors\nLife Support\n';
+        expect(await nativeSourceHashCanary(holed, 'mtf')).not.toBe(asSourceHashCanary('287k'));
+        expect(await nativeSourceHashCanary(head, 'mtf')).toBe(asSourceHashCanary('RVBD'));
+    });
+
     it('ignores BLK comments and generator blocks while preserving values, order and duplicates', async () => {
         const source = '<name>\nTank\n</name>\n<armor>\n10\n20\n</armor>\n';
         const baseline = await nativeSourceHashCanary(source, 'blk');

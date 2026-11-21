@@ -1033,6 +1033,10 @@ describe('MTF weapon rows', () => {
     const written = writeMtf(entity);
     expect(written).toContain('Autocannon/20#2');
     expect(guns(parseMtf(written, new ParseContext('again.mtf', catalog)))).toEqual(tagged);
+    // A tag is any positive number without leading zeros, however long (MtfFile `#([1-9]\d*)$`).
+    const long = new ParseContext('long.mtf', catalog);
+    expect(guns(parseMtf(source.replaceAll('#1', '#1000000000').replaceAll('#2', '#1000000001'), long))).toEqual(tagged);
+    expect(long.warnings.filter((warning) => warning.code === 'MTF_MOUNT_TAG')).toEqual([]);
   });
 
   it('gives each enhancement the nearest weapon above it that can take it', () => {

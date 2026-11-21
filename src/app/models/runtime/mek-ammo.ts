@@ -44,7 +44,7 @@ export function hotLoadedAmmoForWeapon(
     if (!(weapon instanceof WeaponEquipment)) return [];
     const result: AmmoEquipment[] = [];
     for (const [sourceId, source] of index.components) {
-        if (!ammoSourceFeedsWeapon(sourceId, source.mount, weaponId)) continue;
+        if (!ammoSourceFeedsWeapon(sourceId, source.mount, weaponId, weapon)) continue;
         if (!query.ammoHotLoaded(sourceId) || query.remainingAmmo(sourceId) <= 0
             || query.componentStatus(sourceId, perspective) === 'destroyed') continue;
         const ammo = query.ammoEquipment(sourceId);
@@ -54,15 +54,16 @@ export function hotLoadedAmmoForWeapon(
 }
 
 /**
- * An ammunition bin feeds any matching weapon; a one-shot launcher's own shots feed only that launcher, as a
- * Fusillade owns its two (IO:AE p. 59).
+ * An ammunition bin feeds any matching weapon but a one-shot launcher, which fires only its own shots: "One-shot
+ * weapons can only be fired once in a scenario" (TW p. 114), and a Fusillade owns its two (IO:AE p. 59).
  */
 export function ammoSourceFeedsWeapon(
     sourceId: ComponentId,
     source: EntityMountedEquipment | undefined,
     weaponId: ComponentId,
+    weapon: WeaponEquipment,
 ): boolean {
-    return source?.equipment instanceof AmmoEquipment || sourceId === weaponId;
+    return weapon.oneShotCount === undefined ? source?.equipment instanceof AmmoEquipment : sourceId === weaponId;
 }
 
 /** Shared label and changed-loadout marker for runtime ammo displays. */

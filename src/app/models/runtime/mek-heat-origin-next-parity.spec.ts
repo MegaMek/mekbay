@@ -73,6 +73,22 @@ describe('mixed prototype and single sinks (IO:AE p. 65)', () => {
     }
 });
 
+describe('restored heat-sink switch', () => {
+    it('clamps the switch and its pending change to a design that lost heat sinks, dropping a change that no longer is one', async () => {
+        const fixture = createDirectMekRuntimeFixture();
+        const bulk = fixture.entity.bulkHeatSinkCount();
+        const saved = fixture.instance.serialize();
+        const warnings: string[] = [];
+        const restored = await restoreMekUnit({ ...saved, heat: { heat: 0, heatsinksOff: bulk + 5, heatsinksOffNext: bulk } },
+            fixture.entity, fixture.identity,
+            { profileId: 'pristine', deployment: { id: 'default' }, scenario: { id: 'megamek', ruleset: 'core-2026' } },
+            undefined, { onWarning: warning => warnings.push(warning.code) });
+        expect(restored.query().heatState()).toEqual(jasmine.objectContaining({ heatsinksOff: bulk }));
+        expect(restored.query().heatState().heatsinksOffNext).toBeUndefined();
+        expect(warnings).toContain('DAMAGE_CLAMPED');
+    });
+});
+
 describe('prototype double heat sink switch timing', () => {
     it('switches a prototype double at once before the first move of the game, as the bulk switch does (Core p. 103)', () => {
         const fixture = createMixedHeatSinkFixture('core-2026');

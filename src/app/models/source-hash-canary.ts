@@ -5,6 +5,7 @@ import type { NativeUnitFormat } from '../services/unit-catalog/unit-catalog.typ
 import { sha1Base64Url } from '../utils/sha1.util';
 import { BuildingBlock } from './entity/parsers/building-block';
 import { isMtfLocationHeader, isNativeFluffField } from './entity/parsers/entity-fluff-parser';
+import { mtfLocationRowsCloseHole } from './entity/parsers/mtf-parser';
 import { extractNativeUnitArtwork } from './entity/native-unit-artwork';
 
 declare const sourceHashCanaryBrand: unique symbol;
@@ -44,6 +45,9 @@ export async function nativeSourceHashCanary(source: string, format: NativeUnitF
     source = extractNativeUnitArtwork(source, format).source;
     const ignoredField = (key: string) => key === 'generator' || key === 'iconpath' || isNativeFluffField(key, format);
     let inMtfSection = false;
+    // Each MTF location's critical rows, which run from its header to the next header, blank line or comment
+    const locationRows: string[][] = [];
+    let rows: string[] | undefined;
     const normalized = format === 'blk'
         ? JSON.stringify(new BuildingBlock(source).sourceDocument.nodes.flatMap(node => {
             if (node.kind === 'blank' || node.kind === 'comment') return [];
@@ -56,13 +60,19 @@ export async function nativeSourceHashCanary(source: string, format: NativeUnitF
             .filter(line => {
                 if (line === '' || line.startsWith('#')) {
                     inMtfSection = false;
+                    rows = undefined;
                     return !line.startsWith('#');
                 }
+                if (isMtfLocationHeader(line)) locationRows.push(rows = []);
+                else rows?.push(line);
                 if (isMtfLocationHeader(line) || /^weapons\s*:/iu.test(line)) inMtfSection = true;
                 if (inMtfSection) return true;
                 const separator = line.indexOf(':');
                 return separator <= 0 || !ignoredField(line.slice(0, separator).trim().toLowerCase());
             })
             .join('\n').trim();
-    return sourceHashCanary(await sha1Base64Url(new TextEncoder().encode(normalized)))!;
+    // MekBay packs a critical row up into an empty row before it, as MegaMek does, so state saved while it read the row
+    // where the file puts it names other slots: such a file takes a canary of its own, and other files keep theirs.
+    const packed = locationRows.some(mtfLocationRowsCloseHole) ? '\npacked critical rows' : '';
+    return sourceHashCanary(await sha1Base64Url(new TextEncoder().encode(normalized + packed)))!;
 }

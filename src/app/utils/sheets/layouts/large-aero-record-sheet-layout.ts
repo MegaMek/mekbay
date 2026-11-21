@@ -9,7 +9,6 @@ import { systemDamageControls } from '../../../models/runtime/system-damage-pres
 
 import { isMobileHpgEquipment } from '../../../models/aerospace-support-equipment.model';
 import { isApolloEquipment } from '../../../models/apollo-mode.model';
-import { isLaserInsulatorEquipment, laserInsulatorAdjustedHeat } from '../../../models/laser-insulator.model';
 import { artemisKind } from '../../../models/artemis-equipment.model';
 import type { BaseEntity } from '../../../models/entity/base-entity';
 import type { CBTRuleset } from '../../../models/cbt-ruleset.model';
@@ -907,14 +906,11 @@ function largeAeroBayRows(
             configurationKey: largeAeroBayConfigurationKey(entity, groupList, ammo),
             nameLines,
             location: location.label,
-            // Each weapon's heat with its laser insulator (TO:AUE p. 134), and a PPC capacitor's, which a bay counts
-            // as always charged (TO:AUE p. 149)
-            heat: ar10 ? '*' : String(weapons.reduce((total, mount) => {
-                const attachments = entity.getLinkingMounts(mount);
-                return total + laserInsulatorAdjustedHeat(mount.equipment.heat,
-                    attachments.some(source => isLaserInsulatorEquipment(source.equipment)))
-                    + (attachments.some(source => isPpcCapacitorEquipment(source.equipment)) ? PPC_CAPACITOR_HEAT_BONUS : 0);
-            }, 0)),
+            // Each weapon's heat, and a PPC capacitor's, which a bay counts as always charged (TO:AUE p. 149). Laser
+            // insulators fit only units of 200 tons and less (TO:AUE p. 134), never a bay's DropShip or larger craft.
+            heat: ar10 ? '*' : String(weapons.reduce((total, mount) => total + mount.equipment.heat
+                + (entity.getLinkingMounts(mount).some(source => isPpcCapacitorEquipment(source.equipment))
+                    ? PPC_CAPACITOR_HEAT_BONUS : 0), 0)),
             damageByRange: bayLine ? damageText(bayLine.values) : ['', '', '', ''],
             munitionLines: munitionLines.map(line => ({ name: line.name, damageByRange: damageText(line.values) })),
             componentIds: weapons.map(mount => mount.mountId),
@@ -1059,8 +1055,11 @@ function standardBayDamageLines(
         // An MML or ATM fires only a munition it can fire and carries; one without ammo keeps its listed values
         if (profile !== null && recordSheetAmmoProfiles(group.equipment).length > 0
             && (fired === null || (carried.length > 0 && !carried.includes(fired)))) return total;
-        return total + group.mounts.reduce((sum, mount) => {
-            const value = aerospaceAttackValues(group.equipment, fired, recordSheetWeaponArtemis(entity, mount))[rangeIndex];
+        // Each launcher that fires the munition spends a round of it (TW p. 103)
+        const firing = fired !== null && carried.includes(fired) ? group.mounts.slice(0, rounds(group, fired)) : group.mounts;
+        return total + firing.reduce((sum, mount) => {
+            const value = aerospaceAttackValues(group.equipment, fired, recordSheetWeaponArtemis(entity, mount,
+                ammo.get(group)!.map(bin => bin.equipment), fired))[rangeIndex];
             // A bay's PPC capacitors count as charged (TO:AUE p. 149)
             const capacitor = entity.getLinkingMounts(mount).some(source => isPpcCapacitorEquipment(source.equipment));
             return sum + (value > 0 ? value + (capacitor ? PPC_CAPACITOR_DAMAGE_BONUS : 0) : 0);

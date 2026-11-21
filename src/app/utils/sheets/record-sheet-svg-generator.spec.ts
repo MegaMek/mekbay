@@ -495,7 +495,7 @@ describe('RecordSheetSvgGenerator', () => {
         const second = addTestEquipment(entity, lrm, { location: 'Nose' });
         const ammo = addTestEquipment(entity, new AmmoEquipment({
             id: 'Test Station LRM 15 Ammo', name: 'LRM 15 Artemis', type: 'ammo',
-            ammo: { type: 'LRM', rackSize: 15, shots: 40 },
+            ammo: { type: 'LRM', rackSize: 15, shots: 40, munitionType: ['M_ARTEMIS_CAPABLE'] },
         }), { location: 'Nose', shotsCount: 40 });
         const firstArtemis = addTestEquipmentWithFlags(entity, 'F_ARTEMIS', { location: 'Nose' });
         const secondArtemis = addTestEquipmentWithFlags(entity, 'F_ARTEMIS', { location: 'Nose' });
@@ -683,6 +683,24 @@ describe('RecordSheetSvgGenerator', () => {
         ]);
     });
 
+    it('fires no more launchers on a bay munition line than it has rounds (TW p. 103)', async () => {
+        const entity = new TestWarShipEntity();
+        const mml = new WeaponEquipment({
+            id: 'Rounds MML 9', name: 'MML 9', shortName: 'MML 9', type: 'weapon',
+            weapon: { heat: 5, ammoType: 'MML', rackSize: 9, av: [5, 5, 5] },
+        });
+        const launchers = [0, 1, 2].map(() => addTestEquipment(entity, mml, { location: 'Nose' }));
+        const ammo = ([['LRM', 13], ['SRM', 1]] as const).map(([name, shots]) => addTestEquipment(entity, new AmmoEquipment({
+            id: `Rounds MML 9/${name}`, name: `MML 9/${name}`, shortName: `MML 9/${name}`, type: 'ammo',
+            ammo: { type: 'MML', rackSize: 9, shots: 13 },
+        }), { location: 'Nose', shotsCount: shots }));
+        entity.addEquipmentBay('weapon-bay', { mounts: [...launchers, ...ammo] });
+
+        const row = (await RecordSheetSvgGenerator.generate(entity, { ruleset: 'total-warfare' })).querySelector('.inventoryEntry.bay')!;
+        expect([...row.querySelectorAll('.bayMunition')].map(line => [line.querySelector('.name')?.textContent,
+            ...bayRanges(line)])[1]).toEqual(['SRM (1 rounds)', '1 (10)', '—', '—', '—']);
+    });
+
     it('prints an iATM bay\'s Improved Magnetic Pulse missiles apart from its High Explosive ones (IO:AE p. 61)', async () => {
         const iatm = new WeaponEquipment({
             id: 'Bay iATM 12', name: 'iATM 12', shortName: 'iATM 12', type: 'weapon',
@@ -837,7 +855,8 @@ describe('RecordSheetSvgGenerator', () => {
         // Twenty launchers print 10 (100) on their LRM line and 20 (200) on their SRM line; the bay's own row prints none
         entity.addEquipmentBay('weapon-bay', { mounts: [
             ...Array.from({ length: 20 }, () => addTestEquipment(entity, mml, { location: 'Nose' })),
-            ...ammo.map(equipment => addTestEquipment(entity, equipment, { location: 'Nose', shotsCount: 10 })),
+            // A round for each launcher, as each that fires spends one (TW p. 103)
+            ...ammo.map(equipment => addTestEquipment(entity, equipment, { location: 'Nose', shotsCount: 20 })),
         ] });
 
         const svg = await RecordSheetSvgGenerator.generate(entity, { ruleset: 'total-warfare' });

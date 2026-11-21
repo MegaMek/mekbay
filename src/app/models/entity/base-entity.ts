@@ -471,7 +471,7 @@ export abstract class BaseEntity implements EntityTechnology {
       ),
   );
 
-  /** Family eligibility; ProtoMeks explicitly exclude automatic CASE. */
+  /** Family eligibility; ProtoMeks, Small Craft and DropShips exclude automatic CASE (TM p. 210). */
   protected readonly allowsImplicitClanCase = computed<boolean>(() => true);
 
   /** TM errata p. 210: the internal structure determines automatic Clan CASE, not mixed tech alone. */

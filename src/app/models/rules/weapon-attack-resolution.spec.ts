@@ -70,9 +70,23 @@ describe('weapon attack resolution', () => {
         expect(profile.clusterModifier).toBe(2);
         expect(resolveWeaponAttack(profile, [4, 3], [4, 4]).hits).toBe(3);
         expect(resolveWeaponAttack(profile, [4, 3], [4, 4], 0).hits).toBe(2);
+        // A jammed attacker starts without it: "unless hostile ECM interferes" (IO:AE p. 59; TW p. 134).
+        expect(weaponAttackProfile({ componentId: weaponId, equipment: fusillade, mode: undefined, damage: { values: [2], maximum: 6, unit: 'missile' }, ammo: null, types: [], name: 'Fusillade Launcher', targetNumber: 7, partialCover: false, ecmJammed: true }, TW_GAME_RULES)!
+            .clusterModifier).toBeUndefined();
         // The iATM it derives from carries no integral Artemis.
         expect(weaponAttackProfile({ componentId: weaponId, equipment: iatm, mode: undefined, damage: { values: [2], maximum: 6, unit: 'missile' }, ammo: null, types: [], name: 'iATM 3', targetNumber: 7, partialCover: false }, TW_GAME_RULES)!
             .clusterModifier).toBeUndefined();
+    });
+
+    it('rolls an iATM fired indirectly on the Cluster Hits Table, with no lock to miss (IO:AE p. 60)', () => {
+        const iatm = new WeaponEquipment({
+            id: 'CLiATM3', name: 'iATM 3', type: 'weapon', flags: ['F_MISSILE', 'F_MEK_WEAPON', 'F_INDIRECT_FIRE'],
+            weapon: { damage: 'cluster', rackSize: 3, ammoType: 'IATM' },
+        });
+        const indirect = weaponAttackProfile({ componentId: weaponId, equipment: iatm, mode: undefined, damage: { values: [2], maximum: 6, unit: 'missile' }, ammo: null, types: [], name: 'iATM 3', targetNumber: 7, partialCover: false, indirect: true }, TW_GAME_RULES)!;
+        // Not locked on, so a miss spends its ammo and heat, and a hit reads the 3 column: a 7 hits with 2 missiles.
+        expect(indirect.allHit).toBeFalse();
+        expect(resolveWeaponAttack(indirect, [4, 3], [4, 3]).hits).toBe(2);
     });
 
     it('treats direct-fire weapons as one hit and rapid-fire shots as separate locations', () => {

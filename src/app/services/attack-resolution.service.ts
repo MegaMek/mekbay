@@ -291,6 +291,7 @@ export class AttackResolutionService {
         const physicalPhase = this.inPhysicalPhase(member);
         const realPhases = this.options.options().realPhases;
         const optionalRules = this.options.options().CBTOptionalRules;
+        const ecmJammed = member.force.getUnitSnapshot(member.id)?.query.hasCondition('jammed') === true;
         for (const row of fired.physicalAttacks) {
             // Infantry's anti-'Mech attacks resolve with the weapons, physical attacks in their own phase.
             if (realPhases && physicalPhase === isAntiMekAttack(row.kind)) continue;
@@ -389,6 +390,8 @@ export class AttackResolutionService {
                     aim: Object.freeze({ location: presentation.aim.location, dice: aimedShotDice(fired.ruleset) }),
                 }),
                 ...(row.heatWeakened === false ? { insulated: true } : {}),
+                ...(activeTargetCalculator(targeting)?.indirectFire === true ? { indirect: true } : {}),
+                ...(ecmJammed ? { ecmJammed: true } : {}),
             }, gameRulesFor(fired.ruleset));
             if (!profile) continue;
             profiles.set(target.targetId, [...profiles.get(target.targetId) ?? [], profile]);

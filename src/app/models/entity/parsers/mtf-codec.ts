@@ -251,14 +251,15 @@ export function mtfListedWeapons(entity: MekEntity): EntityMountedEquipment[] {
 /**
  * A split weapon's rows may end in a mount tag, `Autocannon/20 (R)#2`: rows of one equipment type with the same number
  * belong to one mount. As in MtfFile, a tag is read only where it ends the row: `#` and a positive number without
- * leading zeros. Any other `#` word ending the row without a parenthesis is an unreadable tag; a `#` elsewhere, with
- * nothing after it, or before a modifier such as `#2(ARMORED)`, stays part of the row, so the modifiers still apply.
+ * leading zeros, of any length (`#([1-9]\d*)$`), kept as written. Any other `#` word ending the row without a
+ * parenthesis is an unreadable tag; a `#` elsewhere, with nothing after it, or before a modifier such as
+ * `#2(ARMORED)`, stays part of the row, so the modifiers still apply.
  */
-export function splitMtfMountTag(row: string): { text: string; tag?: number; malformed?: string } {
+export function splitMtfMountTag(row: string): { text: string; tag?: string; malformed?: string } {
   const suffix = /#([^\s#()]+)$/u.exec(row);
   if (!suffix) return { text: row };
   const text = row.slice(0, suffix.index);
-  return /^[1-9]\d{0,8}$/u.test(suffix[1]) ? { text, tag: Number(suffix[1]) } : { text, malformed: suffix[0] };
+  return /^[1-9]\d*$/u.test(suffix[1]) ? { text, tag: suffix[1] } : { text, malformed: suffix[0] };
 }
 
 /** Mount tags number the mounts of one equipment type, however the file spells its name. */

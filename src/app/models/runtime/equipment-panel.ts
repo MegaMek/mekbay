@@ -62,14 +62,14 @@ import {
     type TnRangeBracket,
     type TnTargetModifierBreakdownEntry,
 } from '../target-number-calculator.model';
-import { componentLocationIds, equipmentForComponent, type MekRuntimeIndex } from './mek-runtime-index';
+import { componentLocationIds, equipmentForComponent, mountedEquipmentForComponent, type MekRuntimeIndex } from './mek-runtime-index';
 import {
+    ammoSourceFeedsWeapon,
     entityWeaponTechBasesForAmmo,
     entityAmmoSelectionCompatibilityFacts,
     hotLoadedAmmoForWeapon,
     mekAmmoDefaultMunitionKey,
     mekAmmoLoadouts,
-    mekIntrinsicMagazine,
     weaponAcceptsAmmo,
     type AmmoLoadout,
 } from './mek-ammo';
@@ -1778,9 +1778,8 @@ function compatibleAmmoSources(
         .map(([sourceId, source]) => {
             const loadouts = mekAmmoLoadouts(entity, index, sourceId, ruleset)
                 .filter(loadout => weaponAcceptsAmmo(weapon, loadout.equipment, mode));
-            const intrinsic = mekIntrinsicMagazine(entity, index, sourceId, ruleset);
             if (loadouts.length === 0
-                || (intrinsic !== null && intrinsic.ownerComponentId !== weaponId)) return null;
+                || !ammoSourceFeedsWeapon(sourceId, mountedEquipmentForComponent(index, sourceId), weaponId, weapon)) return null;
             const current = query.ammoLoadout(sourceId);
             const currentEquipment = loadouts.find(loadout => loadout.munitionKey === current.munitionKey)?.equipment;
             const status = query.componentStatus(sourceId);

@@ -1139,7 +1139,7 @@ interface DecodedMtfCriticalSlot {
   facing?: number;
   variableSize?: number;
   /** `#N`: every row of this equipment type with the same N belongs to one mount. */
-  tag?: number;
+  tag?: string;
   /** A `#` suffix that is not a valid tag; the row loads as if it had none. */
   malformedTag?: string;
 }
@@ -1229,15 +1229,33 @@ function decodeMtfSystemSlot(name: string): MekSystemType | undefined {
 /** The systems MegaMek's MtfFile places itself, whatever rows the file gives them (`isRelocatedSystemSlot`). */
 const PLACED_SYSTEMS: ReadonlySet<MekSystemType> = new Set(['Engine', 'Gyro', 'Cockpit', 'Life Support', 'Sensors']);
 
+/** The system a critical row names that MtfFile places itself, and whether the row is armored; undefined otherwise. */
+function placedSystem(line: string) {
+  return decodeMtfCriticalSlotLine(line)
+    .map(member => ({ system: decodeMtfSystemSlot(member.name), armored: member.armored }))
+    .find(member => member.system && PLACED_SYSTEMS.has(member.system));
+}
+
+/**
+ * Whether reading a location's file rows closes a hole (`mtfLocationRows`): an empty row before a row that is not a
+ * placed system, which then moves up into it. MekBay read such rows at their file position before it packed them, so
+ * the source canary marks these files (`nativeSourceHashCanary`).
+ */
+export function mtfLocationRowsCloseHole(lines: readonly string[]): boolean {
+  let hole = false;
+  for (const line of lines) {
+    if (line === '-Empty-') hole = true;
+    else if (hole && !placedSystem(line)) return true;
+  }
+  return false;
+}
+
 /**
  * A location's rows as MegaMek's MtfFile reads them (`remapCritDataAroundSystemSlots`): the engine, gyro, cockpit,
  * sensors and life support take their own slots, and every other row fills the remaining slots in file order, so an
  * empty row between them closes up. An armored row of a placed system armors that system's slots in the location.
  */
 function mtfLocationRows(entity: MekEntity, location: MekLocation, lines: readonly string[], armored: Set<string>): string[] {
-  const placedSystem = (line: string) => decodeMtfCriticalSlotLine(line)
-    .map(member => ({ system: decodeMtfSystemSlot(member.name), armored: member.armored }))
-    .find(member => member.system && PLACED_SYSTEMS.has(member.system));
   const systems = entity.getSystemSlotsForLocation(location);
   // MegaMek armors every slot of a placed system in the location when any of its rows is armored.
   const armoredSystems = new Set(lines.flatMap(line => { const member = placedSystem(line); return member?.armored ? [member.system!] : []; }));

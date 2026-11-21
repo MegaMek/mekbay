@@ -13,9 +13,9 @@ import {
     type UnitWaterState,
 } from '../unit-cover.model';
 import type { AttackerAmmoSelection } from './attacker-targeting-state';
-import { mekAmmoLoadouts, mekIntrinsicMagazine, weaponAcceptsAmmo } from './mek-ammo';
+import { ammoSourceFeedsWeapon, mekAmmoLoadouts, weaponAcceptsAmmo } from './mek-ammo';
 import type { MekRuntimeIndex } from './mek-runtime-index';
-import { equipmentForComponent } from './mek-runtime-index';
+import { equipmentForComponent, mountedEquipmentForComponent } from './mek-runtime-index';
 import type { MekUnitQueryPort } from './unit-instance';
 import type { WeaponTargetSubject } from './weapon-target-policy';
 
@@ -55,9 +55,7 @@ export function resolveMekTargetingAmmo(
     }
     for (const sourceId of sourceIds) {
         if (selection?.preferredSourceId !== undefined && sourceId !== selection.preferredSourceId) continue;
-        const sourceEquipment = equipmentForComponent(index, sourceId);
-        const intrinsic = mekIntrinsicMagazine(entity, index, sourceId, ruleset);
-        if (!(sourceEquipment instanceof AmmoEquipment) && intrinsic?.ownerComponentId !== weaponId) continue;
+        if (!ammoSourceFeedsWeapon(sourceId, mountedEquipmentForComponent(index, sourceId), weaponId, weapon)) continue;
         let currentMunition: string;
         try {
             currentMunition = query.ammoLoadout(sourceId).munitionKey;

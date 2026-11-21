@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 // Author: Drake
 
-import { signal } from '@angular/core';
+import { computed, signal } from '@angular/core';
 import { MiscEquipment } from '../../../equipment.model';
 import { isQuartersBay } from '../../bays/bay-definitions';
 import {
@@ -62,6 +62,9 @@ export class SmallCraftEntity extends LargeAeroEntity {
   override entityTechAdvancements(): readonly TechRatingSource[] {
     return [getSmallCraftConstructionTech(this.uniformArmor()?.type === 'PRIMITIVE_AERO')];
   }
+
+  /** "ProtoMechs, Small Craft and DropShips may not carry CASE" (TM p. 210), built-in Clan CASE included. */
+  protected override readonly allowsImplicitClanCase = computed<boolean>(() => false);
 
   /** MegaMek SmallCraft: bombs only in Internal Bomb Bay cargo space. */
   protected override computeBombCapacity(): BombCapacity {
