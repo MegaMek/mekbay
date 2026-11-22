@@ -58,6 +58,8 @@ import { supportEquipmentExplosionDamage } from '../support-equipment.model';
 
 export type MekCriticalMutationTarget = 'committed' | 'pending';
 
+export const HARDENED_CRITICAL_MODIFIER = Object.freeze({ label: 'Hardened armor in damaged facing', value: -2 });
+
 /** Narrow read-only facts needed by the critical-hit rules. */
 export interface MekCriticalRuntimeViewV2 {
     remainingArmor(faceId: ArmorFaceId, perspective: 'committed' | 'preview'): number;
@@ -257,8 +259,7 @@ export function projectMekCriticalChanceV2(
         const enabled = location.armorFaceIds.some(faceId =>
             runtime.remainingArmor(faceId, criticalPerspective(target)) > 0);
         modifiers.push(Object.freeze({
-            label: 'Hardened armor in damaged facing',
-            value: -2,
+            ...HARDENED_CRITICAL_MODIFIER,
             optional: true,
             enabled,
         }));

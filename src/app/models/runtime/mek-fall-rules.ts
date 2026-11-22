@@ -143,10 +143,13 @@ export function resolveMekHitLocation(
     arc: MekHitArc,
     hitLocationRoll: number,
     tripodLegRoll?: number,
+    floatingRoll?: number,
 ): MekHitLocationResult {
     assertIntegerInRange(hitLocationRoll, 2, 12, 'Mek hit-location roll');
     if (tripodLegRoll !== undefined) assertIntegerInRange(tripodLegRoll, 1, 6, 'Tripod leg roll');
-    const cell = hitLocationCellDefinition(table, hitLocationRoll, arc);
+    const initial = hitLocationCellDefinition(table, hitLocationRoll, arc);
+    const cell = initial.throughArmorCritical && floatingRoll !== undefined
+        ? hitLocationCellDefinition(table, floatingRoll, arc) : initial;
     let location = cell.location;
     let adjustedTripodLegRoll: number | undefined;
     if (cell.tripodLegModifier !== undefined && tripodLegRoll !== undefined) {
@@ -160,7 +163,7 @@ export function resolveMekHitLocation(
         location,
         locationLabel: getMekLocationLabel(location ?? undefined),
         rear: arc === 'rear',
-        throughArmorCritical: cell.throughArmorCritical,
+        throughArmorCritical: initial.throughArmorCritical,
         ...(cell.tripodLegModifier === undefined ? {} : { tripodLegModifier: cell.tripodLegModifier }),
         ...(tripodLegRoll === undefined || cell.tripodLegModifier === undefined ? {} : { tripodLegRoll }),
         ...(adjustedTripodLegRoll === undefined ? {} : { adjustedTripodLegRoll }),

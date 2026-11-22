@@ -30,6 +30,7 @@ import {
     armorPiercingCheckModifiers,
     armorPiercingCheckPassesDestroyedLocation,
     armorPiercingIgnoresSpecialArmor,
+    swarmCriticalModifier,
 } from '../models/rules/armor-damage-rules';
 import { gameRulesFor } from '../models/rules/game-rules';
 import { weaponSurvivesFirstAutocannonHit } from '../models/rules/mek-system-damage-rules';
@@ -669,7 +670,8 @@ export class NonMekCriticalAutomationService {
 
 /**
  * Each way one group can cause aerospace critical damage: exceeding the facing's Damage Threshold, damaging
- * the SI, a lucky natural 12 (TW p.239), or an armor-only AP autocannon hit under Core (p.191).
+ * the SI, a lucky natural 12 (TW p.239), battle armor swarming a grounded unit (TW p.223), or an armor-only AP
+ * autocannon hit under Core (p.191).
  */
 function aeroCriticalChances(
     snapshot: CBTNonMekUnitSnapshot,
@@ -681,10 +683,13 @@ function aeroCriticalChances(
     if (!location || !isAeroEntity(entity)) return [];
     const ap = snapshot.ruleset === 'core-2026' && group.source.kind === 'weapon' && group.source.ammo === 'armor-piercing'
         ? armorPiercingCheck(snapshot, group, outcome) : null;
+    const swarmArmor = outcome.struckArmor > 0 ? entity.armorAt(location.code).type : null;
+    const swarm = swarmCriticalModifier(snapshot.ruleset, swarmArmor, group.source);
     return [
         ...(group.damage > entity.armorDamageThreshold(location.code) ? [{ reason: 'damage threshold', modifier: 0 }] : []),
         ...(outcome.structuralIntegrityDamage > 0 ? [{ reason: 'SI damage', modifier: 0 }] : []),
         ...(group.luckyHit ? [{ reason: 'lucky hit', modifier: 0 }] : []),
+        ...(swarm === null ? [] : [{ reason: 'swarm attack', modifier: swarm }]),
         ...(ap ? [{ reason: 'armor-piercing', modifier: ap.modifier }] : []),
     ];
 }
@@ -736,6 +741,10 @@ function vehicleCriticalChecks(
             modifier: (core && !throughArmor ? 0 : hardened) + (ablation ? ABLATION_CRITICAL_MODIFIER.value : 0),
             reason: 'hit location',
         });
+    }
+    const swarm = swarmCriticalModifier(snapshot.ruleset, struckArmorType, group.source);
+    if (swarm !== null) {
+        checks.push({ locationId: group.locationId, modifier: swarm, reason: 'swarm attack' });
     }
     // An armor-piercing hit rolls on the struck location's column, +2 on a support vehicle with BAR under 10 (TW p.140,
     // p.206); under Core with Core's armor-piercing modifiers (Core p.191).

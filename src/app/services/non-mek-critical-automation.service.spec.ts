@@ -208,6 +208,38 @@ describe('NonMekCriticalAutomationService', () => {
         }
     });
 
+    it('resolves a battle armor swarm separately from a vehicle hit-location 2', async () => {
+        const swarm = { kind: 'physical', infantryCritical: 'swarm-damage' } as const;
+        // Both checks roll 10. A modified 8 hits the sensors and an unmodified 10 hits the commander.
+        for (const [ruleset, armor, sensors, commanders] of [
+            ['core-2026', 'ANTI_PENETRATIVE_ABLATION', 0, 1], // TAC blocked, swarm unmodified
+            ['total-warfare', 'ANTI_PENETRATIVE_ABLATION', 1, 1], // only the TAC takes -2
+            ['core-2026', 'HARDENED', 1, 1], // only the TAC takes -2
+            ['total-warfare', 'HARDENED', 2, 0], // both rolls take -2
+        ] as const) {
+            const unit = tank(false, false, armor, ruleset);
+            rolls(5, 5, 5, 5);
+            expect(await unit.apply([group(unit.location('Front'), 2,
+                { source: swarm, effects: ['critical', 'through-armor'] })])).toBeTrue();
+            expect(unit.hits(systemDamageId('commander'))).withContext(ruleset + armor).toBe(commanders);
+            expect(unit.hits(systemDamageId('sensors', 1))).withContext(ruleset + armor).toBe(sensors > 0 ? 1 : 0);
+            expect(unit.hits(systemDamageId('sensors', 2))).withContext(ruleset + armor).toBe(sensors > 1 ? 1 : 0);
+        }
+    });
+
+    it('rolls a swarm critical against a grounded fighter even below its damage threshold', async () => {
+        const unit = fighter();
+        expect(unit.runtime.dispatch({ type: 'set-airborne', airborne: false }).accepted).toBeTrue();
+        const nose = unit.location('Nose');
+        rolls(4, 4);
+        expect(await unit.apply([group(nose, 1, { source: { kind: 'physical' }, aeroCritical: 'avionics' })])).toBeTrue();
+        expect(unit.hits(systemDamageId('avionics', 1))).toBe(0);
+        expect(await unit.apply([group(nose, 1, { source: { kind: 'physical', infantryCritical: 'swarm-damage' },
+            aeroCritical: 'avionics' })])).toBeTrue();
+        expect(unit.hits(systemDamageId('avionics', 1))).toBe(1);
+        expect(Math.random).toHaveBeenCalledTimes(2);
+    });
+
     it('rolls an armor-piercing vehicle critical for a hit that damages only armor, and none past the armor', async () => {
         const armorPiercing = { kind: 'weapon', types: ['DB'], ammo: 'armor-piercing', rackSize: 5 } as const;
         // 6 + 6 = 12 on the front column: TW -3 makes 9, the sensors; Core -2 makes 10, the commander (TW p.140, Core p.191).

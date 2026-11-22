@@ -25,6 +25,7 @@ import { mekUnitWaterState } from '../models/runtime/mek-targeting-rules';
 import { attackDamageSource, PHYSICAL_DAMAGE, type DamageSource } from '../models/rules/armor-damage-rules';
 import {
     hitTableDice,
+    physicalAttackAlwaysHits,
     physicalAttackPilotChecks,
     physicalStrike,
     physicalStrikesRandomSide,
@@ -46,6 +47,8 @@ import {
     attackHeatHits,
     readAttackThermalEffects,
     readAttackHitLocation,
+    rollFloatingCriticals,
+    weaponHitLocation,
     type AttackHitLocation,
 } from '../models/runtime/attack-hit-location';
 import type { InfernoMissile } from '../models/rules/inferno-rules';
@@ -224,7 +227,9 @@ export class AttackResolutionService {
         if (targets.length === 0) return null;
         const attacker = this.unitNames.name(member.entity);
         const ref = this.dialogs.createDialog<AttackResolution, AttackResolutionDialogComponent,
-            AttackResolutionDialogData>(AttackResolutionDialogComponent, { data: { attacker, targets } });
+            AttackResolutionDialogData>(AttackResolutionDialogComponent, {
+                data: { attacker, targets, floatingCriticals: this.options.options().CBTOptionalRules.floatingCriticals },
+            });
         return await firstValueFrom(ref.closed) ?? 'dismissed';
     }
 
@@ -430,6 +435,12 @@ export class AttackResolutionService {
             candidate instanceof CBTForce && candidate.instanceId() === toForce && !candidate.readOnly());
         const member = force?.getCBTMembers().find(candidate => candidate.id === event.toUnit);
         if (!member) return;
+        // The defender's option governs its sheet. Older clients may send just the initial roll.
+        const floating = this.options.options().CBTOptionalRules.floatingCriticals;
+        event = { ...event, weapons: event.weapons.map(weapon => ({ ...weapon,
+            groups: floating ? rollFloatingCriticals(member, event.arc, weapon, weapon.groups)
+                : weapon.groups.map(group => group.floating ? { ...group, floating: undefined } : group),
+        })) };
         // Show the struck unit behind the popup, so accepted damage lands in view. The workspace commands
         // are resolved on use: they depend on the force builder.
         this.injector.get(ForceWorkspaceCommandsService).selectUnit(member);
@@ -460,14 +471,10 @@ export class AttackResolutionService {
         const read = event.weapons.filter(weapon => !weapon.inferno).flatMap(weapon => {
             const source = attackDamageSource(weapon);
             if (weapon.swarmStrike) return swarmStrikeHits(member, weapon, source);
-            const natural12 = weapon.toHit[0] + weapon.toHit[1] === 12;
+            const natural12 = !physicalAttackAlwaysHits(weapon.physical) && weapon.toHit[0] + weapon.toHit[1] === 12;
             const struck = new Set<string>();
             return weapon.groups.flatMap(group => {
-                const read = readAttackHitLocation(member, weapon.arc ?? event.arc, group.location, group.aux,
-                    weapon.partialCover === true, weapon.table, weapon.aim);
-                // A leg attack and battle armor's swarm damage also roll for a critical hit where they strike.
-                const location = weapon.critical && read?.kind === 'mek'
-                    ? Object.freeze({ ...read, throughArmorCritical: true }) : read;
+                const location = weaponHitLocation(member, event.arc, weapon, group);
                 if (!location || group.damage === 0) return [];
                 const key = location.kind === 'non-mek' ? location.locationId : location.label;
                 const luckyHit = natural12 && !struck.has(key);
@@ -690,6 +697,7 @@ function weaponHits(
                 damage: hit.damage,
                 arc,
                 throughArmorCritical: hit.location.throughArmorCritical,
+                ...(hit.location.floatingCritical ? { floatingCritical: true as const } : {}),
                 source: hit.source,
                 ...(hit.outsideHeat ? { outsideHeat: hit.outsideHeat } : {}),
             })] : []),

@@ -92,10 +92,11 @@
                             }
                             <ng-container *ngTemplateOutlet="rollChip; context: {
                                 dice: group.location, weapon: w, roll: g, label: 'Set hit location roll ' + (g + 1) }" />
+                            @if (group.floating; as floating) { <span>Floating roll {{ sum(floating) }}</span> }
                             @if (group.label !== null) {
                                 <span class="location">
                                     {{ group.label }}
-                                    @if (group.throughArmorCritical) { <em>TAC check</em> }
+                                    @if (group.criticalCheck) { <em>{{ group.criticalCheck }}</em> }
                                 </span>
                             }
                         </li>

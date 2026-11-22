@@ -10,7 +10,7 @@ import type { CBTForce } from '../models/cbt-force.model';
 import type { CBTForceUnitCommandDispatch } from '../models/cbt-force.types';
 import { hasMekRuntime, type CBTUnitSnapshot } from '../models/cbt-unit-snapshot';
 import { createMekUnit } from '../models/runtime/cbt-mek-unit';
-import { type DamageSource } from '../models/rules/armor-damage-rules';
+import { attackDamageSource, type DamageSource } from '../models/rules/armor-damage-rules';
 import { riscOverrideKitMalfunction } from '../models/runtime/mek-automation-rules';
 
 import {
@@ -380,13 +380,22 @@ describe('DirectMekAutomationService', () => {
             }
         });
 
-        it('reads a floating TAC against the armor of the location the shot lands on (Core p.95)', async () => {
-            // Every die is a 1: the reroll lands on the center torso, whose ablation armor is stripped first
+        it('moves the whole shot to the rerolled location and treats a second 2 as a single TAC (Core p.95; TO:AR p.75)', async () => {
             floatingCriticals = true;
-            const floated = armored('core-2026', 'ANTI_PENETRATIVE_ABLATION');
-            expect(await chances(floated, [hit('CT', 5, laser)])).toEqual([]);
-            expect(await chances(floated, [hit('LT', 2, laser, true)])).toEqual([[]]);
-            // A reroll back to the struck torso keeps the same armor timing as an ordinary TAC.
+            for (const ruleset of ['core-2026', 'total-warfare'] as const) {
+                const harness = createHarness(ruleset);
+                const armor = (code: string) => harness.fixture.instance.query().remainingArmor(
+                    [...harness.fixture.index.locations.values()].find(row => row.code === code)!.armorFaceIds[0]!, 'preview');
+                const [ct, lt] = [armor('CT'), armor('LT')];
+                const dice = [4, 4]; // A front hit initially rolls 2 (CT); the reroll of 8 hits LT.
+                (Math.random as jasmine.Spy).and.callFake(() => d6Random(dice.shift() ?? 1));
+                expect(await chances(harness, [hit('CT', 2, laser, true)])).toEqual([[]]);
+                expect([armor('CT'), armor('LT')]).toEqual([ct, lt - 2]);
+                const locationId = [...harness.fixture.index.locations.values()].find(row => row.code === 'LT')!.id;
+                expect(resolveAutomation.calls.mostRecent().args[1][0].id.endsWith(':' + locationId)).toBeTrue();
+            }
+            // Now every die is 1: the shot stays on the center torso and never gets a second TAC. Core tests
+            // ablation at impact, TW after the armor damage (Core p.201; IO:AE p.80).
             expect(await chances(armored('core-2026', 'ANTI_PENETRATIVE_ABLATION'), [hit('CT', 5, laser, true)]))
                 .toEqual([]);
             expect(await chances(armored('total-warfare', 'ANTI_PENETRATIVE_ABLATION'), [hit('CT', 5, laser, true)]))
@@ -407,8 +416,12 @@ describe('DirectMekAutomationService', () => {
                 expect(harness.fixture.instance.dispatch({ type: 'set-location-condition', locationId: arm.id,
                     condition: 'blown-off', value: 1, target: 'committed' }).accepted).toBeTrue();
                 const before = armor();
-                expect(await chances(harness, [hit('LA', 2, tandem), hit('LA', 2, tandem)])).withContext(ruleset)
-                    .toEqual([['Tandem-charge missile -2'], ['Tandem-charge missile -2']]);
+                // The first missile also rolled a floating TAC in the missing arm. Both checks follow the damage.
+                const floated = { ...hit('LA', 2, tandem, true), floatingCritical: true };
+                expect(await chances(harness, [floated, hit('LA', 2, tandem)])).withContext(ruleset)
+                    .toEqual([[], ['Tandem-charge missile -2'], ['Tandem-charge missile -2']]);
+                const checks = resolveAutomation.calls.allArgs().filter(args => args[0] === 'criticalHitChanceCheck');
+                expect(checks.every(args => args[1][0].id.endsWith(':' + torso.id))).withContext(ruleset).toBeTrue();
                 expect(armor()).withContext(ruleset).toBe(before - 4);
             }
         });
@@ -421,6 +434,85 @@ describe('DirectMekAutomationService', () => {
                 .toEqual([[], ['Armor-piercing ammo -3']]);
             expect(await chances(armored('core-2026', 'ANTI_PENETRATIVE_ABLATION'), [hit('LT', 5, laser, true)]))
                 .toEqual([]);
+        });
+
+        it('transfers a floating critical with damage through a destroyed arm (Core p.95)', async () => {
+            floatingCriticals = true;
+            const harness = createHarness('core-2026');
+            const location = (code: string) => [...harness.fixture.index.locations.values()].find(row => row.code === code)!;
+            const query = () => harness.fixture.instance.query();
+            const arm = location('RA');
+            const front = (code: string) => location(code).armorFaceIds[0]!;
+            const durability = query().remainingArmor(front('RA'), 'preview') + query().remainingInternal(arm.id, 'preview');
+            const torsoArmor = query().remainingArmor(front('RT'), 'preview');
+            const dice = [1, 3]; // A front hit rerolls to the right arm.
+            (Math.random as jasmine.Spy).and.callFake(() => d6Random(dice.shift() ?? 1));
+            expect(await chances(harness, [hit('CT', durability + 1, laser, true)])).toEqual([[]]);
+            expect(query().remainingInternal(arm.id, 'preview')).toBe(0);
+            expect(query().remainingArmor(front('RT'), 'preview')).toBe(torsoArmor - 1);
+            expect(resolveAutomation.calls.mostRecent().args[1][0].id.endsWith(':' + location('RT').id)).toBeTrue();
+        });
+
+        it('keeps a floating TAC negated by ablation, but leaves hardened armor behind when damage reaches bare structure', async () => {
+            floatingCriticals = true;
+            for (const armor of ['ANTI_PENETRATIVE_ABLATION', 'HARDENED'] as const) {
+                const harness = armored('core-2026', armor);
+                const section = (code: string) => [...harness.fixture.index.locations.values()].find(row => row.code === code)!;
+                const query = () => harness.fixture.instance.query();
+                const faceArmor = (code: string) => query().remainingArmor(section(code).armorFaceIds[0]!, 'preview');
+                await chances(harness, [hit('RT', faceArmor('RT'), laser)]);
+                const arm = faceArmor('RA') + query().remainingInternal(section('RA').id, 'preview');
+                const dice = [1, 3];
+                (Math.random as jasmine.Spy).and.callFake(() => d6Random(dice.shift() ?? 1));
+                // Both make the RT's structure check. Only the hardened hit still has a TAC to transfer,
+                // and its check is in the bare RT (Core pp.91, 95, 201–202).
+                expect(await chances(harness, [hit('CT', arm + 1, laser, true)]))
+                    .toEqual(armor === 'HARDENED' ? [[], []] : [[]]);
+            }
+        });
+
+        it('checks explosive slots in a destroyed floating location before the TAC moves inward (Core p.95)', async () => {
+            floatingCriticals = true;
+            const fixture = createDirectExplosionRuntimeFixture('core-2026');
+            const harness = createHarnessForFixture(fixture, 'core-2026', fixture.instance.instanceId);
+            const torso = [...fixture.index.locations.values()].find(row => row.code === 'RT')!;
+            const center = [...fixture.index.locations.values()].find(row => row.code === 'CT')!;
+            const query = fixture.instance.query();
+            const durability = query.remainingArmor(torso.armorFaceIds[0]!, 'preview') + query.remainingInternal(torso.id, 'preview');
+            const dice = [3, 3]; // Reroll to RT; the low critical rolls allow both locations to be reviewed.
+            (Math.random as jasmine.Spy).and.callFake(() => d6Random(dice.shift() ?? 1));
+            expect(await chances(harness, [hit('CT', durability + 1, laser, true)])).toEqual([[], []]);
+            const reviews = resolveAutomation.calls.allArgs().filter(args => args[0] === 'criticalHitChanceCheck').map(args => args[1][0]);
+            expect(reviews[0].id.endsWith(':' + torso.id)).toBeTrue();
+            expect(reviews[0].effects).toContain('Destroyed location: only critical slots that would explode can be hit.');
+            expect(reviews[1].id.endsWith(':' + center.id)).toBeTrue();
+        });
+
+        it('keeps leg and swarm criticals on the struck location and applies only the TW hardened swarm modifier', async () => {
+            floatingCriticals = true;
+            const leg = attackDamageSource({ physical: 'leg-attack', critical: true, types: [] });
+            const swarm = attackDamageSource({ physical: 'swarm-damage', critical: true, types: [] });
+            const platoon = attackDamageSource({ physical: 'swarm-damage', types: [] });
+            for (const ruleset of ['core-2026', 'total-warfare'] as const) {
+                for (const armor of ['HARDENED', 'ANTI_PENETRATIVE_ABLATION'] as const) {
+                    const target = armored(ruleset, armor);
+                    const checkIn = (code: string) => {
+                        const id = [...target.fixture.index.locations.values()].find(row => row.code === code)!.id;
+                        return resolveAutomation.calls.mostRecent().args[1][0].id.endsWith(':' + id);
+                    };
+                    // TW pp.220, 223: the leg attack and BA swarm each have their own roll. TO:AUE p.93
+                    // names swarms; IO:AE p.80 limits ablation to a location 2 and armor-piercing weapons.
+                    expect(await chances(target, [hit('RL', 2, leg)])).toEqual([[]]);
+                    expect(checkIn('RL')).toBeTrue();
+                    expect(await chances(target, [hit('LT', 2, swarm)]))
+                        .toEqual(ruleset === 'total-warfare' && armor === 'HARDENED'
+                            ? [['Hardened armor in damaged facing -2']] : [[]]);
+                    expect(checkIn('LT')).toBeTrue();
+                    expect(await chances(target, [hit('LT', 1, platoon)])).toEqual([]);
+                }
+            }
+            // A platoon penetrating the 5 torso armor pips still makes its ordinary structure check.
+            expect(await chances(createHarness('total-warfare'), [hit('LT', 6, platoon)])).toEqual([[]]);
         });
 
         it('checks transferred armor-piercing damage under Core only past a location destroyed before', async () => {

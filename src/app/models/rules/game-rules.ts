@@ -590,7 +590,7 @@ export class GameRules extends CBTGameRules {
             return 'Caps internal damage at 10; if the location survives, up to 10 excess damage vents through its armor. Damage never transfers.';
         }
         if (protection === 'case-ii') {
-            return 'Caps internal damage at 1; if the location survives, up to 10 excess damage vents through its armor. Damage never transfers; each resulting critical hit is ignored on 8+.';
+            return 'Caps internal damage at 1; if the location survives, up to 10 excess damage vents through its armor. Damage never transfers. Apply a -1 modifier to critical hit checks caused by the internal explosion in this location.';
         }
         return null;
     }

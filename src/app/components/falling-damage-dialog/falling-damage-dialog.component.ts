@@ -14,6 +14,7 @@ import {
     type MekFallOrientation,
 } from '../../models/runtime/mek-fall-rules';
 import type { MekHitLocationTable } from '../../utils/record-sheet-reference-table';
+import { roll2D6, twoD6Total } from '../../models/runtime/mek-automation-rules';
 
 export interface FallingDamageDialogData {
     readonly unitName: string;
@@ -27,6 +28,7 @@ export interface FallingDamageDialogData {
     /** The 'Mech falls into the water from above its surface (`resolveMekFallDamage`). */
     readonly aboveSurface?: boolean;
     readonly hitLocationTable: MekHitLocationTable;
+    readonly floatingCriticals?: boolean;
     readonly armorNote?: string;
 }
 
@@ -47,6 +49,7 @@ export type FallingDamageDialogResult = AcceptedFallingDamageDialogResult
 
 interface FallingDamageGroupRoll {
     readonly hitLocationRoll: number | null;
+    readonly floatingRoll?: number;
     readonly tripodLegRoll: number | null;
 }
 
@@ -95,11 +98,13 @@ export class FallingDamageDialogComponent {
             damage: this.damageGroups[index]!,
             ...roll,
             result: orientation && roll.hitLocationRoll !== null
+                && !(this.data.floatingCriticals && roll.hitLocationRoll === 2 && roll.floatingRoll === undefined)
                 ? resolveMekHitLocation(
                     this.data.hitLocationTable,
                     orientation.hitArc,
                     roll.hitLocationRoll,
                     roll.tripodLegRoll ?? undefined,
+                    roll.floatingRoll,
                 )
                 : null,
         }));
@@ -111,8 +116,9 @@ export class FallingDamageDialogComponent {
         this.orientationRoll.set(validRoll(roll, 1, 6));
     }
 
-    setHitLocationRoll(index: number, roll: number | null): void {
-        this.updateGroupRoll(index, { hitLocationRoll: validRoll(roll, 2, 12) });
+    setHitLocationRoll(index: number, roll: number | null, floating = false): void {
+        const total = validRoll(roll, 2, 12);
+        this.updateGroupRoll(index, floating ? { floatingRoll: total ?? undefined } : { hitLocationRoll: total, floatingRoll: undefined });
     }
 
     setTripodLegRoll(index: number, roll: number | null): void {
@@ -129,6 +135,7 @@ export class FallingDamageDialogComponent {
             this.data.hitLocationTable,
             this.orientation()!.hitArc,
             random,
+            this.data.floatingCriticals,
         )));
     }
 
@@ -182,13 +189,14 @@ export function resolveAutomaticFallingDamage(
     );
     const orientation = resolveMekFallOrientation(data.ruleset, randomD6(random), data.alwaysRear);
     const groups = resolvedMekFallDamageGroups(damage).map(group => {
-        const roll = rollDamageGroup(data.hitLocationTable, orientation.hitArc, random);
+        const roll = rollDamageGroup(data.hitLocationTable, orientation.hitArc, random, data.floatingCriticals);
         return Object.freeze({
             ...resolveMekHitLocation(
                 data.hitLocationTable,
                 orientation.hitArc,
                 roll.hitLocationRoll!,
                 roll.tripodLegRoll ?? undefined,
+                roll.floatingRoll,
             ),
             damage: group,
         });
@@ -200,11 +208,14 @@ function rollDamageGroup(
     table: MekHitLocationTable,
     arc: MekFallOrientation['hitArc'],
     random: () => number,
+    floatingCriticals = false,
 ): FallingDamageGroupRoll {
-    const hitLocationRoll = randomD6(random) + randomD6(random);
-    const unresolved = resolveMekHitLocation(table, arc, hitLocationRoll);
+    const hitLocationRoll = twoD6Total(roll2D6(random));
+    const floatingRoll = floatingCriticals && hitLocationRoll === 2 ? twoD6Total(roll2D6(random)) : undefined;
+    const unresolved = resolveMekHitLocation(table, arc, hitLocationRoll, undefined, floatingRoll);
     return Object.freeze({
         hitLocationRoll,
+        floatingRoll,
         tripodLegRoll: unresolved.location === null ? randomD6(random) : null,
     });
 }

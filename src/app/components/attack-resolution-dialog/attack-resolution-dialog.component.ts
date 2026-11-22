@@ -18,12 +18,12 @@ import {
     type TwoDice,
     type WeaponAttackProfile,
 } from '../../models/rules/weapon-attack-resolution';
-import { attackDamageLedger, attackDamagePreview, readAttackThermalEffects, type AttackDamageLedger } from '../../models/runtime/attack-hit-location';
+import { attackDamageLedger, attackDamagePreview, rollFloatingCriticals, readAttackThermalEffects, type AttackDamageLedger } from '../../models/runtime/attack-hit-location';
 import { attackDamageSource } from '../../models/rules/armor-damage-rules';
 import type { CBTRuleset } from '../../models/cbt-ruleset.model';
 import type { TnTargetUnitType } from '../../models/target-number-calculator.model';
 import { roll2D6, rollD6 } from '../../models/runtime/mek-automation-rules';
-import type { AttackWeaponReport } from '../../services/game-events.service';
+import type { AttackHitGroup, AttackWeaponReport } from '../../services/game-events.service';
 import type { MekHitArc } from '../../utils/record-sheet-reference-table';
 import {
     ATTACK_ARC_LABELS,
@@ -55,6 +55,7 @@ export interface AttackResolutionTarget {
 export interface AttackResolutionDialogData {
     readonly attacker: string;
     readonly targets: readonly AttackResolutionTarget[];
+    readonly floatingCriticals?: boolean;
 }
 
 /** A resolved physical attack, for the consequences on the attacker's side. */
@@ -94,7 +95,7 @@ interface WeaponRolls {
     readonly cluster: TwoDice;
     readonly clusterModifier: number;
     /** One roll per possible location group; a smaller cluster result uses the first ones. */
-    readonly locations: readonly Readonly<{ dice: HitLocationDice; aux: number }>[];
+    readonly locations: readonly Omit<AttackHitGroup, 'damage'>[];
     /** A heat weapon's dice; each hit reads the first ones it needs. */
     readonly heat: readonly number[];
     /** The side an attack that strikes a random side hits. */
@@ -117,7 +118,7 @@ export class AttackResolutionDialogComponent {
     protected readonly data = inject<AttackResolutionDialogData>(DIALOG_DATA);
     protected readonly arcLabels = ATTACK_ARC_LABELS;
 
-    private readonly rolls = signal(this.data.targets.map(target => target.profiles.map(rollWeapon)));
+    private readonly rolls = signal(this.rollAll());
 
     protected readonly targets = computed(() => this.data.targets.map((target, t) => {
         // Hits are previewed in the order the struck unit takes them.
@@ -136,7 +137,7 @@ export class AttackResolutionDialogComponent {
         target.delivery !== null && weapons.some(weapon => !weapon.capacitorBurnout)));
 
     protected rerollAll(): void {
-        this.rolls.set(this.data.targets.map(target => target.profiles.map(rollWeapon)));
+        this.rolls.set(this.rollAll());
     }
 
     protected reroll(target: number, weapon: number): void {
@@ -152,7 +153,7 @@ export class AttackResolutionDialogComponent {
             : edit.roll === 'aim' ? { ...rolls, aim: rolls.aim && { ...rolls.aim,
                 roll: rolls.aim.roll.length === 1 ? Object.freeze([edit.total] as const) : dice } }
                 : { ...rolls, locations: rolls.locations.map((location, index) => index !== edit.roll ? location
-                    : { ...location, dice: location.dice.length === 1 ? Object.freeze([edit.total] as const) : dice }) });
+                    : { ...location, location: location.location.length === 1 ? Object.freeze([edit.total] as const) : dice }) });
     }
 
     protected setClusterModifier(target: number, edit: Readonly<{ weapon: number; modifier: number }>): void {
@@ -227,7 +228,20 @@ export class AttackResolutionDialogComponent {
 
     private updateWeapon(target: number, weapon: number, update: (rolls: WeaponRolls) => WeaponRolls): void {
         this.rolls.update(all => all.map((weapons, t) => t !== target ? weapons
-            : weapons.map((rolls, w) => w === weapon ? update(rolls) : rolls)));
+            : weapons.map((rolls, w) => w === weapon ? this.float(target, weapon, update(rolls)) : rolls)));
+    }
+
+    private rollAll(): WeaponRolls[][] {
+        return this.data.targets.map((target, t) => target.profiles.map((profile, w) => this.float(t, w, rollWeapon(profile))));
+    }
+
+    private float(t: number, w: number, rolls: WeaponRolls): WeaponRolls {
+        const target = this.data.targets[t];
+        if (!this.data.floatingCriticals) return rolls;
+        const profile = target.profiles[w];
+        const arc = rolls.side ?? profile.arc ?? target.arc;
+        const table = { table: profile.table, aim: aimedShotRoll(profile, rolls), partialCover: profile.partialCover };
+        return { ...rolls, locations: rollFloatingCriticals(target.defender, arc, table, rolls.locations, target.unitType) };
     }
 }
 
@@ -238,7 +252,7 @@ function rollWeapon(profile: WeaponAttackProfile): WeaponRolls {
         cluster: roll2D6(),
         clusterModifier: profile.clusterModifier ?? 0,
         locations: Object.freeze(Array.from({ length: groups }, () => Object.freeze({
-            dice: hitTableDice(profile.table) === 2 ? roll2D6() : Object.freeze([rollD6()] as const),
+            location: hitTableDice(profile.table) === 2 ? roll2D6() : Object.freeze([rollD6()] as const),
             aux: rollD6(),
         }))),
         heat: Object.freeze(Array.from({ length: profile.heatWeapon ? heatWeaponDice(profile.heatWeapon.weapon) : 0 },
@@ -308,9 +322,10 @@ function reportWeapon(
     const heatDice = rolls.heat.slice(0, heatDiceRead(profile, rolls.heat));
     const aim = aimedShotRoll(profile, rolls);
     const insulator = insulatorCheck(rolls);
+    const delivered = deliveredWeapon(profile, rolls, outcome);
     // Account for cover and the armor left by weapons earlier in the report.
     const heatValue = target.defender && outcome.heat > 0
-        ? readAttackThermalEffects(target.defender, target.arc, [deliveredWeapon(profile, rolls)], attackDamageLedger(ledger)).heat
+        ? readAttackThermalEffects(target.defender, target.arc, [delivered], attackDamageLedger(ledger)).heat
         : outcome.heat;
     return Object.freeze({
         name: profile.name,
@@ -332,15 +347,13 @@ function reportWeapon(
             : {}),
         ...(aim ? { aim: attackReportAim(aim) } : {}),
         // Inferno missiles deal no damage of their own: the struck unit decides their effect.
-        groups: Object.freeze(outcome.groups.map((damage, index) => attackReportGroup(target.defender,
-            rolls.side ?? profile.arc ?? target.arc, damage, rolls.locations[index].dice, rolls.locations[index].aux,
-            profile.partialCover, profile.table, profile.physical, aim, profile.critical === true,
+        groups: Object.freeze(delivered.groups.map(group => attackReportGroup(target.defender, target.arc, delivered, group,
             profile.inferno ? undefined : (location, dealt) => deal(location, dealt, source)))),
     });
 }
 
-function deliveredWeapon(profile: WeaponAttackProfile, rolls: WeaponRolls): AttackWeaponReport {
-    const outcome = resolveWeaponAttack(profile, rolls.toHit, rolls.cluster, rolls.clusterModifier, rolls.heat);
+function deliveredWeapon(profile: WeaponAttackProfile, rolls: WeaponRolls,
+    outcome = resolveWeaponAttack(profile, rolls.toHit, rolls.cluster, rolls.clusterModifier, rolls.heat)): AttackWeaponReport {
     const aim = outcome.hit ? aimedShotRoll(profile, rolls) : undefined;
     return Object.freeze({
         name: profile.name,
@@ -366,6 +379,6 @@ function deliveredWeapon(profile: WeaponAttackProfile, rolls: WeaponRolls): Atta
             }),
         } : {}),
         groups: Object.freeze(outcome.groups.map((damage, index) =>
-            Object.freeze({ damage, location: rolls.locations[index].dice, aux: rolls.locations[index].aux }))),
+            Object.freeze({ damage, ...rolls.locations[index] }))),
     });
 }

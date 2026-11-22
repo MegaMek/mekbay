@@ -71,9 +71,7 @@ export class IncomingAttackDialogComponent {
                 cluster: weapon.cluster ?? null,
                 inferno: weapon.inferno === true,
                 ...(weapon.aim ? { aim: attackReportAim(weapon.aim) } : {}),
-                groups: weapon.groups.map(group => attackReportGroup(this.data.member, weapon.arc ?? this.data.event.arc,
-                    group.damage, group.location, group.aux, weapon.partialCover === true, weapon.table, weapon.physical,
-                    weapon.aim, weapon.critical === true, preview)),
+                groups: weapon.groups.map(group => attackReportGroup(this.data.member, this.data.event.arc, weapon, group, preview)),
             };
         });
     });

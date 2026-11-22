@@ -97,13 +97,15 @@ describe('parseGameEvent', () => {
         expect(parseGameEvent(autocannon({ rackSize: 2.5 }))).toBeNull();
     });
 
-    it('retains tandem-charge ammunition when a hit report crosses the wire', () => {
+    it('retains tandem-charge ammunition and each floating location roll when a hit report crosses the wire', () => {
         const missile = { name: 'SRM 2', types: ['M'], targetNumber: 7, toHit: [4, 4], ammo: 'tandem-charge',
-            groups: [{ damage: 2, location: [3, 4], aux: 2 }] };
+            groups: [{ damage: 2, location: [3, 4], aux: 2 }, { damage: 2, location: [1, 1], floating: [4, 5], aux: 1 }] };
         expect(parseGameEvent({ ...attack(), weapons: [missile] })).toEqual(jasmine.objectContaining({
-            weapons: [jasmine.objectContaining({ ammo: 'tandem-charge' })],
+            weapons: [jasmine.objectContaining({ ammo: 'tandem-charge', groups: missile.groups })],
         }));
         expect(parseGameEvent({ ...attack(), weapons: [{ ...missile, rackSize: 2 }] })).toBeNull();
+        const invalidGroup = { ...missile.groups[1], floating: [4, 7] };
+        expect(parseGameEvent({ ...attack(), weapons: [{ ...missile, groups: [invalidGroup] }] })).toBeNull();
     });
 
     it('keeps a hit that struck the swarming infantry, with its battle armor trooper', () => {

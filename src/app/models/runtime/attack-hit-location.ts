@@ -12,19 +12,22 @@ import { attackDamageSource, reflectedHeat, resolveArmorDamage, rifleHitDamage, 
 import type { TnTargetUnitType } from '../target-number-calculator.model';
 import type { CBTRuntimeArmorFace, CBTUnitRuntimeIndex } from './cbt-unit-runtime';
 import type { AeroCriticalType } from '../rules/aero-critical-rules';
-import { getMekLocationParent, getTopologyFor, MEK_TORSO_LOCATIONS } from '../entity/types/mek';
+import { getMekLocationParent, getTopologyFor, isMekLegLocation, MEK_TORSO_LOCATIONS } from '../entity/types/mek';
 import { structureConstructionKind } from '../construction-equipment.model';
 import { isMekEntity, isProtoMekEntity } from '../entity/utils/entity-type-guards';
 import type { CBTForceMember } from '../force-member.model';
 import type { HitTable } from '../rules/physical-attack-rules';
-import { damageGroups, PLATOON_DAMAGE_GROUP, type HitLocationDice } from '../rules/weapon-attack-resolution';
+import { damageGroups, PLATOON_DAMAGE_GROUP, type HitLocationDice, type TwoDice } from '../rules/weapon-attack-resolution';
 import { getMekLocationLabel } from '../entity/types/mek';
 import { compositeStructurePipCarries, resolveMekHitLocation, resolveMekStructureDamage } from './mek-fall-rules';
 import { INFERNO_HEAT_PER_MISSILE, type InfernoMissile } from '../rules/inferno-rules';
 import { aimedShotStrikes, type AimedShotRoll } from '../rules/aimed-shot-rules';
 import { swarmHitLocation } from '../rules/anti-mek-attack-rules';
 import { isVehicleEntity } from '../entity/utils/entity-type-guards';
-import type { AttackWeaponReport } from '../../services/game-events.service';
+import type { AttackHitGroup, AttackWeaponReport } from '../../services/game-events.service';
+import type { MekEntity } from '../entity/entities/mek/mek-entity';
+import { roll2D6, rollD6, twoD6Total } from './mek-automation-rules';
+import { targetMekConfig } from './aimed-shot-choices';
 import type { BaseEntity } from '../entity/base-entity';
 import { hasMekRuntime, hasNonMekRuntime, type CBTUnitSnapshot } from '../cbt-unit-snapshot';
 import { isModularArmorEquipment } from '../modular-armor.model';
@@ -39,7 +42,7 @@ import {
 
 export type AttackHitLocation =
     | Readonly<{ kind: 'miss'; label: string }>
-    | Readonly<{ kind: 'mek'; label: string; location: string; rear: boolean; throughArmorCritical: boolean }>
+    | Readonly<{ kind: 'mek'; label: string; location: string; rear: boolean; throughArmorCritical: boolean; floatingCritical?: true }>
     | Readonly<{
         kind: 'non-mek';
         label: string;
@@ -58,14 +61,61 @@ function hasHeatReducingArmor(snapshot: CBTUnitSnapshot | null): snapshot is CBT
         && [...snapshot.entity.armorByLocation().values()].some(armor => armor.type === 'HEAT_DISSIPATING' || armor.type === 'REFLECTIVE');
 }
 
-function weaponHitLocation(
+type WeaponLocationTable = Pick<AttackWeaponReport, 'arc' | 'aim'> & { readonly partialCover?: boolean; readonly table?: HitTable };
+type LocationRoll = Omit<AttackHitGroup, 'damage'>;
+
+export function weaponHitLocation(
     member: CBTForceMember,
     arc: MekHitArc,
-    weapon: AttackWeaponReport,
-    group: AttackWeaponReport['groups'][number],
+    weapon: WeaponLocationTable,
+    group: LocationRoll,
 ): AttackHitLocation | null {
     return readAttackHitLocation(member, weapon.arc ?? arc, group.location, group.aux,
-        weapon.partialCover === true, weapon.table, weapon.aim);
+        weapon.partialCover === true, weapon.table, weapon.aim, group.floating);
+}
+
+/** Reroll covered legs, accept a second 2 as a torso hit (Core p. 95, TO:AR p. 75). */
+export function rollFloatingMekHitLocation(entity: Pick<MekEntity, 'chassisConfig'>, arc: MekHitArc, partialCover = false, aux?: number) {
+    const table = mekHitLocationTable(entity);
+    for (;;) {
+        const dice = roll2D6();
+        let result = resolveMekHitLocation(table, arc, 2, aux, twoD6Total(dice));
+        if (partialCover && (result.location === null || isMekLegLocation(entity.chassisConfig, result.location))) continue;
+        if (result.location === null) result = resolveMekHitLocation(table, arc, 2, rollD6(), twoD6Total(dice));
+        return { dice, result };
+    }
+}
+
+/** Record a qualifying shot's reroll once, for previews and delivery. A successful aimed shot bypasses the table. */
+export function rollFloatingCriticals<T extends LocationRoll>(member: CBTForceMember | null, arc: MekHitArc,
+    weapon: WeaponLocationTable, groups: readonly T[], unitType?: TnTargetUnitType): readonly T[] {
+    const chassis = member ? (isMekEntity(member.entity) ? member.entity : null)
+        : unitType && !unitType.startsWith('mek-') ? null : { chassisConfig: targetMekConfig(unitType) };
+    if (!chassis || (weapon.table ?? 'standard') !== 'standard') return groups;
+    const direction = weapon.arc ?? arc;
+    const aimed = weapon.aim && aimedShotStrikes(weapon.aim.roll) && (!member || readAimedLocation(member, direction, weapon.aim.location));
+    return groups.map(group => {
+        const hit = !aimed && group.location.length === 2
+            ? standardMekTableHit(chassis, direction, twoD6Total(group.location), group.aux, weapon.aim) : null;
+        if (!hit?.throughArmorCritical) return group.floating ? { ...group, floating: undefined } : group;
+        if (group.floating) return group;
+        const cover = weapon.partialCover || weapon.aim?.rerolls !== undefined;
+        const { dice } = rollFloatingMekHitLocation(chassis, direction, cover, group.aux);
+        return { ...group, floating: dice };
+    });
+}
+
+/** A missed aimed shot in partial cover rerolls legs (Core p. 70). */
+function standardMekTableHit(chassis: Pick<MekEntity, 'chassisConfig'>, arc: MekHitArc,
+    total: number, aux: number, aim?: AimedShotRoll) {
+    const table = mekHitLocationTable(chassis);
+    const initial = resolveMekHitLocation(table, arc, total, aux);
+    if (!aim?.rerolls || (initial.location && !isMekLegLocation(chassis.chassisConfig, initial.location))) return initial;
+    for (const dice of aim.rerolls) {
+        const reroll = resolveMekHitLocation(table, arc, twoD6Total(dice), aux);
+        if (reroll.location && !isMekLegLocation(chassis.chassisConfig, reroll.location)) return reroll;
+    }
+    return null;
 }
 
 /**
@@ -257,6 +307,7 @@ export function readAttackHitLocation(
     partialCover = false,
     table: HitTable = 'standard',
     aim?: AimedShotRoll,
+    floating?: TwoDice,
 ): AttackHitLocation | null {
     const total = roll.reduce((sum: number, die) => sum + die, 0);
     const entity = member.entity;
@@ -294,12 +345,12 @@ export function readAttackHitLocation(
     if (isMekEntity(entity)) {
         // An aimed shot at a 'Mech in partial cover rerolls a leg result until another location comes up
         // (Core p. 70); should every roll made ahead be a leg, the shot strikes the location it named.
-        const results = [total, ...(aim?.rerolls ?? []).map(dice => dice[0] + dice[1])]
-            .map(candidate => resolveMekHitLocation(mekHitLocationTable(entity), arc, candidate, aux));
-        const result = aim?.rerolls === undefined
-            ? results[0]
-            : results.find(candidate => candidate.location && !entity.locationIsLeg(candidate.location));
-        if (!result) return readAimedLocation(member, arc, aim!.location);
+        const initial = standardMekTableHit(entity, arc, total, aux, aim);
+        if (!initial) return readAimedLocation(member, arc, aim!.location);
+        const floated = initial.throughArmorCritical && floating !== undefined;
+        const result = floated
+            ? resolveMekHitLocation(mekHitLocationTable(entity), arc, initial.hitLocationRoll, aux, twoD6Total(floating))
+            : initial;
         if (!result.location) return null;
         // TW and Core p.66: a leg hit on a 'Mech in partial cover strikes the cover instead.
         if (partialCover && entity.locationIsLeg(result.location)) return Object.freeze({ kind: 'miss', label: 'Cover' });
@@ -307,10 +358,11 @@ export function readAttackHitLocation(
         return Object.freeze({
             kind: 'mek',
             label: `${result.locationLabel ?? result.location}${rear ? ' (rear)' : ''}`
-                + (result === results[0] ? '' : ' (leg rerolled)'),
+                + (initial.hitLocationRoll === total ? '' : ' (leg rerolled)'),
             location: result.location,
             rear: result.rear,
             throughArmorCritical: result.throughArmorCritical,
+            ...(floated ? { floatingCritical: true as const } : {}),
         });
     }
     const snapshot = member.nonMekRecordSheetSnapshot();

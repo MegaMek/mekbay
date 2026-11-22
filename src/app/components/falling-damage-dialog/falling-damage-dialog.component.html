@@ -78,16 +78,18 @@
                             }
                         </div>
                         <div class="location-roll">
-                            <div class="two-d6-buttons" role="radiogroup"
-                                [attr.aria-label]="'Damage group ' + (row.index + 1) + ' hit-location roll'">
-                                <span class="roll-grid-label" aria-hidden="true">2D6</span>
-                                @for (roll of twoD6Rolls; track roll) {
-                                    <button type="button" class="bt-button roll-face"
-                                        [class.selected]="row.hitLocationRoll === roll"
-                                        [attr.aria-pressed]="row.hitLocationRoll === roll"
-                                        (click)="setHitLocationRoll(row.index, roll)">{{ roll }}</button>
-                                }
-                            </div>
+                            @for (floating of (data.floatingCriticals && row.hitLocationRoll === 2 ? [false, true] : [false]); track floating) {
+                                <div class="two-d6-buttons" role="radiogroup"
+                                    [attr.aria-label]="'Damage group ' + (row.index + 1) + (floating ? ' floating location' : ' hit-location roll')">
+                                    <span class="roll-grid-label" aria-hidden="true">{{ floating ? 'Reroll' : '2D6' }}</span>
+                                    @for (roll of twoD6Rolls; track roll) {
+                                        <button type="button" class="bt-button roll-face"
+                                            [class.selected]="(floating ? row.floatingRoll : row.hitLocationRoll) === roll"
+                                            [attr.aria-pressed]="(floating ? row.floatingRoll : row.hitLocationRoll) === roll"
+                                            (click)="setHitLocationRoll(row.index, roll, floating)">{{ roll }}</button>
+                                    }
+                                </div>
+                            }
                         </div>
 
                         @if (row.result?.location === null && row.result.tripodLegModifier !== undefined) {

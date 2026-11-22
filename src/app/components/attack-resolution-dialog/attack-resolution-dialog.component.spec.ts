@@ -5,7 +5,11 @@ import { DIALOG_DATA, DialogRef } from '@angular/cdk/dialog';
 import { TestBed } from '@angular/core/testing';
 import type { CBTRuleset } from '../../models/cbt-ruleset.model';
 import type { ComponentId } from '../../models/entity/entity-identifiers';
+import type { CBTForceMember } from '../../models/force-member.model';
 import type { WeaponAttackProfile } from '../../models/rules/weapon-attack-resolution';
+import { createDirectMekRuntimeFixture } from '../../models/runtime/testing/direct-mek-runtime-fixture';
+import { parseGameEvent } from '../../services/game-events.service';
+import { attackReportGroup } from '../attack-report/attack-report.component';
 import {
     AttackResolutionDialogComponent,
     type AttackResolution,
@@ -47,6 +51,37 @@ function createAttackDialog(profiles: readonly WeaponAttackProfile[], ruleset: C
         result: () => close.calls.mostRecent().args[0] as AttackResolution,
     };
 }
+
+describe('AttackResolutionDialogComponent floating criticals', () => {
+    it('previews and delivers the same rear torso hit after rerolling a covered leg (Core p. 95, TO:AR p. 75)', () => {
+        const close = jasmine.createSpy('close');
+        const defender = { entity: createDirectMekRuntimeFixture().entity,
+            force: { getUnitSnapshot: () => null } } as unknown as CBTForceMember;
+        const data: AttackResolutionDialogData = { attacker: 'Attacker', floatingCriticals: true, targets: [{
+            targetId: 'target', name: 'Target', letter: 'A', color: '#fff', arc: 'rear', defender,
+            delivery: { toForce: 'force', toUnit: 'target' }, ruleset: 'core-2026',
+            profiles: [{ ...INSULATED_LASER, partialCover: true }],
+        }] };
+        TestBed.configureTestingModule({ imports: [AttackResolutionDialogComponent],
+            providers: [{ provide: DialogRef, useValue: { close } }, { provide: DIALOG_DATA, useValue: data }] });
+        const random = spyOn(Math, 'random').and.returnValue(0.5);
+        const dialog = TestBed.createComponent(AttackResolutionDialogComponent).componentInstance;
+        random.and.returnValues(0.2, 0.4, 0.4, 0.4); // 2 + 3 hits a covered leg, 3 + 3 hits the right torso.
+        dialog['setRoll'](0, { weapon: 0, roll: 0, total: 2 });
+        random.and.throwError('The location was already rolled');
+        const preview = dialog['targets']()[0].weapons[0].groups[0];
+        expect(preview).toEqual(jasmine.objectContaining({ label: 'Right Torso (rear)', damage: 5,
+            location: [1, 1], floating: [3, 3], criticalCheck: 'TAC check' }));
+        dialog['send']();
+        const { deliveries } = close.calls.mostRecent().args[0] as AttackResolution;
+        const event = parseGameEvent({ kind: 'attack', id: 'attack', fromForce: 'sender', fromUnit: 'attacker',
+            attacker: 'Attacker', turn: 1, ...deliveries[0] });
+        expect(event?.kind).toBe('attack');
+        if (event?.kind !== 'attack') return;
+        const weapon = event.weapons[0];
+        expect(attackReportGroup(defender, event.arc, weapon, weapon.groups[0])).toEqual(preview);
+    });
+});
 
 /** TO:AUE p. 134: an insulated laser's to-hit roll of 2 calls for a 2D6 roll, a critical hit on 8 or more. */
 describe('AttackResolutionDialogComponent laser insulator', () => {

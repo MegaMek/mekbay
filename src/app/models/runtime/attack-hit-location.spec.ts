@@ -15,7 +15,7 @@ import { asUnitUuid } from '../../services/unit-catalog/unit-catalog.types';
 import type { NonMekRecordSheetSnapshot } from './non-mek-record-sheet';
 import type { CBTForceMember } from '../force-member.model';
 import type { MekHitArc } from '../../utils/record-sheet-reference-table';
-import { aimedShotLocations, attackDamageLedger, attackDamagePreview, modularArmorAt, readAttackHitLocation, readAttackThermalEffects } from './attack-hit-location';
+import { aimedShotLocations, attackDamageLedger, attackDamagePreview, modularArmorAt, readAttackHitLocation, readAttackThermalEffects, rollFloatingCriticals, weaponHitLocation } from './attack-hit-location';
 import { createDirectMekRuntimeFixture, createDirectModularArmorRuntimeFixture } from './testing/direct-mek-runtime-fixture';
 
 describe('readAttackHitLocation', () => {
@@ -26,6 +26,35 @@ describe('readAttackHitLocation', () => {
             kind: 'mek', location: 'RT', label: 'Right Torso', rear: false,
         }));
         expect(readAttackHitLocation(mek, 'rear', [3, 4], 1)?.label).toBe('Center Torso (rear)');
+    });
+
+    it('floats a 2 from a missed aim exactly once, even when the second roll is also 2', () => {
+        const random = spyOn(Math, 'random').and.returnValue(0);
+        const groups = [{ location: [3, 3] as const, aux: 1 }];
+        const aim = { location: 'LA', roll: [1], rerolls: [[1, 1] as const] };
+        const [group] = rollFloatingCriticals(mek, 'right', { aim }, groups);
+        expect(weaponHitLocation(mek, 'right', { aim }, group)).toEqual(jasmine.objectContaining({
+            location: 'RT', throughArmorCritical: true, floatingCritical: true,
+        }));
+        expect(rollFloatingCriticals(mek, 'right', { aim }, [group])).toEqual([group]);
+        expect(random).toHaveBeenCalledTimes(2);
+    });
+
+    it('does not float a successful aim or a 2 on the swarm table', () => {
+        const random = spyOn(Math, 'random').and.throwError('No floating hit-location roll is due');
+        const groups = [{ location: [1, 1] as const, aux: 1 }];
+        expect(rollFloatingCriticals(mek, 'front', { aim: { location: 'LA', roll: [3, 4] } }, groups)).toEqual(groups);
+        expect(rollFloatingCriticals(mek, 'front', { table: 'swarm' }, groups)).toEqual(groups);
+        expect(random).not.toHaveBeenCalled();
+    });
+
+    it('rerolls covered quad legs for a target being played on a paper sheet', () => {
+        const random = spyOn(Math, 'random').and.returnValues(0, 0.2, 0.9, 0.9);
+        const groups = [{ location: [1, 1] as const, aux: 1 }];
+        expect(rollFloatingCriticals(null, 'front', { partialCover: true }, groups, 'vehicle')).toEqual(groups);
+        expect(rollFloatingCriticals(null, 'front', { partialCover: true }, groups, 'mek-quad')[0])
+            .toEqual(jasmine.objectContaining({ location: [1, 1], floating: [6, 6] }));
+        expect(random).toHaveBeenCalledTimes(4);
     });
 
     it('reads the hit location roll of every inferno missile (Xotl, Core forum ruling, 19 Oct 2026)', () => {

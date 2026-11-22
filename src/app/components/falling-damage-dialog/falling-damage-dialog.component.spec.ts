@@ -21,6 +21,7 @@ describe('FallingDamageDialogComponent', () => {
             levelsFallen: 0,
             waterDepth: 0,
             hitLocationTable: 'biped',
+            floatingCriticals: true,
         };
         await TestBed.configureTestingModule({
             imports: [FallingDamageDialogComponent],
@@ -49,5 +50,21 @@ describe('FallingDamageDialogComponent', () => {
 
         expect(fixture.componentInstance.allResolved()).toBeTrue();
         expect(fixture.componentInstance.groupRows().every(row => row.result?.location)).toBeTrue();
+    });
+
+    it('previews and accepts the same rerolled location for a floating fall hit', () => {
+        const dialog = fixture.componentInstance;
+        dialog.setOrientationRoll(1);
+        dialog.setHitLocationRoll(0, 2);
+        dialog.setHitLocationRoll(1, 7);
+        expect(dialog.allResolved()).toBeFalse();
+        dialog.setHitLocationRoll(0, 12, true);
+        fixture.detectChanges();
+        expect(fixture.nativeElement.querySelector('.damage-location-primary').textContent).toContain('Head');
+        dialog.apply();
+        expect(TestBed.inject(DialogRef).close).toHaveBeenCalledWith(jasmine.objectContaining({
+            groups: [jasmine.objectContaining({ location: 'HD', throughArmorCritical: true }),
+                jasmine.objectContaining({ throughArmorCritical: false })],
+        }));
     });
 });

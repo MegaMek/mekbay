@@ -37,6 +37,8 @@ export interface TargetDistanceEvent {
 export interface AttackHitGroup {
     readonly damage: number;
     readonly location: HitLocationDice;
+    /** The final floating hit-location roll after a possible through-armor critical (Core p. 95, TO:AR p. 75). */
+    readonly floating?: TwoDice;
     /** The extra d6 some tables need (tripod legs, dual turrets). */
     readonly aux: number;
 }
@@ -234,10 +236,11 @@ function parseWeaponReport(value: unknown): AttackWeaponReport | null {
         parsedCluster = Object.freeze({ dice, modifier, projectiles, hits });
     }
     const parsedGroups = groups.map(group => {
-        const { damage, location, aux } = (group ?? {}) as Record<string, unknown>;
+        const { damage, location, aux, floating } = (group ?? {}) as Record<string, unknown>;
         // A heat-causing weapon's hit that only heats rolls its location with no damage.
         return isInteger(damage, 0, MAX_DAMAGE) && isDice(location, diceCount) && isInteger(aux, 1, 6)
-            ? Object.freeze({ damage, location: location as HitLocationDice, aux })
+            && (floating === undefined || (table === undefined && isTwoDice(floating)))
+            ? Object.freeze({ damage, location: location as HitLocationDice, aux, ...(floating ? { floating } : {}) })
             : null;
     });
     if (parsedGroups.some(group => group === null)) return null;

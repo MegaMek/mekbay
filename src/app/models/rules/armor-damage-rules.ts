@@ -23,7 +23,7 @@ export type ArmorSpecialAmmo = 'armor-piercing' | 'acid' | 'tandem-charge';
 /** What dealt the damage: a fall, a physical attack, or a weapon attack with its damage types. */
 export type DamageSource =
     | Readonly<{ kind: 'fall' }>
-    | Readonly<{ kind: 'physical' }>
+    | Readonly<{ kind: 'physical'; infantryCritical?: 'leg-attack' | 'swarm-damage' }>
     /**
      * `rifle`: each hit loses 3 points where it strikes (`rifleHitDamage`). `rackSize`: the autocannon firing
      * armor-piercing rounds, whose size sets its armor-piercing check (`armorPiercingCheckModifiers`).
@@ -36,9 +36,13 @@ export const PHYSICAL_DAMAGE: DamageSource = Object.freeze({ kind: 'physical' })
 /** The source of an attack's hits: a physical attack, or its weapon's damage types and whether it is a rifle. */
 export function attackDamageSource(
     attack: Readonly<{
-        physical?: unknown; types: readonly WeaponType[]; rifle?: true; ammo?: ArmorSpecialAmmo; rackSize?: number;
+        physical?: unknown; critical?: boolean; types: readonly WeaponType[]; rifle?: true; ammo?: ArmorSpecialAmmo; rackSize?: number;
     }>,
 ): DamageSource {
+    // TW pp.220, 223: leg attacks and battle armor's swarm damage roll a separate critical check.
+    if (attack.critical && (attack.physical === 'leg-attack' || attack.physical === 'swarm-damage')) {
+        return Object.freeze({ kind: 'physical', infantryCritical: attack.physical });
+    }
     return attack.physical
         ? PHYSICAL_DAMAGE
         : Object.freeze({
@@ -160,6 +164,12 @@ export const ABLATION_CRITICAL_MODIFIER = Object.freeze({ label: 'Ablation armor
 export function armorPiercingCheckPassesDestroyedLocation(ruleset: CBTRuleset, source: DamageSource): boolean {
     return source.kind === 'weapon' && (source.ammo === 'tandem-charge'
         || (source.ammo === 'armor-piercing' && ruleset === 'core-2026'));
+}
+
+/** Battle armor adds a swarm check to the normal hit (TW p.223). Only TW hardened armor modifies it (TO:AUE p.93). */
+export function swarmCriticalModifier(ruleset: CBTRuleset, armorType: ArmorType | null, source: DamageSource): number | null {
+    if (source.kind !== 'physical' || source.infantryCritical !== 'swarm-damage') return null;
+    return ruleset === 'total-warfare' && armorType === 'HARDENED' ? -2 : 0;
 }
 
 /**

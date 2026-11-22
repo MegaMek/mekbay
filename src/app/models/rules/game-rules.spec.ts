@@ -520,12 +520,14 @@ describe('Mek explosion damage rules', () => {
     it('describes CASE effects for the selected ruleset', () => {
         expect(CORE_2026_GAME_RULES.getMekExplosionProtectionNote('case'))
             .toContain('Caps internal damage at 10');
-        expect(CORE_2026_GAME_RULES.getMekExplosionProtectionNote('case-ii'))
-            .toContain('ignored on 8+');
+        const coreCaseII = CORE_2026_GAME_RULES.getMekExplosionProtectionNote('case-ii');
+        expect(coreCaseII).toContain('-1 modifier to critical hit checks caused by the internal explosion');
+        expect(coreCaseII).not.toContain('8+');
         expect(TW_GAME_RULES.getMekExplosionProtectionNote('case'))
             .toContain('full explosion damage');
-        expect(TW_GAME_RULES.getMekExplosionProtectionNote('case-ii'))
-            .toContain('half the original armor');
+        const twCaseII = TW_GAME_RULES.getMekExplosionProtectionNote('case-ii');
+        expect(twCaseII).toContain('half the original armor');
+        expect(twCaseII).toContain('each resulting critical hit is ignored on 8+');
         expect(TW_GAME_RULES.getMekExplosionProtectionNote('none')).toBeNull();
     });
 });
