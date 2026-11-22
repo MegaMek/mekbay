@@ -129,6 +129,24 @@ export interface MekExplosionDamageResolution {
     readonly stopsTransfer: boolean;
 }
 
+/** Structure and armor affected by the Core internal explosion caps (pp. 96–97, 207). */
+export function resolveCoreExplosionDamage(
+    context: Pick<MekExplosionDamageContext, 'damage' | 'protection' | 'remainingInternal' | 'remainingArmor' | 'armorBlowoutPending'>,
+): Pick<MekExplosionDamageResolution, 'internalDamage' | 'armorDamage'> {
+    const damage = Math.max(0, context.damage);
+    const cap = context.protection === 'case-ii' ? 1 : context.protection === 'case' ? 10 : 20;
+    const internalDamage = Math.min(damage, cap);
+    let armorDamage = 0;
+    if (context.remainingInternal > internalDamage) {
+        if (context.protection === 'none') {
+            if (context.armorBlowoutPending || damage > cap) armorDamage = context.remainingArmor;
+        } else {
+            armorDamage = Math.min(context.remainingArmor, 10, damage - internalDamage);
+        }
+    }
+    return { internalDamage, armorDamage };
+}
+
 /** No failure roll is made for this tracked use. */
 export const ESCALATING_FAILURE_NO_CHECK_TARGET = 0;
 /** First impossible 2D6 target; represents automatic failure. */
@@ -259,6 +277,8 @@ export abstract class CBTGameRules {
     abstract readonly supportsApolloSaturationMode: boolean;
     abstract readonly supportsBombastLaserRules: boolean;
     abstract readonly supportsFlamerModes: boolean;
+    /** AX missile modifier to the Cluster Hits Table (Core p.192, TO:AUE p.179). */
+    abstract readonly acidMissileClusterModifier: number;
     abstract readonly narcHomingTargetModifier: number;
     abstract readonly narcIndirectFireIgnoresAllTerrain: boolean;
     abstract readonly indirectFireUsesSpotterPartialCover: boolean;
@@ -514,6 +534,7 @@ export class GameRules extends CBTGameRules {
     readonly supportsApolloSaturationMode = true;
     readonly supportsBombastLaserRules = true;
     readonly supportsFlamerModes = false;
+    readonly acidMissileClusterModifier = -1;
     readonly narcHomingTargetModifier = -1;
     readonly narcIndirectFireIgnoresAllTerrain = false;
     readonly indirectFireUsesSpotterPartialCover = false;
@@ -557,23 +578,8 @@ export class GameRules extends CBTGameRules {
     }
 
     override resolveMekExplosionDamage(context: MekExplosionDamageContext): MekExplosionDamageResolution {
-        const damage = Math.max(0, context.damage);
-        const cap = context.protection === 'case-ii' ? 1 : context.protection === 'case' ? 10 : 20;
-        const internalDamage = Math.min(damage, cap);
-        let armorDamage = 0;
-
-        if (context.protection === 'none') {
-            const armorBlowoutPending = context.armorBlowoutPending || damage > cap;
-            if (armorBlowoutPending && context.remainingInternal > internalDamage) {
-                armorDamage = context.remainingArmor;
-            }
-        } else if (damage > cap && context.remainingInternal > internalDamage) {
-            armorDamage = Math.min(context.remainingArmor, 10, damage - cap);
-        }
-
         return {
-            internalDamage,
-            armorDamage,
+            ...resolveCoreExplosionDamage(context),
             armorRear: context.torso,
             stopsTransfer: context.protection !== 'none',
         };
@@ -660,6 +666,7 @@ export class TWGameRules extends CBTGameRules {
     readonly supportsApolloSaturationMode = false;
     readonly supportsBombastLaserRules = false;
     readonly supportsFlamerModes = true;
+    readonly acidMissileClusterModifier = -2;
     readonly narcHomingTargetModifier = 0;
     readonly narcIndirectFireIgnoresAllTerrain = true;
     readonly indirectFireUsesSpotterPartialCover = true;

@@ -218,6 +218,8 @@ export function weaponAttackProfile(facts: WeaponAttackFacts, rules: CBTGameRule
     const { equipment, mode, damage, ammo } = facts;
     const perHit = damage.values[0] ?? 0;
     const specialAmmo = armorSpecialAmmo(equipment, ammo);
+    const clusterModifier = (specialAmmo === 'acid' ? rules.acidMissileClusterModifier : 0)
+        + (hasIntegralArtemis(equipment) && facts.hostileEcm !== true ? INTEGRAL_ARTEMIS_CLUSTER_MODIFIER : 0);
     const profile = (damagePerHit: number, projectiles: number, groupSize: number, jamRoll: number | null = null) =>
         Object.freeze({
             componentId: facts.componentId,
@@ -236,8 +238,7 @@ export function weaponAttackProfile(facts: WeaponAttackFacts, rules: CBTGameRule
             ...(specialAmmo === 'armor-piercing' ? { rackSize: equipment.rackSize } : {}),
             ...(facts.insulated ? { insulated: true as const } : {}),
             ...(facts.chargedPpc && rules.id === 'total-warfare' ? { capacitorBurnoutOnTwo: true as const } : {}),
-            ...(hasIntegralArtemis(equipment) && facts.hostileEcm !== true
-                ? { clusterModifier: INTEGRAL_ARTEMIS_CLUSTER_MODIFIER } : {}),
+            ...(clusterModifier === 0 ? {} : { clusterModifier }),
         });
     // Each inferno missile that hits is its own group: one hit-location roll, no damage. Core p. 192 skips the roll, but
     // partial cover and heat-dissipating armor can depend on it (Xotl, Core Rulebook forum ruling, 19 Oct 2026).

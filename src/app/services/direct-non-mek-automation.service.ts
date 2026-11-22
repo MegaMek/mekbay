@@ -30,12 +30,10 @@ import {
 import { infernoMissilesThisTurn, struckArmorFace } from '../models/runtime/attack-hit-location';
 import type { NonMekHitArc, NonMekHitEffect } from '../models/runtime/non-mek-hit-location';
 import { aeroExplosionStructuralIntegrityDamage, type AeroCriticalType } from '../models/rules/aero-critical-rules';
-import type { WeaponEquipment } from '../models/equipment.model';
 import { projectAeroRuntimeRules } from '../models/rules/aero-runtime-rules';
 import { projectAeroHeatAutomationChecks } from '../models/runtime/aero-heat-automation-rules';
 import { heatAmmoExplosionCandidates, rollD6, twoD6Total, type HeatAmmoExplosionCandidate } from '../models/runtime/mek-automation-rules';
-import { ammoExplosionDamagePerShot } from '../models/runtime/mek-critical-hit-v2';
-import { hotLoadedAmmoForWeapon } from '../models/runtime/mek-ammo';
+import { vehicleHotLoadBlasts } from '../models/runtime/non-mek-unit-instance';
 import type { CBTRuntimeLocation } from '../models/runtime/cbt-unit-runtime';
 import type { NonMekRuntimeIndex } from '../models/runtime/non-mek-runtime-index';
 import { projectNonMekEndTurnHeat,type NonMekControlRecoveryCause,type NonMekControlRecoveryWorkflow,type NonMekUnitRuntimeState } from '../models/runtime/non-mek-unit-instance';
@@ -308,7 +306,7 @@ export class DirectNonMekAutomationService {
             ? rifleHitDamage(struck.ruleset, group.damage, {
                 entity: struck.entity,
                 location: struckLocation.code,
-                armor: struckFace ? struck.query.remainingArmor(struckFace.id, perspective) : 0,
+                armor: struckArmor,
             })
             : group.damage;
         // TW p.197: a weapon striking a VTOL's rotors deals 1 point per 10 (or fraction) of its damage value.
@@ -377,23 +375,13 @@ export class DirectNonMekAutomationService {
             && command.status === 'destroyed' && command.applyExplosion === undefined) {
             const snapshot = this.nonMekSnapshot(force, instanceId);
             if (snapshot && isVehicleEntity(snapshot.entity)) {
-                const ids = command.type === 'set-component-status' ? [command.componentId] : command.componentIds;
-                const perspective = command.target === 'pending' ? 'preview' : 'committed';
-                let damage = 0;
-                const effects: string[] = [];
-                for (const id of ids) {
-                    if (snapshot.query.componentStatus(id, perspective) === 'destroyed') continue;
-                    const ammo = hotLoadedAmmoForWeapon(snapshot.index, snapshot.query, id, perspective);
-                    if (ammo.length === 0) continue;
-                    const mount = snapshot.index.components.get(id)!.mount;
-                    const rawDamage = (mount.equipment as WeaponEquipment).rackSize * Math.max(...ammo.map(ammoExplosionDamagePerShot));
-                    damage += rawDamage;
-                    effects.push(`${mount.displayName()} (${mount.location}): ${rawDamage} internal damage`);
-                }
+                const blasts = vehicleHotLoadBlasts(snapshot.entity, snapshot.index, () => snapshot.query, command);
+                const damage = blasts.reduce((sum, blast) => sum + blast.damage, 0);
+                const effects = blasts.map(blast => `${blast.name} (${blast.location.code}): ${blast.damage} base explosion damage`);
                 if (damage > 0) {
                     const event: AutomationReviewEvent = { id: 'hot-loaded-launchers', subject: this.subject(snapshot),
                         event: 'Hot-loaded launcher explosion', delta: damage, effects,
-                        description: `Apply ${damage} points of internal explosion damage. Vehicles do not roll for a secondary ammo explosion.` };
+                        description: 'Resolve the explosion in each launcher’s location. Vehicles do not roll for a secondary ammo explosion.' };
                     const accepted = await this.automation.resolve('internalExplosionsCheck', [event],
                         { title: 'Review Internal Explosion', allowCancel: true });
                     return accepted === null ? Object.freeze({ command, cancelled: true })

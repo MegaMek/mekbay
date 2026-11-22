@@ -5,7 +5,7 @@ import { asUnitUuid } from '../../services/unit-catalog/unit-catalog.types';
 import type { ComponentId } from '../entity/entity-identifiers';
 import { TestTankEntity } from '../entity/testing/test-entities';
 import { createTestEquipmentRegistry } from '../entity/testing/test-equipment-registry';
-import { addTestEquipment } from '../entity/testing/test-mounted-equipment';
+import { addTestEquipment, addTestEquipmentWithFlags } from '../entity/testing/test-mounted-equipment';
 import { AmmoEquipment, WeaponEquipment } from '../equipment.model';
 import { cloneMekForOwner } from './cbt-mek-unit';
 import { cloneNonMekForOwner, createNonMekUnit } from './cbt-non-mek-unit';
@@ -182,5 +182,38 @@ describe('hot-loaded ammo', () => {
             munitionKey: highDamageAmmo.id, remaining: 1, hotLoaded: true });
         unit.dispatch(destroy);
         expect(unit.query().remainingInternal(locationId, 'preview')).withContext('maximum flight damage across hot-loaded munitions').toBe(0);
+    });
+
+    it('keeps a Core vehicle launcher’s CASE-P result through pending damage and phase end', () => {
+        const ammo = new AmmoEquipment({ id: 'LRM20Ammo', name: 'LRM Ammo', type: 'ammo', flags: ['F_HOT_LOAD'],
+            ammo: { type: 'LRM', rackSize: 20, shots: 6, damagePerShot: 1 } });
+        const weapon = new WeaponEquipment({ id: 'LRM20', name: 'LRM 20', type: 'weapon', flags: ['F_MISSILE'],
+            weapon: { ammoType: 'LRM', rackSize: 20 } });
+        const entity = new TestTankEntity(createTestEquipmentRegistry({ [ammo.id]: ammo, [weapon.id]: weapon }));
+        const uuid = asUnitUuid('019f6767-0dcb-7bb8-992f-aef08202f5e1');
+        entity.uuid.set(uuid);
+        entity.setTonnage(200);
+        entity.setArmorValue('Front', 'front', 15);
+        addTestEquipmentWithFlags(entity, 'F_CASE_P');
+        const bin = componentIdForMount(addTestEquipment(entity, ammo, { shotsCount: 6 }));
+        const launcher = componentIdForMount(addTestEquipment(entity, weapon, { location: 'Front' }));
+        for (const [die, internal, armor] of [[2, 0, 15], [3, 10, 5]]) {
+            const unit = createNonMekUnit(entity, { instanceId: 'vehicle-hot-load-case', uuid,
+                scenario: { ...scenario(true), ruleset: 'core-2026' }, deployment: { id: 'default' }, initialStateProfileId: 'pristine' });
+            unit.dispatch({ type: 'configure-ammo-source', componentId: bin, munitionKey: ammo.id, remaining: 6, hotLoaded: true });
+            const random = jasmine.isSpy(Math.random) ? Math.random as jasmine.Spy : spyOn(Math, 'random');
+            random.calls.reset();
+            random.and.returnValue((die - 0.5) / 6);
+            const hit = { type: 'set-component-status', componentId: launcher, status: 'destroyed', target: 'pending' } as const;
+            const front = [...unit.getIndex().locations.values()].find(location => location.code === 'Front')!;
+            expect(unit.dispatch(hit).changed).toBeTrue();
+            expect(unit.query().remainingInternal(front.id, 'preview')).toBe(internal);
+            expect(unit.query().remainingArmor(front.armorFaceIds[0]!, 'preview')).toBe(armor);
+            unit.dispatch(hit);
+            unit.dispatch({ type: 'end-phase' });
+            expect(unit.query().remainingInternal(front.id, 'committed')).toBe(internal);
+            expect(unit.query().remainingArmor(front.armorFaceIds[0]!, 'committed')).toBe(armor);
+            expect(random.calls.count()).toBe(1);
+        }
     });
 });

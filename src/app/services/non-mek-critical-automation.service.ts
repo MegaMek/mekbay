@@ -47,6 +47,7 @@ import {
 } from '../models/rules/vehicle-critical-rules';
 import type { CBTRuntimeLocation, RuntimeStatePerspective } from '../models/runtime/cbt-unit-runtime';
 import { rollD6, roll2D6, twoD6Total } from '../models/runtime/mek-automation-rules';
+import { vehicleExplosionProtection, vehicleInternalExplosionDamage } from '../models/runtime/non-mek-unit-instance';
 import {
     ammoExplosionDamagePerShot,
     ammoRackSize,
@@ -335,8 +336,8 @@ export class NonMekCriticalAutomationService {
     }
 
     /**
-     * An ammunition or explosive-weapon blast in a vehicle: into the struck location's structure, or with CASE
-     * into the rear armor with the excess ignored and the crew stunned (TW p.194).
+     * Core resolves ammunition and component explosions in the struck location (pp. 96–97, 207).
+     * Under TW vehicle CASE vents the blast into rear armor and stuns the crew (p. 194).
      */
     private explosion(
         snapshot: CBTNonMekUnitSnapshot,
@@ -346,15 +347,16 @@ export class NonMekCriticalAutomationService {
         target: Target,
     ): CriticalEffect {
         const perspective = perspectiveOf(target);
-        const caseProtected = snapshot.entity.ammoCaseProtection(location.code, mount =>
-            snapshot.query.componentStatus(asComponentId(mount.mountId), perspective) === 'available') !== null;
-        const rear = [...snapshot.index.locations.values()].find(candidate => candidate.code === 'Rear');
-        const rearFace = rear?.armorFaceIds[0];
-        if (caseProtected && rearFace !== undefined) {
+        const { protection, roll } = vehicleExplosionProtection(snapshot.entity, snapshot.query, location, perspective, rollD6);
+        const ventResult = roll === undefined ? [] : [`CASE-P rolled ${roll}: ${protection === 'none' ? 'failed to vent' : 'vented'}`];
+        const ventsRear = snapshot.ruleset === 'total-warfare' && protection !== 'none';
+        const rearFace = ventsRear ? [...snapshot.index.locations.values()].find(candidate => candidate.code === 'Rear')?.armorFaceIds[0]
+            : undefined;
+        if (rearFace !== undefined) {
             const stun = applicableVehicleCriticalEffect('crew-stunned', facts);
             const armor = Math.min(damage, snapshot.query.remainingArmor(rearFace, perspective));
             return Object.freeze({
-                effects: Object.freeze([`CASE vents ${damage} damage into the rear armor`,
+                effects: Object.freeze([...ventResult, `CASE vents ${damage} damage into the rear armor`,
                     ...(stun ? [`The crew is ${stun === 'crew-killed' ? 'killed' : 'stunned'}`] : [])]),
                 apply: (dispatch: CBTForceUnitCommandDispatch) => dispatchAll(dispatch, [
                     ...(armor > 0 ? [{ type: 'damage-armor', faceId: rearFace, amount: armor, target } as const] : []),
@@ -362,12 +364,18 @@ export class NonMekCriticalAutomationService {
                 ]),
             });
         }
-        const internal = Math.min(damage, snapshot.query.remainingInternal(location.id, perspective));
+        const blast = vehicleInternalExplosionDamage(snapshot.ruleset, snapshot.query, location, perspective, damage, protection);
         return Object.freeze({
-            effects: Object.freeze([`${damage} damage to the ${location.code} internal structure`]),
-            apply: (dispatch: CBTForceUnitCommandDispatch) => dispatchAll(dispatch, internal > 0
-                ? [{ type: 'damage-internal', locationId: location.id, amount: internal, target }]
-                : []),
+            effects: Object.freeze([...ventResult, `${blast.internalDamage} damage to the ${location.code} internal structure`,
+                ...(blast.armorDamage > 0 ? [`${blast.armorDamage} damage to the ${location.code} armor`] : [])]),
+            apply: (dispatch: CBTForceUnitCommandDispatch) => dispatchAll(dispatch, [
+                ...(blast.internalDamage > 0 ? [
+                    { type: 'damage-internal', locationId: location.id, amount: blast.internalDamage, target } as const,
+                ] : []),
+                ...(blast.armorDamage > 0 ? [
+                    { type: 'damage-armor', faceId: location.armorFaceIds[0]!, amount: blast.armorDamage, target } as const,
+                ] : []),
+            ]),
         });
     }
 
@@ -707,11 +715,9 @@ function vehicleCriticalChecks(
             checks.push({ locationId: struck.id, modifier: armoredChassis ? -1 : 0, reason: 'penetrating' });
         }
     }
-    // Special armor on the struck face while it had armor. Hardened: -2 on the hit location's critical checks under
-    // Total Warfare, not the check for structure damage (TO:AUE p.93), on the through-armor check of a 2 only under
-    // Core (Core p.91, errata v0.2). Ablation, on that check only:
-    // Core ignores it (Core pp.91, 201), Total Warfare gives it -2 (IO:AE p.80). Core armor-piercing rounds strip
-    // both (Core p.191).
+    // Hardened armor modifies penetrating hit-location checks under TW (TO:AUE p.93) and the TAC from a 2
+    // under Core (p.91, errata v0.2). Ablation negates that TAC under Core (pp.91, 201) and modifies it by -2
+    // while armor remains under TW (IO:AE p.80). Core AP rounds strip both protections (p.191).
     const core = snapshot.ruleset === 'core-2026';
     const throughArmor = group.effects.includes('through-armor');
     const armorDamage = outcome.armorHit?.locationId === group.locationId ? outcome.armorHit.damage : 0;
@@ -720,7 +726,11 @@ function vehicleCriticalChecks(
     const specialArmorProtects = !armorPiercingIgnoresSpecialArmor(snapshot.ruleset, struckArmorType, group.source);
     const hardened = specialArmorProtects && struckArmorType === 'HARDENED' ? -2 : 0;
     const ablation = specialArmorProtects && throughArmor && struckArmorType === 'ANTI_PENETRATIVE_ABLATION';
-    if (group.effects.includes('critical') && !(ablation && core)) {
+    // A ferro-lamellor hit reduced to zero cannot cause a TAC (Core p.202), or a penetrating location critical
+    // under Total Warfare (TO:AUE p.92). A separate motive-system result still applies.
+    const locationCheckNegated = (core && ablation) || (struckArmorType === 'FERRO_LAMELLOR'
+        && armorDamage === 0 && (!core || throughArmor));
+    if (group.effects.includes('critical') && !locationCheckNegated) {
         checks.push({
             locationId: group.locationId,
             modifier: (core && !throughArmor ? 0 : hardened) + (ablation ? ABLATION_CRITICAL_MODIFIER.value : 0),

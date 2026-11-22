@@ -9,6 +9,11 @@ const CASE_PROTOTYPE_FLAG = 'F_CASE_P' as const;
 
 export type CaseEquipmentKind = 'case' | 'case-ii' | 'prototype';
 
+/** A prototype CASE vent fails on 1–2 (IO:AE p. 65). */
+export function prototypeCaseFails(roll: number | undefined): boolean {
+    return roll !== undefined && roll <= 2;
+}
+
 export function isStandardCaseEquipment(equipment: Equipment | null | undefined): boolean {
     return equipment?.hasFlag(CASE_FLAG) === true;
 }

@@ -79,6 +79,29 @@ describe('weapon attack resolution', () => {
         expect(resolveWeaponAttack(profile, [6, 6], [6, 6]).groups).toEqual([2, 2]);
     });
 
+    it('applies the AX penalty to an SRM cluster roll even under hostile ECM (Core p. 192, TO:AUE p. 179)', () => {
+        const srm = new WeaponEquipment({
+            id: 'ISSRM6', name: 'SRM 6', type: 'weapon', flags: ['F_MISSILE', 'F_SRM'],
+            weapon: { damage: 'cluster', rackSize: 6, ammoType: 'SRM' },
+        });
+        const acid = new AmmoEquipment({
+            id: 'AX SRM 6 Ammo', name: 'AX SRM 6 Ammo', type: 'ammo',
+            ammo: { type: 'SRM', rackSize: 6, damagePerShot: 2, munitionType: ['M_AX_HEAD'] },
+        });
+        const facts = { componentId: weaponId, equipment: srm, mode: undefined,
+            damage: { values: [2], maximum: 12, unit: 'missile' as const }, ammo: acid, types: [],
+            name: 'SRM 6', targetNumber: 6, partialCover: false };
+        for (const hostileEcm of [false, true]) {
+            const hits = (rules: CBTGameRules) => {
+                const profile = weaponAttackProfile({ ...facts, hostileEcm }, rules)!;
+                return [resolveWeaponAttack(profile, [4, 4], [3, 3]).hits, resolveWeaponAttack(profile, [4, 4], [4, 3]).hits];
+            };
+            // On the 6 column, unmodified rolls of 6 and 7 would both hit with four missiles.
+            expect(hits(CORE_2026_GAME_RULES)).toEqual([3, 4]);
+            expect(hits(TW_GAME_RULES)).toEqual([3, 3]);
+        }
+    });
+
     it('rolls missiles on the Cluster Hits Table and groups them in five-point clusters', () => {
         const profile = weaponAttackProfile({ componentId: weaponId, equipment: lrm15, mode: undefined, damage: { values: [1], maximum: 15, unit: 'missile' }, ammo: lrmAmmo, types: [], name: 'LRM 15', targetNumber: 8, partialCover: false }, TW_GAME_RULES)!;
 

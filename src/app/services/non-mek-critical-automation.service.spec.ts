@@ -9,7 +9,7 @@ import { MountedArmor } from '../models/entity/components/armor';
 import type { LocationId } from '../models/entity/entity-identifiers';
 import { TestAeroSpaceFighterEntity, TestProtoMekEntity, TestTankEntity } from '../models/entity/testing/test-entities';
 import { createTestEquipmentRegistry } from '../models/entity/testing/test-equipment-registry';
-import { addTestEquipment } from '../models/entity/testing/test-mounted-equipment';
+import { addTestEquipment, addTestEquipmentWithFlags } from '../models/entity/testing/test-mounted-equipment';
 import type { ArmorType } from '../models/entity/types';
 import { AmmoEquipment, ArmorEquipment, WeaponEquipment } from '../models/equipment.model';
 import { aeroCriticalType } from '../models/rules/aero-critical-rules';
@@ -56,8 +56,8 @@ describe('NonMekCriticalAutomationService', () => {
         service = TestBed.inject(DirectNonMekAutomationService);
     });
 
-    /** A 20-ton tank with 10 points of armor on each location; dice come from `rolls` (1–6 each). */
-    function tank(withAmmo = false, withAutocannon = false, armorType?: ArmorType, ruleset: CBTRuleset = 'core-2026') {
+    function tank(withAmmo = false, withAutocannon = false, armorType?: ArmorType, ruleset: CBTRuleset = 'core-2026',
+        caseFlag?: 'F_CASE' | 'F_CASE_P' | 'F_CASE_II') {
         const ammo = new AmmoEquipment({ id: 'Ammo_AC_5_Critical_Test', name: 'AC/5 Ammo', type: 'ammo',
             stats: { explosive: true }, ammo: { type: 'AC', rackSize: 5, shots: 20, damagePerShot: 1 } });
         // Catalogued explosive with an explosion damage, as the shipped AC/5 is, though no autocannon explodes
@@ -66,13 +66,17 @@ describe('NonMekCriticalAutomationService', () => {
             weapon: { ammoType: 'AC', rackSize: 5, damage: '5', ranges: [3, 6, 12], explosionDamage: 5 } });
         const entity = new TestTankEntity(createTestEquipmentRegistry({ [ammo.id]: ammo, [autocannon.id]: autocannon }));
         entity.uuid.set(UUID);
-        entity.setTonnage(20);
+        entity.setTonnage(caseFlag ? 200 : 20);
+        if (caseFlag) {
+            entity.hasTurret.set(true);
+            addTestEquipmentWithFlags(entity, caseFlag, { location: caseFlag === 'F_CASE_II' ? 'Turret' : 'Body' });
+        }
         if (armorType) {
             entity.setUniformArmor(new MountedArmor({ armor: new ArmorEquipment({
                 id: armorType, name: armorType, type: 'armor', armor: { type: armorType } }) }));
         }
-        for (const location of entity.locationOrder) entity.setArmorValue(location, 'front', 10);
-        const ammoId = withAmmo ? componentIdForMount(addTestEquipment(entity, ammo, { location: 'Rear', shotsCount: 2 })) : null;
+        for (const location of entity.locationOrder) entity.setArmorValue(location, 'front', caseFlag ? 20 : 10);
+        const ammoId = withAmmo ? componentIdForMount(addTestEquipment(entity, ammo, { location: 'Rear', shotsCount: caseFlag ? 20 : 2 })) : null;
         const acId = withAutocannon ? componentIdForMount(addTestEquipment(entity, autocannon, { location: 'Rear' })) : null;
         const runtime = createNonMekUnit(entity, { instanceId: 'critical-tank', uuid: UUID,
             scenario: { id: 'megamek', ruleset, options: {} }, deployment: { id: 'default' }, initialStateProfileId: 'pristine' });
@@ -313,6 +317,26 @@ describe('NonMekCriticalAutomationService', () => {
         }
     });
 
+    it('modifies a TW vehicle AP check only while the struck face keeps ablation armor', async () => {
+        const source = { kind: 'weapon', types: ['DB'], ammo: 'armor-piercing', rackSize: 10 } as const;
+        for (const [damage, expected] of [[9, [0, 1]], [10, [1, 0]]] as const) {
+            const unit = tank(false, false, 'ANTI_PENETRATIVE_ABLATION', 'total-warfare');
+            rolls(6, 6); // AC/10: 12 - 2 hits the commander; 12 - 2 - 2 hits the sensors.
+            expect(await unit.apply([group(unit.location('Front'), damage, { source })])).toBeTrue();
+            expect([unit.hits(systemDamageId('commander')), unit.hits(systemDamageId('sensors', 1))]).toEqual([...expected]);
+        }
+    });
+
+    it('makes neither a TAC nor an AP check when ferro-lamellor absorbs the whole hit', async () => {
+        const source = { kind: 'weapon', types: ['DB'], ammo: 'armor-piercing', rackSize: 5 } as const;
+        for (const ruleset of ['core-2026', 'total-warfare'] as const) {
+            const unit = tank(false, false, 'FERRO_LAMELLOR', ruleset);
+            rolls();
+            expect(await unit.apply([group(unit.location('Front'), 1, { source, effects: ['critical', 'through-armor'] })])).toBeTrue();
+            expect(Math.random).withContext(ruleset).not.toHaveBeenCalled();
+        }
+    });
+
     for (const target of ['committed', 'pending'] as const) {
         it(`destroys a Core autocannon on a second ${target} hit later in the same batch`, async () => {
             const unit = tank(false, true);
@@ -346,6 +370,38 @@ describe('NonMekCriticalAutomationService', () => {
         expect(await unit.apply([group(rear, 2, { effects: ['critical'] })])).toBeTrue();
         expect(unit.runtime.query().componentStatus(unit.ammoId!)).toBe('destroyed');
         expect(unit.runtime.query().remainingInternal(rear)).toBe(Math.max(0, before - 10));
+    });
+
+    it('applies the Core explosion caps to turret structure and armor, including a CASE-P vent roll', async () => {
+        for (const [flag, die, internalLeft, armorLeft] of [
+            ['F_CASE', 6, 10, 9], ['F_CASE_II', 6, 19, 9],
+            ['F_CASE_P', 3, 10, 9], ['F_CASE_P', 2, 0, 19],
+        ] as const) {
+            const unit = tank(true, false, undefined, 'core-2026', flag);
+            const turret = unit.location('Turret');
+            const face = unit.runtime.getIndex().locations.get(turret)!.armorFaceIds[0]!;
+            // 11 on the turret column explodes the ammunition. The attack itself takes one turret armor.
+            rolls(5, 6, die);
+            expect(await unit.apply([group(turret, 1, { effects: ['critical'] })], 'pending')).toBeTrue();
+            expect(unit.runtime.query().remainingInternal(turret, 'preview')).withContext(flag).toBe(internalLeft);
+            expect(unit.runtime.query().remainingArmor(face, 'preview')).withContext(flag).toBe(armorLeft);
+            expect(unit.runtime.query().remainingInternal(turret, 'committed')).toBe(20);
+            const rear = unit.runtime.getIndex().locations.get(unit.location('Rear'))!.armorFaceIds[0]!;
+            expect(unit.runtime.query().remainingArmor(rear, 'preview')).toBe(20);
+            expect(unit.runtime.query().crewState(unit.runtime.getCrewAssignment().positions[0]!.positionId).unconscious).toBeFalse();
+            expect((Math.random as jasmine.Spy).calls.count()).toBe(flag === 'F_CASE_P' ? 3 : 2);
+        }
+    });
+
+    it('vents Total Warfare vehicle CASE into the rear armor and stuns the crew', async () => {
+        const unit = tank(true, false, undefined, 'total-warfare', 'F_CASE');
+        const turret = unit.location('Turret');
+        rolls(5, 6);
+        expect(await unit.apply([group(turret, 1, { effects: ['critical'] })])).toBeTrue();
+        expect(unit.runtime.query().remainingInternal(turret)).toBe(20);
+        const rear = unit.runtime.getIndex().locations.get(unit.location('Rear'))!.armorFaceIds[0]!;
+        expect(unit.runtime.query().remainingArmor(rear)).toBe(0);
+        expect(unit.runtime.query().crewState(unit.runtime.getCrewAssignment().positions[0]!.positionId).unconscious).toBeTrue();
     });
 
     it('rolls motive damage with the direction and motive modifiers', async () => {

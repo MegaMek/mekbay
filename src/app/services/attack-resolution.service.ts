@@ -374,7 +374,7 @@ export class AttackResolutionService {
             const ammo = selectedAmmoEquipment(weapon.ammoSources, weapon.ammoSelection);
             // The calculator's partial-cover modifier is the one source for whether this weapon meets cover.
             const partialCover = presentation.targetModifierBreakdown?.some(modifier =>
-                modifier.id === 'partial-cover' && modifier.modifier > 0) === true;
+                modifier.id === 'partial-cover' && modifier.modifier > 0 && modifier.ignored !== true) === true;
             const profile = weapon.platoon ? platoonAttackProfile({
                 componentId: row.componentId,
                 name: row.label,
@@ -393,7 +393,8 @@ export class AttackResolutionService {
                 types: resolveEffectiveWeaponTypes(row, ammo),
                 name: row.label,
                 targetNumber,
-                partialCover,
+                // Aiming ignores the TN modifier but rerolls covered leg hits (Core p. 70).
+                partialCover: presentation.aim === null ? partialCover : targeting.partialCover !== undefined,
                 ...(presentation.aim === null ? {} : {
                     aim: Object.freeze({ location: presentation.aim.location, dice: aimedShotDice(fired.ruleset) }),
                 }),

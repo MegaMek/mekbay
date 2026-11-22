@@ -31,9 +31,11 @@ projectNonMekEndTurnHeat,
 queryNonMekRuntime,
 reduceNonMekAttackerTargeting,
 reduceNonMekRuntime,
+vehicleHotLoadBlasts,
 reduceNonMekSelectedWeaponFire,
 type NonMekRuntimeBinding,type NonMekUnitQueryPort,type NonMekUnitRuntimeState,
 } from './non-mek-unit-instance';
+import { rollD6 } from './mek-automation-rules';
 import { mekNextHeatBasis,planMekAttackerTargetingReconciliation,queryMekRuntime,reduceMekAttackerTargeting,reduceMekRuntime,reduceMekSelectedWeaponFire,type MekRuntimeBinding,type MekUnitQueryPort } from './unit-instance';
 
 export type CBTUnitFamily = 'mek' | 'non-mek';
@@ -145,7 +147,9 @@ export class CBTUnit<F extends CBTUnitFamily = CBTUnitFamily> {
     dispatch(command: CBTUnitCommand): OwnerResult<F> {
         const runtime = this.#runtime;
         const result = runtime.kind === 'mek' ? reduceMekRuntime(runtime.binding, runtime.state, command)
-            : reduceNonMekRuntime(runtime.binding, runtime.state, command);
+            : reduceNonMekRuntime(runtime.binding, runtime.state, command,
+                vehicleHotLoadBlasts(runtime.binding.entity, runtime.binding.index, () => this.query(), command,
+                    runtime.binding.ruleset === 'core-2026' ? rollD6 : undefined));
         return this.installResult(result);
     }
     endTurn(policy: HeatAutomationPolicy = 'automatic'): OwnerResult<F> {

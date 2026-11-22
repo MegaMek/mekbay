@@ -774,7 +774,7 @@ function directMekEquipmentRegistry(options: DirectFixtureOptions) {
     });
     const artemisLauncher = new WeaponEquipment({
         id: 'Test Artemis Launcher', name: 'Test Artemis Launcher', type: 'weapon',
-        flags: ['F_MISSILE', 'F_ARTEMIS_COMPATIBLE'], stats: { criticalSlots: 1, bv: 60 },
+        flags: ['F_MISSILE', 'F_ARTEMIS_COMPATIBLE', 'F_INDIRECT_FIRE'], stats: { criticalSlots: 1, bv: 60 },
         weapon: { ammoType: 'LRM', rackSize: 10, damage: 1, heat: 4, minRange: 6, ranges: [7, 14, 21, 28] },
     });
     const artemisV = new MiscEquipment({

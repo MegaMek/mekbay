@@ -3,6 +3,7 @@
 
 import { inject,Injectable,Injector } from '@angular/core';
 import type { CBTUnitCommand } from '../models/runtime/unit-command';
+import { prototypeCaseFails } from '../models/case-equipment.model';
 
 import type { AutomationCheck,AutomationCheckResolution } from '../models/automation-check.model';
 import type { AutomationReviewEvent } from '../models/automation-review.model';
@@ -2721,5 +2722,5 @@ function withPrototypeCaseRoll(
 
 function prototypeCaseDescription(roll: number | undefined): string {
     if (roll === undefined) return '';
-    return ` CASE-P check: ${roll}, ${roll <= 2 ? 'it fails to vent the explosion' : 'it vents the explosion'}.`;
+    return ` CASE-P check: ${roll}, ${prototypeCaseFails(roll) ? 'it fails to vent the explosion' : 'it vents the explosion'}.`;
 }

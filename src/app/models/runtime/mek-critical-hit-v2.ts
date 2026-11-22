@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 
 import type { CBTRuleset } from '../cbt-ruleset.model';
+import { prototypeCaseFails } from '../case-equipment.model';
 import type { EquipmentStatus } from '../equipment-status.model';
 import { AmmoEquipment, MiscEquipment, WeaponEquipment, resolveWeaponDamage } from '../equipment.model';
 import { isBombastLaserEquipment } from '../bombast-laser-mode.model';
@@ -79,9 +80,6 @@ export interface MekCriticalRuntimeViewV2 {
  * to vent the explosion in time and the explosion is resolved as if the unit does not have CASE" (IO:AE p. 65).
  */
 export type MekInstalledExplosionProtection = MekExplosionProtection | 'case-p';
-
-/** The highest 1D6 roll on which prototype CASE fails to vent (IO:AE p. 65). */
-const PROTOTYPE_CASE_FAILURE_ROLL = 2;
 
 export interface HotLoadExplosionRoll {
     readonly dice: readonly number[];
@@ -796,7 +794,7 @@ function resolveExplosionPlan(
         const installed = mekExplosionProtection(entity, index, ruleset, runtime, locationId, target, directHitSlot);
         metPrototypeCase ||= installed === 'case-p';
         const protection: MekExplosionProtection = installed !== 'case-p' ? installed
-            : prototypeCaseRoll !== undefined && prototypeCaseRoll <= PROTOTYPE_CASE_FAILURE_ROLL ? 'none' : 'case';
+            : prototypeCaseFails(prototypeCaseRoll) ? 'none' : 'case';
         if (ruleset === 'core-2026' && protection === 'none' && damage > 20) armorBlowoutPending = true;
         const composite = structureConstructionKind(location.structure.structure) === 'composite';
         const multiplier = composite ? 2 : 1;

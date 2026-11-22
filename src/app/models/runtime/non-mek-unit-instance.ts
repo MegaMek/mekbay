@@ -4,6 +4,7 @@
 import { withAmmoConfiguration,withAmmoShotsSpent,withComponentAutocannonHit,withComponentJammed,withComponentMode,withComponentStatuses,withPendingComponentStatuses } from './component-state-change';
 import { hotLoadedAmmoForWeapon } from './mek-ammo';
 import { ammoExplosionDamagePerShot } from './mek-critical-hit-v2';
+import { prototypeCaseFails } from '../case-equipment.model';
 
 import type { CBTUnitAttackerTargetingReconciliationPlan } from './attacker-targeting-state';
 import type { CBTUnitAttackerTargetingCommand,CBTUnitSelectedWeaponFireCommand } from './unit-command';
@@ -42,7 +43,7 @@ import { AmmoEquipment,WeaponEquipment,type Equipment } from '../equipment.model
 import { locksOnTarget } from '../rules/weapon-attack-resolution';
 import type { MotiveModes } from '../motiveModes.model';
 import { projectAeroRuntimeRules,type AeroRuntimeRulesProjection } from '../rules/aero-runtime-rules';
-import { gameRulesFor } from '../rules/game-rules';
+import { gameRulesFor, resolveCoreExplosionDamage, type MekExplosionProtection } from '../rules/game-rules';
 import { addOutsideHeat, MAX_OUTSIDE_HEAT_PER_TURN, outsideHeatThisTurn } from '../rules/inferno-rules';
 import { compareTurnPositions, HEAT_TURN_STEP, isMarkableTurnStep, isStoredTurnStep } from '../rules/turn-sequence';
 import { projectInfantryRuntimeRules,type InfantryRuntimeRulesProjection } from '../rules/infantry-runtime-rules';
@@ -75,7 +76,7 @@ import type { EntityMountedEquipment } from '../entity/types/equipment';
 import { laserInsulatorWeakened, laserInsulatorAdjustedHeat } from '../laser-insulator.model';
 import { prototypeLaserHeatForRoll,prototypeLaserHeatRollMap,prototypeLaserMaximumExtraHeat,type PrototypeLaserHeatResult } from '../prototype-laser-heat.model';
 import { rapidFireAutocannonComponentModes } from '../rapid-fire-autocannon-mode.model';
-import { type CBTUnitCommandResult,type CBTUnitQueryPort,type CBTUnitRuntimeState,type HeatAutomationPolicy,type RuntimeStatePerspective } from './cbt-unit-runtime';
+import { type CBTRuntimeLocation,type CBTUnitCommandResult,type CBTUnitQueryPort,type CBTUnitRuntimeState,type HeatAutomationPolicy,type RuntimeStatePerspective } from './cbt-unit-runtime';
 import { endTurnHeat, endTurnHeatStepForPolicy } from './end-turn-heat-selection';
 import { BOOBY_TRAP_ARMED_MODE,BOOBY_TRAP_DETONATED_MODE,boobyTrapComponentModes,isBoobyTrapDetonated } from './component-booby-trap';
 import { effectiveEcmMode,electronicClaims,electronicComponentModes,electronicRuntimeModes,isNovaCewsEquipment,isPowerControlledEquipment,planElectronicModeRequest,planElectronicSettlement,type ElectronicComponentFact } from './component-electronic-suite';
@@ -690,32 +691,76 @@ export function queryNonMekRuntime(binding: NonMekRuntimeBinding, state: NonMekU
         binding.ruleset, binding.rules, binding.crewAssignment);
 }
 
+export function vehicleExplosionProtection(
+    entity: BaseEntity, query: CBTUnitQueryPort, location: CBTRuntimeLocation, perspective: RuntimeStatePerspective,
+    rollPrototypeCase?: () => number,
+) {
+    const installed = entity.ammoCaseProtection(location.code, mount =>
+        query.componentStatus(componentIdForMount(mount), perspective) === 'available');
+    if (installed !== 'prototype') return { protection: installed ?? 'none' } as const;
+    const roll = rollPrototypeCase?.();
+    return { protection: prototypeCaseFails(roll) ? 'none' : 'case', roll } as const;
+}
+
+/** Damage in the vehicle location where a blast occurs, after any TW rear-venting CASE has been handled. */
+export function vehicleInternalExplosionDamage(
+    ruleset: CBTRuleset, query: CBTUnitQueryPort, location: CBTRuntimeLocation,
+    perspective: RuntimeStatePerspective, damage: number, protection: MekExplosionProtection,
+) {
+    const remainingInternal = query.remainingInternal(location.id, perspective);
+    if (ruleset === 'total-warfare') return { internalDamage: Math.min(remainingInternal, damage), armorDamage: 0 };
+    const faceId = location.armorFaceIds[0];
+    const result = resolveCoreExplosionDamage({
+        damage, protection,
+        remainingInternal, remainingArmor: faceId === undefined ? 0 : query.remainingArmor(faceId, perspective),
+    });
+    return { internalDamage: Math.min(remainingInternal, result.internalDamage), armorDamage: result.armorDamage };
+}
+
+/** Resolve each hot-loaded launcher's CASE-P roll once when the command is issued. Pending damage keeps that outcome. */
+export function vehicleHotLoadBlasts(entity: BaseEntity, index: NonMekRuntimeIndex, getQuery: () => CBTUnitQueryPort,
+    command: CBTUnitCommand, rollPrototypeCase?: () => number) {
+    if (!isVehicleEntity(entity)
+        || (command.type !== 'set-component-status' && command.type !== 'set-component-statuses')
+        || command.status !== 'destroyed' || command.applyExplosion === false) return [];
+    const query = getQuery();
+    if (!query.boundRules().hotLoadedAmmo) return [];
+    const ids = command.type === 'set-component-status' ? [command.componentId] : command.componentIds;
+    const perspective = command.target === 'pending' ? 'preview' : 'committed';
+    return ids.flatMap(id => {
+        const mount = index.components.get(id)?.mount;
+        if (!mount || query.componentStatus(id, perspective) === 'destroyed') return [];
+        const ammo = hotLoadedAmmoForWeapon(index, query, id, perspective);
+        if (ammo.length === 0) return [];
+        const location = [...index.locations.values()].find(location => location.code === mount.location);
+        if (!location) return [];
+        const damage = (mount.equipment as WeaponEquipment).rackSize * Math.max(...ammo.map(ammoExplosionDamagePerShot));
+        const { protection } = vehicleExplosionProtection(entity, query, location, perspective, rollPrototypeCase);
+        return [{ location, damage, protection, name: mount.displayName() }];
+    });
+}
+
 export function reduceNonMekRuntime(binding: NonMekRuntimeBinding, state: NonMekUnitRuntimeState,
-    command: CBTUnitCommand): NonMekUnitCommandResult {
+    command: CBTUnitCommand, hotLoadBlasts = vehicleHotLoadBlasts(binding.entity, binding.index,
+        () => queryNonMekRuntime(binding, state), command)): NonMekUnitCommandResult {
     if (command.type === 'configure-ammo-source' && command.hotLoaded && !binding.rules.hotLoadedAmmo) {
         return Object.freeze({ accepted: true, changed: false, state });
     }
     try {
         let next = reduceNonMekUnitState(state, binding.index, binding.entity, binding.ruleset,
             command, binding.crewAssignment);
-        if (next && binding.rules.hotLoadedAmmo && isVehicleEntity(binding.entity)
-            && (command.type === 'set-component-status' || command.type === 'set-component-statuses')
-            && command.status === 'destroyed' && command.applyExplosion !== false) {
-            const query = queryNonMekRuntime(binding, state);
-            const ids = command.type === 'set-component-status' ? [command.componentId] : command.componentIds;
+        if (next && hotLoadBlasts.length > 0 && (command.type === 'set-component-status' || command.type === 'set-component-statuses')) {
             const perspective = command.target === 'pending' ? 'preview' : 'committed';
-            for (const id of ids) {
-                if (query.componentStatus(id, perspective) === 'destroyed') continue;
-                const ammo = hotLoadedAmmoForWeapon(binding.index, query, id, perspective);
-                if (ammo.length === 0) continue;
-                const mount = binding.index.components.get(id)!.mount;
-                const location = [...binding.index.locations.values()].find(location => location.code === mount.location);
-                if (!location) continue;
-                const remaining = location.internalPoints - (next.locations.get(location.id)?.internalDamage ?? 0)
-                    - (command.target === 'pending' ? next.pendingCombat.locationInternalDamage.get(location.id) ?? 0 : 0);
-                const damage = Math.min(remaining,
-                    (mount.equipment as WeaponEquipment).rackSize * Math.max(...ammo.map(ammoExplosionDamagePerShot)));
-                if (damage > 0) next = changeInternalDamage(next, location.id, location.internalPoints, damage, command.target);
+            for (const { location, damage, protection } of hotLoadBlasts) {
+                const blast = vehicleInternalExplosionDamage(binding.ruleset, queryNonMekRuntime(binding, next),
+                    location, perspective, damage, protection);
+                if (blast.internalDamage > 0) {
+                    next = changeInternalDamage(next, location.id, location.internalPoints, blast.internalDamage, command.target);
+                }
+                if (blast.armorDamage > 0) {
+                    const face = binding.index.armorFaces.get(location.armorFaceIds[0]!)!;
+                    next = changeArmorDamage(next, location.id, face.id, face.maximumPoints, blast.armorDamage, command.target);
+                }
             }
             next = validateState(next, binding.index, binding.entity, binding.ruleset);
         }
