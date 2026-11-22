@@ -24,10 +24,21 @@ export interface VelocityRecordEntry {
 }
 
 /** Why an entry cannot be recorded, or null when it fits the sheet. */
-export function velocityRecordEntryIssue(entry: VelocityRecordEntry): string | null {
+export function isAirshipSpeed(field: VelocityRecordField): boolean {
+    return field === 'velocity' || field === 'effectiveVelocity';
+}
+
+/** Whole thrust available on one turn of the four-turn Airship Velocity Table (TW p. 205). */
+export function airshipThrust(velocity: number, turn: number): number {
+    const turnInCycle = (turn - 1) % 4;
+    const extraTurns = [0, 2, 3];
+    return Math.floor(velocity) + Number(extraTurns.slice(0, (velocity % 1) * 4).includes(turnInCycle));
+}
+
+export function velocityRecordEntryIssue(entry: VelocityRecordEntry, airship = false): string | null {
     if (!Number.isSafeInteger(entry.turn) || entry.turn < 1) return 'Velocity record turns start at 1.';
     if (!VELOCITY_RECORD_FIELDS.includes(entry.field)) return `Unknown velocity record field ${entry.field}.`;
-    if (!Number.isSafeInteger(entry.value) || entry.value < 0 || entry.value > MAX_VALUE) {
+    if (!Number.isSafeInteger(entry.value * (airship && isAirshipSpeed(entry.field) ? 4 : 1)) || entry.value < 0 || entry.value > MAX_VALUE) {
         return `Velocity record values run from 0 to ${MAX_VALUE}.`;
     }
     return null;
@@ -53,7 +64,14 @@ export function withVelocityRecordValue(
     turn: number,
     field: VelocityRecordField,
     value: number | null,
+    airship = false,
 ): readonly VelocityRecordEntry[] {
+    if (airship && field === 'velocity') {
+        const first = turn - (turn - 1) % 4;
+        let result = entries;
+        for (let n = first; n < first + 4; n++) result = withVelocityRecordValue(result, n, field, value);
+        return result;
+    }
     const kept = entries.filter(entry => entry.turn !== turn || entry.field !== field);
     return value === null ? kept : [...kept, { turn, field, value }].sort(compareVelocityRecordEntries);
 }
@@ -66,9 +84,14 @@ export function suggestedVelocityRecordValue(
     entries: readonly VelocityRecordEntry[],
     turn: number,
     field: VelocityRecordField,
+    airship = false,
 ): number {
     const current = velocityRecordValue(entries, turn, field);
     if (current !== undefined) return current;
+    if (airship && field === 'thrust') {
+        const velocity = velocityRecordValue(entries, turn, 'velocity');
+        if (velocity !== undefined) return airshipThrust(velocity, turn);
+    }
     if (field === 'effectiveVelocity') {
         const velocity = velocityRecordValue(entries, turn, 'velocity');
         if (velocity !== undefined) return velocity;

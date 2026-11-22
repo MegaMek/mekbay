@@ -33,6 +33,9 @@ sameAttackerSelection,
 type AttackerActionSelection,
 } from '../../../models/runtime/attacker-targeting-state';
 import { rollD6 } from '../../../models/runtime/mek-automation-rules';
+import { rollFloatingMekHitLocation } from '../../../models/runtime/attack-hit-location';
+import { mekUnitHeight, mekUnitWaterState } from '../../../models/runtime/mek-targeting-rules';
+import { isUnitBuildingLevel, resolveUnitBuildingCoverState } from '../../../models/unit-cover.model';
 import type {
 MekCriticalChanceResult,
 MekCriticalMutationTarget,
@@ -215,7 +218,15 @@ export class PageViewerMekInteractionService {
         const table = clusterTableForMekEntity(unit.entity).hitLocationTable ?? 'biped';
         const total = rollD6() + rollD6();
         let result = resolveMekHitLocation(table, arc, total);
-        if (result.location === null) result = resolveMekHitLocation(table, arc, total, rollD6());
+        if (result.throughArmorCritical && this.options.options().CBTOptionalRules.floatingCriticals) {
+            const cover = unit.query.turnState().cover;
+            const partial = mekUnitWaterState(unit.entity, unit.query).partiallyUnderwater
+                || isUnitBuildingLevel(cover) && resolveUnitBuildingCoverState(cover,
+                    mekUnitHeight(unit.entity, unit.query.hasCondition('prone'))).effect === 'partial';
+            result = rollFloatingMekHitLocation(unit.entity, arc, partial).result;
+        } else if (result.location === null) {
+            result = resolveMekHitLocation(table, arc, total, rollD6());
+        }
         if (result.location === null) return null;
 
         const sourceCode = result.location;

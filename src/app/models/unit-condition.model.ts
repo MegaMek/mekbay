@@ -20,6 +20,11 @@ export const UNIT_CONDITION_KEYS = Object.freeze([
     'stealth',
     'airborne',
     'grounded',
+    'hitched',
+    'crashed',
+    'clear-turret-jam',
+    'clear-front-turret-jam',
+    'clear-rear-turret-jam',
     // Derived from a LAM's or QuadVee's conversion mode for display; never stored.
     'airmek-mode',
     'fighter-mode',
@@ -40,7 +45,7 @@ export function requireUnitConditionKey(value: unknown): UnitConditionKey {
 }
 
 /** Conditions that last only for the turn they were set in. */
-const TURN_SCOPED_UNIT_CONDITIONS: ReadonlySet<UnitConditionKey> = new Set(['tagged', 'skidding']);
+const TURN_SCOPED_UNIT_CONDITIONS: ReadonlySet<UnitConditionKey> = new Set(['tagged', 'skidding', 'crashed', 'clear-turret-jam', 'clear-front-turret-jam', 'clear-rear-turret-jam']);
 
 /** The stored conditions a unit carries into the next turn. */
 export function conditionsCarriedIntoNextTurn(conditions: Iterable<UnitConditionKey>): Set<UnitConditionKey> {

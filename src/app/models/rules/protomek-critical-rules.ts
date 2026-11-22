@@ -46,14 +46,14 @@ export function protoMekCriticalReferences(entity: ProtoMekEntity): readonly Pro
         .map(row => supported.has(row.system) ? row : { ...row, effects: [] });
 }
 
-/** Filled critical boxes that wound the pilot, one hit each; the record sheet shades them (TW p.185; MegaMek). */
+/** Boxes shaded on the record sheet. Crossing any of them in one attack wounds the pilot (TW p. 185). */
 const SHADED_CRITICAL_BOXES: Partial<Record<SystemDamageKind, readonly number[]>> = {
     head: [2], 'left-arm': [2], 'right-arm': [2], torso: [1, 2, 3], legs: [3],
 };
 
 /** Pilot hits from filling a location's critical boxes after `filled` up to `to`. */
 export function protoMekCriticalPilotHits(system: SystemDamageKind, filled: number, to: number): number {
-    return (SHADED_CRITICAL_BOXES[system] ?? []).filter(box => box > filled && box <= to).length;
+    return (SHADED_CRITICAL_BOXES[system] ?? []).some(box => box > filled && box <= to) ? 1 : 0;
 }
 
 /**

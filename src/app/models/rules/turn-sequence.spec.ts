@@ -31,12 +31,16 @@ describe('real-phase turn sequence', () => {
         expect(unitTurnStatus(movedFirst, at(0, declaration))).toEqual({ step: declaration, status: 'acting' });
     });
 
-    it('lets a unit roll to hit right after its own declaration', () => {
-        const declaration = step('weapons', 'declaration');
-        const declared = at(0, declaration + 1);
-        const game = gameTurnPosition([declared, at(0, declaration)])!;
-        expect(unitTurnStatus(declared, game)).toEqual({ step: step('weapons', 'to-hit'), status: 'acting' });
-    });
+    for (const phase of ['weapons', 'physical']) {
+        it(`waits for the last ${phase} declaration before revealing any rolls`, () => {
+            const declaration = step(phase, 'declaration');
+            const declared = at(0, step(phase, 'to-hit'));
+            expect(unitTurnStatus(declared, gameTurnPosition([declared, at(0, declaration)])!))
+                .toEqual({ step: declaration, status: 'done' });
+            expect(unitTurnStatus(declared, gameTurnPosition([declared, declared])!))
+                .toEqual({ step: declared.step, status: 'acting' });
+        });
+    }
 
     it('parks units that ended their turn at End until the rest catch up', () => {
         expect(unitTurnStatus(at(3, 0), at(2, 4))).toEqual({ step: END_TURN_STEP, status: 'done' });

@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 
 import type { BaseEntity } from '../entity/base-entity';
+import type { EntityTransportBay } from '../entity/types/transport';
 import { asSystemDamageTrackId,type SystemDamageTrackId } from '../entity/entity-identifiers';
 import { isAeroEntity,isProtoMekEntity,isVehicleEntity } from '../entity/utils/entity-type-guards';
 
@@ -9,9 +10,9 @@ export type SystemDamageKind =
     | 'commander' | 'driver' | 'pilot' | 'copilot' | 'engine' | 'sensors'
     | 'avionics' | 'fire-control' | 'combat-information' | 'fuel-tank'
     | 'docking-collar' | 'kf-boom' | 'left-thruster' | 'right-thruster'
-    | 'landing-gear' | 'life-support' | 'motive' | 'turret-lock' | 'stabilizer'
+    | 'landing-gear' | 'life-support' | 'motive' | 'turret-lock' | 'turret-jam' | 'turret-jam-cleared' | 'hull-breach' | 'stabilizer'
     | 'flight-stabilizer' | 'rotor' | 'head' | 'torso' | 'left-arm' | 'right-arm'
-    | 'legs' | 'main-gun';
+    | 'legs' | 'main-gun' | 'heat-sink' | 'bay-door';
 
 /** Independently authored system damage; Mek system damage remains slot-backed. */
 export interface SystemDamageDefinition {
@@ -44,6 +45,13 @@ function stages(system: SystemDamageKind, count: number): readonly SystemDamageD
     return Array.from({ length: count }, (_, index) => definition(system, index + 1));
 }
 
+/** Doors available for embarking and disembarking during this scenario. */
+export function workingBayDoors(
+    bay: EntityTransportBay, damageTracks: ReadonlyMap<SystemDamageTrackId, { readonly hits?: number }>,
+): number {
+    return Math.max(0, bay.doors - (damageTracks.get(systemDamageId('bay-door', undefined, bay.id))?.hits ?? 0));
+}
+
 /** Legal damage targets are derived without consulting a record sheet. */
 export function systemDamageDefinitions(entity: BaseEntity): readonly SystemDamageDefinition[] {
     if (isVehicleEntity(entity)) {
@@ -56,7 +64,9 @@ export function systemDamageDefinitions(entity: BaseEntity): readonly SystemDama
         ];
         for (const scope of entity.locationOrder.filter(location => location !== 'Rotor')) {
             result.push(definition('stabilizer', undefined, scope));
-            if (scope.includes('Turret')) result.push(definition('turret-lock', undefined, scope));
+            if (['Naval', 'Hydrofoil', 'Submarine'].includes(entity.motiveType())) result.push(definition('hull-breach', undefined, scope));
+            if (scope.includes('Turret')) result.push(definition('turret-lock', undefined, scope),
+                definition('turret-jam', undefined, scope), definition('turret-jam-cleared', undefined, scope));
         }
         if (airborne) result.push(definition('flight-stabilizer'), definition('rotor'));
         return Object.freeze(result);
@@ -72,7 +82,11 @@ export function systemDamageDefinitions(entity: BaseEntity): readonly SystemDama
     if (isAeroEntity(entity)) {
         const capital = ['JumpShip', 'WarShip', 'SpaceStation'].includes(entity.entityType);
         const large = capital || ['SmallCraft', 'DropShip'].includes(entity.entityType);
+        const sinks = entity.engineHeatSinks();
         return Object.freeze([
+            ...(sinks > 0 ? [{ ...definition('heat-sink'), maximumHits: sinks }] : []),
+            ...entity.transporters().flatMap(bay => bay.kind === 'bay' && bay.doors > 0
+                ? [{ ...definition('bay-door', undefined, bay.id), maximumHits: bay.doors }] : []),
             ...stages('avionics', 3), ...stages(capital ? 'combat-information' : 'fire-control', 3),
             ...stages('sensors', 3), ...stages('engine', large ? 6 : 3),
             definition('life-support', 1), definition('fuel-tank', 1),

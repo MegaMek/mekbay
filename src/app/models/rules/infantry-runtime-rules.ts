@@ -41,6 +41,7 @@ export function projectInfantryRuntimeRules(
         destroyed: state.explicitlyDestroyed || allTroopLocationsDestroyed(index, state),
         movementMinimums: INFANTRY_MOVEMENT_MINIMUMS,
         fireBlockedComponentIds: new ImmutableSet([
+            ...[...index.components.keys()].filter(id => state.components.get(id)?.mode === 'Jettisoned'),
             ...uncrewedFieldGuns(entity, index, state),
             ...infantryAttackBlocks(entity, index, state),
         ]),
@@ -94,14 +95,14 @@ function allTroopLocationsDestroyed(
     const locations = [...index.locations.values()];
     return locations.length > 0 && locations.every(location => {
         const runtime = state.locations.get(location.id);
-        const internalDestroyed = location.internalPoints <= 0
-            || (runtime?.internalDamage ?? 0) >= location.internalPoints;
+        // A dead trooper cannot keep fighting because its suit still has armor (e.g. Infernos, TW p. 141).
+        if (location.internalPoints > 0) return (runtime?.internalDamage ?? 0) >= location.internalPoints;
         const armorDestroyed = location.armorFaceIds.every(faceId => {
             const face = index.armorFaces.get(faceId);
             const damage = runtime?.armorDamage.find(entry => entry.faceId === faceId)?.damage ?? 0;
             return face !== undefined && damage >= face.maximumPoints;
         });
-        return internalDestroyed && armorDestroyed;
+        return armorDestroyed;
     });
 }
 

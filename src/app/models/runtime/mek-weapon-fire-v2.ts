@@ -13,6 +13,8 @@ import { WeaponEquipment } from '../equipment.model';
 import { locksOnTarget } from '../rules/weapon-attack-resolution';
 import {
     canPerformMekAction,
+    fireConflictsWithPhysicalDeclaration,
+    proneMekCanFire,
     type MekActionRuntimePort,
 } from './mek-action-availability';
 import { laserInsulatorAdjustedHeat } from '../laser-insulator.model';
@@ -175,6 +177,11 @@ export function planMekWeaponFireV2(
         }
     }
 
+    const weapons = effectiveSelections.map(selection => selection.weaponId);
+    if (!proneMekCanFire(index, runtime, ruleset, weapons)
+        || fireConflictsWithPhysicalDeclaration(index, runtime, ruleset, weapons)) {
+        return rejected('UNAVAILABLE_WEAPON');
+    }
     const seenWeapons = new Set<ComponentId>();
     const ammoSpends = new Map<ComponentId, MekWeaponFireAmmoSpendV2>();
     const ppcTransitions: MekWeaponFirePpcTransitionV2[] = [];

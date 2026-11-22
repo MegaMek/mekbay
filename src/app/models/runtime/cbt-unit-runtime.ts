@@ -250,14 +250,16 @@ export function readFiredWeapons(
     value: unknown,
     path: string,
     fail: (message: string, path: string) => never,
+    maximumPerMount = 1,
 ): readonly ComponentId[] {
     if (!Array.isArray(value) || value.length === 0 || value.length > MAX_FIRED_WEAPONS) {
         return fail(`must list 1 to ${MAX_FIRED_WEAPONS} fired weapons`, path);
     }
     const ids = value.map((id: unknown, index) => typeof id === 'string' && id.length > 0 && id.length <= 512
         && id.trim() === id ? id as ComponentId : fail('must be a canonical component id', `${path}[${index}]`));
-    if (ids.some((id, index) => index > 0 && compareText(ids[index - 1], id) >= 0)) {
-        return fail('must contain unique sorted component ids', path);
+    if (ids.some((id, index) => (index > 0 && compareText(ids[index - 1], id) > 0)
+        || (index >= maximumPerMount && ids[index - maximumPerMount] === id))) {
+        return fail(maximumPerMount === 1 ? 'must contain unique sorted component ids' : 'contains too many engagements or unordered component ids', path);
     }
     return Object.freeze(ids);
 }
@@ -270,6 +272,8 @@ export interface CBTTurnRuntimeState extends TurnHeatLedger {
     readonly weaponsHeat: number;
     /** The weapons that fired this turn, each once (`withFiredWeapons`); absent when none. */
     readonly firedWeapons?: readonly ComponentId[];
+    /** Defensive engagements by mount, listed once per incoming attack; they are not offensive fire. */
+    readonly amsEngagements?: readonly ComponentId[];
     /** Heat from outside sources such as inferno missiles, settled with this turn's heat; absent at 0. */
     readonly outsideHeat?: number;
     readonly spotting: SpottingMode;
@@ -292,6 +296,7 @@ export function serializeSharedTurnFacts(turn: CBTTurnRuntimeState) {
         ...(turn.airborne === null ? {} : { airborne: turn.airborne }),
         ...(turn.cover === null ? {} : { cover: serializeUnitCover(turn.cover) }),
         ...(turn.weaponsHeat === 0 ? {} : { weaponsHeat: turn.weaponsHeat }),
+        ...(turn.amsEngagements ? { amsEngagements: turn.amsEngagements } : {}),
         ...(turn.firedWeapons === undefined ? {} : { firedWeapons: turn.firedWeapons }),
         ...(turn.outsideHeat ? { outsideHeat: turn.outsideHeat } : {}),
         ...(turn.spotting ? { spotting: turn.spotting } : {}),

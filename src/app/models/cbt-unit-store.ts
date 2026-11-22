@@ -645,7 +645,7 @@ export class CBTUnitStore {
             .flatMap(unit => isCBTMekUnit(unit)
                 ? [mekTargetRosterRow(forceInstanceId, unit)]
                 : isCBTNonMekUnit(unit)
-                    ? [entityTargetRosterRow(forceInstanceId, unit)]
+                    ? [entityTargetRosterRow(forceInstanceId, unit, id => this.nonMekUnit(id))]
                     : []));
     }
 

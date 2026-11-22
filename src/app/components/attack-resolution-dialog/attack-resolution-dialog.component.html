@@ -20,6 +20,14 @@
                         <strong>{{ row.damage }}</strong>
                     </div>
                 </div>
+                @if (!row.target.delivery) {
+                    @for (profile of row.target.profiles; track $index; let w = $index) {
+                        @if (profile.missileDefense && row.weapons[w].hit) {
+                            <label><input type="checkbox" [checked]="row.weapons[w].amsDie !== undefined"
+                                (change)="engageAms(t, w, $any($event.target).checked)" /> Engage defending AMS against {{ profile.name }}</label>
+                        }
+                    }
+                }
                 <attack-report [weapons]="row.weapons" [editable]="true"
                     (rollSet)="setRoll(t, $event)"
                     (clusterModifierSet)="setClusterModifier(t, $event)"

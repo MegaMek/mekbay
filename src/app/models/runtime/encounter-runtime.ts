@@ -50,6 +50,7 @@ export type EncounterTargetCalculatorState = Pick<TnTargetNumberCalculatorState,
     | 'waterDepth'
     | 'buildingCover'
     | 'targetHeight'
+    | 'vtol'
     | 'largeTarget'
     | 'narcAboveWater'
     | 'narcUnderwater'
@@ -524,6 +525,7 @@ function sharedTargetCalculatorsEqual(
         && left.targetHexCover === right.targetHexCover
         && left.waterDepth === right.waterDepth
         && left.buildingCover === right.buildingCover
+        && left.vtol === right.vtol
         && left.largeTarget === right.largeTarget
         && left.narcAboveWater === right.narcAboveWater
         && left.narcUnderwater === right.narcUnderwater
@@ -636,13 +638,13 @@ function validTargetUnitType(value: unknown): value is TnTargetUnitType {
 function validSharedTargetCalculator(value: unknown): value is EncounterTargetCalculatorState {
     if (!isPlainRecord(value) || !hasExactKeys(value, [
         'isAirborne', 'targetMovementBracket', 'targetMovementDistance', 'skidding', 'prone', 'immobile',
-        'targetHexCover', 'waterDepth', 'buildingCover', 'targetHeight', 'largeTarget',
+        'targetHexCover', 'waterDepth', 'buildingCover', 'targetHeight', 'largeTarget', 'vtol',
         'narcAboveWater', 'narcUnderwater', 'tagged', 'ecmShielded', 'swarmed', 'swarming', 'magneticClaws',
         'stealth', 'stealthSystem',
     ])) return false;
     const calculator = value as EncounterTargetCalculatorState;
     for (const property of [
-        'isAirborne', 'skidding', 'prone', 'immobile', 'largeTarget',
+        'isAirborne', 'skidding', 'prone', 'immobile', 'largeTarget', 'vtol',
         'narcAboveWater', 'narcUnderwater', 'tagged', 'ecmShielded', 'swarmed', 'swarming', 'magneticClaws',
     ] as const) {
         if (calculator[property] !== undefined && typeof calculator[property] !== 'boolean') return false;

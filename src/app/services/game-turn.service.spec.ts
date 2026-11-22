@@ -129,12 +129,12 @@ describe('GameTurnService', () => {
 
         const completed = (mine['dispatchUnitCommand'] as jasmine.Spy).calls.allArgs()
             .map(([id, command]) => `${id}:${command.step}`);
-        expect(completed).toEqual(['mine:0:1', 'mine:1:1', 'mine:0:2', 'mine:1:2']);
-        // Damage waits for every unit: the opponent still declares.
-        expect(service.units().slice(0, 2).map(unit => [unit.position.step, unit.status])).toEqual([[3, 'done'], [3, 'done']]);
+        expect(completed).toEqual(['mine:0:1', 'mine:1:1']);
+        // Neither unit can reveal a roll while the opponent is declaring.
+        expect(service.units().slice(0, 2).map(unit => [unit.position.step, unit.status])).toEqual([[2, 'done'], [2, 'done']]);
 
         await service.moveTo(3);
-        expect((mine['dispatchUnitCommand'] as jasmine.Spy).calls.count()).toBe(4);
+        expect((mine['dispatchUnitCommand'] as jasmine.Spy).calls.count()).toBe(2);
     });
 
     it('moves the own units, an owned enemy force included, back without joining the turn others show', async () => {

@@ -31,6 +31,7 @@ import type { BombLoad, BombLoadChoice } from '../../models/aerospace-bomb.model
 import { equipmentPanelWeapons, selectedWeaponHeat, selectedWeaponRows } from '../../models/runtime/equipment-panel';
 import { projectTurnHeatIfFired, type TurnHeatBasis } from '../../models/runtime/turn-heat-ledger';
 
+import { isAntiMekAttack } from '../../models/rules/anti-mek-attack-rules';
 import { isBoobyTrapEquipment } from '../../models/aerospace-support-equipment.model';
 import { hasNonMekRuntime } from '../../models/cbt-unit-snapshot';
 import {
@@ -50,7 +51,7 @@ import type { TargetingTarget } from '../../models/runtime/targeting-target';
 /** What the panel needs of attack resolution; aimed shots exist only where the app can show their picker. */
 export type AttackResolutionPort =
     Pick<AttackResolutionService, 'resolveFired' | 'rollAttacks' | 'settleAttacks' | 'resolvesAttacks' | 'inPhysicalPhase'>
-    & Partial<Pick<AttackResolutionService, 'declaresAimedShots' | 'pickAim'>>;
+    & Partial<Pick<AttackResolutionService, 'declaresAimedShots' | 'pickAim' | 'allowsAttackDeclaration'>>;
 import type { DialogsService } from '../../services/dialogs.service';
 import type { OptionsService } from '../../services/options.service';
 import { nonMekTurnHeatBasis } from '../../models/runtime/non-mek-unit-instance';
@@ -235,7 +236,7 @@ export class EquipmentDialogRuntimeController {
     public async aimWeapon(row: EquipmentPanelComponent, target: TargetingTarget): Promise<void> {
         const attack = this.attackContext();
         const selection = row.weapon?.selection;
-        if (!this.attacks?.pickAim || attack === null || selection?.kind !== 'target' || this.busy()) return;
+        if (this.attacks?.allowsAttackDeclaration?.(this.member, 'weapons') === false || !this.attacks?.pickAim || attack === null || selection?.kind !== 'target' || this.busy()) return;
         const aim = await this.attacks.pickAim(row, target, attack, this.snapshot().ruleset);
         if (aim === undefined) return;
         await this.dispatchComponentSelections([row.componentId], {
@@ -247,7 +248,7 @@ export class EquipmentDialogRuntimeController {
 
     /** Applies one selection to every attack member of the rows as a single targeting batch. */
     public async selectTarget(rows: readonly EquipmentPanelComponent[], value: string): Promise<void> {
-        if (this.busy()) return;
+        if (this.busy() || this.attacks?.allowsAttackDeclaration?.(this.member, 'weapons') === false) return;
         const allMembers = rows.filter(row => row.weapon).flatMap(attackMembers);
         const members = value === '' ? allMembers : allMembers.filter(member => member.selectable);
         if (members.length === 0) return;
@@ -289,6 +290,7 @@ export class EquipmentDialogRuntimeController {
     }
 
     public async selectPhysicalTarget(row: MekPhysicalAttackRow, value: string): Promise<void> {
+        if (this.attacks?.allowsAttackDeclaration?.(this.member, isAntiMekAttack(row.kind) ? 'weapons' : 'physical') === false) return;
         if (!row.available || !row.selectable || this.busy()) return;
         const selection = value === ''
             ? null
@@ -303,7 +305,7 @@ export class EquipmentDialogRuntimeController {
     }
 
     public async selectWeaponAmmo(row: EquipmentPanelComponent, value: string): Promise<void> {
-        if (!row.weapon || this.busy()) return;
+        if (!row.weapon || this.busy() || this.attacks?.allowsAttackDeclaration?.(this.member, 'weapons') === false) return;
         const separator = value.indexOf('\u0000');
         const preferredSourceId = separator < 0 ? null : value.slice(0, separator) as ComponentId;
         const munitionKey = separator < 0 ? null : value.slice(separator + 1);

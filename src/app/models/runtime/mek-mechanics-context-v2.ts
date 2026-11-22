@@ -32,6 +32,7 @@ import {
     projectMekPilotChecksV2,
     reconcileMekPilotChecksV2,
     raiseMekJumpChecksV2,
+    raiseWaterEntryCheck,
     dismissPendingMekPilotChecksV2,
     dropMekPilotChecksUnraisedByRulesV2,
     resolveMekPilotCheckV2,
@@ -736,10 +737,12 @@ export function raiseMekJumpChecksContextV2(
     producingRevision: number,
     immediate: boolean,
     swarmerMagneticClaws = false,
+    enteredWater = false,
 ): MekMovementPsrStateV2 | Extract<MekMovementPsrProjectionResultV2, { readonly kind: 'unsupported' }> {
     const resolved = movementRuntimeFacts(context, entity, input);
-    return resolved.kind === 'unsupported'
-        ? resolved
+    if (resolved.kind === 'unsupported') return resolved;
+    return enteredWater && state.movement?.mode !== 'jump'
+        ? raiseWaterEntryCheck(resolved.profile, resolved.facts, state, producingRevision, immediate)
         : raiseMekJumpChecksV2(resolved.facts, state, producingRevision, immediate, swarmerMagneticClaws);
 }
 

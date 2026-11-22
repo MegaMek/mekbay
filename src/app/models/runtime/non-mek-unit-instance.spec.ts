@@ -705,7 +705,7 @@ describe('NonMekUnitInstance', () => {
             timestamp: 1,
         });
 
-        expect(runtime.query().conditions()).toEqual([]);
+        expect(runtime.query().conditions()).toEqual(['immobile']);
         expect(vehicleRuntimeRulesForTest(runtime)).toEqual(jasmine.objectContaining({
             systems: jasmine.objectContaining({ engineHit: true }),
             movement: jasmine.objectContaining({ walk: 0, maxRun: 0 }),

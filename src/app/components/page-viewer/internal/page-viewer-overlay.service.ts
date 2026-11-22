@@ -522,18 +522,26 @@ export class PageViewerOverlayService {
         controls: readonly Readonly<{ key: UnitConditionKey; label: string; color: string }>[],
         active: (condition: UnitConditionKey) => boolean,
         context: UnitEditContext,
+        action?: Readonly<{ label: string; run: () => void }>,
+        handleCondition?: (key: UnitConditionKey) => boolean,
     ): void {
         const anchor = event.currentTarget;
         if (!(anchor instanceof Element) || controls.length === 0) return;
         const { componentRef, closed } = this.openStateMenu(member.id, 'unit-condition', anchor, event);
-        componentRef.setInput('choices', controls.map(control => ({
+        componentRef.setInput('choices', [...(action ? [{ key: 'bay-loads', label: action.label, color: '#456789', active: false }] : []), ...controls.map(control => ({
             key: control.key,
             label: control.label,
             color: control.color,
             active: active(control.key),
-        })));
+        }))]);
         outputToObservable(componentRef.instance.selected).pipe(takeUntil(closed)).subscribe(condition => {
+            if (condition === 'bay-loads' && action) {
+                this.closeMenu('unit-condition');
+                action.run();
+                return;
+            }
             if (!isUnitConditionKey(condition)) return;
+            if (handleCondition?.(condition)) { this.closeMenu('unit-condition'); return; }
             void this.dispatch(member, { type: 'set-condition', condition, active: !active(condition) }, context);
             this.closeMenu('unit-condition');
         });

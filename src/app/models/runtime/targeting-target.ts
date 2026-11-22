@@ -55,6 +55,7 @@ const ENCOUNTER_TARGET_CALCULATOR_KEYS = [
     'waterDepth',
     'buildingCover',
     'targetHeight',
+    'vtol',
     'largeTarget',
     'narcAboveWater',
     'narcUnderwater',

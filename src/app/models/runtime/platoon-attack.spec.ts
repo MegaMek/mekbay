@@ -8,7 +8,7 @@ import type { BaseEntity } from '../entity/base-entity';
 import { asComponentId } from '../entity/entity-identifiers';
 import { TestBattleArmorEntity, TestInfantryEntity } from '../entity/testing/test-entities';
 import { createTestEquipmentRegistry } from '../entity/testing/test-equipment-registry';
-import { addTestEquipment } from '../entity/testing/test-mounted-equipment';
+import { addTestEquipment, addTestEquipmentWithFlags } from '../entity/testing/test-mounted-equipment';
 import type { EntityMountedEquipment } from '../entity/types';
 import { WeaponEquipment, type AmmoType, type InfantryWeaponEquipment } from '../equipment.model';
 import type { EquipmentFlag } from '../equipment-flags.type';
@@ -19,6 +19,9 @@ import { historyTargetLabel } from './cbt-force-runtime-history';
 import { projectNonMekEquipmentInteractions, selectNonMekEquipmentChoice } from './cbt-equipment-interactions';
 import { asEncounterTargetId, type TargetRegistrySnapshot } from './encounter-runtime';
 import { projectNonMekEquipmentPanel } from './non-mek-equipment-panel';
+import { projectWeaponTargetPresentation, physicalAttackTargetNumber } from './equipment-panel';
+import { physicalTargetIssue } from '../rules/physical-attack-rules';
+import { physicalAttackProfile } from '../rules/weapon-attack-resolution';
 import { nonMekComponentModes } from './non-mek-unit-instance';
 import type { InstanceBaselineRef } from './runtime-state';
 import { createNonMekRuntimeForTest } from './testing/unit-runtime-owner-fixture';
@@ -80,6 +83,97 @@ describe('conventional platoon attacks', () => {
             .find(row => row.componentId === mountId(role))!.weapon?.selectable;
         return { entity, runtime, mountId, panel, select, fire, selectable };
     }
+
+    it('fires squad mounts with active suits and strikes separately with vibro-claws', () => {
+        const entity = new TestBattleArmorEntity();
+        entity.declaredWeightClass.set('Medium');
+        entity.trooperCount.set(5);
+        const laser = new WeaponEquipment({ id: 'BALaser', name: 'Laser', type: 'weapon',
+            weapon: { damage: 5, ranges: [3, 6, 9] } });
+        const gun = addTestEquipment(entity, laser, { location: 'Squad' });
+        for (let i = 0; i < 2; i++) addTestEquipmentWithFlags(entity, ['F_VIBROCLAW', 'F_BATTLE_CLAW']);
+        const test = attacker(entity, () => gun);
+        const location = [...test.runtime.getIndex().locations.values()].find(loc => loc.code === 'Trooper 1')!;
+        const claws = test.panel().physicalAttacks.find(action => action.kind === 'vibro-claw')!;
+        expect(claws).toEqual(jasmine.objectContaining({ firingSuits: 5, gunnerySkill: test.panel().crew.gunnery,
+            damageGroupSize: 2, reach: 'infantry-in-hex', selectable: true }));
+        expect(test.runtime.dispatch({ type: 'set-internal-damage', locationId: location.id, damage: 1 }).accepted).toBeTrue();
+        const weapon = test.panel().components.find(row => row.componentId === test.mountId('laser'))!.weapon!;
+        expect(weapon.firingSuits).toBe(4);
+        expect(weapon.attackerIsBattleArmor).toBeTrue();
+        const row = test.panel().components.find(row => row.componentId === test.mountId('laser'))!;
+        const target = { id: registry.targets[0].id, letter: 'A', name: 'BA', color: '#fff', unitType: 'battle-armor' as const,
+            distance: 1, tnModifier: 1, tnCalculator: {} };
+        const attack = { gunnery: 4, pilotingSkill: 5, movementMode: null, allowExtremeRange: false,
+            missingMovementModifier: false, attackModifierBreakdown: [], c3DegradationSource: 'none' as const, c3Available: false };
+        const tn = (isBA: boolean) => projectWeaponTargetPresentation({ ...row,
+            weapon: { ...weapon, attackerIsBattleArmor: isBA } }, target, attack, 'total-warfare').targetNumberText;
+        expect(tn(true)).toBe('4');
+        expect(tn(false)).toBe('5');
+        expect(projectWeaponTargetPresentation(row, { ...target, tnCalculator: undefined }, attack, 'total-warfare').targetNumberText).toBe('4');
+        expect(physicalTargetIssue('vibro-claw', claws.reach, { distance: 0, unitType: 'infantry',
+            tnCalculator: { targetHexCover: 'heavy' } })).toBeNull();
+        expect(physicalTargetIssue('vibro-claw', claws.reach, { distance: 1, unitType: 'infantry' })).toBe('out-of-range');
+        expect(physicalAttackTargetNumber({ ...claws, gunnerySkill: 3 }, 6, attack,
+            { tnModifier: 0, unitType: 'infantry' })).toBe(3);
+        const profile = physicalAttackProfile({ name: 'Paired claws', kind: 'vibro-claw', damage: 2,
+            firingSuits: claws.firingSuits, groupSize: claws.damageGroupSize, table: 'standard', partialCover: false, targetNumber: 4 });
+        expect(resolveWeaponAttack(profile, [4, 4], [4, 5]).groups).toEqual([2, 2, 2, 2]);
+    });
+
+    it('blocks both anti-Mek attacks until the last IS body launcher is jettisoned, even when empty', () => {
+        const entity = new TestBattleArmorEntity();
+        entity.declaredWeightClass.set('Medium');
+        entity.trooperCount.set(4);
+        addTestEquipmentWithFlags(entity, 'F_BATTLE_CLAW');
+        const srm = new WeaponEquipment({ id: 'BASRM2', name: 'SRM 2', type: 'weapon', flags: ['F_MISSILE'],
+            weapon: { damage: 'cluster', rackSize: 2, ammoType: 'SRM', ranges: [3, 6, 9] } });
+        const mount = addTestEquipment(entity, srm, { location: 'Squad', baMountLocation: 'Body' });
+        const test = attacker(entity, () => mount);
+        const canAttack = () => test.panel().physicalAttacks.filter(a => a.kind === 'swarm' || a.kind === 'leg-attack')
+            .map(a => a.available);
+        expect(canAttack()).toEqual([false, false]);
+        expect(test.runtime.dispatch({ type: 'set-component-mode', componentId: test.mountId('srm'), mode: 'Jettisoned' }).accepted).toBeTrue();
+        expect(canAttack()).toEqual([true, true]);
+        expect(test.selectable('srm')).toBeFalse();
+    });
+
+    it('eliminating the last trooper blocks squad fire even if Infernos left its armor intact', () => {
+        const entity = new TestBattleArmorEntity();
+        entity.trooperCount.set(1);
+        entity.setArmorValue('Squad', 'front', 5);
+        const gun = addTestEquipment(entity, new WeaponEquipment({ id: 'Laser', name: 'Laser', type: 'weapon',
+            weapon: { damage: 5, ranges: [3, 6, 9] } }), { location: 'Squad' });
+        const test = attacker(entity, () => gun);
+        expect(test.select('gun')).toBeTrue();
+        const loc = [...test.runtime.getIndex().locations.values()].find(row => row.code === 'Trooper 1')!;
+        test.runtime.dispatch({ type: 'set-internal-damage', locationId: loc.id, damage: 1 });
+        expect(test.runtime.query().remainingArmor(loc.armorFaceIds[0], 'committed')).toBe(5);
+        expect(test.runtime.query().destroyed()).toBeTrue();
+        expect(test.selectable('gun')).toBeFalse();
+        expect(test.fire().changed).toBeFalse();
+    });
+
+    it('uses the platoon weapon features when an attack is declared against an identified unit', () => {
+        const declare = (flags: EquipmentFlag[], unitType: 'infantry' | 'mek-biped' | 'aero', airborne = false) => {
+            const rifle = infantryWeapon('Infantry Rifle', 0.3, 2, flags);
+            const entity = new TestInfantryEntity(createTestEquipmentRegistry({ [rifle.id]: rifle }));
+            entity.squadSize.set(7);
+            entity.squadCount.set(4);
+            entity.setPlatoonWeapon('primary', rifle);
+            const test = attacker(entity, role => entity.equipment().find(mount => mount.platoonWeapon === role));
+            const target = { ...registry.targets[0], unitType, tnCalculator: { isAirborne: airborne } };
+            return test.runtime.dispatchAttackerTargeting({ type: 'edit-attacker-targeting',
+                edit: { kind: 'set-component-selection', componentId: test.mountId('primary'),
+                    selection: { kind: 'target', targetId: target.id } },
+            }, { ...registry, targets: [target] }, false).changed;
+        };
+        expect(declare(['F_INF_NONPENETRATING'], 'mek-biped')).toBeFalse();
+        expect(declare(['F_INF_NONPENETRATING'], 'infantry')).toBeTrue();
+        expect(declare([], 'aero', true)).toBeFalse();
+        expect(declare(['F_INF_AA'], 'aero', true)).toBeTrue();
+        expect(declare([], 'aero')).toBeTrue();
+    });
 
     function platoon(inferno: boolean) {
         const entity = new TestInfantryEntity(createTestEquipmentRegistry({ [srm.id]: srm, [law.id]: law }));

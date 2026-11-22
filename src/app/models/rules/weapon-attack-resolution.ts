@@ -1,8 +1,10 @@
 // Copyright (C) 2026 The MegaMek Team
 // SPDX-License-Identifier: GPL-3.0-or-later
 
-import { clusterHits } from '../../utils/cluster-hit-table';
+import { battleArmorMissileColumns, clusterHits } from '../../utils/cluster-hit-table';
 import { type AmmoEquipment, type WeaponDamage, WeaponEquipment } from '../equipment.model';
+import type { ArtemisKind } from '../artemis-equipment.model';
+import type { TnRangeBracket } from '../target-number-calculator.model';
 import { isHagEquipment } from '../hag-mode.model';
 import { rapidFireAutocannonJamRoll, rapidFireAutocannonShotCount } from '../runtime/component-rapid-fire-autocannon';
 import type { ComponentId } from '../entity/entity-identifiers';
@@ -37,6 +39,9 @@ export type HitLocationDice = TwoDice | readonly [number];
  * weapon, or a physical attack.
  */
 export interface WeaponAttackProfile {
+    readonly infantryClass?: import('./infantry-hit-damage').InfantryHitClass;
+    readonly infantryInOpen?: boolean;
+    readonly infantryBurstDice?: number;
     /** The fired weapon; null for an intrinsic physical attack. */
     readonly componentId: ComponentId | null;
     readonly name: string;
@@ -56,6 +61,18 @@ export interface WeaponAttackProfile {
     readonly jamRoll: number | null;
     /** The Cluster Hits Table modifier the attack starts with, which the player may change (hostile ECM); 0 if absent. */
     readonly clusterModifier?: number;
+    /** Independent missile rolls required when a Battle Armor squad fires an unprinted column (TW p. 218). */
+    readonly clusterColumns?: readonly number[];
+    /** Each hitting suit's flamer damages or heats its own location. */
+    readonly squadFlamers?: true;
+    readonly lockRequired?: true;
+    readonly narcPod?: true;
+    readonly buildingAbsorption?: number;
+    readonly infantryBuilding?: import('./infantry-building-damage').InfantryBuildingType;
+    readonly collateralBuilding?: import('./infantry-building-damage').InfantryBuildingType;
+    readonly missileDefense?: CBTRuleset;
+    readonly streak?: true;
+    readonly aerospace?: AerospaceHit;
     /** A laser with a working laser insulator, which a to-hit roll of 2 can damage (`LASER_INSULATOR_FAILURE_TARGET`). */
     readonly insulated?: true;
     /** A charged PPC that burns out on a natural 2 (TO:AUE p. 149). */
@@ -64,6 +81,7 @@ export interface WeaponAttackProfile {
     readonly table: HitTable;
     /** A physical attack, whose hit or miss also forces Piloting Skill Rolls. */
     readonly physical?: PhysicalAttackKind;
+    readonly mekPhysical?: true;
     /** The table column this attack strikes regardless of its direction (a DFA on a prone Mek or a vehicle). */
     readonly arc?: MekHitArc;
     /** The attack strikes a side rolled at random, one of the four alike (`physicalStrikesRandomSide`). */
@@ -76,6 +94,7 @@ export interface WeaponAttackProfile {
     readonly heatWeapon?: AttackHeatWeapon;
     /** A rifle: each hit loses 3 points where it strikes (`rifleHitDamage`). */
     readonly rifle?: true;
+    readonly capitalScale?: true;
     /** Ammunition with a special effect on the armor struck (`resolveArmorDamage`). */
     readonly ammo?: ArmorSpecialAmmo;
     /** The size of the autocannon firing armor-piercing rounds (`armorPiercingCheckModifiers`). */
@@ -88,6 +107,19 @@ export interface WeaponAttackProfile {
      * a leg result of its hit-location roll is rerolled.
      */
     readonly aim?: Readonly<{ location: string; dice: 1 | 2; rerollLegs: boolean }>;
+}
+
+/** The printed Attack Value at actual range and the heat weapons contributing to it (TW pp. 234–238). */
+export interface AerospaceHit {
+    readonly attackValue: number;
+    readonly grouping: 'single' | 'cluster' | 'ultra';
+    readonly scale: number;
+    readonly heatWeapons: readonly Readonly<{ value: number; heat: AttackHeatWeapon }>[];
+}
+
+export function aerospaceHeatDice(profile: WeaponAttackProfile): number {
+    return profile.aerospace?.heatWeapons.reduce((sum, { heat, value }) =>
+        sum + resolveHeatWeaponHit(heat.weapon, value, heat.mode, heat.ruleset, heat.target, MAXIMUM_HEAT_DICE).dice, 0) ?? 0;
 }
 
 /** A heat-causing weapon as one attack resolves it, against the target it fires at. */
@@ -123,6 +155,8 @@ export function attackHeatWeapon(
 
 /** What the attacker knows about one declared physical attack and its target. */
 export interface PhysicalAttackFacts {
+    readonly mekPhysical?: boolean;
+    readonly firingSuits?: number;
     readonly name: string;
     readonly kind: PhysicalAttackKind;
     readonly damage: number;
@@ -140,8 +174,11 @@ export interface PhysicalAttackFacts {
 
 /** What the attacker knows about one fired weapon and its target. */
 export interface WeaponAttackFacts {
+    readonly targetConventionalInfantry?: boolean;
+    readonly adjacentBuilding?: boolean;
     readonly componentId: ComponentId;
     readonly equipment: WeaponEquipment;
+    readonly firingSuits?: number;
     readonly mode: string | undefined;
     readonly damage: WeaponDamage;
     readonly ammo: AmmoEquipment | null;
@@ -162,6 +199,13 @@ export interface WeaponAttackFacts {
      * nullifies Artemis (TW p. 134, Core p. 200).
      */
     readonly hostileEcm?: boolean;
+    readonly angelEcm?: boolean;
+    readonly artemis?: ArtemisKind;
+    readonly narcGuided?: boolean;
+    readonly range?: TnRangeBracket;
+    /** Phase-start CF protecting this target from the attack (TW p. 172). */
+    readonly buildingCf?: number;
+    readonly aerospace?: AerospaceHit;
 }
 
 export interface WeaponAttackOutcome {
@@ -212,14 +256,24 @@ function armorSpecialAmmo(equipment: WeaponEquipment, ammo: AmmoEquipment | null
 
 /**
  * Profiles a fired weapon from the exact damage the equipment table shows. Weapons without damage
- * (TAG, NARC pods, AMS) have no attack to resolve.
+ * (such as TAG) have no damage groups. A homing pod instead rolls its attachment location.
  */
 export function weaponAttackProfile(facts: WeaponAttackFacts, rules: CBTGameRules): WeaponAttackProfile | null {
     const { equipment, mode, damage, ammo } = facts;
+    if (facts.firingSuits === 0) return null;
     const perHit = damage.values[0] ?? 0;
     const specialAmmo = armorSpecialAmmo(equipment, ammo);
-    const clusterModifier = (specialAmmo === 'acid' ? rules.acidMissileClusterModifier : 0)
-        + (hasIntegralArtemis(equipment) && facts.hostileEcm !== true ? INTEGRAL_ARTEMIS_CLUSTER_MODIFIER : 0);
+    const guidance = facts.indirect ? 0 : facts.narcGuided ? 2 : facts.hostileEcm || facts.angelEcm ? 0
+        : facts.artemis === 'v' ? 3 : facts.artemis === 'prototype' ? 1
+        : facts.artemis === 'iv' || hasIntegralArtemis(equipment) ? INTEGRAL_ARTEMIS_CLUSTER_MODIFIER : 0;
+    const hag = isHagEquipment(equipment) ? (facts.range === 'short' ? 2 : facts.range === 'long' ? -2 : 0) : 0;
+    const clusterModifier = (specialAmmo === 'acid' ? rules.acidMissileClusterModifier : 0) + guidance + hag;
+    const lockRequired = locksOnTarget(equipment) && !facts.indirect;
+    // TW p. 215 uses full cluster weapon potential against a platoon. The firing-suit roll for ordinary BA guns still applies.
+    const missile = damage.unit === 'missile' || facts.types.includes('M') || equipment.hasFlag('F_MISSILE');
+    const fullCluster = (facts.targetConventionalInfantry === true || facts.adjacentBuilding === true) && (!facts.firingSuits || missile)
+        && (missile || facts.types.includes('C') || isHagEquipment(equipment) || equipment.ammoType === 'SBGAUSS'
+            || (equipment.ammoType === 'AC_LBX' && ammo?.hasMunitionType('M_CLUSTER')));
     const profile = (damagePerHit: number, projectiles: number, groupSize: number, jamRoll: number | null = null) =>
         Object.freeze({
             componentId: facts.componentId,
@@ -230,22 +284,42 @@ export function weaponAttackProfile(facts: WeaponAttackFacts, rules: CBTGameRule
             types: Object.freeze([...facts.types]),
             partialCover: facts.partialCover,
             damagePerHit,
-            projectiles: Math.max(1, projectiles),
-            allHit: locksOnTarget(equipment) && facts.indirect !== true,
+            projectiles: Math.max(1, projectiles) * (facts.firingSuits ?? 1),
+            ...(facts.firingSuits && missile ? { clusterColumns: battleArmorMissileColumns(projectiles * facts.firingSuits) } : {}),
+            ...(facts.firingSuits && facts.heatWeapon?.weapon.kind === 'flamer' ? { squadFlamers: true as const } : {}),
+            allHit: fullCluster || (lockRequired && !facts.angelEcm),
+            ...(lockRequired ? { lockRequired: true as const } : {}),
+            ...(equipment.ammoType === 'SRM_STREAK' || equipment.ammoType === 'LRM_STREAK' ? { streak: true as const } : {}),
+            ...((facts.types.includes('M') || equipment.getWeaponTypes().includes('M')) && !(facts.aerospace && equipment.capital)
+                ? { missileDefense: rules.id } : {}),
+            ...(facts.buildingCf && rules.id === 'total-warfare' ? { buildingAbsorption: Math.ceil(facts.buildingCf / 10) } : {}),
             groupSize: Math.max(damagePerHit, groupSize),
             ...(equipment.ammoType === 'RIFLE' ? { rifle: true as const } : {}),
+            ...(equipment.capital || equipment.subCapital ? { capitalScale: true as const } : {}),
             ...(specialAmmo === null ? {} : { ammo: specialAmmo }),
             ...(specialAmmo === 'armor-piercing' ? { rackSize: equipment.rackSize } : {}),
             ...(facts.insulated ? { insulated: true as const } : {}),
             ...(facts.chargedPpc && rules.id === 'total-warfare' ? { capacitorBurnoutOnTwo: true as const } : {}),
             ...(clusterModifier === 0 ? {} : { clusterModifier }),
         });
+    if (facts.aerospace && !equipment.hasFlag('F_NARC')) {
+        if (!facts.aerospace.attackValue && !facts.aerospace.heatWeapons.length) return null;
+        return { ...profile(facts.aerospace.attackValue, 1, 1), aerospace: facts.aerospace };
+    }
     // Each inferno missile that hits is its own group: one hit-location roll, no damage. Core p. 192 skips the roll, but
     // partial cover and heat-dissipating armor can depend on it (Xotl, Core Rulebook forum ruling, 19 Oct 2026).
     if (isInfernoAmmo(ammo)) {
         return Object.freeze({ ...profile(1, equipment.rackSize, 1), inferno: true as const });
     }
     const standard = (): WeaponAttackProfile | null => {
+        if (equipment.hasFlag('F_NARC')) {
+            if (ammo?.hasMunitionType('M_NARC_EX') || ammo?.hasMunitionType('M_EXPLOSIVE')) {
+                return profile(equipment.ammoType === 'INARC' ? 6 : 4, 1, 1);
+            }
+            if ((['M_ECM', 'M_HAYWIRE', 'M_NEMESIS'] as const).some(type => ammo?.hasMunitionType(type))) return null;
+            return Object.freeze({ ...profile(0, 1, 1), narcPod: true as const });
+        }
+        if (equipment.ammoType === 'SBGAUSS') return profile(1, equipment.rackSize, 1);
         if (perHit <= 0) return null;
         if (damage.unit === 'missile') {
             return profile(perHit, equipment.rackSize, equipment.getClusterSize(ammo, null, rules));
@@ -321,6 +395,24 @@ export function attackEffect(
     hits: number,
     heatDice: readonly number[] = MAXIMUM_HEAT_DICE,
 ): Readonly<{ groups: readonly number[]; heat: number }> {
+    if (profile.aerospace && hits > 0) {
+        const aero = profile.aerospace;
+        let damage = aero.attackValue;
+        let heat = 0;
+        let read = 0;
+        for (const member of aero.heatWeapons) {
+            const pool = heatDice === MAXIMUM_HEAT_DICE ? MAXIMUM_HEAT_DICE : heatDice.slice(read);
+            const effect = resolveHeatWeaponHit(member.heat.weapon, member.value, member.heat.mode,
+                member.heat.ruleset, member.heat.target, pool);
+            damage += effect.damage - member.value;
+            heat += effect.heat;
+            read += effect.dice;
+        }
+        const size = aero.grouping === 'ultra' ? Math.ceil(damage / 2) : aero.grouping === 'cluster' ? 5 : damage;
+        const groups = damage > 0 ? damageGroups(damage, size).map(group => group * aero.scale) : heat > 0 ? [0] : [];
+        return { groups, heat };
+    }
+    if (profile.narcPod) return { groups: Array.from({ length: hits }, () => 0), heat: 0 };
     const damage = profile.damageByHits === undefined
         ? hits * profile.damagePerHit
         : profile.damageByHits[Math.min(hits, profile.damageByHits.length - 1)] ?? 0;
@@ -329,6 +421,11 @@ export function attackEffect(
     }
     const heatWeapon = profile.heatWeapon;
     if (!heatWeapon || hits === 0) return Object.freeze({ groups: damageGroups(damage, profile.groupSize), heat: 0 });
+    if (profile.squadFlamers) {
+        const suit = resolveHeatWeaponHit(heatWeapon.weapon, profile.damagePerHit, heatWeapon.mode, heatWeapon.ruleset,
+            heatWeapon.target, heatDice);
+        return { groups: suit.damage || suit.heat ? Array<number>(hits).fill(suit.damage) : [], heat: hits * suit.heat };
+    }
     const hit = resolveHeatWeaponHit(heatWeapon.weapon, damage, heatWeapon.mode, heatWeapon.ruleset, heatWeapon.target, heatDice);
     // A platoon keeps its 2-point groups; a weapon groups its damage as its heat rules say. A hit that only heats
     // still rolls one location: heat striking partial cover is lost (TW p. 102).
@@ -352,7 +449,7 @@ export function physicalAttackProfile(facts: PhysicalAttackFacts): WeaponAttackP
         name: facts.name,
         targetNumber: facts.targetNumber,
         damagePerHit: damage,
-        projectiles: 1,
+        projectiles: facts.firingSuits ?? 1,
         allHit: false,
         groupSize: Math.max(1, facts.groupSize ?? physicalDamageGroupSize(facts.kind, damage, facts.targetUnitType)),
         types: Object.freeze([]),
@@ -360,6 +457,7 @@ export function physicalAttackProfile(facts: PhysicalAttackFacts): WeaponAttackP
         jamRoll: null,
         table: facts.table,
         physical: facts.kind,
+        ...(facts.mekPhysical ? { mekPhysical: true as const } : {}),
         ...(facts.arc === undefined ? {} : { arc: facts.arc }),
         ...(facts.randomSide ? { randomSide: true as const } : {}),
         ...(facts.critical ? { critical: true as const } : {}),
@@ -382,6 +480,8 @@ export function resolveWeaponAttack(
     cluster: TwoDice | null,
     clusterModifier = profile.clusterModifier ?? 0,
     heatDice: readonly number[] = MAXIMUM_HEAT_DICE,
+    amsDie?: number,
+    additionalClusters: readonly TwoDice[] = [],
 ): WeaponAttackOutcome {
     const jammed = profile.jamRoll !== null && toHit[0] + toHit[1] <= profile.jamRoll;
     if (profile.capacitorBurnoutOnTwo && toHit[0] + toHit[1] === 2) {
@@ -389,12 +489,31 @@ export function resolveWeaponAttack(
     }
     if (!toHitSucceeds(toHit, profile.targetNumber)) return Object.freeze({ hit: false, jammed, hits: 0, groups: [], heat: 0 });
     let hits = profile.projectiles;
-    if (needsClusterRoll(profile)) {
+    const defended = amsDie !== undefined && profile.missileDefense !== undefined;
+    if (defended && profile.aerospace) {
+        const attackValue = Math.max(0, profile.aerospace.attackValue - amsDie);
+        const effect = attackEffect({ ...profile, aerospace: { ...profile.aerospace, attackValue } }, attackValue > 0 ? 1 : 0, heatDice);
+        return { hit: true, jammed, hits: attackValue > 0 ? 1 : 0, ...effect };
+    }
+    if (defended && profile.projectiles === 1) {
+        hits = (profile.missileDefense === 'core-2026' ? amsDie >= 4 : amsDie <= 3) ? 0 : 1;
+    } else if (defended && profile.streak && profile.allHit) {
+        hits = (profile.clusterColumns ?? [profile.projectiles]).reduce((sum, column) => sum + clusterHits(7, column), 0);
+    } else if (needsClusterRoll(profile) || defended) {
         if (!cluster) throw new RangeError(`${profile.name} needs a Cluster Hits Table roll`);
-        hits = clusterHits(Math.max(2, Math.min(12, cluster[0] + cluster[1] + clusterModifier)), profile.projectiles);
+        const rolls = [cluster, ...additionalClusters];
+        hits = (profile.clusterColumns ?? [profile.projectiles]).reduce((sum, column, index) => {
+            const dice = rolls[index];
+            if (!dice) throw new RangeError(`${profile.name} needs a separate cluster roll for column ${column}`);
+            const adjusted = dice[0] + dice[1] + clusterModifier - (defended ? 4 : 0);
+            return sum + (defended && profile.missileDefense === 'core-2026' && adjusted < 2 ? 0
+                : clusterHits(Math.max(2, Math.min(12, adjusted)), column));
+        }, 0);
     }
     const effect = attackEffect(profile, hits, heatDice);
-    return Object.freeze({ hit: true, jammed, hits, groups: effect.groups, heat: effect.heat });
+    const groups = profile.buildingAbsorption === undefined || profile.inferno || profile.narcPod ? effect.groups
+        : effect.groups.map(group => Math.max(0, group - profile.buildingAbsorption!));
+    return Object.freeze({ hit: true, jammed, hits, groups, heat: effect.heat });
 }
 
 /** Splits total damage into location groups of at most `groupSize` points. */

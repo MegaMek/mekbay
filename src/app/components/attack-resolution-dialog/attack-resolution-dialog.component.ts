@@ -1,6 +1,8 @@
 // Copyright (C) 2026 The MegaMek Team
 // SPDX-License-Identifier: GPL-3.0-or-later
 
+import { buildingCollateral } from '../../models/rules/infantry-building-damage';
+
 import { DIALOG_DATA, DialogRef } from '@angular/cdk/dialog';
 import { ChangeDetectionStrategy, Component, computed, inject, signal } from '@angular/core';
 
@@ -14,6 +16,7 @@ import {
     attackGroups,
     needsClusterRoll,
     resolveWeaponAttack,
+    aerospaceHeatDice,
     type HitLocationDice,
     type TwoDice,
     type WeaponAttackProfile,
@@ -24,6 +27,7 @@ import type { CBTRuleset } from '../../models/cbt-ruleset.model';
 import type { TnTargetUnitType } from '../../models/target-number-calculator.model';
 import { roll2D6, rollD6 } from '../../models/runtime/mek-automation-rules';
 import type { AttackHitGroup, AttackWeaponReport } from '../../services/game-events.service';
+import type { TnAttackDirection } from '../../models/target-number-calculator.model';
 import type { MekHitArc } from '../../utils/record-sheet-reference-table';
 import {
     ATTACK_ARC_LABELS,
@@ -40,7 +44,7 @@ export interface AttackResolutionTarget {
     readonly name: string;
     readonly letter: string;
     readonly color: string;
-    readonly arc: MekHitArc;
+    readonly arc: TnAttackDirection;
     /** The struck unit when its force is open here, so hit locations can be read on its table. */
     readonly defender: CBTForceMember | null;
     /** Where hits are sent: the owner of a linked OPFOR unit. */
@@ -86,14 +90,17 @@ export interface AttackDelivery {
     readonly name: string;
     readonly toForce: string;
     readonly toUnit: string;
-    readonly arc: MekHitArc;
+    readonly arc: TnAttackDirection;
     readonly weapons: readonly AttackWeaponReport[];
 }
 
 interface WeaponRolls {
     readonly toHit: TwoDice;
     readonly cluster: TwoDice;
+    readonly additionalClusters: readonly TwoDice[];
     readonly clusterModifier: number;
+    readonly amsDie?: number;
+    readonly engageAms?: boolean;
     /** One roll per possible location group; a smaller cluster result uses the first ones. */
     readonly locations: readonly Omit<AttackHitGroup, 'damage'>[];
     /** A heat weapon's dice; each hit reads the first ones it needs. */
@@ -146,6 +153,12 @@ export class AttackResolutionDialogComponent {
 
     protected setRoll(target: number, edit: AttackReportRollEdit): void {
         const dice = diceForTotal(edit.total);
+        if (typeof edit.roll === 'object') {
+            const index = edit.roll.additionalCluster;
+            this.updateWeapon(target, edit.weapon, rolls => ({ ...rolls,
+                additionalClusters: rolls.additionalClusters.map((current, i) => i === index ? dice : current) }));
+            return;
+        }
         this.updateWeapon(target, edit.weapon, rolls => edit.roll === 'to-hit' ? { ...rolls, toHit: dice }
             : edit.roll === 'cluster' ? { ...rolls, cluster: dice }
             : edit.roll === 'insulator' ? { ...rolls, insulator: dice }
@@ -154,6 +167,10 @@ export class AttackResolutionDialogComponent {
                 roll: rolls.aim.roll.length === 1 ? Object.freeze([edit.total] as const) : dice } }
                 : { ...rolls, locations: rolls.locations.map((location, index) => index !== edit.roll ? location
                     : { ...location, location: location.location.length === 1 ? Object.freeze([edit.total] as const) : dice }) });
+    }
+
+    protected engageAms(target: number, weapon: number, engaged: boolean): void {
+        this.updateWeapon(target, weapon, rolls => ({ ...rolls, engageAms: engaged }));
     }
 
     protected setClusterModifier(target: number, edit: Readonly<{ weapon: number; modifier: number }>): void {
@@ -191,7 +208,7 @@ export class AttackResolutionDialogComponent {
             profile.physical === undefined ? [] : [Object.freeze({
                 kind: profile.physical,
                 hit: physicalAttackAlwaysHits(profile.physical)
-                    || resolveWeaponAttack(profile, this.rolls()[t][w].toHit, null).hit,
+                    || this.targets()[t].weapons[w].hit,
                 targetTons: target.defender?.entity.tonnage() ?? null,
                 targetId: target.targetId,
                 damage: profile.damagePerHit,
@@ -201,7 +218,7 @@ export class AttackResolutionDialogComponent {
     private jammed(): readonly ComponentId[] {
         return Object.freeze(this.data.targets.flatMap((target, t) => target.profiles.flatMap((profile, w) =>
             profile.componentId !== null
-                && resolveWeaponAttack(profile, this.rolls()[t][w].toHit, this.rolls()[t][w].cluster).jammed
+                && this.targets()[t].weapons[w].jammed
                 ? [profile.componentId] : [])));
     }
 
@@ -212,8 +229,8 @@ export class AttackResolutionDialogComponent {
 
     private noLock(): readonly ComponentId[] {
         return Object.freeze(this.data.targets.flatMap((target, t) => target.profiles.flatMap((profile, w) =>
-            profile.componentId !== null && profile.allHit
-                && !resolveWeaponAttack(profile, this.rolls()[t][w].toHit, this.rolls()[t][w].cluster).hit
+            profile.componentId !== null && profile.lockRequired
+                && !this.targets()[t].weapons[w].hit
                 ? [profile.componentId] : [])));
     }
 
@@ -250,12 +267,14 @@ function rollWeapon(profile: WeaponAttackProfile): WeaponRolls {
     return Object.freeze({
         toHit: roll2D6(),
         cluster: roll2D6(),
+        additionalClusters: profile.clusterColumns?.slice(1).map(() => roll2D6()) ?? [],
         clusterModifier: profile.clusterModifier ?? 0,
+        ...(profile.missileDefense ? { amsDie: rollD6() } : {}),
         locations: Object.freeze(Array.from({ length: groups }, () => Object.freeze({
             location: hitTableDice(profile.table) === 2 ? roll2D6() : Object.freeze([rollD6()] as const),
             aux: rollD6(),
         }))),
-        heat: Object.freeze(Array.from({ length: profile.heatWeapon ? heatWeaponDice(profile.heatWeapon.weapon) : 0 },
+        heat: Object.freeze(Array.from({ length: profile.aerospace ? aerospaceHeatDice(profile) : profile.heatWeapon ? heatWeaponDice(profile.heatWeapon.weapon) : 0 },
             () => rollD6())),
         ...(profile.randomSide ? { side: rollSide() } : {}),
         ...(profile.aim ? { aim: Object.freeze({
@@ -294,6 +313,7 @@ function rollSide(): MekHitArc {
 /** How many of the heat weapon's dice its hit reads: heat against a unit that tracks it, damage against others. */
 function heatDiceRead(profile: WeaponAttackProfile, dice: readonly number[]): number {
     const heat = profile.heatWeapon;
+    if (profile.aerospace) return aerospaceHeatDice(profile);
     return heat ? resolveHeatWeaponHit(heat.weapon, 0, heat.mode, heat.ruleset, heat.target, dice).dice : 0;
 }
 
@@ -317,7 +337,8 @@ function reportWeapon(
 ): AttackReportWeapon {
     const source = attackDamageSource(profile);
     const cluster = needsClusterRoll(profile);
-    const outcome = resolveWeaponAttack(profile, rolls.toHit, rolls.cluster, rolls.clusterModifier, rolls.heat);
+    const outcome = resolveWeaponAttack(profile, rolls.toHit, rolls.cluster, rolls.clusterModifier, rolls.heat,
+        rolls.engageAms ? rolls.amsDie : undefined, rolls.additionalClusters);
     const heat = profile.heatWeapon;
     const heatDice = rolls.heat.slice(0, heatDiceRead(profile, rolls.heat));
     const aim = aimedShotRoll(profile, rolls);
@@ -336,11 +357,12 @@ function reportWeapon(
         ...(outcome.capacitorBurnout ? { capacitorBurnout: true as const } : {}),
         jammed: outcome.jammed,
         ...(insulator ? { insulator } : {}),
-        cluster: cluster
-            ? Object.freeze({ dice: rolls.cluster, modifier: rolls.clusterModifier, projectiles: profile.projectiles, hits: outcome.hits })
-            : null,
+        cluster: cluster ? clusterReport(profile, rolls, outcome.hits) : null,
         ...(profile.inferno ? { inferno: true } : {}),
-        ...(heat && (outcome.heat > 0 || heatDice.length > 0)
+        ...(profile.narcPod ? { narcPod: true } : {}),
+        collateral: buildingCollateral(profile, outcome.groups.reduce((sum, damage) => sum + damage, 0)),
+        ...(rolls.engageAms ? { amsDie: rolls.amsDie } : {}),
+        ...((heat || profile.aerospace) && (outcome.heat > 0 || heatDice.length > 0)
             ? { heat: Object.freeze({
                 dice: Object.freeze(heatDice), value: heatValue, ...(heatValue < outcome.heat ? { reduced: true as const } : {}),
             }) }
@@ -352,31 +374,47 @@ function reportWeapon(
     });
 }
 
+function clusterReport(profile: WeaponAttackProfile, rolls: WeaponRolls, hits: number): NonNullable<AttackWeaponReport['cluster']> {
+    return { dice: rolls.cluster, modifier: rolls.clusterModifier, projectiles: profile.projectiles, hits,
+        ...(rolls.additionalClusters.length ? { additionalDice: rolls.additionalClusters } : {}) };
+}
+
 function deliveredWeapon(profile: WeaponAttackProfile, rolls: WeaponRolls,
-    outcome = resolveWeaponAttack(profile, rolls.toHit, rolls.cluster, rolls.clusterModifier, rolls.heat)): AttackWeaponReport {
+    outcome = resolveWeaponAttack(profile, rolls.toHit, rolls.cluster, rolls.clusterModifier, rolls.heat, undefined, rolls.additionalClusters)): AttackWeaponReport {
     const aim = outcome.hit ? aimedShotRoll(profile, rolls) : undefined;
+    const intercepted = outcome.hit && rolls.amsDie ? resolveWeaponAttack(profile, rolls.toHit, rolls.cluster,
+        rolls.clusterModifier, rolls.heat, rolls.amsDie, rolls.additionalClusters) : null;
     return Object.freeze({
         name: profile.name,
+        infantryClass: profile.infantryClass,
+        ...(profile.infantryBuilding ? { infantryBuilding: profile.infantryBuilding } : {}),
+        ...(profile.collateralBuilding ? { collateralBuilding: profile.collateralBuilding } : {}),
+        infantryBurstDice: profile.infantryBurstDice,
+        infantryInOpen: profile.infantryInOpen,
         types: profile.types,
         ...(profile.partialCover ? { partialCover: true as const } : {}),
         targetNumber: profile.targetNumber,
         toHit: rolls.toHit,
         ...(profile.table === 'standard' ? {} : { table: profile.table }),
+        ...(profile.projectiles > 1 && profile.damagePerHit > 0 ? { projectileDamage: profile.damagePerHit } : {}),
+        ...(profile.mekPhysical ? { mekPhysical: true as const } : {}),
         ...(profile.physical === undefined ? {} : { physical: profile.physical }),
         ...(profile.critical ? { critical: true as const } : {}),
         ...(profile.rifle ? { rifle: true as const } : {}),
+        ...(profile.capitalScale ? { capitalScale: true as const } : {}),
         ...(profile.ammo ? { ammo: profile.ammo } : {}),
         ...(profile.rackSize === undefined ? {} : { rackSize: profile.rackSize }),
         // A brush off that hits knocks the swarming infantry off (TW p. 222).
         ...(profile.physical === 'brush-off' && outcome.hit ? { swarmRelease: true as const } : {}),
         ...((rolls.side ?? profile.arc) === undefined ? {} : { arc: rolls.side ?? profile.arc }),
         ...(profile.inferno ? { inferno: true as const } : {}),
+        ...(profile.narcPod ? { narcPod: true as const } : {}),
+        ...(intercepted ? { ams: { die: rolls.amsDie!, hits: intercepted.hits, damage: intercepted.groups, heat: intercepted.heat } } : {}),
         ...(outcome.heat > 0 ? { heat: outcome.heat } : {}),
+        ...(outcome.heat && profile.squadFlamers ? { heatPerGroup: outcome.heat / outcome.hits } : {}),
         ...(aim ? { aim } : {}),
         ...(outcome.hit && needsClusterRoll(profile) ? {
-            cluster: Object.freeze({
-                dice: rolls.cluster, modifier: rolls.clusterModifier, projectiles: profile.projectiles, hits: outcome.hits,
-            }),
+            cluster: clusterReport(profile, rolls, outcome.hits),
         } : {}),
         groups: Object.freeze(outcome.groups.map((damage, index) =>
             Object.freeze({ damage, ...rolls.locations[index] }))),

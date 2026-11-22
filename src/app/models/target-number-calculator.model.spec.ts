@@ -20,6 +20,15 @@ import {
 import { CORE_2026_GAME_RULES, TW_GAME_RULES } from './rules/game-rules';
 
 describe('target number calculator rules profiles', () => {
+    it('counts only interior hexes and levels for a TW attack from inside the target infantry’s building', () => {
+        const target = { unitType: 'infantry' as const, buildingCover: 'building-1' as const, insideTargetBuilding: true as const };
+        for (const [range, diff, expected] of [[0, 0, 0], [1, 1, 2], [2, -1, 3]]) {
+            const entries = calculateTargetTnModifierBreakdown({ ...target, range, targetLevelDifference: diff }, TW_GAME_RULES);
+            expect(entries.find(m => m.id === 'building-cover')?.modifier ?? 0).toBe(expected);
+            expect(entries.some(m => m.id === 'partial-cover')).toBeFalse();
+        }
+    });
+
     it('uses one target category for VTOL and WiGE units', () => {
         expect(TN_TARGET_UNIT_TYPE_OPTIONS.find(option => option.value === 'vtol-wige'))
             .toEqual({ value: 'vtol-wige', label: 'VTOL/WiGE' });

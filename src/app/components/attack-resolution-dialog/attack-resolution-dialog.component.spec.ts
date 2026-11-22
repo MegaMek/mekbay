@@ -83,6 +83,41 @@ describe('AttackResolutionDialogComponent floating criticals', () => {
     });
 });
 
+describe('Battle Armor attacks in the resolution dialog', () => {
+    it('preserves independent cluster rolls in the edited, delivered and decoded report', () => {
+        const { dialog, result } = createAttackDialog([{ ...INSULATED_LASER, name: '54 missiles',
+            projectiles: 54, damagePerHit: 2, groupSize: 2, clusterColumns: [27, 27] }], 'total-warfare');
+        dialog['setRoll'](0, { weapon: 0, roll: 'to-hit', total: 10 });
+        dialog['setRoll'](0, { weapon: 0, roll: 'cluster', total: 2 });
+        dialog['setRoll'](0, { weapon: 0, roll: { additionalCluster: 0 }, total: 12 });
+        expect(dialog['targets']()[0].weapons[0].cluster?.hits).toBe(36);
+        dialog['send']();
+        const event = parseGameEvent({ kind: 'attack', id: 'attack', fromForce: 'sender', fromUnit: 'attacker',
+            attacker: 'Attacker', turn: 1, ...result().deliveries[0] });
+        expect(event?.kind === 'attack' && event.weapons[0].cluster).toEqual({
+            dice: [1, 1], additionalDice: [[6, 6]], modifier: 0, projectiles: 54, hits: 36,
+        });
+    });
+
+    it('sends a successful multi-suit vibro-claw attack and retains the originating physical hit', () => {
+        const { dialog, result } = createAttackDialog([{ ...INSULATED_LASER, componentId: null, physical: 'vibro-claw',
+            name: 'Claws', projectiles: 5, damagePerHit: 2, groupSize: 2 }], 'total-warfare');
+        dialog['setRoll'](0, { weapon: 0, roll: 'to-hit', total: 10 });
+        dialog['setRoll'](0, { weapon: 0, roll: 'cluster', total: 9 });
+        dialog['send']();
+        expect(result().physical[0].hit).toBeTrue();
+        expect(result().deliveries[0].weapons[0].groups.map(group => group.damage)).toEqual([2, 2, 2, 2]);
+    });
+
+    it('spends ammunition for a missed conventional missile attack resolved at full cluster potential', () => {
+        const { dialog, result } = createAttackDialog([{ ...INSULATED_LASER, name: 'LRM 20', projectiles: 20,
+            damagePerHit: 1, groupSize: 5, allHit: true }], 'total-warfare');
+        dialog['setRoll'](0, { weapon: 0, roll: 'to-hit', total: 3 });
+        dialog['send']();
+        expect(result().noLock).toEqual([]);
+    });
+});
+
 /** TO:AUE p. 134: an insulated laser's to-hit roll of 2 calls for a 2D6 roll, a critical hit on 8 or more. */
 describe('AttackResolutionDialogComponent laser insulator', () => {
     /** Sets the to-hit roll, notes whether the report then offers the insulator roll, sets that and closes */

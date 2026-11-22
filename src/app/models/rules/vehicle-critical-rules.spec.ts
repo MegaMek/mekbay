@@ -60,6 +60,18 @@ describe('vehicle critical rules', () => {
         expect(vehicleCriticalEffect(11, 'rear', facts({ hasAmmo: false }))).toBe('weapon-destroyed');
         expect(vehicleCriticalEffect(12, 'side', facts({ fusionEngine: true }))).toBe('engine-hit');
         expect(vehicleCriticalEffect(12, 'side', facts())).toBe('fuel-tank');
+        for (const vtol of [false, true]) {
+            expect(vehicleCriticalEffect(12, 'side', facts({ vtol, fissionEngine: true }))).toBe('engine-hit');
+            expect(vehicleCriticalEffect(12, 'rear', facts({ vtol, fissionEngine: true, engineHit: true })))
+                .not.toBe('fuel-tank');
+        }
+    });
+
+    it('applies cargo criticals only to real loads and locks the same turret on the second jam', () => {
+        expect(vehicleCriticalEffect(6, 'side', facts({hasInternalLoad: true}))).toBe('cargo-hit');
+        expect(vehicleCriticalEffect(6, 'side', facts({hasInternalLoad: false}))).not.toBe('cargo-hit');
+        expect(vehicleCriticalEffect(7, 'turret', facts())).toBe('turret-jam');
+        expect(vehicleCriticalEffect(7, 'turret', facts({ turretJammedBefore: true }))).toBe('turret-locks');
     });
 
     it('reads the VTOL rotor column', () => {

@@ -13,15 +13,23 @@ import {
 } from '../components/attack-resolution-dialog/attack-resolution-dialog.component';
 import {
     IncomingAttackDialogComponent,
-    type IncomingAttackDialogData,
+    type IncomingAttackDialogData, type IncomingAttackChoice,
 } from '../components/incoming-attack-dialog/incoming-attack-dialog.component';
 import { CBTForce } from '../models/cbt-force.model';
+import { INFANTRY_BUILDING_TYPES } from '../models/rules/infantry-building-damage';
+import { StaticEmplacementEntity } from '../models/entity/entities/misc/static-emplacement-entity';
+import { AEROSPACE_RANGE_BRACKETS } from '../utils/aerospace-range.util';
+import { resolveTargetGuidance } from '../utils/inventory-target-number.util';
+import { mekLocationId } from '../models/entity/mek-entity-conventions';
 import { WeaponEquipment } from '../models/equipment.model';
 import { gameRulesFor } from '../models/rules/game-rules';
 import { isCBTMekForceMember, type CBTForceMember } from '../models/force-member.model';
-import { hasMekRuntime } from '../models/cbt-unit-snapshot';
+import { interceptedReport } from '../models/runtime/anti-missile-defense';
+import { hasMekRuntime, hasNonMekRuntime } from '../models/cbt-unit-snapshot';
 import { ppcCapacitorBurnoutHits } from '../models/runtime/component-ppc-capacitor';
 import { mekUnitWaterState } from '../models/runtime/mek-targeting-rules';
+import { infantryHitClass } from '../models/rules/infantry-hit-damage';
+import { allocateInfantryHits } from '../models/runtime/infantry-hit-allocation';
 import { attackDamageSource, PHYSICAL_DAMAGE, type DamageSource } from '../models/rules/armor-damage-rules';
 import {
     hitTableDice,
@@ -50,6 +58,7 @@ import {
     rollFloatingCriticals,
     weaponHitLocation,
     type AttackHitLocation,
+    fourDirection,
 } from '../models/runtime/attack-hit-location';
 import type { InfernoMissile } from '../models/rules/inferno-rules';
 import { heatWeaponTarget } from '../models/rules/heat-weapon-rules';
@@ -71,7 +80,8 @@ import { diceForSlotIndex } from '../models/runtime/mek-critical-hit-v2';
 import type { WeaponHits } from '../models/runtime/cbt-force-unit-command-dispatcher';
 import type { MekLocationlessHeat, MekWeaponHit } from './direct-mek-automation.service';
 import { TURN_STEPS } from '../models/rules/turn-sequence';
-import type { MekHitArc } from '../utils/record-sheet-reference-table';
+import { isUnitWaterDepth } from '../models/unit-cover.model';
+import { resolveTnTargetWaterState, type TnAttackDirection } from '../models/target-number-calculator.model';
 import {
     physicalAttackMeetsPartialCover,
     physicalAttackTargetNumber,
@@ -92,7 +102,8 @@ import { GameEventsService, type AttackEvent, type AttackWeaponReport } from './
 import { SwarmService } from './swarm.service';
 import { MEK_TORSO_LOCATIONS } from '../models/entity/types';
 import { InventoryControlOpforService } from './inventory-control-opfor.service';
-import { OptionsService } from './options.service';
+import { OptionsService, realPhasesEnabled } from './options.service';
+import { GameTurnService } from './game-turn.service';
 import { ToastService } from './toast.service';
 import { UnitNameService } from './unit-name.service';
 
@@ -134,6 +145,13 @@ export class AttackResolutionService {
     /** Whether FIRE rolls the attacks: declared physical attacks then resolve even without weapon fire. */
     resolvesAttacks(): boolean {
         return this.options.options().attackResolution === true;
+    }
+
+    /** A finished declaration cannot be revised after another player's rolls become visible. */
+    allowsAttackDeclaration(member: CBTForceMember, phase: 'weapons' | 'physical'): boolean {
+        if (!realPhasesEnabled(this.options)) return true;
+        const unit = this.injector.get(GameTurnService).unitFor(member);
+        return unit !== null && unit.position.step <= TURN_STEPS.findIndex(step => step.phase === phase && step.kind === 'declaration');
     }
 
     /** With real phases, a unit in the Physical Attack Phase makes only physical attacks. */
@@ -209,6 +227,13 @@ export class AttackResolutionService {
         fired: EquipmentPanelSnapshot,
         attack: WeaponAttackContext | null,
     ): Promise<AttackResolution | 'dismissed' | null> {
+        if (realPhasesEnabled(this.options)) {
+            const turn = this.injector.get(GameTurnService).unitFor(member);
+            if (turn?.step.kind !== 'to-hit' || turn.status !== 'acting') {
+                this.toast.showToast('Roll attacks during To-Hit after all units have declared.', 'info');
+                return 'dismissed';
+            }
+        }
         if (!this.options.options().attackResolution || !attack) return null;
         if (attack.missingMovementModifier) {
             // Without the attacker's movement there is no target number to roll against.
@@ -274,10 +299,17 @@ export class AttackResolutionService {
         const deliveries = resolution.deliveries;
         const fromForce = member.force.instanceId();
         if (!deliveries.length || !fromForce) return;
-        const turn = member.force.getUnitSnapshot(member.id)?.state.turn.turnCounter ?? 0;
+        const attackerSnapshot = member.force.getUnitSnapshot(member.id);
+        const turn = attackerSnapshot?.state.turn.turnCounter ?? 0;
+        const cover = attackerSnapshot?.state.turn.cover;
+        const attackerUnderwater = isUnitWaterDepth(cover) && resolveTnTargetWaterState({
+            waterDepth: cover, unitType: isMekEntity(member.entity) ? 'mek-biped' : 'vehicle',
+            largeTarget: member.entity.tonnage() > 100, prone: attackerSnapshot?.query.hasCondition('prone'),
+        }).submerged;
         const sent = await Promise.all(deliveries.map((delivery, index) => this.gameEvents.send(delivery.toForce, Object.freeze({
             kind: 'attack',
             id: `${attackId}:${index}`,
+            ...(attackerUnderwater ? { attackerUnderwater: true as const } : {}),
             fromForce,
             fromUnit: member.id,
             attacker,
@@ -338,21 +370,29 @@ export class AttackResolutionService {
                         prone: defenderSnapshot
                             ? defenderSnapshot.query.conditions().includes('prone')
                             : targeting.tnCalculator?.prone === true,
-                    });
+                        levelDifference: targeting.tnCalculator?.targetLevelDifference,
+                    }, fired.ruleset);
             const profile = physicalAttackProfile({
+                mekPhysical: isMekEntity(member.entity),
                 name: row.label,
                 kind,
                 damage: row.effect.kind === 'damage' ? row.effect.damage : 0,
                 targetNumber,
                 table,
-                partialCover: table === 'standard' && !isAntiMekAttack(kind) && physicalAttackMeetsPartialCover(row, targeting),
+                partialCover: table !== 'kick' && kind !== 'charge' && !isAntiMekAttack(kind)
+                    && (fired.ruleset === 'core-2026' || !targeting.partialCover?.water || !targeting.tnCalculator?.targetLevelDifference)
+                    && physicalAttackMeetsPartialCover(row, targeting),
                 ...(arc === undefined ? {} : { arc }),
                 randomSide: physicalStrikesRandomSide(kind, targeting) || (kind === 'swarm-damage' && !mek),
                 ...(targeting.unitType === undefined ? {} : { targetUnitType: targeting.unitType }),
                 ...(row.damageGroupSize === undefined ? {} : { groupSize: row.damageGroupSize }),
+                firingSuits: row.firingSuits,
                 ...(row.critical ? { critical: true } : {}),
             });
-            profiles.set(target.targetId, [...profiles.get(target.targetId) ?? [], profile]);
+            profiles.set(target.targetId, [...profiles.get(target.targetId) ?? [], { ...profile,
+                infantryInOpen: infantryInOpenTerrain(targeting),
+                ...infantryBuildingFacts(targeting, fired.ruleset, defender),
+            }]);
         }
         for (const row of !realPhases || !physicalPhase ? fired.components : []) {
             const weapon = row.weapon;
@@ -361,9 +401,7 @@ export class AttackResolutionService {
                 ? fired.targets.find(candidate => candidate.targetId === selection.targetId)
                 : undefined;
             // A weapon that cannot fire (already fired this turn, jammed) stays selected but is not resolved again.
-            // Weapon bays are not resolved here: a plasma bay would otherwise strike as one rifle's heat with no damage.
-            if (!weapon?.selectable || !target || !(row.equipment instanceof WeaponEquipment)
-                || row.attack?.kind === 'weapon-bay') continue;
+            if (!weapon?.selectable || !target || !(row.equipment instanceof WeaponEquipment)) continue;
             const targeting = projectTargetingTarget(target, fired.ruleset);
             const presentation = projectWeaponTargetPresentation(row, targeting, attack, fired.ruleset);
             const range = presentation.damageRange;
@@ -375,11 +413,32 @@ export class AttackResolutionService {
             const struck = heatWeaponTarget(this.opfor.resolveOpforTarget(target.targetId)?.member.entity, targeting.unitType);
             const heatWeapon = heatEquipment === null ? undefined : attackHeatWeapon(heatEquipment, row.mode,
                 fired.ruleset, optionalRules, struck);
-            if (presentation.outOfRange || (!damage && !heatWeapon) || targetNumber === undefined) continue;
+            if (presentation.outOfRange || targetNumber === undefined) continue;
             const ammo = selectedAmmoEquipment(weapon.ammoSources, weapon.ammoSelection);
             // The calculator's partial-cover modifier is the one source for whether this weapon meets cover.
             const partialCover = presentation.targetModifierBreakdown?.some(modifier =>
                 modifier.id === 'partial-cover' && modifier.modifier > 0 && modifier.ignored !== true) === true;
+            const types = resolveEffectiveWeaponTypes(row, ammo);
+            const band = range ? AEROSPACE_RANGE_BRACKETS.indexOf(range) : -1;
+            const airToAir = targeting.unitType === 'aero' && targeting.tnCalculator?.isAirborne === true
+                && member.force.getUnitSnapshot(member.id)?.state.turn.airborne === true;
+            const useAv = weapon.aerospace && band >= 0 && (row.attack?.kind === 'weapon-bay' || airToAir);
+            const av = useAv ? weapon.aerospace!.attackValues[band] : 0;
+            const contributions = useAv ? (row.attack?.members ?? [{ equipment: row.equipment, selectable: true,
+                attackValues: weapon.aerospace!.attackValues, mode: row.mode }]).flatMap(part => {
+                if (!part.selectable || !part.equipment || !part.attackValues) return [];
+                const value = part.attackValues[band] ?? 0;
+                const heat = attackHeatWeapon(part.equipment, part.mode, fired.ruleset, optionalRules, struck);
+                return heat && (value > 0 || (heat.weapon.kind === 'plasma-cannon' && band <= AEROSPACE_RANGE_BRACKETS.indexOf(part.equipment.maxRangeBracket)))
+                    ? [{ value, heat }] : [];
+            }) : [];
+            const ultra = row.equipment.ammoType === 'AC_ULTRA' || row.equipment.ammoType === 'AC_ULTRA_THB';
+            const clustered = contributions.some(part => part.heat.weapon.kind.startsWith('plasma') && !part.heat.target.tracksHeat)
+                || (types.includes('C') && !row.equipment.hasFlag('F_PLASMA'));
+            const protectedCf = targeting.tnCalculator?.buildingCover && targeting.unitType !== 'building'
+                && targeting.unitType !== 'infantry' && targeting.unitType !== 'battle-armor' && !types.includes('AE')
+                ? targeting.tnCalculator.buildingCf : undefined;
+            if (!useAv && !damage && !heatWeapon) continue;
             const profile = weapon.platoon ? platoonAttackProfile({
                 componentId: row.componentId,
                 name: row.label,
@@ -393,6 +452,20 @@ export class AttackResolutionService {
                 equipment: row.equipment,
                 mode: row.mode,
                 damage: damage ?? Object.freeze({ values: Object.freeze([0]), maximum: 0 }),
+                firingSuits: weapon.firingSuits,
+                adjacentBuilding: fired.ruleset === 'total-warfare' && targeting.unitType === 'building' && targeting.distance <= 1,
+                targetConventionalInfantry: targeting.unitType === 'infantry',
+                ...(range ? { range } : {}),
+                ...(useAv ? { aerospace: { attackValue: av, heatWeapons: contributions,
+                    grouping: ultra ? 'ultra' : clustered ? 'cluster' : 'single',
+                    scale: weapon.aerospace!.capital && !['WarShip', 'JumpShip', 'SpaceStation'].includes(
+                        this.opfor.resolveOpforTarget(target.targetId)?.member.entity.entityType ?? '') ? 10 : 1 } } : {}),
+                artemis: weapon.artemis,
+                narcGuided: ammo?.hasMunitionType('M_NARC_CAPABLE') && resolveTargetGuidance(targeting.tnCalculator,
+                    targeting.unitType, { semiGuided: false, narcCapableAboveWater: !weapon.underwater,
+                        narcCapableUnderwater: weapon.underwater === true }, gameRulesFor(fired.ruleset)).narc,
+                angelEcm: targeting.tnCalculator?.angelEcm,
+                buildingCf: protectedCf,
                 ...(heatWeapon === undefined ? {} : { heatWeapon }),
                 ammo,
                 types: resolveEffectiveWeaponTypes(row, ammo),
@@ -410,7 +483,16 @@ export class AttackResolutionService {
                 ...(ecmJammed || targeting.tnCalculator?.ecmShielded === true ? { hostileEcm: true } : {}),
             }, gameRulesFor(fired.ruleset));
             if (!profile) continue;
-            profiles.set(target.targetId, [...profiles.get(target.targetId) ?? [], profile]);
+            const absorption = weapon.platoon && protectedCf && fired.ruleset === 'total-warfare'
+                ? { ...profile, buildingAbsorption: Math.ceil(protectedCf / 10) } : profile;
+            const infantryBurstDice = (weapon.platoon?.burstDice ?? 0) + (targeting.distance === 0 ? weapon.platoon?.mountBurstDice ?? 0 : 0);
+            const infantryInOpen = infantryInOpenTerrain(targeting);
+            profiles.set(target.targetId, [...profiles.get(target.targetId) ?? [], {
+                ...absorption, infantryInOpen,
+                ...infantryBuildingFacts(targeting, fired.ruleset, this.opfor.resolveOpforTarget(target.targetId)?.member),
+                ...(infantryBurstDice > 0 ? { infantryBurstDice } : {}),
+                infantryClass: weapon.platoon ? 'infantry' : infantryHitClass(row.equipment, weapon.attackerIsBattleArmor === true),
+            }]);
         }
         return [...profiles].map(([targetId, weapons]) => {
             const target = fired.targets.find(candidate => candidate.targetId === targetId)!;
@@ -441,19 +523,36 @@ export class AttackResolutionService {
             groups: floating ? rollFloatingCriticals(member, event.arc, weapon, weapon.groups)
                 : weapon.groups.map(group => group.floating ? { ...group, floating: undefined } : group),
         })) };
+        event = allocateInfantryHits(member, event, rollD6);
         // Show the struck unit behind the popup, so accepted damage lands in view. The workspace commands
         // are resolved on use: they depend on the force builder.
         this.injector.get(ForceWorkspaceCommandsService).selectUnit(member);
         const pending = this.options.options().trackPhaseAndTurn;
-        const ref = this.dialogs.createDialog<boolean, IncomingAttackDialogComponent, IncomingAttackDialogData>(
+        const ref = this.dialogs.createDialog<IncomingAttackChoice, IncomingAttackDialogComponent, IncomingAttackDialogData>(
             IncomingAttackDialogComponent, {
                 data: { event, member, unitName: this.unitNames.name(member.entity), fromDisplayName, pending },
                 disableClose: true,
             });
-        if (await firstValueFrom(ref.closed) !== true) return;
+        const accepted = await firstValueFrom(ref.closed);
+        if (!accepted) return;
         // One undo takes the whole hit back: damage, crew wounds and any owed consciousness roll.
-        const applied = await member.force.runAsOneUndoStep(() =>
-            this.applyAttack(member, event, pending ? 'pending' : 'committed'));
+        const applied = await member.force.runAsOneUndoStep(async () => {
+            if (accepted !== true) {
+                const weapons = [...event.weapons];
+                for (const { weapon, componentId } of accepted.defenses) {
+                    if (!weapons[weapon]?.ams) return false;
+                    const fired = await member.force.dispatchUnitCommand(member.id, { type: 'engage-ams', componentId, arc: event.arc });
+                    if (!fired.changed) return false;
+                    weapons[weapon] = interceptedReport(weapons[weapon]);
+                }
+                const location = accepted.buildingLocation;
+                if (location && (member.entity.entityType !== 'BuildingEntity'
+                    || !member.nonMekRecordSheetSnapshot()?.locations.some(row => row.code === location))) return false;
+                event = { ...event, weapons: location ? weapons.map(report => ({ ...report,
+                    groups: report.groups.map(group => ({ ...group, buildingLocation: location })) })) : weapons };
+            }
+            return this.applyAttack(member, event, pending ? 'pending' : 'committed');
+        });
         this.toast.showToast(applied
             ? `${event.attacker}'s hits applied to ${this.unitNames.name(member.entity)}`
             : `Could not apply all of ${event.attacker}'s hits; finish them on the sheet`, applied ? 'success' : 'error');
@@ -473,13 +572,13 @@ export class AttackResolutionService {
             if (weapon.swarmStrike) return swarmStrikeHits(member, weapon, source);
             const natural12 = !physicalAttackAlwaysHits(weapon.physical) && weapon.toHit[0] + weapon.toHit[1] === 12;
             const struck = new Set<string>();
-            return weapon.groups.flatMap(group => {
+            return weapon.groups.flatMap((group, groupIndex) => {
                 const location = weaponHitLocation(member, event.arc, weapon, group);
                 if (!location || group.damage === 0) return [];
                 const key = location.kind === 'non-mek' ? location.locationId : location.label;
                 const luckyHit = natural12 && !struck.has(key);
                 struck.add(key);
-                return [{ weapon, location, damage: group.damage, source, luckyHit }];
+                return [{ weapon, groupIndex, location, damage: group.damage, source, luckyHit, projectileDamage: weapon.projectileDamage, attackerUnderwater: event.attackerUnderwater }];
             });
         });
         const hits = this.strikeSwarmer(member, event, read);
@@ -494,6 +593,25 @@ export class AttackResolutionService {
         if (attackReleasesSwarm(event.weapons) && isInfantryFamilyEntity(member.entity)) {
             applied = (await member.force.dispatchUnitCommand(member.id, { type: 'set-swarming', target: null }))
                 .accepted && applied;
+        }
+        for (const weapon of event.weapons.filter(report => report.narcPod)) {
+            for (const group of weapon.groups) {
+                const hit = weaponHitLocation(member, event.arc, weapon, group);
+                if (!hit || hit.kind === 'miss') continue;
+                const snapshot = member.force.getUnitSnapshot(member.id);
+                const locationId = hit.kind === 'mek' ? mekLocationId(hit.location) : hit.locationId;
+                if (!snapshot || !locationId) continue;
+                const perspective = target === 'pending' ? 'preview' : 'committed';
+                if (hasMekRuntime(snapshot) && snapshot.query.locationStatus(locationId, perspective) === 'destroyed') continue;
+                const condition = hasMekRuntime(snapshot) && snapshot.ruleset === 'core-2026' ? 'new-narc' : 'narc';
+                const count = hasNonMekRuntime(snapshot) ? [...snapshot.state.narcPods ?? [],
+                    ...(target === 'pending' ? snapshot.state.pendingCombat.narcPods ?? [] : [])].filter(id => id === locationId).length
+                    : hasMekRuntime(snapshot) ? snapshot.query.locationCondition(locationId, condition, perspective) : 0;
+                applied = (await member.force.dispatchUnitCommand(member.id, {
+                    type: 'set-location-condition', target, locationId, condition,
+                    value: count + 1,
+                })).accepted && applied;
+            }
         }
         const ruleset = member.force.getUnitSnapshot(member.id)?.ruleset;
         const checks = ruleset ? event.weapons.flatMap(weapon => weapon.physical === undefined ? []
@@ -645,12 +763,36 @@ function swarmStrikeHits(
     }));
 }
 
+function infantryInOpenTerrain(target: TargetingTarget): boolean {
+    const hex = target.tnCalculator;
+    return !hex?.buildingCover && !hex?.waterDepth && (!hex?.targetHexCover || hex.targetHexCover === 'none');
+}
+
+function infantryBuildingFacts(target: ReturnType<typeof projectTargetingTarget>, rules: string, defender?: CBTForceMember):
+    Pick<WeaponAttackProfile, 'infantryBuilding' | 'collateralBuilding'> {
+    if (rules !== 'total-warfare') return {};
+    const facts = target.tnCalculator;
+    if (target.unitType === 'building') {
+        const construction = defender?.entity;
+        const authored = construction instanceof StaticEmplacementEntity ? INFANTRY_BUILDING_TYPES[(construction.buildingType() ?? 0) - 1] : undefined;
+        if (construction instanceof StaticEmplacementEntity && construction.buildingType() && !authored) return {};
+        return { collateralBuilding: authored ?? facts?.infantryBuildingType ?? 'medium' };
+    }
+    return (target.unitType === 'infantry' || target.unitType === 'battle-armor')
+        && facts?.buildingCover && facts.insideTargetBuilding
+        ? { infantryBuilding: facts.infantryBuildingType ?? 'medium' } : {};
+}
+
 type AttackHit = Readonly<{
     location: AttackHitLocation;
     damage: number;
     source: DamageSource;
     luckyHit?: boolean;
+    projectileDamage?: number;
+    attackerUnderwater?: true;
+    attackIndex?: number;
     outsideHeat?: number;
+    groupIndex?: number;
 }>;
 
 /**
@@ -665,17 +807,28 @@ function attackWeaponHits(
 ): WeaponHits {
     if (!isCBTMekForceMember(member)) {
         const { heat, inferno } = readAttackThermalEffects(member, event.arc, event.weapons);
-        return weaponHits(member, event.arc, hits, inferno, heat);
+        const ordered = hits.map(hit => ({ ...hit, attackIndex: event.weapons.indexOf(hit.weapon) }));
+        return weaponHits(member, event.arc, ordered, inferno, heat);
     }
     const ordered: (AttackHit | MekLocationlessHeat)[] = [];
     for (const weapon of event.weapons) {
+        const damageHits = hits.filter(hit => hit.weapon === weapon);
+        if (weapon.heatPerGroup !== undefined) {
+            // Each suit's heat meets the armor immediately before that same suit's damage.
+            for (const [index, hit] of attackHeatHits(member, event.arc, weapon).entries()) {
+                if (hit.location?.kind !== 'mek') continue;
+                const damage = damageHits.find(group => group.groupIndex === index);
+                ordered.push({ location: hit.location, source: attackDamageSource(weapon), damage: 0, ...damage, outsideHeat: hit.heat });
+            }
+            continue;
+        }
         for (const hit of attackHeatHits(member, event.arc, weapon)) {
             if (hit.location === null) ordered.push({ outsideHeat: hit.heat });
             else if (hit.location.kind === 'mek') {
                 ordered.push({ location: hit.location, damage: 0, source: attackDamageSource(weapon), outsideHeat: hit.heat });
             }
         }
-        ordered.push(...hits.filter(hit => hit.weapon === weapon));
+        ordered.push(...damageHits);
     }
     return weaponHits(member, event.arc, ordered);
 }
@@ -683,7 +836,7 @@ function attackWeaponHits(
 /** A Mek's inferno missiles arrive as heat in its groups, so `inferno` applies only to other units. */
 function weaponHits(
     member: CBTForceMember,
-    arc: MekHitArc,
+    arc: TnAttackDirection,
     hits: readonly (AttackHit | MekLocationlessHeat)[],
     inferno: readonly InfernoMissile[] = [],
     heat = 0,
@@ -695,7 +848,7 @@ function weaponHits(
                 location: hit.location.location,
                 rear: hit.location.rear,
                 damage: hit.damage,
-                arc,
+                arc: fourDirection(arc),
                 throughArmorCritical: hit.location.throughArmorCritical,
                 ...(hit.location.floatingCritical ? { floatingCritical: true as const } : {}),
                 source: hit.source,
@@ -710,7 +863,10 @@ function weaponHits(
                 locationId: hit.location.locationId,
                 damage: hit.damage,
                 arc: hit.location.arc,
+                ...(hit.attackIndex === undefined ? {} : { attackIndex: hit.attackIndex }),
                 effects: hit.location.effects,
+                ...(hit.projectileDamage ? { projectileDamage: hit.projectileDamage } : {}),
+                ...(hit.attackerUnderwater ? { attackerUnderwater: true as const } : {}),
                 source: hit.source,
                 ...(hit.location.transferred ? { transferred: true as const } : {}),
                 ...(hit.location.aeroCritical === undefined ? {} : { aeroCritical: hit.location.aeroCritical, luckyHit: hit.luckyHit === true }),

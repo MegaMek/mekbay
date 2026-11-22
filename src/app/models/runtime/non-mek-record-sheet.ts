@@ -290,7 +290,7 @@ export function projectNonMekRecordSheet(
                 state: member.toRuntimeState(),
                 effectiveState: effectiveState === 'dead'
                     ? 'killed'
-                    : effectiveState === 'unconscious'
+                    : effectiveState === 'unconscious' || (effectiveState === 'healthy' && query.projection().vehicle?.systems.crewStunned)
                         ? 'stunned'
                         : effectiveState,
             });
@@ -317,7 +317,7 @@ export function projectNonMekRecordSheet(
             .filter(mode => !glider || (mode === 'stationary' ? !isAirborne : stateCapabilities.maximum[mode] > 0))
             .map(mode => ({
                 mode, modifier: nonMekAttackMovementModifier(entity, mode),
-                legal: stateCapabilities.canTakeActiveActions
+                legal: (stateCapabilities.canTakeActiveActions || mode === 'walk' && stateCapabilities.maximum.walk > 0)
                     && (mode === 'stationary' || stateCapabilities.maximum[mode] > 0),
                 minimumMp: stateCapabilities.minimum[mode],
                 ...(glider && mode !== 'stationary' ? { airborne: isAirborne } : {}),

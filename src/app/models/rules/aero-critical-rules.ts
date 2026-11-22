@@ -52,5 +52,6 @@ export function aeroCriticalType(entity: BaseEntity, arc: NonMekHitArc, roll: nu
     const table = entity.entityType === 'SmallCraft' || entity.entityType === 'DropShip'
         ? SMALL_CRAFT_CRITICALS
         : FIGHTER_CRITICALS;
+    if (table === FIGHTER_CRITICALS && (arc === 'above' || arc === 'below') && roll === 8) return 'weapon';
     return table[arc === 'front' ? 'nose' : arc === 'rear' ? 'aft' : 'side'][roll - 2];
 }

@@ -44,6 +44,30 @@ function ammo(munitionType: AmmoMunitionFlag[] = []): AmmoEquipment {
 }
 
 describe('weapon target policy', () => {
+    it('restricts nonpenetrating attacks to conventional infantry and requires AA for a flying aerospace target', () => {
+        const base = weapon([]);
+        expect(weaponTargetDisabledReason({ ...base, infantryOnly: true }, 'total-warfare', { unitType: 'infantry' })).toBeNull();
+        for (const unitType of ['battle-armor', 'mek-biped', 'vehicle'] as const) {
+            expect(weaponTargetDisabledReason({ ...base, infantryOnly: true }, 'total-warfare', { unitType })).not.toBeNull();
+        }
+        const airborne = { unitType: 'aero' as const, calculator: { isAirborne: true } };
+        expect(weaponTargetDisabledReason({ ...base, groundToAirBlocked: true }, 'total-warfare', airborne)).not.toBeNull();
+        expect(weaponTargetDisabledReason(base, 'total-warfare', airborne)).toBeNull();
+        expect(weaponTargetDisabledReason({ ...base, groundToAirBlocked: true }, 'total-warfare', { unitType: 'aero' })).toBeNull();
+    });
+
+    it('requires a building target from outside and allows direct fire from within the same building', () => {
+        for (const unitType of ['infantry', 'battle-armor'] as const) {
+            const target = { unitType, calculator: { buildingCover: 'building-2' as const } };
+            expect(weaponTargetDisabledReason(weapon([]), 'total-warfare', target)).toContain('Target the building');
+            const local = { calculator: { insideTargetBuilding: true as const, infantryBuildingType: 'heavy' as const } };
+            expect(weaponTargetDisabledReason(weapon([]), 'total-warfare', { ...target, local })).toBeNull();
+            expect(weaponTargetDisabledReason(weapon([]), 'total-warfare', { ...target,
+                local: { distance: 1, calculator: { ...local.calculator, targetLevelDifference: 3 } } })).toContain('line of sight');
+            expect(weaponTargetDisabledReason(weapon([]), 'core-2026', target)).toBeNull();
+        }
+    });
+
     it('restricts Thunder ammunition to terrain regardless of a manual TN override', () => {
         const launcher = weapon(['F_INDIRECT_FIRE'], 'LRM', ammo(['M_THUNDER']));
         expect(weaponTargetDisabledReason(launcher, 'core-2026', {

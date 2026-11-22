@@ -38,7 +38,9 @@ export function rebaseConstructionMekTurn(
     settledHeat.set(target, heat);
   }
   // A fired weapon stays fired under its new id; one the refit removed has nothing left to fire.
-  const { firedWeapons: fired, ...rest } = turn;
+  const { firedWeapons: fired, amsEngagements: engagements, ...rest } = turn;
+  const amsEngagements = engagements?.flatMap(id => components.get(id) ?? []).sort();
   const firedWeapons = withFiredWeapons(undefined, (fired ?? []).flatMap(id => components.get(id) ?? []));
-  return canonicalizeMekTurnStateV2({ ...rest, settledHeat, ...(firedWeapons === undefined ? {} : { firedWeapons }) });
+  return canonicalizeMekTurnStateV2({ ...rest, settledHeat, ...(firedWeapons === undefined ? {} : { firedWeapons }),
+    ...(amsEngagements?.length ? { amsEngagements } : {}) });
 }

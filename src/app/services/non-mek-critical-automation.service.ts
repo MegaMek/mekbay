@@ -6,7 +6,8 @@ import { inject, Injectable } from '@angular/core';
 import type { AutomationReviewEvent } from '../models/automation-review.model';
 import type { CBTForce } from '../models/cbt-force.model';
 import type { CBTForceUnitCommandDispatch } from '../models/cbt-force.types';
-import { hasNonMekRuntime, type CBTNonMekUnitSnapshot } from '../models/cbt-unit-snapshot';
+import { hasMekRuntime, hasNonMekRuntime, type CBTNonMekUnitSnapshot } from '../models/cbt-unit-snapshot';
+import type { InternalBayLoad } from '../models/runtime/internal-bay-loads';
 import type { ComponentId, LocationId } from '../models/entity/entity-identifiers';
 import { asComponentId } from '../models/entity/entity-identifiers';
 import { supportVehicleBarRating } from '../models/entity/entities/support-vehicle';
@@ -57,6 +58,7 @@ import type { CBTUnitCommand } from '../models/runtime/unit-command';
 import { componentIdForMount } from '../models/runtime/unit-runtime-index';
 import { CBTAutomationToastService } from './cbt-automation-toast.service';
 import { CBTAutomationService } from './cbt-automation.service';
+import { remainingInternalBayLoads } from '../models/runtime/internal-bay-loads';
 import { CBTCrewHitAutomationService } from './cbt-crew-hit-automation.service';
 import { directAutomationSubject } from './direct-automation-subject';
 import type { NonMekDamageGroup, NonMekDamageGroupOutcome } from './direct-non-mek-automation.service';
@@ -100,12 +102,13 @@ export class NonMekCriticalAutomationService {
         outcome: NonMekDamageGroupOutcome,
         target: Target,
         dispatch: CBTForceUnitCommandDispatch,
+        pilot = { wounded: false },
     ): Promise<boolean> {
         if (this.options.cbtAutomationMode('criticalHitChanceCheck') === 'no') return true;
         const snapshot = this.snapshot(force, instanceId);
         if (!snapshot) return true;
         // Each check reads the unit as the previous one left it.
-        for (const check of this.criticalChecks(force, snapshot, group, outcome, target)) {
+        for (const check of this.criticalChecks(force, snapshot, group, outcome, target, pilot)) {
             const current = this.snapshot(force, instanceId);
             if (!current || current.query.destroyed()) return true;
             const plan = check.plan(current);
@@ -140,7 +143,7 @@ export class NonMekCriticalAutomationService {
             const hardened = entity.armorAt(location.code)?.type === 'HARDENED'
                 && location.armorFaceIds.some(faceId => current.query.remainingArmor(faceId, perspective) > 0);
             const modifier = (combatVehicle ? -2 : 0) + (hardened ? -2 : 0);
-            const plan = this.planVehicleCritical(current, locationId, modifier, 'inferno', target);
+            const plan = this.planVehicleCritical(force, current, locationId, modifier, 'inferno', target, 2);
             if (plan && !await this.review(force, instanceId, 'Critical Hit', plan, dispatch)) return false;
         }
         return true;
@@ -158,10 +161,11 @@ export class NonMekCriticalAutomationService {
         dispatch: CBTForceUnitCommandDispatch,
     ): Promise<boolean> {
         if (this.options.cbtAutomationMode('criticalHitChanceCheck') === 'no') return true;
+        const pilot = { wounded: false };
         for (const locationId of new Set(locationIds)) {
             const current = this.snapshot(force, instanceId);
             if (!current || current.query.destroyed()) return true;
-            const plan = this.planProtoMekCritical(force, current, locationId, target);
+            const plan = this.planProtoMekCritical(force, current, locationId, target, 0, pilot);
             if (plan && !await this.review(force, instanceId, 'Critical Hit', plan, dispatch)) return false;
         }
         return true;
@@ -174,6 +178,7 @@ export class NonMekCriticalAutomationService {
         group: NonMekDamageGroup,
         outcome: NonMekDamageGroupOutcome,
         target: Target,
+        pilot: { wounded: boolean },
     ): readonly CriticalCheck[] {
         const entity = snapshot.entity;
         if (isVehicleEntity(entity)) {
@@ -181,7 +186,7 @@ export class NonMekCriticalAutomationService {
                 ...vehicleCriticalChecks(snapshot, group, outcome).map(check => ({
                     event: 'Critical Hit',
                     plan: (current: CBTNonMekUnitSnapshot) =>
-                        this.planVehicleCritical(current, check.locationId, check.modifier, check.reason, target),
+                        this.planVehicleCritical(force, current, check.locationId, check.modifier, check.reason, target, group.projectileDamage ?? group.damage),
                 })),
                 ...(group.effects.includes('motive') ? [{
                     event: 'Motive System Damage',
@@ -194,7 +199,7 @@ export class NonMekCriticalAutomationService {
             return aeroCriticalChances(snapshot, group, outcome).map(check => ({
                 event: 'Critical Hit',
                 plan: (current: CBTNonMekUnitSnapshot) =>
-                    this.planAeroCritical(force, current, group.locationId, aeroCritical, check.reason, check.modifier, target),
+                    this.planAeroCritical(force, current, group, aeroCritical, check.reason, check.modifier, target),
             }));
         }
         if (isProtoMekEntity(entity)) {
@@ -206,28 +211,57 @@ export class NonMekCriticalAutomationService {
             ].map(({ locationId, modifier }) => ({
                 event: 'Critical Hit',
                 plan: (current: CBTNonMekUnitSnapshot) =>
-                    this.planProtoMekCritical(force, current, locationId, target, modifier),
+                    this.planProtoMekCritical(force, current, locationId, target, modifier, pilot),
             }));
         }
         return [];
     }
 
     private planVehicleCritical(
+        force: CBTForce,
         snapshot: CBTNonMekUnitSnapshot,
         locationId: LocationId,
         modifier: number,
         reason: string,
         target: Target,
+        damage: number,
     ): PlannedCritical | null {
         const location = snapshot.index.locations.get(locationId);
         if (!location) return null;
         const perspective = perspectiveOf(target);
-        const facts = vehicleCriticalFacts(snapshot, location, perspective);
+        const loads = remainingInternalBayLoads(snapshot.state.internalBayLoads, target === 'pending' ? snapshot.state.pendingCombat.lostCargo : []).filter(load => {
+            if ('cargo' in load) return true;
+            const unit = force.getUnitSnapshot(load.unitId);
+            return unit && !unit.query.destroyed();
+        });
+        const facts = { ...vehicleCriticalFacts(snapshot, location, perspective), hasInternalLoad: loads.length > 0 };
         const dice = roll2D6();
         const total = twoD6Total(dice) + modifier;
         const effect = vehicleCriticalEffect(total, vehicleCriticalColumn(location.code), facts);
         const description = `${location.code} (${reason}) · roll ${modifiedRoll(dice, modifier)}: ${effect ? VEHICLE_CRITICAL_LABELS[effect] : 'no critical hit'}`;
         if (!effect) return Object.freeze({ description, effects: Object.freeze([]), apply: async () => true });
+        if (effect === 'cargo-hit') {
+            const load = loads[Math.floor(Math.random() * loads.length)]!;
+            if ('cargo' in load) return { description, effects: [load.cargo + ' is destroyed'], apply: async dispatch =>
+                (await dispatch({ type: 'destroy-bay-cargo', bay: load.bay, cargo: load.cargo, target }, false)).accepted };
+            const passenger = force.getUnitSnapshot(load.unitId);
+            const label = passenger?.entity.displayName() ?? load.unitId;
+            return { description, effects: [label + ' takes ' + damage + ' damage'], apply: async () => {
+                const current = force.getUnitSnapshot(load.unitId);
+                if (!current || !hasNonMekRuntime(current)) return false;
+                const living = [...current.index.locations.values()].filter(loc => (loc.code === 'Infantry' || loc.code.startsWith('Trooper '))
+                    && current.query.remainingInternal(loc.id, perspective) > 0);
+                const struck = living[Math.floor(Math.random() * living.length)];
+                if (!struck) return true;
+                const face = struck.armorFaceIds[0];
+                const absorbed = face ? Math.min(damage, current.query.remainingArmor(face, perspective)) : 0;
+                if (face && absorbed && !(await force.dispatchUnitCommand(load.unitId, { type: 'damage-armor', faceId: face,
+                    amount: absorbed, target })).accepted) return false;
+                const internal = Math.min(damage - absorbed, current.query.remainingInternal(struck.id, perspective));
+                return !internal || (await force.dispatchUnitCommand(load.unitId, { type: 'damage-internal',
+                    locationId: struck.id, amount: internal, target })).accepted;
+            } };
+        }
         const vehicle = this.vehicleEffect(snapshot, location, effect, facts, target);
         return Object.freeze({ description, effects: vehicle.effects, apply: vehicle.apply });
     }
@@ -248,7 +282,7 @@ export class NonMekCriticalAutomationService {
             effects: Object.freeze(effects),
             apply: (dispatch: CBTForceUnitCommandDispatch) => dispatchAll(dispatch, list),
         });
-        const crew = (state: 'stunned' | 'killed') => this.crewCommands(snapshot, state);
+        const crew = (state: 'stunned' | 'killed') => this.crewCommands(snapshot, state, target);
         const destroyLocation = (): CBTUnitCommand => ({
             type: 'damage-internal', locationId: location.id, amount: snapshot.query.remainingInternal(location.id, perspective), target,
         });
@@ -301,8 +335,10 @@ export class NonMekCriticalAutomationService {
                 });
             case 'engine-hit':
                 return commands(['The vehicle cannot move or change facing for the rest of the game',
-                    ...(airborne ? ['Airborne: make a Driving Skill Roll (+4) to land, or the vehicle is destroyed'] : [])],
-                track('engine', 1));
+                    ...(airborne ? [facts.vtol ? 'Make a Driving Skill Roll (+4) to land on suitable terrain' : 'Make a Driving Skill Roll to land on suitable terrain, or crash'] : [])],
+                track('engine', 1), ...[...snapshot.index.damageTracks.values()]
+                    .filter(turret => turret.system === 'turret-lock' && trackHits(snapshot, turret.id, perspective) === 0)
+                    .map(turret => track('turret-lock', undefined, turret.scope)));
             case 'fuel-tank':
                 return commands(['The fuel tank explodes and destroys the vehicle'], track('fuel-tank', 1));
             case 'ammunition': {
@@ -318,7 +354,7 @@ export class NonMekCriticalAutomationService {
             }
             case 'turret-jam':
                 return commands(['The turret is stuck in its current facing until the crew spends a Weapon Attack Phase, '
-                    + 'without firing, clearing the jam', 'A second Turret Jam locks the turret']);
+                    + 'without firing, clearing the jam', 'A second Turret Jam locks the turret'], track('turret-jam', undefined, location.code));
             case 'turret-locks':
                 return commands(['The turret is locked in its current facing'], track('turret-lock', undefined, location.code));
             case 'turret-blown-off':
@@ -359,7 +395,7 @@ export class NonMekCriticalAutomationService {
                     ...(stun ? [`The crew is ${stun === 'crew-killed' ? 'killed' : 'stunned'}`] : [])]),
                 apply: (dispatch: CBTForceUnitCommandDispatch) => dispatchAll(dispatch, [
                     ...(armor > 0 ? [{ type: 'damage-armor', faceId: rearFace, amount: armor, target } as const] : []),
-                    ...(stun ? this.crewCommands(snapshot, stun === 'crew-killed' ? 'killed' : 'stunned') : []),
+                    ...(stun ? this.crewCommands(snapshot, stun === 'crew-killed' ? 'killed' : 'stunned', target) : []),
                 ]),
             });
         }
@@ -425,6 +461,7 @@ export class NonMekCriticalAutomationService {
         locationId: LocationId,
         target: Target,
         modifier = 0,
+        pilot = { wounded: false },
     ): PlannedCritical | null {
         const entity = snapshot.entity;
         const location = snapshot.index.locations.get(locationId);
@@ -468,7 +505,7 @@ export class NonMekCriticalAutomationService {
             })
             : [];
         const destroysLocation = !locationDestroyed && to === boxes && system !== 'torso' && system !== 'main-gun';
-        const pilotHits = protoMekCriticalPilotHits(system, filled, to);
+        const pilotHits = pilot.wounded ? 0 : protoMekCriticalPilotHits(system, filled, to);
         const timestamp = Date.now();
         return Object.freeze({
             description,
@@ -479,14 +516,19 @@ export class NonMekCriticalAutomationService {
                     + (weapon.hit ? weapon.hit.effect : 'no weapon destroyed')),
                 ...(pilotHits > 0 ? [`The pilot takes ${pilotHits} hit${pilotHits === 1 ? '' : 's'}`] : []),
             ]),
-            apply: async (dispatch: CBTForceUnitCommandDispatch) => await dispatchAll(dispatch, [
-                { type: 'set-system-damage-level', system, level: to, target, timestamp },
-                ...torsoWeapons.flatMap(weapon => weapon.hit ? [weapon.hit.command] : []),
-                ...(destroysLocation ? [{
-                    type: 'damage-internal', locationId: location.id,
-                    amount: snapshot.query.remainingInternal(location.id, perspective), target,
-                } as const] : []),
-            ]) && this.applyPilotHits(force, snapshot.instanceId, pilotHits, dispatch),
+            apply: async (dispatch: CBTForceUnitCommandDispatch) => {
+                const applied = await dispatchAll(dispatch, [
+                    { type: 'set-system-damage-level', system, level: to, target, timestamp },
+                    ...torsoWeapons.flatMap(weapon => weapon.hit ? [weapon.hit.command] : []),
+                    ...(destroysLocation ? [{
+                        type: 'damage-internal', locationId: location.id,
+                        amount: snapshot.query.remainingInternal(location.id, perspective), target,
+                    } as const] : []),
+                ]);
+                if (!applied || !pilotHits) return applied;
+                pilot.wounded = await this.applyPilotHits(force, snapshot.instanceId, pilotHits, dispatch);
+                return pilot.wounded;
+            },
         });
     }
 
@@ -497,13 +539,13 @@ export class NonMekCriticalAutomationService {
     private planAeroCritical(
         force: CBTForce,
         snapshot: CBTNonMekUnitSnapshot,
-        locationId: LocationId,
+        group: NonMekDamageGroup,
         type: AeroCriticalType,
         reason: string,
         modifier: number,
         target: Target,
     ): PlannedCritical | null {
-        const location = snapshot.index.locations.get(locationId);
+        const location = snapshot.index.locations.get(group.locationId);
         if (!location) return null;
         const perspective = perspectiveOf(target);
         const dice = roll2D6();
@@ -594,9 +636,46 @@ export class NonMekCriticalAutomationService {
                 });
             }
             case 'control': return none(['Make a Control Roll; on a failure the unit goes out of control']);
-            case 'heat-sink': return none(['One heat sink is destroyed: reduce heat dissipation (not tracked)']);
-            case 'door': return none(['A random door is damaged (not tracked)']);
-            case 'cargo': return none(['Cargo is damaged (not tracked)']);
+            case 'heat-sink': {
+                const id = systemDamageId('heat-sink');
+                const remaining = (snapshot.index.damageTracks.get(id)?.maximumHits ?? 0) - trackHits(snapshot, id, perspective);
+                const lost = Math.min(remaining, group.source.kind === 'weapon' && group.source.capitalScale ? 10 : 1);
+                if (lost <= 0) return none(['No operational heat sink remains']);
+                return { description, effects: [`${lost} heat sink${lost === 1 ? '' : 's'} destroyed`],
+                    apply: dispatch => dispatchAll(dispatch, [{ type: 'damage-track', damageTrackId: id, amount: lost, target, timestamp }]) };
+            }
+            case 'door': {
+                const doors = [...snapshot.index.damageTracks.values()].filter(track => track.system === 'bay-door')
+                    .flatMap(track => Array<typeof track>(Math.max(0, track.maximumHits - trackHits(snapshot, track.id, perspective))).fill(track));
+                if (doors.length === 0) return none(['No operational bay door remains']);
+                const door = doors[Math.floor(Math.random() * doors.length)]!;
+                return { description, effects: [`One door of ${door.scope} can no longer be used`],
+                    apply: dispatch => dispatchAll(dispatch, [{ type: 'damage-track', damageTrackId: door.id, amount: 1, target, timestamp }]) };
+            }
+            case 'cargo': {
+                const si = [...snapshot.index.locations.values()].find(row => row.code === 'SI');
+                if (!si) return none();
+                const loadout = snapshot.state.internalBayLoads ?? [];
+                const loss = aeroCargoLoss(loadout, group.damage, snapshot.query.remainingInternal(si.id, perspective), rollD6());
+                if (!loss.tons && !loss.unitIds.length) return none(['No cargo of the rolled type was lost']);
+                return { description, effects: [loss.tons ? `${loss.tons} tons of cargo destroyed`
+                    : `Units destroyed: ${loss.unitIds.join(', ')}`],
+                    apply: async dispatch => {
+                        for (const id of loss.unitIds) {
+                            const unit = force.getUnitSnapshot(id);
+                            if (!unit || unit.query.destroyed()) continue;
+                            let command: CBTUnitCommand = { type: 'set-destroyed', destroyed: true };
+                            if (hasMekRuntime(unit)) {
+                                const ct = [...unit.index.locations.values()].find(row => row.code === 'CT');
+                                if (!ct) return false;
+                                command = { type: 'damage-internal', locationId: ct.id,
+                                    amount: unit.query.remainingInternal(ct.id, perspective), target };
+                            }
+                            if (!(await force.dispatchUnitCommand(id, command)).accepted) return false;
+                        }
+                        return dispatchAll(dispatch, [{ type: 'set-internal-bay-loads', loads: loss.remaining }]);
+                    } };
+            }
         }
     }
 
@@ -618,19 +697,20 @@ export class NonMekCriticalAutomationService {
     }
 
     /** Stuns or kills every living crew member aboard. */
-    private crewCommands(snapshot: CBTNonMekUnitSnapshot, state: 'stunned' | 'killed'): CBTUnitCommand[] {
+    private crewCommands(snapshot: CBTNonMekUnitSnapshot, state: 'stunned' | 'killed', target: Target): CBTUnitCommand[] {
+        if (state === 'stunned') return [{ type: 'stun-vehicle-crew', target }];
         return snapshot.crewAssignment.positions.flatMap(({ positionId }) => {
             const member = snapshot.query.crewState(positionId);
-            if (member.isDeathCommitted() || (state === 'stunned' && member.unconscious)) return [];
+            if (member.isDeathCommitted()) return [];
             const command = Object.freeze({
                 type: 'set-crew-state' as const,
                 positionId,
                 wounds: member.wounds,
-                unconscious: state === 'stunned' || member.unconscious,
+                unconscious: member.unconscious,
                 ejected: member.ejected,
                 ...(state === 'killed' ? { dead: true } : {}),
             });
-            return [state === 'stunned' ? this.crewHitAutomation.withRecoveryReadyTurn(snapshot, command) : command];
+            return [command];
         });
     }
 
@@ -806,8 +886,10 @@ function vehicleCriticalFacts(
         sensorHits,
         engineHit: hit('engine', 1),
         fusionEngine: snapshot.entity.mountedEngine().isFusion,
+        fissionEngine: snapshot.entity.mountedEngine().isFission,
         hasAmmo: ammunition(snapshot, perspective).length > 0,
-        turretLocked: hit('turret-lock', undefined, location.code),
+        turretLocked: hit('engine', 1) || hit('turret-lock', undefined, location.code),
+        turretJammedBefore: hit('turret-jam', undefined, location.code),
         flightStabilizerHit: hit('flight-stabilizer'),
     });
 }
@@ -860,6 +942,28 @@ function ammunition(snapshot: CBTNonMekUnitSnapshot, perspective: RuntimeStatePe
         const damage = ammo?.isExplosive() ? shots * ammoRackSize(ammo) * ammoExplosionDamagePerShot(ammo) : 0;
         return [Object.freeze({ componentId: component.id as ComponentId, damage })];
     });
+}
+
+/** TW pp. 239–240 rounds up both the percentage and the loss from the cargo actually carried. */
+export function aeroCargoLoss(loadout: readonly InternalBayLoad[], damage: number, si: number, roll: number) {
+    const percent = Math.min(100, Math.ceil(100 * damage / (2 * Math.max(1, si))));
+    const cargo = roll <= 3;
+    const eligible = loadout.filter(load => cargo ? 'cargo' in load : 'unitId' in load);
+    const total = eligible.reduce((sum, load) => sum + (cargo ? load.tons : 1), 0);
+    let owed = Math.min(total, Math.ceil(total * percent / 100));
+    const tons = cargo ? owed : 0;
+    const remaining = [...loadout];
+    const unitIds: string[] = [];
+    while (owed > 0 && eligible.length) {
+        const load = eligible.splice(Math.floor(Math.random() * eligible.length), 1)[0]!;
+        const index = remaining.indexOf(load);
+        const lost = Math.min(owed, cargo ? load.tons : 1);
+        if ('unitId' in load) unitIds.push(load.unitId);
+        if (cargo && lost < load.tons) remaining[index] = { ...load, tons: load.tons - lost };
+        else remaining.splice(index, 1);
+        owed -= lost;
+    }
+    return { remaining, tons, unitIds };
 }
 
 function trackHits(snapshot: CBTNonMekUnitSnapshot, trackId: ReturnType<typeof systemDamageId>, perspective: RuntimeStatePerspective): number {

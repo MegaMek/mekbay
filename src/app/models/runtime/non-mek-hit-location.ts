@@ -9,15 +9,15 @@ import {
 } from '../entity/utils/entity-type-guards';
 import { aeroCriticalType, type AeroCriticalType } from '../rules/aero-critical-rules';
 import type { NonMekRecordSheetSnapshot } from './non-mek-record-sheet';
-import type { MekHitArc } from '../../utils/record-sheet-reference-table';
+import type { TnAttackDirection } from '../target-number-calculator.model';
 
-export type NonMekHitArc = MekHitArc | 'front-left' | 'front-right' | 'rear-left' | 'rear-right';
+export type NonMekHitArc = TnAttackDirection;
 
 /**
  * Vehicle table markers: a critical hit check, which a roll of 2 makes a through-armor one (Core p.91), or a motive
  * system (VTOL: rotor) hit.
  */
-export type NonMekHitEffect = 'critical' | 'through-armor' | 'motive';
+export type NonMekHitEffect = 'critical' | 'through-armor' | 'motive' | 'rotor-destroyed';
 
 export interface NonMekHitLocation {
     readonly locationCode: string;
@@ -31,6 +31,9 @@ const FRONT_BACK_ARCS: readonly NonMekHitArc[] = ['front', 'right', 'rear', 'lef
 const SIX_ARCS: readonly NonMekHitArc[] = ['front', 'front-right', 'rear-right', 'rear', 'rear-left', 'front-left'];
 
 export function nonMekHitArcs(entity: BaseEntity): readonly NonMekHitArc[] {
+    if (isAeroEntity(entity) && !['JumpShip', 'WarShip', 'SpaceStation'].includes(entity.entityType)) {
+        return [...FRONT_BACK_ARCS, 'above', 'below'];
+    }
     return isVehicleEntity(entity) && entity.locationOrder.includes('Front Left')
         ? SIX_ARCS : FRONT_BACK_ARCS;
 }
@@ -47,6 +50,7 @@ export function resolveNonMekHitLocation(
     let aeroCritical: AeroCriticalType | undefined;
     const effects: NonMekHitEffect[] = [];
     if (isVehicleEntity(entity)) {
+        if (arc === 'above' || arc === 'below') return null;
         const facing = ({ front: 'Front', rear: 'Rear', left: 'Left', right: 'Right',
             'front-left': 'Front Left', 'front-right': 'Front Right',
             'rear-left': 'Rear Left', 'rear-right': 'Rear Right' })[arc];
@@ -65,6 +69,7 @@ export function resolveNonMekHitLocation(
             if (nonMekHitArcs(entity).length === 6) {
                 if (roll === 3) {
                     if (arc === 'front-left' || arc === 'front-right') code = 'Front';
+                    else if (arc === 'rear-left' || arc === 'rear-right') code = 'Rear';
                     else if (arc === 'rear') code = 'Rear Left';
                     else if (arc === 'front') code = 'Front Right';
                 }
@@ -102,7 +107,10 @@ export function resolveNonMekHitLocation(
         const left = capital ? 'FLS' : smallCraft ? 'Left Side' : 'Left Wing';
         const right = capital ? 'FRS' : smallCraft ? 'Right Side' : 'Right Wing';
         aeroCritical = aeroCriticalType(entity, arc, roll);
-        if (arc === 'front' || arc === 'rear') {
+        if (!capital && (arc === 'above' || arc === 'below')) {
+            const sideHit = smallCraft ? roll >= 5 && roll <= 9 : [3, 6, 8, 11].includes(roll);
+            code = sideHit ? (d6() <= 3 ? right : left) : roll <= (smallCraft ? 4 : 7) ? 'Nose' : 'Aft';
+        } else if (arc === 'front' || arc === 'rear') {
             code = roll === 4 || roll === 5 ? capital && arc === 'rear' ? 'ARS' : right
                 : roll === 9 || roll === 10 ? capital && arc === 'rear' ? 'ALS' : left
                     : arc === 'front' ? 'Nose' : 'Aft';

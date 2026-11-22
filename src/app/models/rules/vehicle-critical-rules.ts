@@ -58,8 +58,11 @@ export interface VehicleCriticalFacts {
     readonly sensorHits: number;
     readonly engineHit: boolean;
     readonly fusionEngine: boolean;
+    readonly fissionEngine?: boolean;
     readonly hasAmmo: boolean;
+    readonly hasInternalLoad?: boolean;
     readonly turretLocked: boolean;
+    readonly turretJammedBefore?: boolean;
     readonly flightStabilizerHit: boolean;
 }
 
@@ -121,13 +124,13 @@ export function applicableVehicleCriticalEffect(
         case 'engine-hit':
             return facts.engineHit ? null : effect;
         case 'fuel-tank':
-            return facts.fusionEngine ? applicableVehicleCriticalEffect('engine-hit', facts) : effect;
+            return facts.fusionEngine || facts.fissionEngine ? applicableVehicleCriticalEffect('engine-hit', facts) : effect;
         case 'ammunition':
             return facts.hasAmmo ? effect : applicableVehicleCriticalEffect('weapon-destroyed', facts);
-        // Carried cargo and infantry are not tracked, so the hit moves down the column.
         case 'cargo-hit':
-            return null;
+            return facts.hasInternalLoad ? effect : null;
         case 'turret-jam':
+            return facts.turretLocked ? null : facts.turretJammedBefore ? 'turret-locks' : effect;
         case 'turret-locks':
             return facts.turretLocked ? null : effect;
         case 'flight-stabilizer':

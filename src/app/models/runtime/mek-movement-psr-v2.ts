@@ -73,6 +73,7 @@ export type MekPilotCheckTriggerKindV2 =
     | 'sprint-booster'
     | 'primitive-prototype-jump'
     | 'jump-into-water'
+    | 'enter-water'
     | 'shake-off-jump'
     | 'get-up'
     | 'shutdown'
@@ -549,7 +550,7 @@ const PHYSICAL_ATTACK_CHECK_REASONS: Readonly<Record<MekPhysicalAttackCheckTrigg
 const PHYSICAL_ATTACK_TRIGGER_KIND_SET: ReadonlySet<string> = new Set(Object.keys(PHYSICAL_ATTACK_CHECK_REASONS));
 const TRIGGER_KINDS = Object.freeze([
     'damage-total-20', 'leg-actuator-hit', 'hip-hit', 'gyro-hit', 'leg-destroyed',
-    'move-damaged-gyro', 'move-damaged-leg', 'move-damaged-actuator', 'sprint-booster', 'primitive-prototype-jump', 'jump-into-water',
+    'move-damaged-gyro', 'move-damaged-leg', 'move-damaged-actuator', 'sprint-booster', 'primitive-prototype-jump', 'jump-into-water', 'enter-water',
     'shake-off-jump', 'get-up', 'shutdown',
 ] as const satisfies readonly MekPilotCheckTriggerKindV2[]);
 const TRIGGER_KIND_SET: ReadonlySet<string> = new Set([...TRIGGER_KINDS, ...PHYSICAL_ATTACK_TRIGGER_KIND_SET]);
@@ -929,7 +930,8 @@ export function declareMekMovementV2(
         canonicalDeclaration = { ...canonicalDeclaration, jumpJetsFired: jumpJets.minimum };
     }
     const retained = canonicalState.checks.filter(check =>
-        check.source.sourceKind !== 'movement' || check.status !== 'pending');
+        check.source.sourceKind !== 'movement' || check.status !== 'pending'
+        || check.source.triggerKind === 'enter-water' && canonicalState.movement?.mode === canonicalDeclaration.mode);
     // A movement makes its roll once: changing its distance after an immediate roll raises it no more, and a jump
     // makes one landing roll however its distance or jets fired are corrected (IO:AE p. 114).
     const rolled = new Set(retained.filter(check => check.source.sourceKind === 'movement'
@@ -1267,6 +1269,22 @@ export function appendMekPhysicalAttackChecksV2(
             ])
             : canonical.automaticFalls,
     }));
+}
+
+/** Each entered water hex is a separate roll, even after the previous hex's roll succeeds. */
+export function raiseWaterEntryCheck(
+    profile: MekMechanicsProfile, facts: MekMovementPsrRuntimeFactsV2,
+    state: MekMovementPsrStateV2, revision: number, immediate: boolean,
+): MekMovementPsrStateV2 {
+    const declaration = state.movement;
+    const depth = facts.waterDepth ?? 0;
+    if (!declaration || declaration.distance < 1 || depth < 1 || cannotFall(facts) || facts.conditions.has('prone')
+        || declaration.mode !== (profile.rulesFlavor === 'core-2026' ? 'run' : 'walk')) return state;
+    const check = seed({
+        sourceKind: 'movement', triggerKind: 'enter-water',
+        witness: canonicalWitness({ declaration, depth }), criticalSlotIds: [], locationIds: [],
+    }, 'Entered water');
+    return freezeState({ ...state, checks: appendSeeds(state.checks, [check], revision, immediate) });
 }
 
 /** The one jump-into-water roll of a phase, as the movement's other rolls: the turn records its jump and water. */
@@ -2788,6 +2806,8 @@ function ownPilotCheckModifier(
 ): number {
     const source = check.source;
     switch (source.triggerKind) {
+        case 'enter-water':
+            return profile.rulesFlavor === 'core-2026' ? 0 : Number(JSON.parse(source.witness).depth) - 2;
         case 'primitive-prototype-jump':
             return 3;
         case 'get-up': {
@@ -3154,6 +3174,8 @@ function pilotCheckTriggerStillActive(
             return groups.some(group => selected.has(group.componentId)
                 && boosterActive(facts, group.componentId));
         }
+        case 'enter-water':
+            return state.movement?.mode === (profile.rulesFlavor === 'core-2026' ? 'run' : 'walk');
         case 'jump-into-water':
             return state.movement?.mode === 'jump' && (facts.waterDepth ?? 0) >= 1;
         case 'shake-off-jump':
@@ -3441,6 +3463,16 @@ function validateSourceSemantics(source: MekPilotCheckSourceV2, decodedWitness: 
             const witness = exactWitnessRecord(decodedWitness, ['declaration']);
             if (exactWitnessMovementDeclaration(witness['declaration']).mode !== 'jump') {
                 throw new Error('Primitive prototype jet landing requires a jump declaration');
+            }
+            return;
+        }
+        case 'enter-water': {
+            requireSource('movement', 0, 0);
+            const witness = exactWitnessRecord(decodedWitness, ['declaration', 'depth']);
+            const declaration = exactWitnessMovementDeclaration(witness['declaration']);
+            if (!['walk', 'run'].includes(declaration.mode) || declaration.distance < 1
+                || ![1, 2, 3].includes(Number(witness['depth'])) || typeof witness['depth'] !== 'number') {
+                throw new Error('Invalid water entry');
             }
             return;
         }
@@ -3849,6 +3881,7 @@ function collectPilotCheckWitnessReferences(
                 `${path}.slotIds[${index}]`,
             ));
             return;
+        case 'enter-water':
         case 'primitive-prototype-jump':
         case 'sprint-booster':
             collectMovementDeclarationReferences(
@@ -4116,6 +4149,11 @@ function remapPilotCheckWitness(
             return canonicalWitness({ declaration: remapMovementDeclaration(
                 witness['declaration'] as MekMovementDeclarationV2, ids,
             ) });
+        case 'enter-water':
+            return canonicalWitness({
+                declaration: remapMovementDeclaration(witness['declaration'] as MekMovementDeclarationV2, ids),
+                depth: witness['depth'],
+            });
         case 'sprint-booster':
             return canonicalWitness({
                 declaration: remapMovementDeclaration(

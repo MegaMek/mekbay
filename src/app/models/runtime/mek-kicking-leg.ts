@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 
 import type { ComponentId, LocationId } from '../entity/entity-identifiers';
+import type { CBTRuleset } from '../cbt-ruleset.model';
 import { isTalonFlags } from '../entity/utils/physical-weapon-kernel';
 import type { AttackerTargetingState } from './attacker-targeting-state';
 import {
@@ -46,11 +47,17 @@ export function kickLegIds(index: MekRuntimeIndex, kind: MekKickKind): readonly 
 export function weaponFiredLocationIds(
     index: MekRuntimeIndex,
     targeting: AttackerTargetingState,
+    firedWeapons: readonly ComponentId[] = [],
+    ruleset?: CBTRuleset,
 ): ReadonlySet<LocationId> {
     const fired = new Set<LocationId>();
-    for (const [componentId, component] of targeting.components) {
-        if (component.selection === undefined) continue;
-        for (const locationId of componentLocationIds(index, componentId)) fired.add(locationId);
+    const weapons = new Set(firedWeapons);
+    for (const [id, component] of targeting.components) {
+        if (component.selection !== undefined) weapons.add(id);
+    }
+    for (const id of weapons) {
+        if (ruleset === 'core-2026' && equipmentForComponent(index, id)?.hasAnyFlag(['F_AMS', 'F_AMS_BAY'])) continue;
+        for (const locationId of componentLocationIds(index, id)) fired.add(locationId);
     }
     return fired;
 }

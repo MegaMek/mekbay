@@ -1,6 +1,8 @@
 // Copyright (C) 2026 The MegaMek Team
 // SPDX-License-Identifier: GPL-3.0-or-later
 
+import { isInfantryBuildingType } from '../rules/infantry-building-damage';
+
 import { isPlainRecord } from '../../utils/json-value.util';
 import { compareText } from '../../utils/string.util';
 import { asComponentId,type ComponentId } from '../entity/entity-identifiers';
@@ -42,8 +44,13 @@ export interface CBTUnitAttackerTargetingReconciliationPlan {
 export interface AttackerLocalCalculatorInputs {
     readonly interveningWoods?: 'light1' | 'light2';
     readonly partialCover?: true;
-    readonly attackDirection?: 'left' | 'rear' | 'right';
+    readonly attackDirection?: Exclude<import('../target-number-calculator.model').TnAttackDirection, 'front'>;
+    readonly targetLevelDifference?: number;
     readonly indirectFire?: true;
+    readonly angelEcm?: true;
+    readonly buildingCf?: number;
+    readonly infantryBuildingType?: import('../rules/infantry-building-damage').InfantryBuildingType;
+    readonly insideTargetBuilding?: true;
     readonly secondaryTarget?: true;
     readonly secondaryTargetSideBack?: true;
     readonly spotterMoveMode?: 'walk' | 'run' | 'jump';
@@ -903,7 +910,7 @@ function canonicalCalculator(
 ): AttackerLocalCalculatorInputs | undefined {
     if (!isPlainRecord(calculator)
         || !hasExactKeys(calculator, [
-            'interveningWoods', 'partialCover', 'attackDirection', 'indirectFire',
+            'interveningWoods', 'partialCover', 'attackDirection', 'targetLevelDifference', 'indirectFire', 'angelEcm', 'buildingCf', 'infantryBuildingType', 'insideTargetBuilding',
             'secondaryTarget', 'secondaryTargetSideBack', 'spotterMoveMode',
             'spotterDeclaredAttacks', 'customModifier',
         ])) throw new Error('Invalid local target calculator');
@@ -913,16 +920,27 @@ function canonicalCalculator(
     if (calculator.partialCover !== undefined && calculator.partialCover !== true) {
         throw new Error('Invalid partial cover');
     }
+    if (calculator.targetLevelDifference !== undefined && !Number.isSafeInteger(calculator.targetLevelDifference)) {
+        throw new Error('Invalid relative target level');
+    }
     if (calculator.attackDirection !== undefined
         && calculator.attackDirection !== 'left'
         && calculator.attackDirection !== 'rear'
-        && calculator.attackDirection !== 'right') throw new Error('Invalid attack direction');
+        && !['right', 'front-left', 'front-right', 'rear-left', 'rear-right', 'above', 'below'].includes(calculator.attackDirection)) throw new Error('Invalid attack direction');
     for (const value of [
         calculator.indirectFire,
+        calculator.angelEcm,
+        calculator.insideTargetBuilding,
         calculator.secondaryTarget,
         calculator.secondaryTargetSideBack,
     ]) {
         if (value !== undefined && value !== true) throw new Error('Invalid sparse calculator boolean');
+    }
+    if (calculator.infantryBuildingType !== undefined && !isInfantryBuildingType(calculator.infantryBuildingType)) {
+        throw new Error('Invalid infantry building type');
+    }
+    if (calculator.buildingCf !== undefined && (!Number.isSafeInteger(calculator.buildingCf) || calculator.buildingCf <= 0)) {
+        throw new Error('Invalid phase-start building CF');
     }
     if (calculator.spotterDeclaredAttacks !== undefined && calculator.spotterDeclaredAttacks !== true
         && calculator.spotterDeclaredAttacks !== 'tag') throw new Error('Invalid spotter attack state');
@@ -949,10 +967,15 @@ function canonicalCalculator(
             ? {}
             : { interveningWoods: calculator.interveningWoods }),
         ...(calculator.partialCover === true ? { partialCover: true as const } : {}),
+        ...(calculator.targetLevelDifference ? { targetLevelDifference: calculator.targetLevelDifference } : {}),
         ...(calculator.attackDirection === undefined
             ? {}
             : { attackDirection: calculator.attackDirection }),
         ...(calculator.indirectFire === true ? { indirectFire: true as const } : {}),
+        ...(calculator.angelEcm ? { angelEcm: true as const } : {}),
+        ...(calculator.buildingCf ? { buildingCf: calculator.buildingCf } : {}),
+        ...(calculator.infantryBuildingType ? { infantryBuildingType: calculator.infantryBuildingType } : {}),
+        ...(calculator.insideTargetBuilding ? { insideTargetBuilding: true as const } : {}),
         ...(calculator.secondaryTarget === true ? { secondaryTarget: true as const } : {}),
         ...(calculator.secondaryTargetSideBack === true
             ? { secondaryTargetSideBack: true as const }

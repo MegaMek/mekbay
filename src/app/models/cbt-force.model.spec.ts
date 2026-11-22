@@ -60,7 +60,7 @@ import { encodeNativeEntity } from './entity/write-entity';
 import { matchNativeMounts } from './entity/utils/native-mount-correspondence';
 import { makeUnitFileName } from '../services/unit-catalog/unit-catalog.types';
 import type { NativeUnitSourceHandle } from './native-unit-source-handle';
-import { TestAeroSpaceFighterEntity } from './entity/testing/test-entities';
+import { TestAeroSpaceFighterEntity, TestFixedWingSupportEntity } from './entity/testing/test-entities';
 
 const dataService = {
     getFactionById: () => null,
@@ -2829,6 +2829,18 @@ describe('CBTForce V2 encounter persistence', () => {
         expect(restored.getUnitExternalStoresBattleValue(instanceId)).toBe(48);
         expect(entityRuntimeSnapshot(restored, instanceId).state.bombs)
             .toEqual([{ section: 'external', bombId: he.id, count: 4, spent: 0 }]);
+    });
+
+    it('round-trips an airship half-speed cycle through the force storage wire format', async () => {
+        const entity = new TestFixedWingSupportEntity();
+        entity.motiveType.set('Airship');
+        const { force, instanceId, reload } = await readyEntityForce({ entity });
+        expect((await force.dispatchUnitCommand(instanceId, { type: 'set-velocity-record',
+            turn: 1, field: 'velocity', value: 0.5 })).changed).toBeTrue();
+        const saved = await force.serializeForPersistence() as SerializedCBTForce;
+        const restored = await reload(decodeForceFromStorage(encodeForceForStorage(saved)) as SerializedCBTForce);
+        expect(restored.getNonMekRecordSheetSnapshot(instanceId)!.velocityRecord)
+            .toEqual([1, 2, 3, 4].map(turn => ({ turn, field: 'velocity', value: 0.5 })));
     });
 
     it('keeps an aerospace velocity record with undo, history and storage', async () => {

@@ -544,12 +544,15 @@ function canonicalCalculator(
             ? { interveningWoods: calculator.interveningWoods }
             : {}),
         ...(calculator.partialCover === true ? { partialCover: true } : {}),
-        ...(calculator.attackDirection === 'left'
-            || calculator.attackDirection === 'rear'
-            || calculator.attackDirection === 'right'
+        ...(calculator.targetLevelDifference ? { targetLevelDifference: calculator.targetLevelDifference } : {}),
+        ...(calculator.attackDirection !== undefined && calculator.attackDirection !== 'front'
             ? { attackDirection: calculator.attackDirection }
             : {}),
         ...(indirectFire ? { indirectFire: true } : {}),
+        ...(calculator.angelEcm ? { angelEcm: true } : {}),
+        ...(calculator.buildingCf ? { buildingCf: calculator.buildingCf } : {}),
+        ...(calculator.infantryBuildingType ? { infantryBuildingType: calculator.infantryBuildingType } : {}),
+        ...(calculator.insideTargetBuilding ? { insideTargetBuilding: true as const } : {}),
         ...(secondaryTarget
             ? { secondaryTarget: true }
             : calculator.secondaryTargetSideBack === true

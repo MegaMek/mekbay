@@ -33,7 +33,7 @@ export function commandMayChangeOperationalC3(command: CBTUnitCommand): boolean 
         case 'cancel-pending':
             return true;
         case 'set-location-condition':
-            return command.condition !== 'narc';
+            return command.condition === 'blown-off' || command.condition === 'flooded';
         case 'set-condition':
             return command.condition === 'jammed' || command.condition === 'shutdown';
         default:
@@ -63,7 +63,7 @@ export function commandMayChangeBaseBattleValue(command: CBTUnitCommand): boolea
         case 'repair-shield':
             return command.target === 'committed';
         case 'set-location-condition':
-            return command.target === 'committed' && command.condition !== 'narc';
+            return command.target === 'committed' && (command.condition === 'blown-off' || command.condition === 'flooded');
         case 'configure-ammo-source':
         case 'set-destroyed':
         case 'set-internal-damage':
@@ -72,6 +72,7 @@ export function commandMayChangeBaseBattleValue(command: CBTUnitCommand): boolea
         // Carried bombs change external-stores and TAG battle value.
         case 'configure-bombs':
         case 'set-bombs-spent':
+        case 'engage-ams':
         case 'spend-ammo':
         case 'activate-coolant-pod':
         case 'fire-weapons':
@@ -85,6 +86,10 @@ export function commandMayChangeBaseBattleValue(command: CBTUnitCommand): boolea
         case 'set-airborne':
         case 'set-mek-conversion-mode':
         case 'set-velocity-record':
+        case 'set-tractor':
+        case 'set-internal-bay-loads':
+        case 'destroy-bay-cargo':
+        case 'stun-vehicle-crew':
         case 'set-swarming':
         case 'set-elevation':
         case 'set-movement':

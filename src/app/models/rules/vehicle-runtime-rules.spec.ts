@@ -25,6 +25,10 @@ import { createEquipment } from '../equipment.model';
 import { buildNonMekRuntimeIndex } from '../runtime/non-mek-runtime-index';
 
 import { type InstanceBaselineRef } from '../runtime/runtime-state';
+import { navalBreachThreshold } from './vehicle-runtime-rules';
+import { entityTargetRosterRow } from '../runtime/cbt-force-target-roster';
+import { readInternalBayLoads } from '../runtime/internal-bay-loads';
+import { restoreNonMekRuntimeForTest } from '../runtime/testing/unit-runtime-owner-fixture';
 import { systemDamageId } from './system-damage-rules';
 
 describe('projectVehicleRuntimeRules', () => {
@@ -184,6 +188,84 @@ describe('projectVehicleRuntimeRules', () => {
         }));
     });
 
+    it('stacks critical stuns in the following turns, keeps cruising, and expires without wound rolls', () => {
+        const entity = tank();
+        const original = instance(entity, 'unit:stun-clock');
+        for (let i = 0; i < 2; i++) expect(original.dispatch({ type: 'stun-vehicle-crew' }).accepted).toBeTrue();
+        const runtime = restoreNonMekRuntimeForTest(original.serialize(), entity, CORE_2026_RULESET);
+        expect(project(runtime).systems.crewStunned).toBeFalse();
+        for (let turn = 1; turn <= 3; turn++) {
+            expect(runtime.dispatch({ type: 'end-turn', policy: 'manual' }).accepted).toBeTrue();
+            expect(project(runtime).systems.crewStunned).toBe(turn <= 2);
+            if (turn <= 2) expect(project(runtime).movement).toEqual(jasmine.objectContaining({ walk: 8, run: 0 }));
+        }
+    });
+
+    it('treats an unattached trailer as immobile until hitched to a mobile tractor', () => {
+        const entity = tank();
+        entity.isTrailer.set(true);
+        const runtime = instance(entity, 'unit:trailer');
+        expect(project(runtime).computedConditions).toContain('immobile');
+        expect(runtime.dispatch({ type: 'set-condition', condition: 'hitched', active: true }).accepted).toBeTrue();
+        expect(project(runtime).computedConditions).not.toContain('immobile');
+        runtime.dispatch({ type: 'set-condition', condition: 'hitched', active: false });
+        expect(project(runtime).computedConditions).toContain('immobile');
+    });
+
+    it('follows a linked trailer chain to the tractor for target movement and disconnects it at a broken link', () => {
+        const tractor = instance(tank(), 'tractor');
+        const trailerEntity = tank();
+        trailerEntity.isTrailer.set(true);
+        const middle = instance(trailerEntity, 'middle');
+        const last = instance(trailerEntity, 'last');
+        const units = new Map([tractor, middle, last].map(u => [u.instanceId, u]));
+        middle.dispatch({ type: 'set-tractor', unitId: tractor.instanceId });
+        last.dispatch({ type: 'set-tractor', unitId: middle.instanceId });
+        tractor.dispatch({ type: 'set-movement', movement: { mode: 'walk', distance: 6, boosterComponentIds: [] } });
+        const target = () => entityTargetRosterRow('force', last, id => units.get(id) ?? null).tnCalculator;
+        expect(target().immobile).toBeFalse();
+        expect(target().targetMovementDistance).toBe(6);
+        middle.dispatch({ type: 'set-destroyed', destroyed: true });
+        expect(target().immobile).toBeTrue();
+        expect(target().targetMovementDistance).toBeNull();
+        units.delete(middle.instanceId);
+        expect(target().immobile).toBeTrue();
+    });
+
+    it('records the weapon phase spent clearing one turret and retains its jam history on reload', () => {
+        const entity = tank();
+        entity.hasDualTurret.set(true);
+        const runtime = instance(entity, 'unit:jam');
+        const jam = systemDamageId('turret-jam', undefined, 'Front Turret');
+        hit(runtime, jam, 1);
+        expect(project(runtime).conditionControlKeys).toContain('clear-front-turret-jam');
+        expect(project(runtime).conditionControlKeys).not.toContain('clear-rear-turret-jam');
+        expect(runtime.dispatch({ type: 'set-condition', condition: 'clear-front-turret-jam', active: true }).accepted).toBeTrue();
+        runtime.dispatch({ type: 'end-turn', policy: 'manual' });
+        const loaded = restoreNonMekRuntimeForTest(runtime.serialize(), entity, CORE_2026_RULESET);
+        expect(loaded.snapshot().damageTracks.get(jam)?.hits).toBe(1);
+        expect(project(loaded).conditionControlKeys).not.toContain('clear-front-turret-jam');
+    });
+
+    it('takes the threshold from the vessel, location and attacking unit for hull breaches', () => {
+        expect(navalBreachThreshold('Naval', 'Rear Right', false, false)).toBe(12);
+        expect(navalBreachThreshold('Hydrofoil', 'Left', false, true)).toBe(10);
+        expect(navalBreachThreshold('Naval', 'Rear Turret', false, true)).toBeNull();
+        expect(navalBreachThreshold('Submarine', 'Turret', true, false)).toBe(10);
+        expect(navalBreachThreshold('Submarine', 'Turret', false, false)).toBeNull();
+    });
+
+    it('round trips loaded cargo and rejects a passenger recorded twice', () => {
+        const entity = tank();
+        entity.transporters.set([{ id: 'hold', kind: 'bay', doors: 1, capacity: 10, bayNumber: 1,
+            configuration: { type: 'cargo' }, omni: false }]);
+        const runtime = instance(entity, 'unit:loaded');
+        const loads = [{ bay: 'hold', cargo: 'spares', tons: 2 }, { bay: 'hold', unitId: 'platoon', tons: 3 }];
+        expect(runtime.dispatch({ type: 'set-internal-bay-loads', loads }).changed).toBeTrue();
+        expect(restoreNonMekRuntimeForTest(runtime.serialize(), entity, CORE_2026_RULESET).snapshot().internalBayLoads).toEqual(loads);
+        expect(() => readInternalBayLoads([...loads, loads[1]])).toThrow();
+    });
+
     it('applies engine and sensor critical effects to movement and equipment', () => {
         const entity = tank();
         const laser = addTestEquipment(entity, createEquipment({
@@ -202,6 +284,7 @@ describe('projectVehicleRuntimeRules', () => {
         }), { location: 'Front' });
         const runtime = instance(entity, 'unit:vehicle-systems');
         hit(runtime, systemDamageId('engine', 1), 10);
+        expect(project(runtime).computedConditions).toContain('immobile');
         expect(runtime.dispatch({
             type: 'set-system-damage-level',
             system: 'sensors',

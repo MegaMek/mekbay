@@ -1,6 +1,8 @@
 // Copyright (C) 2026 The MegaMek Team
 // SPDX-License-Identifier: GPL-3.0-or-later
 
+import { isInfantryBuildingType, type InfantryBuildingType } from '../models/rules/infantry-building-damage';
+
 import { Injectable, Injector, inject } from '@angular/core';
 import { Subject } from 'rxjs';
 
@@ -13,8 +15,10 @@ import {
 import { AIMED_SHOT_LEG_REROLLS, type AimedShotRoll } from '../models/rules/aimed-shot-rules';
 import type { ArmorSpecialAmmo } from '../models/rules/armor-damage-rules';
 import type { HitLocationDice, TwoDice } from '../models/rules/weapon-attack-resolution';
+import { battleArmorMissileColumns } from '../utils/cluster-hit-table';
+import { INFANTRY_HIT_CLASSES, type InfantryHitClass } from '../models/rules/infantry-hit-damage';
 import { WEAPON_TYPES, type WeaponType } from '../models/weapon-types.model';
-import type { MekHitArc } from '../utils/record-sheet-reference-table';
+import type { TnAttackDirection } from '../models/target-number-calculator.model';
 import { ForceWorkspaceStateService } from './force-workspace-state.service';
 import { LobbyService } from './lobby.service';
 import { WsService } from './ws.service';
@@ -22,7 +26,7 @@ import { WsService } from './ws.service';
 const MAX_TARGET_DISTANCE = 1000;
 const MAX_ATTACK_ROWS = 64;
 const MAX_DAMAGE = 1000;
-const HIT_ARCS: readonly MekHitArc[] = ['front', 'left', 'right', 'rear'];
+const HIT_ARCS: readonly TnAttackDirection[] = ['front', 'left', 'right', 'rear', 'front-left', 'front-right', 'rear-left', 'rear-right', 'above', 'below'];
 
 /** A player set the distance between their unit and an opposing unit. */
 export interface TargetDistanceEvent {
@@ -35,6 +39,10 @@ export interface TargetDistanceEvent {
 
 /** One hit-location roll and the damage it carries; the defender reads the roll on its own table. */
 export interface AttackHitGroup {
+    /** Assigned locally by the recipient after reading its surviving troopers. */
+    readonly trooperLocation?: string;
+    /** Locally chosen hex/floor of a linked building. */
+    readonly buildingLocation?: string;
     readonly damage: number;
     readonly location: HitLocationDice;
     /** The final floating hit-location roll after a possible through-armor critical (Core p. 95, TO:AR p. 75). */
@@ -44,6 +52,11 @@ export interface AttackHitGroup {
 }
 
 export interface AttackWeaponReport {
+    readonly infantryClass?: InfantryHitClass;
+    readonly infantryBuilding?: InfantryBuildingType;
+    readonly collateralBuilding?: InfantryBuildingType;
+    readonly infantryInOpen?: boolean;
+    readonly infantryBurstDice?: number;
     readonly name: string;
     /** Weapon damage types, for armors that resist them. */
     readonly types: readonly WeaponType[];
@@ -51,13 +64,14 @@ export interface AttackWeaponReport {
     readonly partialCover?: true;
     readonly targetNumber: number;
     readonly toHit: TwoDice;
-    readonly cluster?: Readonly<{ dice: TwoDice; modifier: number; projectiles: number; hits: number }>;
+    readonly cluster?: Readonly<{ dice: TwoDice; additionalDice?: readonly TwoDice[]; modifier: number; projectiles: number; hits: number }>;
     /** The table an attack's groups are read on (`hitTableDice`); otherwise the standard 2D6 table. */
     readonly table?: Exclude<HitTable, 'standard'>;
     /** A hit also rolls on the Determining Critical Hits Table: a leg attack, battle armor's swarm damage. */
     readonly critical?: true;
     /** A rifle: each hit loses 3 points where it strikes (`rifleHitDamage`). */
     readonly rifle?: true;
+    readonly capitalScale?: true;
     /** Ammunition with a special effect on the armor struck. */
     readonly ammo?: ArmorSpecialAmmo;
     /** The size of the autocannon firing armor-piercing rounds, which sets its armor-piercing check. */
@@ -74,12 +88,18 @@ export interface AttackWeaponReport {
     readonly swarmStrike?: Readonly<{ trooper?: number }>;
     /** A physical attack, whose outcome forces Piloting Skill Rolls on the struck Mek. */
     readonly physical?: PhysicalAttackKind;
+    readonly mekPhysical?: true;
+    readonly projectileDamage?: number;
     /** The column this attack strikes instead of the attack's direction (a DFA on a prone Mek or a vehicle). */
-    readonly arc?: MekHitArc;
+    readonly arc?: TnAttackDirection;
     /** Inferno missiles: each group is one missile whose effect the struck unit decides. */
     readonly inferno?: true;
+    readonly narcPod?: true;
+    readonly ams?: Readonly<{ die: number; hits: number; damage: readonly number[]; heat: number }>;
     /** Outside heat the weapon's hit applies to the struck unit. */
     readonly heat?: number;
+    /** Each successful Battle Armor flamer carries this much outside heat to its own location. */
+    readonly heatPerGroup?: number;
     /** The hit was an aimed shot: its one group strikes the named location when the aim roll says so. */
     readonly aim?: AimedShotRoll;
     readonly groups: readonly AttackHitGroup[];
@@ -87,6 +107,7 @@ export interface AttackWeaponReport {
 
 /** A resolved weapon attack: the attacker's dice and outcome, for the defender to accept. */
 export interface AttackEvent {
+    readonly attackerUnderwater?: true;
     readonly kind: 'attack';
     readonly id: string;
     readonly fromForce: string;
@@ -94,7 +115,7 @@ export interface AttackEvent {
     readonly attacker: string;
     readonly toUnit: string;
     readonly turn: number;
-    readonly arc: MekHitArc;
+    readonly arc: TnAttackDirection;
     readonly weapons: readonly AttackWeaponReport[];
 }
 
@@ -171,16 +192,17 @@ export function parseGameEvent(value: unknown): GameEvent | null {
     }
     if (record['kind'] === 'restart') return Object.freeze({ kind: 'restart' });
     if (record['kind'] === 'attack') {
-        const { id, fromForce, fromUnit, attacker, toUnit, turn, arc, weapons } = record;
+        const { id, fromForce, fromUnit, attacker, toUnit, turn, arc, weapons, attackerUnderwater } = record;
         if (!isId(id) || !isId(fromForce) || !isId(fromUnit) || !isId(attacker) || !isId(toUnit)
-            || !isInteger(turn, 0, 100_000) || !HIT_ARCS.includes(arc as MekHitArc)
+            || (attackerUnderwater !== undefined && attackerUnderwater !== true)
+            || !isInteger(turn, 0, 100_000) || !HIT_ARCS.includes(arc as TnAttackDirection)
             || !Array.isArray(weapons) || weapons.length > MAX_ATTACK_ROWS) {
             return null;
         }
         const reports = weapons.map(parseWeaponReport);
         if (reports.some(report => report === null)) return null;
         return Object.freeze({
-            kind: 'attack', id, fromForce, fromUnit, attacker, toUnit, turn: turn as number, arc: arc as MekHitArc,
+            kind: 'attack', id, fromForce, fromUnit, attacker, toUnit, ...(attackerUnderwater === true ? { attackerUnderwater: true as const } : {}), turn: turn as number, arc: arc as TnAttackDirection,
             weapons: Object.freeze(reports as AttackWeaponReport[]),
         });
     }
@@ -190,26 +212,46 @@ export function parseGameEvent(value: unknown): GameEvent | null {
 function parseWeaponReport(value: unknown): AttackWeaponReport | null {
     if (value === null || typeof value !== 'object' || Array.isArray(value)) return null;
     const {
-        name, types, partialCover, targetNumber, toHit, cluster, table, physical, arc, inferno, heat, aim,
-        critical, rifle, ammo, rackSize, swarmRelease, swarmStrike, groups,
+        name, types, partialCover, targetNumber, toHit, cluster, table, physical, arc, inferno, heat, aim, infantryClass, infantryInOpen, infantryBurstDice,
+        critical, rifle, capitalScale, ammo, rackSize, swarmRelease, swarmStrike, ams, narcPod, mekPhysical, projectileDamage, heatPerGroup, groups,
     } = value as Record<string, unknown>;
+    const { infantryBuilding, collateralBuilding } = value as Record<string, unknown>;
+    if ((infantryBuilding !== undefined && !isInfantryBuildingType(infantryBuilding))
+        || (collateralBuilding !== undefined && !isInfantryBuildingType(collateralBuilding))
+        || (infantryBuilding && collateralBuilding)) return null;
     if (!isId(name) || !isInteger(targetNumber, -100, 100) || !isTwoDice(toHit)
         || !Array.isArray(types) || types.length > WEAPON_TYPES.length
         || !types.every(type => WEAPON_TYPES.includes(type as WeaponType))
+        || (infantryClass !== undefined && !INFANTRY_HIT_CLASSES.includes(infantryClass as InfantryHitClass))
+        || (infantryInOpen !== undefined && typeof infantryInOpen !== 'boolean')
+        || (infantryBurstDice !== undefined && (infantryClass !== 'infantry' || !isInteger(infantryBurstDice, 1, 16)))
         || (partialCover !== undefined && partialCover !== true)
+        || (narcPod !== undefined && (narcPod !== true || inferno !== undefined || physical !== undefined))
         || (inferno !== undefined && inferno !== true)
         || (heat !== undefined && !isInteger(heat, 1, MAX_DAMAGE))
+        || (heatPerGroup !== undefined && (!isInteger(heatPerGroup, 1, MAX_DAMAGE) || !Array.isArray(groups)
+            || heatPerGroup * groups.length !== heat))
         || (table !== undefined && table !== 'punch' && table !== 'kick' && table !== 'swarm')
         || (critical !== undefined && critical !== true)
         || (rifle !== undefined && (rifle !== true || physical !== undefined))
+        || (capitalScale !== undefined && (capitalScale !== true || physical !== undefined))
         || (ammo !== undefined && ammo !== 'armor-piercing' && ammo !== 'acid' && ammo !== 'tandem-charge')
         || (rackSize !== undefined && (ammo !== 'armor-piercing' || !isInteger(rackSize, 1, MAX_DAMAGE)))
         || (swarmRelease !== undefined && swarmRelease !== true)
         || (swarmStrike !== undefined && !isSwarmStrike(swarmStrike))
+        || (projectileDamage !== undefined && !isInteger(projectileDamage, 1, MAX_DAMAGE))
+        || (mekPhysical !== undefined && (mekPhysical !== true || physical === undefined))
         || (physical !== undefined && !PHYSICAL_ATTACK_KINDS.includes(physical as PhysicalAttackKind))
-        || (arc !== undefined && !HIT_ARCS.includes(arc as MekHitArc))
+        || (arc !== undefined && !HIT_ARCS.includes(arc as TnAttackDirection))
         || !Array.isArray(groups) || groups.length > MAX_ATTACK_ROWS) {
         return null;
+    }
+    let intercepted: AttackWeaponReport['ams'];
+    if (ams !== undefined) {
+        const { die, hits, damage, heat: remainingHeat } = (ams ?? {}) as Record<string, unknown>;
+        if (!isInteger(die, 1, 6) || !isInteger(hits, 0, MAX_DAMAGE) || !isInteger(remainingHeat, 0, MAX_DAMAGE)
+            || !Array.isArray(damage) || damage.length > groups.length || !damage.every(value => isInteger(value, 0, MAX_DAMAGE))) return null;
+        intercepted = Object.freeze({ die, hits, damage: Object.freeze([...damage]), heat: remainingHeat });
     }
     // An aimed shot is one weapon hit read on the standard table.
     let parsedAim: AimedShotRoll | undefined;
@@ -230,10 +272,13 @@ function parseWeaponReport(value: unknown): AttackWeaponReport | null {
     const diceCount = hitTableDice((table ?? 'standard') as HitTable);
     let parsedCluster: AttackWeaponReport['cluster'];
     if (cluster !== undefined) {
-        const { dice, modifier, projectiles, hits } = (cluster ?? {}) as Record<string, unknown>;
+        const { dice, additionalDice, modifier, projectiles, hits } = (cluster ?? {}) as Record<string, unknown>;
         if (!isTwoDice(dice) || !isInteger(modifier, -100, 100)
             || !isInteger(projectiles, 1, MAX_DAMAGE) || !isInteger(hits, 0, MAX_DAMAGE)) return null;
-        parsedCluster = Object.freeze({ dice, modifier, projectiles, hits });
+        if (additionalDice !== undefined && (!Array.isArray(additionalDice)
+            || additionalDice.length !== battleArmorMissileColumns(projectiles).length - 1 || !additionalDice.every(isTwoDice))) return null;
+        parsedCluster = Object.freeze({ dice, modifier, projectiles, hits,
+            ...(Array.isArray(additionalDice) ? { additionalDice: Object.freeze([...additionalDice]) } : {}) });
     }
     const parsedGroups = groups.map(group => {
         const { damage, location, aux, floating } = (group ?? {}) as Record<string, unknown>;
@@ -243,14 +288,23 @@ function parseWeaponReport(value: unknown): AttackWeaponReport | null {
             ? Object.freeze({ damage, location: location as HitLocationDice, aux, ...(floating ? { floating } : {}) })
             : null;
     });
-    if (parsedGroups.some(group => group === null)) return null;
+    if (parsedGroups.some(group => group === null || (narcPod && group.damage !== 0))) return null;
+    if (intercepted && (intercepted.heat > (typeof heat === 'number' ? heat : 0)
+        || (parsedCluster && intercepted.hits > parsedCluster.hits)
+        || intercepted.damage.some((damage, i) => damage > parsedGroups[i]!.damage))) return null;
     return Object.freeze({
+        ...(infantryClass === undefined ? {} : { infantryClass: infantryClass as InfantryHitClass }),
+        ...(infantryBuilding ? { infantryBuilding } : {}),
+        ...(collateralBuilding ? { collateralBuilding } : {}),
+        ...(typeof infantryInOpen === 'boolean' ? { infantryInOpen } : {}),
+        ...(typeof infantryBurstDice === 'number' ? { infantryBurstDice } : {}),
         name, types: Object.freeze([...types] as WeaponType[]), ...(partialCover ? { partialCover: true as const } : {}),
         targetNumber, toHit,
         ...(parsedCluster === undefined ? {} : { cluster: parsedCluster }),
         ...(table === undefined ? {} : { table: table as Exclude<HitTable, 'standard'> }),
         ...(critical ? { critical: true as const } : {}),
         ...(rifle ? { rifle: true as const } : {}),
+        ...(capitalScale ? { capitalScale: true as const } : {}),
         ...(ammo === undefined ? {} : { ammo: ammo as ArmorSpecialAmmo }),
         ...(rackSize === undefined ? {} : { rackSize: rackSize as number }),
         ...(swarmRelease ? { swarmRelease: true as const } : {}),
@@ -259,9 +313,14 @@ function parseWeaponReport(value: unknown): AttackWeaponReport | null {
                 ? {} : { trooper: (swarmStrike as { trooper: number }).trooper }),
         }),
         ...(physical === undefined ? {} : { physical: physical as PhysicalAttackKind }),
-        ...(arc === undefined ? {} : { arc: arc as MekHitArc }),
+        ...(typeof projectileDamage === 'number' ? { projectileDamage } : {}),
+        ...(mekPhysical === true ? { mekPhysical: true as const } : {}),
+        ...(arc === undefined ? {} : { arc: arc as TnAttackDirection }),
         ...(inferno ? { inferno: true as const } : {}),
+        ...(narcPod ? { narcPod: true as const } : {}),
+        ...(intercepted ? { ams: intercepted } : {}),
         ...(heat === undefined ? {} : { heat: heat as number }),
+        ...(heatPerGroup === undefined ? {} : { heatPerGroup: heatPerGroup as number }),
         ...(parsedAim === undefined ? {} : { aim: parsedAim }),
         groups: Object.freeze(parsedGroups as AttackHitGroup[]),
     });

@@ -23,12 +23,11 @@ export interface TurnStep {
 const STEP_ROWS: readonly Omit<TurnStep, 'index'>[] = [
     { phase: 'movement', kind: 'movement', label: 'Movement', waitsForAll: true, endsPhase: true },
     { phase: 'weapons', kind: 'declaration', label: 'Declaration', waitsForAll: true, endsPhase: false },
-    // A unit rolls its own attacks as soon as it has declared them.
-    { phase: 'weapons', kind: 'to-hit', label: 'To-Hit', waitsForAll: false, endsPhase: false },
+    { phase: 'weapons', kind: 'to-hit', label: 'To-Hit', waitsForAll: true, endsPhase: false },
     { phase: 'weapons', kind: 'damage', label: 'Damage', waitsForAll: true, endsPhase: false },
     { phase: 'weapons', kind: 'cleanup', label: 'Cleanup', waitsForAll: true, endsPhase: true },
     { phase: 'physical', kind: 'declaration', label: 'Declaration', waitsForAll: true, endsPhase: false },
-    { phase: 'physical', kind: 'to-hit', label: 'To-Hit', waitsForAll: false, endsPhase: false },
+    { phase: 'physical', kind: 'to-hit', label: 'To-Hit', waitsForAll: true, endsPhase: false },
     { phase: 'physical', kind: 'damage', label: 'Damage', waitsForAll: true, endsPhase: false },
     { phase: 'physical', kind: 'cleanup', label: 'Cleanup', waitsForAll: true, endsPhase: true },
     { phase: 'heat', kind: 'heat', label: 'Heat', waitsForAll: true, endsPhase: false },

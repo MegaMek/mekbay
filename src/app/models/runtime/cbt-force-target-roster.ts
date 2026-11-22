@@ -87,11 +87,20 @@ export function mekTargetRosterRow(
 export function entityTargetRosterRow(
     forceInstanceId: string,
     unit: CBTNonMekUnit,
+    lookup?: (id: string) => CBTNonMekUnit | null,
 ): InventoryControlTargetRosterRow {
     const entity = unit.getUnit();
     const runtime = unit.query();
     const turn = unit.snapshot().turn;
-    const targetMovementDistance = turn.movement?.distance ?? null;
+    const chain = new Set([unit.instanceId]);
+    let tractor: CBTNonMekUnit | null = unit;
+    while (tractor?.snapshot().towedBy) {
+        const next: string = tractor.snapshot().towedBy!;
+        tractor = !chain.has(next) && lookup ? lookup(next) : null;
+        chain.add(next);
+        if (tractor?.query().destroyed() || tractor?.query().hasCondition('immobile')) tractor = null;
+    }
+    const targetMovementDistance = tractor?.snapshot().turn.movement?.distance ?? null;
     const unitType = nonMekTargetUnitType(entity);
     const stealthEquipment: StealthEquipmentFacts[] = [];
     for (const component of unit.getIndex().components.values()) {
@@ -113,6 +122,10 @@ export function entityTargetRosterRow(
     const largeTarget = canTnTargetTypeBeLarge(unitType)
         && (entity.weightClass() === 'Super Heavy' || entity.weightClass() === 'Large Support');
     const cover = turn.cover;
+    const hasNarc = (unit.snapshot().narcPods ?? []).some(id => {
+        const location = unit.getIndex().locations.get(id);
+        return location && (!location.internalPoints || runtime.remainingInternal(id) > 0);
+    });
     return Object.freeze({
         instanceId: unit.instanceId,
         targetId: forceOpforTargetId(forceInstanceId, unit.instanceId),
@@ -126,15 +139,16 @@ export function entityTargetRosterRow(
             targetMovementDistance,
             skidding: runtime.hasCondition('skidding'),
             prone: runtime.hasCondition('prone'),
-            immobile: runtime.hasCondition('immobile')
-                || entity.motiveType() === 'None',
+            immobile: runtime.hasCondition('immobile') || tractor === null
+                || (entity.motiveType() === 'None' && !unit.snapshot().towedBy && !runtime.hasCondition('hitched')),
             targetHexCover: cover === 'light' || cover === 'heavy' ? cover : 'none',
             ...(isUnitWaterDepth(cover) ? { waterDepth: cover } : {}),
             ...(isUnitBuildingLevel(cover) ? { buildingCover: cover } : {}),
             targetHeight: 1,
+            ...(entity.unitType() === 'VTOL' ? { vtol: true } : {}),
             largeTarget,
-            narcAboveWater: false,
-            narcUnderwater: false,
+            narcAboveWater: !isUnitWaterDepth(cover) && hasNarc,
+            narcUnderwater: isUnitWaterDepth(cover) && hasNarc,
             tagged: runtime.hasCondition('tagged'),
             ecmShielded: runtime.hasCondition('ecm-shielded'),
             ...(runtime.hasCondition('swarmed') ? { swarmed: true } : {}),
@@ -162,6 +176,7 @@ export function forceOpforTargetId(forceInstanceId: string, unitInstanceId: stri
 }
 
 function nonMekTargetUnitType(entity: ReturnType<CBTNonMekUnit['getUnit']>): TnTargetUnitType {
+    if (entity.entityType === 'BuildingEntity') return 'building';
     switch (entity.unitType()) {
         case 'Mek':
             return entity.unitSubtype().includes('Quad') ? 'mek-quad'

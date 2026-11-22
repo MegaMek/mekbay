@@ -43,6 +43,8 @@ describe('PageViewerMekInteractionService', () => {
     let choiceConfig: ChoicePickerConfig | null;
     let directionalConfig: DirectionalPickerConfig | null;
     let revision: number;
+    let floatingCriticals = false;
+    let waterCover = false;
     let currentSnapshot: MekRecordSheetSnapshot;
     let panel: EquipmentPanelSnapshot;
     let force: any;
@@ -75,6 +77,8 @@ describe('PageViewerMekInteractionService', () => {
     });
 
     beforeEach(() => {
+        floatingCriticals = false;
+        waterCover = false;
         numericConfig = null;
         choiceConfig = null;
         directionalConfig = null;
@@ -92,6 +96,7 @@ describe('PageViewerMekInteractionService', () => {
             query: {
                 stateRevision: revision, editContext: editContext(revision),
                 boundRules: () => BOUND_OPTIONAL_RULE_DEFAULTS,
+                turnState: () => ({ cover: waterCover ? 'underwater-depth-1' : null }),
                 crewState: (positionId: string) => currentSnapshot.crew
                     .find(row => row.positionId === positionId)?.state
                     ?? { wounds: 0, unconscious: false, ejected: false },
@@ -169,7 +174,8 @@ describe('PageViewerMekInteractionService', () => {
                 {
                     provide: OptionsService,
                     useValue: {
-                        options: () => ({ pickerStyle: 'default', colorScheme: 'default', trackPhaseAndTurn: true }),
+                        options: () => ({ pickerStyle: 'default', colorScheme: 'default', trackPhaseAndTurn: true,
+                            CBTOptionalRules: { floatingCriticals } }),
                         cbtAutomationMode: () => 'no',
                     },
                 },
@@ -885,6 +891,23 @@ describe('PageViewerMekInteractionService', () => {
 
         expect(svg.querySelector('.mek-random-hit-result')).toBeNull();
         expect(svg.querySelector('.unitLocation')?.classList.contains('random-hit-location-highlight')).toBeFalse();
+    });
+
+    for (const covered of [false, true]) it(`floats a front through-armor hit to the head (partial cover: ${covered})`, () => {
+        floatingCriticals = true;
+        const svg = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
+        svg.innerHTML = '<g data-mekbay-random-hit="1"></g><g data-mekbay-paperdoll="1" data-type="armor">'
+            + '<path class="unitLocation armor" data-loc="HD"></path></g>';
+        const control = svg.querySelector<SVGElement>('[data-mekbay-random-hit="1"]')!;
+        waterCover = covered;
+        // The optional middle pair totals 5 (right leg), which Depth 1 water covers.
+        const rng = spyOn(Math, 'random').and.returnValues(0, 0, ...(covered ? [0, 0.55] : []), 0.99, 0.99);
+        service.handle(member, { kind: 'random-hit', element: control, context: editContext(1) },
+            new PointerEvent('pointerdown', { button: 0 }));
+        directionalConfig!.onPick({ label: 'Front', value: 'front' });
+        expect(rng).toHaveBeenCalledTimes(covered ? 6 : 4);
+        expect(svg.querySelector('.mek-random-hit-result-location')?.textContent).toBe('HD');
+        expect(svg.querySelector('.mek-random-hit-result-through-armor')?.textContent).toBe('THROUGH ARMOR');
     });
 
     it('transfers a random hit past a destroyed location', () => {

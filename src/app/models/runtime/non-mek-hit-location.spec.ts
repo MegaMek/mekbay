@@ -47,9 +47,12 @@ describe('non-Mek paperdoll hit locations', () => {
         expect(entity.isSuperHeavy()).toBeFalse();
         expect(nonMekHitArcs(entity)).toEqual(['front', 'front-right', 'rear-right', 'rear', 'rear-left', 'front-left']);
         expect(rolls(entity, 'front-left')).toEqual(['FRLS', 'FR', 'FRLS', 'FRLS', 'FRLS', 'FRLS', 'FRLS', 'FRLS', 'FRLS', 'FRLS', 'FRLS']);
-        expect(rolls(entity, 'rear-right')).toEqual(Array(11).fill('RRRS'));
+        expect(rolls(entity, 'rear-right')).toEqual(['RRRS', 'RR', ...Array(9).fill('RRRS')]);
         expect(resolveNonMekHitLocation(entity, snapshot(entity), 'front', 3, () => 1)?.locationCode).toBe('FRRS');
         expect(resolveNonMekHitLocation(entity, snapshot(entity), 'rear', 3, () => 1)?.locationCode).toBe('RRLS');
+        for (const arc of ['rear-left', 'rear-right'] as const) {
+            expect(resolveNonMekHitLocation(entity, snapshot(entity), arc, 3, () => 1)?.locationCode).toBe('RR');
+        }
     });
 
     it('selects VTOL rotors and substitutes a turret on a four', () => {
@@ -83,6 +86,19 @@ describe('non-Mek paperdoll hit locations', () => {
         expect(resolveNonMekHitLocation(entity, { ...state, locations: state.locations.map(location => ({
             ...location, previewRemainingInternal: location.code === 'Head' ? 0 : 1,
         })) }, 'left', 12, () => 1)).toEqual({ locationCode: 'T', transferredFrom: 'HD' });
+    });
+
+    it('reads the fighter above/below column and rolls a side only for wing hits', () => {
+        const fighter = new TestAeroSpaceFighterEntity();
+        for (const arc of ['above', 'below'] as const) {
+            expect(nonMekHitArcs(fighter)).toContain(arc);
+            const side = jasmine.createSpy('side').and.returnValues(3, 4);
+            const hit = (roll: number) => resolveNonMekHitLocation(fighter, snapshot(fighter), arc, roll, side);
+            expect(hit(7)).toEqual({ locationCode: 'NOS', aeroCritical: 'avionics' });
+            expect(hit(8)).toEqual({ locationCode: 'RWG', aeroCritical: 'weapon' });
+            expect(hit(3)).toEqual({ locationCode: 'LWG', aeroCritical: 'gear' });
+            expect(side).toHaveBeenCalledTimes(2);
+        }
     });
 
     it('uses different side distributions for fighters, small craft and capital ships', () => {

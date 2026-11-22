@@ -51,7 +51,7 @@ export function platoonInfernoMissiles(damage: number): number {
 }
 
 /** One inferno missile that struck: its hit-location roll read on the struck unit's table, null without one. */
-export type InfernoMissile = Readonly<{ location: AttackHitLocation | null; heat?: number }>;
+export type InfernoMissile = Readonly<{ location: AttackHitLocation | null; heat?: number; attackIndex?: number }>;
 
 /** What the inferno missiles of one attack do to the unit they strike (TW pp. 141-142; MegaMek deliverInfernoMissiles). */
 export type InfernoEffect =

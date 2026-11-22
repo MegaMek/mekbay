@@ -1,5 +1,7 @@
 // Copyright (C) 2026 The MegaMek Team
 // SPDX-License-Identifier: GPL-3.0-or-later
+
+import { interiorBuildingDistance } from './rules/infantry-building-damage';
 // Author: Drake
 
 import type { MotiveModes } from './motiveModes.model';
@@ -118,7 +120,7 @@ export const TN_TARGET_MOVEMENT_BRACKETS: readonly TnTargetMovementBracket[] = [
 
 export type TnInterveningWoods = 'none' | 'light1' | 'light2';
 export type TnTargetHexCover = 'none' | 'light' | 'heavy';
-export type TnAttackDirection = 'front' | 'left' | 'rear' | 'right';
+export type TnAttackDirection = 'front' | 'left' | 'rear' | 'right' | 'front-left' | 'front-right' | 'rear-left' | 'rear-right' | 'above' | 'below';
 /** A successful TAG designation is reported manually for the particular spotter and its target. */
 export type SpottingMode = boolean | 'tag';
 export type TnSpotterMoveMode = 'stationary' | 'walk' | 'run' | 'jump';
@@ -204,7 +206,15 @@ export interface TnTargetNumberCalculatorState {
     partialCover?: boolean;
     waterDepth?: UnitWaterDepth;
     buildingCover?: UnitBuildingLevel;
+    buildingCf?: number;
+    infantryBuildingType?: import('./rules/infantry-building-damage').InfantryBuildingType;
+    insideTargetBuilding?: true;
+    angelEcm?: boolean;
     attackDirection?: TnAttackDirection;
+    /** Target hex base level minus the attacker's hex base level. */
+    targetLevelDifference?: number;
+    /** Identifies a rotorcraft when the target selection combines VTOL and WiGE. */
+    vtol?: boolean;
     indirectFire?: boolean;
     secondaryTarget?: boolean;
     secondaryTargetSideBack?: boolean;
@@ -442,6 +452,8 @@ export function calculateTargetTnModifierBreakdown(
     const prone = input.prone ?? false;
     const waterState = resolveTnTargetWaterState(input);
     const buildingCoverState = resolveTnTargetBuildingCoverState(input);
+    const interiorInfantry = gameRules.id === 'total-warfare' && input.insideTargetBuilding && input.buildingCover
+        && (input.unitType === 'infantry' || input.unitType === 'battle-armor');
     const immobile = isTnTargetImmobile(input.unitType, input.immobile);
     const terrainTarget = isTerrainTargetType(input.unitType);
     const aerospaceTarget = input.unitType === 'aero';
@@ -486,14 +498,13 @@ export function calculateTargetTnModifierBreakdown(
             });
         }
     }
-    add('building-cover', 'Heavy Cover (building)', !staticTarget && buildingCoverState.effect === 'heavy'
-        ? buildingCoverState.modifier
-        : 0, {
+    add('building-cover', interiorInfantry ? 'Interior building hexes and levels' : 'Heavy Cover (building)', interiorInfantry
+        ? interiorBuildingDistance(range, input.targetLevelDifference) : !staticTarget && buildingCoverState.effect === 'heavy' ? buildingCoverState.modifier : 0, {
             adjustmentGroup: 'terrain',
             ...(gameRules.narcIndirectFireIgnoresAllTerrain && { ignoredByNarcGuidance: true }),
             ignoredBySemiGuidedGuidance: true,
         });
-    const specialPartialCover = waterState.partiallyUnderwater || buildingCoverState.effect === 'partial';
+    const specialPartialCover = waterState.partiallyUnderwater || (!interiorInfantry && buildingCoverState.effect === 'partial');
     const ordinaryPartialCoverAllowed = input.indirectFire
         ? gameRules.indirectFireUsesSpotterPartialCover
         : range > ADJACENT_RANGE;

@@ -394,6 +394,7 @@ describe('PageViewerNonMekRuntimeService velocity record picker', () => {
         ] });
         const member = {
             id: 'asf-1',
+            entity: { motiveType: () => 'Aerodyne' },
             force: { dispatchUnitCommand: dispatch },
             nonMekRecordSheetSnapshot: () => ({ editContext: context, velocityRecord: [{ turn: 1, field: 'velocity', value: 3 }] }),
         } as unknown as CBTForceMember;

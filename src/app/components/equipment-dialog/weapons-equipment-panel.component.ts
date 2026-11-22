@@ -735,6 +735,7 @@ export class WeaponsEquipmentPanelComponent {
 
     canSelectRange(row: EquipmentPanelRow, range: InventoryRangeDisplayKey, state = this.targetState(row)): boolean {
         if (state.target || row.disabled || row.destroyed) return false;
+        if (row.component?.weapon?.mediumRangeLimit && (range === 'long' || range === 'extreme')) return false;
         if (range === 'extreme' && !this.usesAerospaceWeaponValues() && !this.showsGroundExtremeRange()) return false;
         const value = this.rangeValue(row, range);
         return this.isSelectable(row) && value !== '—';

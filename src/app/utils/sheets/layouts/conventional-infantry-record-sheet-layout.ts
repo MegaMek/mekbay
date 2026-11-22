@@ -13,6 +13,7 @@ import { AmmoEquipment, WeaponEquipment } from '../../../models/equipment.model'
 import { PILOT_ABILITIES } from '../../../models/pilot-abilities.model';
 import {
   conventionalInfantryRangeWeapon,
+  platoonHeavyBurstDice,
   projectConventionalInfantryCombat,
 } from '../../../models/rules/conventional-infantry-combat-rules';
 import { measureSvgTextCanvas, wrapWords } from '../../svg-text.util';
@@ -399,9 +400,9 @@ function infantryNotes(entity: InfantryEntity): string {
   const mount = entity.mount();
   if (entity.effectiveSpaceSuit()) notes.push('Can operate in vacuum.');
   if (mount && mount.uwEndurance > 0) notes.push(`Must surface every ${mount.uwEndurance} turns.`);
-  const burst =
-    (rangeWeapon?.hasFlag('F_INF_BURST') || (primary?.infantry.damage ?? 0) > 0.6 ? 1 : 0) + (mount?.burstDamage ?? 0);
+  const burst = platoonHeavyBurstDice(entity);
   if (burst > 0) notes.push(`+${burst}D6 damage vs. conventional infantry.`);
+  if (mount?.burstDamage) notes.push(`+${mount.burstDamage}D6 damage vs. conventional infantry at 0 hexes.`);
   if (mount && mount.vehicleDamage > 0) notes.push(`+${mount.vehicleDamage} damage vs. vehicles and 'Meks`);
   if (mount?.size === 'Very Large') notes.push('-1 attacker to-hit');
   if (mount?.size === 'Monstrous') notes.push('-2 attacker to-hit');

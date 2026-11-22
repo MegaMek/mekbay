@@ -785,6 +785,24 @@ describe('TnCalculatorDialogComponent read-only target identity', () => {
 });
 
 describe('TnCalculatorDialogComponent movement and stance', () => {
+    it('saves interior fire and building type independently of the defender’s read-only cover', async () => {
+        const close = jasmine.createSpy('close');
+        const data: TnCalculatorDialogData = {
+            target: { id: asEncounterTargetId('A'), letter: 'A', name: 'Occupants', color: '#abc',
+                unitType: 'infantry', distance: 0, tnModifier: 0, tnCalculator: { buildingCover: 'building-2' } },
+            gameRules: TW_GAME_RULES, targetStateReadOnly: true,
+        };
+        await TestBed.configureTestingModule({ imports: [TnCalculatorDialogComponent], providers: [
+            { provide: DIALOG_DATA, useValue: data }, { provide: DialogRef, useValue: { close } },
+        ] }).compileComponents();
+        const component = TestBed.createComponent(TnCalculatorDialogComponent).componentInstance;
+        component.insideTargetBuilding.set(true);
+        component.setInfantryBuildingType('hardened');
+        component.apply();
+        expect(close.calls.mostRecent().args[0].patch.tnCalculator)
+            .toEqual(jasmine.objectContaining({ insideTargetBuilding: true, infantryBuildingType: 'hardened' }));
+    });
+
     it('uses the synchronized target height in live water and building geometry', async () => {
         const data: TnCalculatorDialogData = {
             target: {

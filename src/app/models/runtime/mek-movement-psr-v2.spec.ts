@@ -31,6 +31,32 @@ describe('Mek jump into water', () => {
         return movement.pilotingTargetNumber;
     };
 
+    for (const ruleset of ['core-2026', 'total-warfare'] as const) {
+        it(`rolls for each entered water hex at its own modifier under ${ruleset}`, () => {
+            const { instance } = createDirectMekRuntimeFixture(ruleset);
+            instance.dispatch({ type: 'declare-mek-movement', declaration: {
+                mode: ruleset === 'core-2026' ? 'run' : 'walk', distance: 3, boosterComponentIds: [],
+            } });
+            const base = piloting(instance);
+            water(instance, 1);
+            water(instance, 2);
+            instance.dispatch({ type: 'replace-turn-state', turn: instance.query().turnState(), enteredWaterHex: true });
+            water(instance, 0);
+            expect(checks(instance).map(check => check[1])).toEqual([base - (ruleset === 'total-warfare' ? 1 : 0), base, base]);
+            const saved = serializeMekMovementPsrStateV2(instance.snapshot().movementPsr);
+            expect(serializeMekMovementPsrStateV2(deserializeMekMovementPsrStateV2(saved))).toEqual(saved);
+        });
+        it(`keeps turning in water and leaving it free of entry checks under ${ruleset}`, () => {
+            const { instance } = createDirectMekRuntimeFixture(ruleset);
+            water(instance, 1);
+            instance.dispatch({ type: 'declare-mek-movement', declaration: {
+                mode: ruleset === 'core-2026' ? 'run' : 'walk', distance: 0, boosterComponentIds: [],
+            } });
+            water(instance, 0);
+            expect(checks(instance)).toEqual([]);
+        });
+    }
+
     it('rolls once the jump lands in Depth 1+ water, with no modifier for the depth', () => {
         const { instance } = createDirectShieldRuntimeFixture('total-warfare', 'small', 'unit:jump-water-tw');
         expect(instance.dispatch(jump).accepted).toBeTrue();

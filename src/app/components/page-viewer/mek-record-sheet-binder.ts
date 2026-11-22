@@ -524,6 +524,7 @@ function renderLocation(
         || disabled !== location.committedDisabled
         || structurallyDestroyed !== location.committedStructurallyDestroyed;
     const narc = condition.get('narc');
+    const newNarc = condition.get('new-narc');
     const locationNodes = svg.querySelectorAll<SVGElement>(`[data-loc="${code}"]`);
     locationNodes.forEach(element => {
         element.classList.toggle('flooded', flooded);
@@ -542,8 +543,8 @@ function renderLocation(
         element.classList.toggle('damaged', structurallyDestroyed);
     });
     svg.querySelectorAll<SVGElement>(`.locationNarcBanner[data-loc="${code}"]`).forEach(banner => {
-        const count = narc?.committed ?? 0;
-        const preview = narc?.preview ?? count;
+        const count = (narc?.committed ?? 0) + (newNarc?.committed ?? 0);
+        const preview = (narc?.preview ?? 0) + (newNarc?.preview ?? 0);
         banner.setAttribute('display', count > 0 || preview > 0 ? '' : 'none');
         banner.classList.toggle('pending', preview !== count);
         const text = banner.querySelector<SVGElement>('text');

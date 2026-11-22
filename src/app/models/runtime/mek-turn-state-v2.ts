@@ -92,6 +92,7 @@ export interface MekTurnStateV2 extends TurnHeatLedger {
     readonly weaponsHeat: number;
     /** The weapons that fired this turn, each once (`withFiredWeapons`); absent when none. */
     readonly firedWeapons?: readonly ComponentId[];
+    readonly amsEngagements?: readonly ComponentId[];
     /** Heat from outside sources such as inferno missiles, capped per turn; absent at 0. */
     readonly outsideHeat?: number;
     readonly spotting: SpottingMode;
@@ -119,6 +120,7 @@ export interface SerializedMekTurnStateV2 {
     readonly cover?: ReturnType<typeof serializeUnitCover>;
     readonly weaponsHeat?: number;
     readonly firedWeapons?: readonly ComponentId[];
+    readonly amsEngagements?: readonly ComponentId[];
     readonly outsideHeat?: number;
     readonly settledHeat?: readonly {
         readonly sourceId: string;
@@ -147,7 +149,7 @@ const TURN_KEYS = Object.freeze([
     'airborne',
     'cover',
     'weaponsHeat',
-    'firedWeapons',
+    'firedWeapons', 'amsEngagements',
     'outsideHeat',
     'settledHeat',
     'heatDissipationConsumed',
@@ -163,7 +165,7 @@ const TURN_KEYS = Object.freeze([
 
 const REQUIRED_TURN_KEYS = TURN_KEYS.filter(key =>
     key !== 'endTurnCheckpoint'
-    && key !== 'firedWeapons'
+    && key !== 'firedWeapons' && key !== 'amsEngagements'
     && key !== 'outsideHeat'
     && key !== 'heatDissipationConsumed'
     && key !== 'joinedStep'
@@ -196,6 +198,7 @@ export function canonicalizeMekTurnStateV2(value: MekTurnStateV2): MekTurnStateV
     exactKeys(record, TURN_KEYS, '$');
     requireKeys(record, REQUIRED_TURN_KEYS, '$');
     return freezeMekTurnState({
+        ...(record['amsEngagements'] ? { amsEngagements: readFiredWeapons(record['amsEngagements'], '$.amsEngagements', fail, 2) } : {}),
         turnCounter: turnNumber(record['turnCounter'], '$.turnCounter'),
         airborne: nullableBoolean(record['airborne'], '$.airborne'),
         cover: nullableUnitCover(record['cover'], '$.cover'),
@@ -274,6 +277,7 @@ export function deserializeMekTurnStateV2(value: unknown): MekTurnStateV2 {
         ...(record['firedWeapons'] === undefined
             ? {}
             : { firedWeapons: readFiredWeapons(record['firedWeapons'], '$.firedWeapons', fail) }),
+        ...(record['amsEngagements'] ? { amsEngagements: readFiredWeapons(record['amsEngagements'], '$.amsEngagements', fail, 2) } : {}),
         ...(record['outsideHeat'] === undefined
             ? {}
             : { outsideHeat: positiveOutsideHeat(record['outsideHeat'], '$.outsideHeat') }),

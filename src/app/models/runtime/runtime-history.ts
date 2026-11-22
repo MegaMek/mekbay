@@ -411,7 +411,7 @@ function formatLocationConditionChange(data: readonly JsonValue[], target: strin
         if (before === after) return `${target} blow-off result absorbed${suffix}`;
         return after > 0 ? `${target} blown off${suffix}` : `${target} reattached${suffix}`;
     }
-    if (condition === 'narc') {
+    if (condition === 'narc' || condition === 'new-narc') {
         if (after > before) return `NARC pod attached to ${target}${suffix}`;
         const remaining = after > 0 ? ` (${after} remaining)` : '';
         return `NARC pod removed from ${target}${remaining}${suffix}`;

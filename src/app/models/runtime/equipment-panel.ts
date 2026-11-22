@@ -6,20 +6,20 @@ import type { AmmoSelectionCompatibilityFacts } from '../../utils/ammo-validity.
 import {
     comparativePilotingModifier,
     infantryTarget,
-    PHYSICAL_ATTACK_KINDS,
     physicalAttackAlwaysHits,
     physicalAttackMeetsBuildingCover,
     physicalAttackMeetsWaterCover,
     physicalAttackTakesMovement,
-    physicalHitTable,
+    physicalStrike,
     physicalTargetIssue,
     physicalTargetModifier,
     type HitTable,
     type PhysicalAttackKind,
     type PhysicalAttackReach,
 } from '../rules/physical-attack-rules';
-import { isHandClawFlags } from '../entity/utils/physical-weapon-kernel';
+
 import type { OptionalRules } from '../options.model';
+import { isUnitBuildingLevel } from '../unit-cover.model';
 import { recordSheetInventoryMountName } from '../../utils/sheets/record-sheet-inventory-equipment';
 import type { EquipmentStatus } from '../equipment-status.model';
 import { asComponentId, type ComponentId, type LocationId } from '../entity/entity-identifiers';
@@ -50,7 +50,7 @@ import type { TnTargetNumberCalculatorState, TnTargetUnitType } from '../target-
 import type { MekUnitQueryPort } from './unit-instance';
 import type { WeaponType } from '../weapon-types.model';
 import type { UnitType } from '../entity/types';
-import { canPerformMekAction } from './mek-action-availability';
+import { canPerformMekAction, mekPhysicalAttackGeometry } from './mek-action-availability';
 import type { MekPhysicalAttackEffectV2 } from './mek-physical-attack-v2';
 import { activeTargetCalculator, type TargetingTarget } from './targeting-target';
 import {
@@ -126,7 +126,7 @@ import type { MekCombatModifierProjectionResult } from './mek-combat-modifiers';
 import { applyGaussPowerWeaponTypes } from './mek-gauss-power';
 import { applyComponentApolloWeaponTypes } from './component-apollo';
 import { isApolloEquipment, apolloToHitAdjustment } from '../apollo-mode.model';
-import { isArtemisEquipment, artemisVToHitAdjustment } from '../artemis-equipment.model';
+import { activeArtemisKind, isArtemisEquipment, artemisVToHitAdjustment, type ArtemisKind } from '../artemis-equipment.model';
 import {
     ppcCapacitorChargedForWeapon,
     ppcCapacitorFiringHeat,
@@ -200,6 +200,8 @@ export interface EquipmentPanelWeapon {
     readonly hitModifierBreakdown: readonly ToHitModifierBreakdownEntry[];
     /** Target-independent Artemis V modifier; indirect fire removes it per target. */
     readonly artemisVModifier?: number;
+    readonly artemis?: ArtemisKind;
+    readonly mediumRangeLimit?: true;
     readonly ranges: readonly number[];
     readonly minimumRange: number;
     /** Aerospace sheet values stay separate from tactical weapon ranges. */
@@ -218,6 +220,9 @@ export interface EquipmentPanelWeapon {
     /** Effective weapon types after selected ammunition and current mode effects. */
     readonly effectiveWeaponTypes?: readonly WeaponType[];
     readonly attackerIsConventionalInfantry?: boolean;
+    readonly attackerIsBattleArmor?: boolean;
+    /** Active suits sharing this squad mount (TW pp. 218–219). */
+    readonly firingSuits?: number;
     /** A conventional platoon's own attack or disposable weapon, resolved by troopers (TW p. 217; TO:AuE p. 116). */
     readonly platoon?: PlatoonAttackFacts;
 }
@@ -267,6 +272,9 @@ export interface EquipmentPanelWeaponDamage {
 
 export interface EquipmentPanelAttackMember {
     readonly componentId: ComponentId;
+    readonly equipment?: WeaponEquipment;
+    readonly attackValues?: readonly number[];
+    readonly mode?: string;
     readonly selectable: boolean;
     readonly selection?: AttackerSelection;
     readonly ammoSelection?: AttackerAmmoSelection;
@@ -765,7 +773,9 @@ function effectiveWeaponTargetModifier(
 ): EffectiveWeaponTargetProjection {
     const weapon = row.weapon;
     // An aimed shot at a target with no facts set still has its own modifier to add.
-    const calculator = activeTargetCalculator(target) ?? (aim === null ? undefined : {});
+    const squadTarget = target.unitType === 'battle-armor' && target.manualTnModifier === undefined
+        && (weapon?.attackerIsConventionalInfantry || weapon?.attackerIsBattleArmor);
+    const calculator = activeTargetCalculator(target) ?? (aim !== null || squadTarget ? {} : undefined);
     const selectedAmmo = selectedAmmoEquipment(weapon?.ammoSources ?? [], weapon?.ammoSelection);
     if (!calculator) return Object.freeze({ modifier: target.tnModifier, breakdown: null });
     const rules = gameRulesFor(ruleset);
@@ -785,7 +795,7 @@ function effectiveWeaponTargetModifier(
     }, rules).map(modifier => ({
         ...modifier,
         ...((modifier.partialCoverSource === 'water' && weapon?.attackerSubmerged === true)
-            || (modifier.id === 'battle-armor' && weapon?.attackerIsConventionalInfantry === true)
+            || (modifier.id === 'battle-armor' && (weapon?.attackerIsConventionalInfantry || weapon?.attackerIsBattleArmor))
             || (modifier.id === 'immobile' && !rules.attackBenefitsFromImmobile(attackTraits))
             ? { ignored: true as const }
             : {}),
@@ -987,6 +997,10 @@ export interface MekPhysicalAttackRow {
     readonly firingHeat: number;
     /** Whether Depth 1 water around a standing target covers it from this attack (`physicalAttackMeetsWaterCover`). */
     readonly meetsWaterCover: boolean;
+    readonly ruleset?: CBTRuleset;
+    readonly attackerWater?: Readonly<{ partiallyUnderwater: boolean; submerged: boolean }>;
+    readonly jumpMp?: number;
+    readonly insideBuilding?: boolean;
     /** Whether a building's partial cover counts against this attack (`physicalAttackMeetsBuildingCover`). */
     readonly meetsBuildingCover?: boolean;
     /** The resolvable attack; null for an attack the resolution does not roll. */
@@ -999,6 +1013,8 @@ export interface MekPhysicalAttackRow {
     readonly onlyTarget?: string;
     /** Damage points that share a hit-location roll, where the attack's kind does not say (`physicalDamageGroupSize`). */
     readonly damageGroupSize?: number;
+    readonly firingSuits?: number;
+    readonly gunnerySkill?: number;
     /** A hit also rolls on the Determining Critical Hits Table: a leg attack, and battle armor's swarm damage. */
     readonly critical?: true;
     readonly selection?: AttackerSelection;
@@ -1006,12 +1022,14 @@ export interface MekPhysicalAttackRow {
 
 /** Whether the row may be declared at the target: its reach, and the one target a swarming unit attacks. */
 export function physicalRowTargetIssue(
-    row: Pick<MekPhysicalAttackRow, 'kind' | 'reach' | 'onlyTarget'>,
+    row: Pick<MekPhysicalAttackRow, 'kind' | 'reach' | 'onlyTarget' | 'ruleset' | 'hitTable' | 'attackerWater' | 'jumpMp' | 'insideBuilding'>,
     target: Parameters<typeof physicalTargetIssue>[2] & Readonly<{ id: string }>,
 ): ReturnType<typeof physicalTargetIssue> {
     return row.onlyTarget !== undefined && row.onlyTarget !== target.id
         ? 'invalid'
-        : physicalTargetIssue(row.kind, row.reach, target);
+        : physicalTargetIssue(row.kind, row.reach, target, row.ruleset, row.hitTable,
+            row.ruleset ? { jumpMp: row.jumpMp, partiallyUnderwater: row.attackerWater?.partiallyUnderwater,
+                insideBuilding: row.insideBuilding } : null);
 }
 
 /**
@@ -1032,7 +1050,7 @@ export function physicalAttackTargetNumber(
     const attackModifier = !physicalAttackTakesMovement(row.kind) ? 0
         : (attack?.attackModifierBreakdown ?? []).reduce((total, item) => total + item.modifier, 0);
     const targetModifier = physicalAttackTargetModifiers(row, target).reduce((total, item) => total + item.modifier, 0);
-    if (typeof base === 'number') return piloting + base + attackModifier + targetModifier;
+    if (typeof base === 'number') return (row.gunnerySkill ?? piloting) + base + attackModifier + targetModifier;
     if (base !== 'versus') return null;
     const versus = row.kind === 'death-from-above' && infantryTarget(target.unitType) ? 0
         : comparative && comparativePilotingModifier(piloting, comparative.piloting, comparative.immobile);
@@ -1041,8 +1059,8 @@ export function physicalAttackTargetNumber(
 }
 
 type PhysicalAttackTargetRow = Pick<MekPhysicalAttackRow, 'hitModifiers'>
-    & Partial<Pick<MekPhysicalAttackRow, 'meetsWaterCover' | 'meetsBuildingCover' | 'kind'>>;
-type PhysicalAttackTarget = Pick<TargetingTarget, 'tnModifier' | 'partialCover' | 'unitType' | 'tnCalculator'>;
+    & Partial<Pick<MekPhysicalAttackRow, 'meetsWaterCover' | 'meetsBuildingCover' | 'kind' | 'gunnerySkill' | 'ruleset' | 'attackerWater' | 'hitTable'>>;
+type PhysicalAttackTarget = Pick<TargetingTarget, 'tnModifier' | 'partialCover' | 'unitType' | 'tnCalculator' | 'manualTnModifier'>;
 
 /**
  * The target's part of a physical attack's target number: its modifier, less Depth 1 water cover the attack does
@@ -1062,7 +1080,8 @@ export function physicalAttackTargetModifiers(
         ? target.partialCover.modifier : 0;
     const unitType = physicalTargetModifier(row.kind ?? null, target.unitType);
     return Object.freeze([
-        Object.freeze({ label: 'Target', modifier: target.tnModifier - uncovered }),
+        Object.freeze({ label: 'Target', modifier: target.tnModifier - uncovered
+            - (row.kind === 'vibro-claw' && target.unitType === 'battle-armor' && target.manualTnModifier === undefined ? 1 : 0) }),
         ...(unitType === null ? [] : [unitType]),
     ]);
 }
@@ -1072,10 +1091,21 @@ export function physicalAttackTargetModifiers(
  * the standard table that resolves to a leg strikes the cover (TW p. 102; Core pp. 66, 77).
  */
 export function physicalAttackMeetsPartialCover(
-    row: Partial<Pick<MekPhysicalAttackRow, 'meetsWaterCover' | 'meetsBuildingCover'>>,
-    target: Pick<TargetingTarget, 'partialCover'>,
+    row: Partial<MekPhysicalAttackRow>,
+    target: Pick<TargetingTarget, 'partialCover' | 'tnCalculator' | 'unitType'>,
 ): boolean {
     if (target.partialCover === undefined) return false;
+    if (row.ruleset && row.kind && row.attackerWater) {
+        const table = physicalStrike(row.kind, row.hitTable ?? 'standard', {
+            mek: target.unitType?.startsWith('mek-') ?? true,
+            prone: target.tnCalculator?.prone === true,
+            levelDifference: target.tnCalculator?.targetLevelDifference,
+        }, row.ruleset).table;
+        const quad = target.unitType === 'mek-quad';
+        return target.partialCover.water
+            ? physicalAttackMeetsWaterCover(row.ruleset, row.kind, table, row.attackerWater, quad)
+            : physicalAttackMeetsBuildingCover(row.ruleset, row.kind, table, quad);
+    }
     return (target.partialCover.water ? row.meetsWaterCover : row.meetsBuildingCover) !== false;
 }
 
@@ -1102,29 +1132,15 @@ export function projectMekPhysicalAttackPresentation(
     const water = mekUnitWaterState(entity, query);
     const prone = query.hasCondition('prone');
     const swarmed = query.hasCondition('swarmed');
-    const kindOf = (target: AttackerActionTarget): PhysicalAttackKind | null => target.kind === 'component'
-        ? 'weapon'
-        : PHYSICAL_ATTACK_KINDS.find(candidate =>
-            candidate === entity.intrinsicWeapons().find(weapon => weapon.id === target.actionId)?.kind) ?? null;
-    const hitTable = (target: AttackerActionTarget) => {
-        const kind = kindOf(target);
-        if (kind === null) return 'standard';
-        const equipment = target.kind === 'component'
-            ? index.components.get(target.componentId)?.mount?.equipment
-            : undefined;
-        return physicalHitTable(kind, equipment !== undefined && isHandClawFlags(equipment.flags));
-    };
+    const movement = query.mekMovementPsr();
+    const geometry = (target: AttackerActionTarget) => mekPhysicalAttackGeometry(index, target, prone, swarmed);
     return Object.freeze({
         kind: 'supported',
         // Thrashing is listed only while the 'Mech is prone, the only time it can thrash; brushing infantry off only
         // while it is swarmed.
-        attacks: Object.freeze(projection.attacks.filter(attack => (prone || kindOf(attack.target) !== 'thrash')
-            && (swarmed || kindOf(attack.target) !== 'brush-off')).map(attack => {
-            const kind = kindOf(attack.target);
-            const reach: PhysicalAttackReach | undefined = kind === 'thrash'
-                ? swarmed ? 'unswarming-infantry-in-hex' : 'infantry-in-hex'
-                : kind === 'punch' && prone ? 'vehicle-in-hex'
-                    : kind === 'brush-off' ? 'swarming-infantry' : undefined;
+        attacks: Object.freeze(projection.attacks.flatMap(attack => {
+            const { kind, hitTable, reach } = geometry(attack.target);
+            if (!prone && kind === 'thrash' || !swarmed && kind === 'brush-off') return [];
             const selection = attack.selectable
                 ? attackerActionSelection(targeting, attack.target)
                 : undefined;
@@ -1139,10 +1155,14 @@ export function projectMekPhysicalAttackPresentation(
                 ...attack,
                 hitModifiers: hit.modifiers,
                 hitModifierBreakdown: hit.breakdown,
-                meetsWaterCover: physicalAttackMeetsWaterCover(ruleset, kind, hitTable(attack.target), water),
-                meetsBuildingCover: physicalAttackMeetsBuildingCover(ruleset, kind, hitTable(attack.target)),
+                ruleset,
+                attackerWater: water,
+                jumpMp: movement.kind === 'supported' ? movement.jumpMp : undefined,
+                insideBuilding: isUnitBuildingLevel(query.turnState().cover),
+                meetsWaterCover: physicalAttackMeetsWaterCover(ruleset, kind, hitTable, water),
+                meetsBuildingCover: physicalAttackMeetsBuildingCover(ruleset, kind, hitTable),
                 kind,
-                hitTable: hitTable(attack.target),
+                hitTable,
                 ...(reach === undefined ? {} : { reach }),
                 available: attack.selectable
                     ? canPerformMekAction(
@@ -1506,6 +1526,8 @@ function projectMekEquipmentComponents(
                 component.kind === 'equipment' ? entity.getLinkingMounts(component.mount) : [],
                 mount => query.componentStatus(asComponentId(mount.mountId)),
             );
+            const artemis = activeArtemisKind(fireControl, fireControlStatus, selectedAmmo,
+                query.hasCondition('jammed') || query.c3DisruptedByStealth());
             const artemisVToHit = equipment instanceof WeaponEquipment
                 ? artemisVToHitAdjustment(
                     fireControl,
@@ -1633,6 +1655,7 @@ function projectMekEquipmentComponents(
                         ? hit!.default.profile[0]!
                         : Object.freeze([...hit!.default.profile]),
                     hitModifierBreakdown: Object.freeze([...hit!.default.modifierBreakdown]),
+                    ...(artemis === null ? {} : { artemis }),
                     ...(artemisVToHit === null
                         ? {}
                         : { artemisVModifier: artemisVToHit.modifier }),

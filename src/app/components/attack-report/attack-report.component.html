@@ -43,8 +43,14 @@
             @if (weapon.hit && weapon.cluster; as cluster) {
                 <div class="cluster-line">
                     <span class="step-label">Cluster</span>
+                    @if (cluster.additionalDice?.length) { <span>Column {{ missileColumns(cluster.projectiles)[0] }}</span> }
                     <ng-container *ngTemplateOutlet="rollChip; context: {
                         dice: cluster.dice, weapon: w, roll: 'cluster', label: 'Set ' + weapon.name + ' cluster roll' }" />
+                    @for (dice of cluster.additionalDice; track $index; let i = $index) {
+                        <span>Column {{ missileColumns(cluster.projectiles)[i + 1] }}</span>
+                        <ng-container *ngTemplateOutlet="rollChip; context: { dice, weapon: w, roll: { additionalCluster: i },
+                            label: 'Set ' + weapon.name + ' cluster roll ' + (i + 2) }" />
+                    }
                     @if (editable()) {
                         <select class="modifier" [attr.aria-label]="'Cluster modifier for ' + weapon.name"
                             title="Cluster modifier (Artemis, NARC, AMS…)" (change)="setClusterModifier(w, $event)">
@@ -79,14 +85,22 @@
                     <span class="cluster-hits"><strong>{{ aim.label }}</strong> {{ aim.strikes ? 'struck' : 'missed' }}</span>
                 </div>
             }
+            @if (weapon.hit && weapon.collateral; as result) {
+                <div class="cluster-line">Occupants at the struck level in LOS take {{ result.damage }} damage per unit.
+                    @if (result.troopers !== undefined) { Conventional infantry lose {{ result.troopers }} troopers ({{ result.troopers * 2 }} mechanized). }
+                    Apply to each affected unit on its sheet.</div>
+            }
+            @if (weapon.amsDie) { <div>AMS engaged (die {{ weapon.amsDie }})</div> }
             @if (weapon.groups.length > 0) {
                 <ol class="hit-groups">
                     @for (group of weapon.groups; track $index; let g = $index) {
                         <li class="hit-group">
                             @if (weapon.inferno) {
                                 <span class="damage label">{{ infernoLabel }}</span>
+                            } @else if (weapon.narcPod) {
+                                <span class="damage label">Narc pod</span>
                             } @else if (group.damage === 0) {
-                                <span class="damage label">Heat</span>
+                                <span class="damage label">{{ weapon.heat ? 'Heat' : '0' }}</span>
                             } @else {
                                 <span class="damage" [title]="group.troopers ? 'Troopers' : 'Damage'">{{ group.damage }}</span>
                             }

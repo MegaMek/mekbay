@@ -24,6 +24,7 @@ export const MEK_LOCATION_CONDITION_KEYS = Object.freeze([
     'blown-off',
     'flooded',
     'narc',
+    'new-narc',
 ] as const);
 export type MekLocationConditionKey = typeof MEK_LOCATION_CONDITION_KEYS[number];
 const MEK_LOCATION_CONDITION_KEY_SET: ReadonlySet<string> = new Set(MEK_LOCATION_CONDITION_KEYS);

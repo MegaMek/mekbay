@@ -1,6 +1,7 @@
 // Copyright (C) 2026 The MegaMek Team
 // SPDX-License-Identifier: GPL-3.0-or-later
 
+import { readInternalBayLoads, type InternalBayLoad } from './internal-bay-loads';
 import type { BoundOptionalRules } from './bound-optional-rules';
 import { asUnitUuid,type UnitUuid } from '../../services/unit-catalog/unit-catalog.types';
 import { compareText } from '../../utils/string.util';
@@ -66,8 +67,14 @@ const SERIALIZED_NON_MEK_UNIT_KEYS = new Set([
     'baselineRefAtSave', 'deployment', 'family', 'stateRevision',
     'destroyed', 'locationState', 'componentState', 'damageTrackState',
     'ammoState', 'bombState', 'crewState', 'conditions', 'heat', 'turn',
-    'equipmentRowOrder', 'pendingCombat', 'velocityRecord', 'swarming', 'elevationRecord',
+    'equipmentRowOrder', 'pendingCombat', 'velocityRecord', 'swarming', 'elevationRecord', 'vehicleCrewStun', 'internalBayLoads', 'towedBy', 'narcPods',
 ]);
+
+export function readVehicleCrewStun(value: unknown): readonly [number, number] {
+    if (!Array.isArray(value) || value.length !== 2 || !value.every(n => Number.isSafeInteger(n) && n >= 0)
+        || value[1] < value[0]) throw new Error('Invalid vehicle crew stun turns');
+    return Object.freeze([value[0], value[1]] as const);
+}
 
 export interface NonMekDeploymentConfiguration {
     readonly id: string;
@@ -118,6 +125,10 @@ export interface SerializedNonMekUnit {
     readonly velocityRecord?: readonly VelocityRecordEntry[];
     /** The encounter target id of the unit an infantry unit is swarming. */
     readonly swarming?: string;
+    readonly narcPods?: readonly LocationId[];
+    readonly vehicleCrewStun?: readonly [number, number];
+    readonly internalBayLoads?: readonly InternalBayLoad[];
+    readonly towedBy?: string;
     /** The Elevations recorded turn by turn for a flying unit, in turn order. */
     readonly elevationRecord?: readonly Readonly<{ readonly turn: number; readonly value: number }>[];
     readonly bombState?: readonly Readonly<{
@@ -150,6 +161,7 @@ export interface SerializedNonMekUnit {
         readonly movement?: NonMekMovementDeclaration;
         readonly weaponsHeat?: number;
         readonly firedWeapons?: readonly ComponentId[];
+        readonly amsEngagements?: readonly ComponentId[];
         readonly outsideHeat?: number;
         readonly infernoMissiles?: number;
         readonly settledHeat?: readonly Readonly<{ readonly sourceId: string; readonly heat: number }>[];
@@ -164,6 +176,9 @@ export interface SerializedNonMekUnit {
     }>;
     readonly equipmentRowOrder?: EquipmentRowOrderState;
     readonly pendingCombat?: Readonly<{
+        readonly narcPods?: readonly LocationId[];
+        readonly lostCargo?: readonly InternalBayLoad[];
+        readonly crewStuns?: number;
         readonly internalDamage?: readonly Readonly<{
             readonly locationId: LocationId;
             readonly damage: number;
@@ -324,6 +339,10 @@ export function serializeNonMekUnit(input: SerializeNonMekUnitInput): Serialized
         ...(pendingCombat === undefined ? {} : { pendingCombat }),
         ...(state.velocityRecord === undefined ? {} : { velocityRecord: state.velocityRecord }),
         ...(state.swarming === undefined ? {} : { swarming: state.swarming }),
+        ...(state.narcPods?.length ? { narcPods: state.narcPods } : {}),
+        ...(state.towedBy ? { towedBy: state.towedBy } : {}),
+        ...(state.internalBayLoads?.length ? { internalBayLoads: state.internalBayLoads } : {}),
+        ...(state.vehicleCrewStun ? { vehicleCrewStun: state.vehicleCrewStun } : {}),
         ...(state.elevationRecord === undefined ? {} : {
             elevationRecord: Object.freeze(state.elevationRecord.map(entry => Object.freeze({ ...entry }))),
         }),
@@ -444,7 +463,7 @@ export function restoreNonMekRuntime(
         && (condition !== 'skidding' || gameRulesFor(ruleset).supportsSkidding)));
     const equipmentRowOrder = freezeEquipmentRowOrder(saved.equipmentRowOrder);
     const bombs = restoreBombLoads(saved.bombState, entity);
-    const velocityRecord = restoreVelocityRecord(saved.velocityRecord);
+    const velocityRecord = restoreVelocityRecord(saved.velocityRecord, entity.motiveType() === 'Airship');
     const state = freezeNonMekUnitState({
         stateRevision: saved.stateRevision,
         explicitlyDestroyed: saved.destroyed === true,
@@ -470,6 +489,10 @@ export function restoreNonMekRuntime(
         ...(bombs === undefined ? {} : { bombs }),
         ...(velocityRecord.length === 0 ? {} : { velocityRecord }),
         ...(saved.swarming === undefined ? {} : { swarming: requireString(saved.swarming, 'swarming') }),
+        ...(saved.narcPods?.length ? { narcPods: saved.narcPods.map(asLocationId) } : {}),
+        ...(saved.towedBy === undefined ? {} : { towedBy: requireString(saved.towedBy, 'towedBy') }),
+        ...(saved.internalBayLoads === undefined ? {} : { internalBayLoads: readInternalBayLoads(saved.internalBayLoads) }),
+        ...(saved.vehicleCrewStun === undefined ? {} : { vehicleCrewStun: readVehicleCrewStun(saved.vehicleCrewStun) }),
         ...(saved.elevationRecord === undefined ? {} : { elevationRecord: restoreElevationRecord(entity, saved.elevationRecord) }),
         pendingCombat: restorePendingCombat(saved, componentId => {
             if (index.components.has(componentId)) return true;
@@ -504,10 +527,10 @@ function restoreBombLoads(rows: SerializedNonMekUnit['bombState'], entity: BaseE
     return loads.length > 0 && bombLoadoutIssue(loads, entity.bombCapacity()) === null ? loads : undefined;
 }
 
-function restoreVelocityRecord(rows: SerializedNonMekUnit['velocityRecord']): readonly VelocityRecordEntry[] {
+function restoreVelocityRecord(rows: SerializedNonMekUnit['velocityRecord'], airship: boolean): readonly VelocityRecordEntry[] {
     const entries = (rows ?? []).map(row => {
         const entry = Object.freeze({ turn: row.turn, field: row.field, value: row.value });
-        const issue = velocityRecordEntryIssue(entry);
+        const issue = velocityRecordEntryIssue(entry, airship);
         if (issue !== null) throw new Error(`Invalid persisted velocity record: ${issue}`);
         return entry;
     });
@@ -520,7 +543,7 @@ function restoreVelocityRecord(rows: SerializedNonMekUnit['velocityRecord']): re
 function serializeNonMekTurn(state: NonMekUnitRuntimeState): SerializedNonMekUnit['turn'] {
     const turn = state.turn;
     if (turn.turnCounter === 0 && turn.airborne === null && turn.movement === null
-        && turn.weaponsHeat === 0 && turn.firedWeapons === undefined && !turn.outsideHeat && !turn.infernoMissiles
+        && turn.weaponsHeat === 0 && turn.firedWeapons === undefined && !turn.amsEngagements && !turn.outsideHeat && !turn.infernoMissiles
         && turn.settledHeat.size === 0 && turn.heatDissipationConsumed === undefined
         && turn.cover === null && !turn.spotting
         && !turn.phaseStateChanged
@@ -562,6 +585,7 @@ function restoreNonMekTurn(saved: SerializedNonMekUnit): NonMekUnitRuntimeState[
         ...(saved.turn?.firedWeapons === undefined
             ? {}
             : { firedWeapons: readFiredWeapons(saved.turn.firedWeapons, 'entity turn fired weapons', failTurn) }),
+        ...(saved.turn?.amsEngagements ? { amsEngagements: readFiredWeapons(saved.turn.amsEngagements, 'entity turn AMS', failTurn) } : {}),
         ...(saved.turn?.outsideHeat ? { outsideHeat: saved.turn.outsideHeat } : {}),
         ...(saved.turn?.infernoMissiles ? { infernoMissiles: saved.turn.infernoMissiles } : {}),
         ...readTurnHeatLedger(saved.turn?.settledHeat, saved.turn?.heatDissipationConsumed, 'entity turn', failTurn),
@@ -597,7 +621,7 @@ function validateSerializedNonMekTurn(value: unknown): void {
     const keys = Object.keys(turn);
     if (keys.some(key => key !== 'turnCounter' && key !== 'airborne'
         && key !== 'movement' && key !== 'weaponsHeat' && key !== 'firedWeapons' && key !== 'outsideHeat'
-        && key !== 'infernoMissiles'
+        && key !== 'infernoMissiles' && key !== 'amsEngagements'
         && key !== 'settledHeat' && key !== 'heatDissipationConsumed'
         && key !== 'cover' && key !== 'spotting' && key !== 'endTurnCheckpoint'
         && key !== 'controlRecovery' && key !== 'phaseStateChanged' && key !== 'turnStep'
@@ -619,6 +643,7 @@ function validateSerializedNonMekTurn(value: unknown): void {
     }
     readTurnHeatLedger(turn['settledHeat'], turn['heatDissipationConsumed'], 'entity turn', failTurn);
     if (turn['firedWeapons'] !== undefined) readFiredWeapons(turn['firedWeapons'], 'entity turn fired weapons', failTurn);
+    if (turn['amsEngagements'] !== undefined) readFiredWeapons(turn['amsEngagements'], 'entity turn AMS', failTurn);
     if (turn['phaseStateChanged'] !== undefined && turn['phaseStateChanged'] !== true) {
         throw new Error('Non-Mek phase state marker must be true when present');
     }
@@ -668,7 +693,7 @@ function validateSerializedNonMekTurn(value: unknown): void {
 
 function serializePendingCombat(state: NonMekUnitRuntimeState): SerializedNonMekUnit['pendingCombat'] {
     const pending = state.pendingCombat;
-    if (pending.locationInternalDamage.size === 0
+    if (!pending.crewStuns && !pending.lostCargo?.length && !pending.narcPods?.length && pending.locationInternalDamage.size === 0
         && pending.armorDamage.size === 0
         && pending.componentStatus.size === 0
         && pending.damageTrackHits.size === 0
@@ -692,6 +717,9 @@ function serializePendingCombat(state: NonMekUnitRuntimeState): SerializedNonMek
             hitTimestamps: Object.freeze([...damageTrack.hitTimestamps]),
         }));
     return Object.freeze({
+        ...(pending.crewStuns ? { crewStuns: pending.crewStuns } : {}),
+        ...(pending.lostCargo?.length ? { lostCargo: pending.lostCargo } : {}),
+        ...(pending.narcPods?.length ? { narcPods: pending.narcPods } : {}),
         ...(internalDamage.length === 0 ? {} : { internalDamage: Object.freeze(internalDamage) }),
         ...(armorDamage.length === 0 ? {} : { armorDamage: Object.freeze(armorDamage) }),
         ...(componentStatus.length === 0 ? {} : { componentStatus: Object.freeze(componentStatus) }),
@@ -729,6 +757,9 @@ function restorePendingCombat(
             autocannonHits: new Set(saved.pendingCombat.autocannonHits.map(asComponentId)
                 .filter(componentId => installed(componentId) && survivesAutocannonHit(componentId))),
         }),
+        ...(saved.pendingCombat?.crewStuns !== undefined ? { crewStuns: requireInteger(saved.pendingCombat.crewStuns, 'crewStuns') } : {}),
+        ...(saved.pendingCombat?.lostCargo?.length ? { lostCargo: readInternalBayLoads(saved.pendingCombat.lostCargo) } : {}),
+        ...(saved.pendingCombat?.narcPods?.length ? { narcPods: saved.pendingCombat.narcPods.map(asLocationId) } : {}),
         ...(saved.pendingCombat?.outsideHeat === undefined ? {} : { outsideHeat: saved.pendingCombat.outsideHeat }),
         ...(saved.pendingCombat?.infernoMissiles === undefined ? {} : {
             infernoMissiles: saved.pendingCombat.infernoMissiles,

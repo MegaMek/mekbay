@@ -106,6 +106,10 @@ export const CBT_UNIT_FIELD = {
     pendingCombat: 'p',
     velocityRecord: 'vr',
     swarming: 'sw',
+    vehicleCrewStun: 'vcs',
+    internalBayLoads: 'ibl',
+    towedBy: 'tow',
+    narcPods: 'np',
     elevationRecord: 'er',
 } as const;
 
@@ -213,6 +217,7 @@ export const CBT_TURN_FIELD = {
     joinedStep: 'j',
     consciousnessRollsDue: 'k',
     firedWeapons: 'x',
+    amsEngagements: 'a2',
 } as const;
 
 export const CBT_PENDING_COMBAT_FIELD = {
@@ -230,7 +235,10 @@ export const CBT_NON_MEK_PENDING_COMBAT_FIELD = {
     armorDamage: 'a',
     componentStatus: 'c',
     damageTrackHits: 'q',
+    lostCargo: 'lc',
+    crewStuns: 'cs',
     outsideHeat: 'o',
     infernoMissiles: 'i',
+    narcPods: 'np',
     autocannonHits: 'h',
 } as const;

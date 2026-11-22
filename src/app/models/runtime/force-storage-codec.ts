@@ -10,6 +10,8 @@ export type { StoredForceRecord } from './force-storage.model';
 import { BOMB_SECTIONS, type BombSection } from '../aerospace-bomb.model';
 import { VELOCITY_RECORD_FIELDS, type VelocityRecordField } from '../aerospace-velocity-record.model';
 import { GameSystem } from '../common.model';
+import { readInternalBayLoads } from './internal-bay-loads';
+import { readVehicleCrewStun } from './non-mek-unit-persistence';
 import { DEFAULT_GUNNERY_SKILL, DEFAULT_PILOTING_SKILL } from '../crew-member.model';
 import type {
     ASSerializedForce,
@@ -1113,6 +1115,10 @@ function packNonMekUnit(unit: SerializedNonMekUnit, c3Position: C3UnitPosition |
             row => [row.turn, CBT_VELOCITY_RECORD_FIELD[row.field], row.value],
         ),
         [CBT_UNIT_FIELD.swarming]: unit.swarming,
+        [CBT_UNIT_FIELD.narcPods]: unit.narcPods?.slice(),
+        [CBT_UNIT_FIELD.vehicleCrewStun]: unit.vehicleCrewStun?.slice(),
+        [CBT_UNIT_FIELD.internalBayLoads]: unit.internalBayLoads?.map(load => ({ ...load })),
+        [CBT_UNIT_FIELD.towedBy]: unit.towedBy,
         [CBT_UNIT_FIELD.elevationRecord]: packRows(unit.elevationRecord, row => [row.turn, row.value]),
     });
 }
@@ -1244,9 +1250,16 @@ function unpackNonMekUnit(value: Record<string, unknown>, path: string, header: 
                 (row, rowPath) => ({
                 turn: rowInteger(row, 0, rowPath),
                 field: unpackVelocityRecordField(rowText(row, 1, rowPath), `${rowPath}[1]`),
-                value: rowInteger(row, 2, rowPath),
+                value: finiteNumber(row[2], `${rowPath}[2]`),
                 }),
             ),
+        }),
+        ...(value[CBT_UNIT_FIELD.narcPods] === undefined ? {} : { narcPods: array(value[CBT_UNIT_FIELD.narcPods], path)
+            .map(id => asLocationId(text(id, path))) }),
+        ...(value[CBT_UNIT_FIELD.towedBy] === undefined ? {} : { towedBy: text(value[CBT_UNIT_FIELD.towedBy], path + '.tow') }),
+        ...(value[CBT_UNIT_FIELD.internalBayLoads] === undefined ? {} : { internalBayLoads: readInternalBayLoads(value[CBT_UNIT_FIELD.internalBayLoads]) }),
+        ...(value[CBT_UNIT_FIELD.vehicleCrewStun] === undefined ? {} : {
+            vehicleCrewStun: readVehicleCrewStun(value[CBT_UNIT_FIELD.vehicleCrewStun]),
         }),
         ...(value[CBT_UNIT_FIELD.swarming] === undefined ? {} : {
             swarming: text(value[CBT_UNIT_FIELD.swarming], `${path}.${CBT_UNIT_FIELD.swarming}`),
@@ -1351,12 +1364,13 @@ function packNonMekTurn(value: SerializedNonMekUnit['turn']): unknown {
         value.infernoMissiles,
         value.settledHeat?.map(row => [row.sourceId, row.heat]),
         value.firedWeapons?.slice(),
+        value.amsEngagements?.slice(),
     );
 }
 
 function unpackNonMekTurn(value: unknown, path: string): NonNullable<SerializedNonMekUnit['turn']> {
     const turn = array(value, path);
-    if (turn.length < 1 || turn.length > 16) throw new Error(`${path} is not a compact non-Mek turn`);
+    if (turn.length < 1 || turn.length > 17) throw new Error(`${path} is not a compact non-Mek turn`);
     const turnCounter = rowInteger(turn, 0, path);
     const airborneCode = optionalInteger(turn[1], `${path}[1]`) ?? 0;
     if (airborneCode !== -1 && airborneCode !== 0 && airborneCode !== 1) {
@@ -1407,6 +1421,7 @@ function unpackNonMekTurn(value: unknown, path: string): NonNullable<SerializedN
         ...(turn[15] === undefined || turn[15] === null ? {} : {
             firedWeapons: clone(turn[15]) as NonNullable<SerializedNonMekUnit['turn']>['firedWeapons'],
         }),
+        ...(turn[16] == null ? {} : { amsEngagements: clone(turn[16]) as NonNullable<SerializedNonMekUnit['turn']>['amsEngagements'] }),
     };
 }
 
@@ -1963,6 +1978,7 @@ function packTurn(value: SerializedMekTurnStateV2): unknown {
             ? undefined
             : clone(value.pendingCriticalEvents),
         [CBT_TURN_FIELD.consciousnessRollsDue]: value.consciousnessRollsDue?.slice(),
+        [CBT_TURN_FIELD.amsEngagements]: value.amsEngagements?.slice(),
         [CBT_TURN_FIELD.firedWeapons]: value.firedWeapons?.slice(),
     });
     return Object.keys(compact).length === 0 ? undefined : compact;
@@ -2034,6 +2050,8 @@ function unpackTurn(value: unknown, path: string): SerializedMekTurnStateV2 {
             : clone(
                 turn[CBT_TURN_FIELD.consciousnessRollsDue],
             ) as SerializedMekTurnStateV2['consciousnessRollsDue'],
+        amsEngagements: turn[CBT_TURN_FIELD.amsEngagements] === undefined ? undefined
+            : clone(turn[CBT_TURN_FIELD.amsEngagements]) as SerializedMekTurnStateV2['amsEngagements'],
         firedWeapons: turn[CBT_TURN_FIELD.firedWeapons] === undefined
             ? undefined
             : clone(turn[CBT_TURN_FIELD.firedWeapons]) as SerializedMekTurnStateV2['firedWeapons'],
@@ -2201,6 +2219,9 @@ function packNonMekPending(value: SerializedNonMekUnit['pendingCombat']): unknow
             value.damageTrackHits,
             row => [row.damageTrackId, row.hitDelta, row.hitTimestamps?.slice()],
         ),
+        [CBT_NON_MEK_PENDING_COMBAT_FIELD.narcPods]: value.narcPods?.slice(),
+        [CBT_NON_MEK_PENDING_COMBAT_FIELD.crewStuns]: value.crewStuns,
+        [CBT_NON_MEK_PENDING_COMBAT_FIELD.lostCargo]: value.lostCargo?.map(load => ({ ...load })),
         [CBT_NON_MEK_PENDING_COMBAT_FIELD.autocannonHits]: value.autocannonHits?.slice(),
         [CBT_NON_MEK_PENDING_COMBAT_FIELD.outsideHeat]: value.outsideHeat,
         [CBT_NON_MEK_PENDING_COMBAT_FIELD.infernoMissiles]: value.infernoMissiles,
@@ -2251,6 +2272,10 @@ function unpackNonMekPending(value: unknown, path: string): NonNullable<Serializ
                 }),
             ),
         }),
+        ...(pending[CBT_NON_MEK_PENDING_COMBAT_FIELD.crewStuns] === undefined ? {} : { crewStuns: integer(pending[CBT_NON_MEK_PENDING_COMBAT_FIELD.crewStuns], path) }),
+        ...(pending[CBT_NON_MEK_PENDING_COMBAT_FIELD.lostCargo] === undefined ? {} : { lostCargo: readInternalBayLoads(pending[CBT_NON_MEK_PENDING_COMBAT_FIELD.lostCargo]) }),
+        ...(pending[CBT_NON_MEK_PENDING_COMBAT_FIELD.narcPods] === undefined ? {} : { narcPods:
+            array(pending[CBT_NON_MEK_PENDING_COMBAT_FIELD.narcPods], path).map(id => asLocationId(text(id, path))) }),
         ...(pending[CBT_NON_MEK_PENDING_COMBAT_FIELD.autocannonHits] === undefined ? {} : {
             autocannonHits: array(
                 pending[CBT_NON_MEK_PENDING_COMBAT_FIELD.autocannonHits],
