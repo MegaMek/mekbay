@@ -1062,7 +1062,13 @@ function standardBayDamageLines(
             return sum + (value > 0 ? value + (capacitor ? PPC_CAPACITOR_DAMAGE_BONUS : 0) : 0);
         }, 0);
     }, 0));
-    const carried = BAY_MUNITIONS.filter(profile => groups.some(group => munitions(group).includes(profile)));
+    const atm = groups.filter(group => group.equipment.ammoType === 'ATM' || group.equipment.ammoType === 'IATM');
+    // A large craft's ATMs fire special munitions only with "at least 10 shots of each ammo type per ATM launcher"
+    // (TM p. 194); bays print only for DropShips and larger craft
+    const atmSpecialMunitions = atm.every(group =>
+        ATM_AMMO_PROFILES.every(profile => rounds(group, profile) >= 10 * group.mounts.length));
+    const carried = BAY_MUNITIONS.filter(profile => groups.some(group => munitions(group).includes(profile))
+        && (atmSpecialMunitions || !ATM_SPECIAL_PROFILES.includes(profile)));
     // Each munition's line carries its rounds: LRM (78 rounds)
     const line = (profile: AmmoWeaponProfile): BayDamageLine => ({
         munition: profile,
@@ -1070,8 +1076,8 @@ function standardBayDamageLines(
             total + rounds(group, profile), 0))} rounds)`,
         values: values(profile),
     });
-    const atm = groups.filter(group => group.equipment.ammoType === 'ATM' || group.equipment.ammoType === 'IATM');
-    if (atm.length > 0 && atm.every(group => ATM_AMMO_PROFILES.every(profile => tons(group, profile) >= group.mounts.length))) {
+    if (atm.length > 0 && atmSpecialMunitions
+        && atm.every(group => ATM_AMMO_PROFILES.every(profile => tons(group, profile) >= group.mounts.length))) {
         // Short range times 1.5, medium unchanged, long and extreme half the standard value, each rounded up
         const [short, medium] = values(ATM_STANDARD_PROFILE);
         return [{ name: '', values: [Math.ceil(short * 1.5), medium, Math.ceil(medium / 2), Math.ceil(medium / 2)] },
@@ -1080,6 +1086,12 @@ function standardBayDamageLines(
     if (carried.length <= 1) return [{ name: '', values: values(carried[0] ?? null) }];
     return carried.map(line);
 }
+
+/** The ATM munitions other than standard missiles (TW p. 303, IO:AE p. 61) */
+const ATM_SPECIAL_PROFILES: readonly AmmoWeaponProfile[] = [
+    ...ATM_AMMO_PROFILES.filter(profile => profile !== ATM_STANDARD_PROFILE),
+    ATM_IMPROVED_MAGNETIC_PULSE_PROFILE,
+];
 
 /** A bay location's place in the inventory (MegaMekLab's `WeaponBayText.getLocWeight`); any other prints last. */
 const BAY_LOCATION_ORDER: Readonly<Record<string, number>> = {
