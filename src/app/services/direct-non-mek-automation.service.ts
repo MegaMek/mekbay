@@ -84,6 +84,8 @@ export interface NonMekDamageGroup {
     readonly arc: NonMekHitArc;
     readonly effects: readonly NonMekHitEffect[];
     readonly source: DamageSource;
+    /** The hit-location table already transferred a hit on a missing ProtoMek location to its torso. */
+    readonly transferred?: true;
     /** Aerospace: the critical damage the hit-location roll threatens. */
     readonly aeroCritical?: AeroCriticalType;
     /** Aerospace: the first group a natural-12 attack puts on this location (TW p.239 lucky hit). */
@@ -98,6 +100,8 @@ export interface NonMekDamageGroupOutcome {
     readonly structuralIntegrityDamage: number;
     /** Armor left on the struck location's face when the hit was applied. */
     readonly struckArmor: number;
+    /** The face that actually lost armor, the points it had at impact and the points lost. */
+    readonly armorHit: Readonly<{ locationId: LocationId; atHit: number; damage: number }> | null;
 }
 
 type NonMekSnapshot = Omit<CBTUnitSnapshot, 'entity' | 'index' | 'state'> & Readonly<{
@@ -294,6 +298,7 @@ export class DirectNonMekAutomationService {
         const perspective = target === 'pending' ? 'preview' : 'committed';
         const structureDamaged: LocationId[] = [];
         let structuralIntegrityDamage = 0;
+        let armorHit: NonMekDamageGroupOutcome['armorHit'] = null;
         const struck = this.nonMekSnapshot(force, instanceId);
         const struckLocation = struck?.index.locations.get(group.locationId);
         const struckFace = struck && struckLocation ? struckArmorFace(struck.index, struckLocation.id, false) : undefined;
@@ -316,12 +321,17 @@ export class DirectNonMekAutomationService {
             const location: CBTRuntimeLocation | undefined = snapshot?.index.locations.get(locationId);
             if (!snapshot || !location) return null;
             const face = struckArmorFace(snapshot.index, location.id, false);
-            if (face) {
-                const armor = resolveArmorDamage(snapshot.ruleset, damage, snapshot.query.remainingArmor(face.id, perspective),
-                    snapshot.entity.armorAt(location.code)?.type ?? null, group.source);
-                if (armor.armorDamage > 0 && !(await dispatch({
-                    type: 'damage-armor', faceId: face.id, amount: armor.armorDamage, target,
-                }, false)).accepted) return null;
+            const missingProtoLocation = isProtoMekEntity(snapshot.entity)
+                && snapshot.query.remainingInternal(location.id, perspective) === 0;
+            if (face && !missingProtoLocation) {
+                const before = snapshot.query.remainingArmor(face.id, perspective);
+                const armor = resolveArmorDamage(snapshot.ruleset, damage, before,
+                    snapshot.entity.armorAt(location.code)?.type ?? null, group.source, snapshot.entity);
+                if (armor.armorDamage > 0) {
+                    if (!(await dispatch({ type: 'damage-armor', faceId: face.id, amount: armor.armorDamage, target },
+                        false)).accepted) return null;
+                    armorHit = { locationId: location.id, atHit: before, damage: armor.armorDamage };
+                }
                 damage = armor.remainingDamage;
             }
             if (damage <= 0) break;
@@ -354,6 +364,7 @@ export class DirectNonMekAutomationService {
             structureDamaged: Object.freeze(structureDamaged),
             structuralIntegrityDamage,
             struckArmor,
+            armorHit,
         });
     }
 

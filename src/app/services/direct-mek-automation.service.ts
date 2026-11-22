@@ -67,7 +67,9 @@ import type { MekHitArcV2,MekUnitQueryPort } from '../models/runtime/unit-instan
 import { mekHitLocationTable } from '../utils/record-sheet-reference-table';
 import {
     ABLATION_CRITICAL_MODIFIER,
+    armorForCriticalCheck,
     armorPiercingCheckModifiers,
+    armorPiercingCheckPassesDestroyedLocation,
     armorPiercingIgnoresSpecialArmor,
     FALL_DAMAGE,
     resolveArmorDamage,
@@ -172,10 +174,10 @@ interface DirectCriticalChanceContext {
     /** Used only by table-C/through-armor chances; ordinary penetration never floats. */
     readonly floatingHitArc?: MekHitArcV2;
     /**
-     * A TAC: the hit's source and arc, and the armor its struck facing had at the hit, for ablation and hardened armor
+     * A TAC: the hit's source and arc, and the armor that protects the struck facing on the check
      * (Core p.91, IO:AE p.80, TO:AUE p.93). A floating critical reads the facing it moves to (Core p.95).
      */
-    readonly throughArmor?: Readonly<{ source: DamageSource; rear: boolean; armor: number; armorType: ArmorType | null }>;
+    readonly throughArmor?: Readonly<{ source: DamageSource; rear: boolean; armorType: ArmorType | null }>;
     /** Modifiers the check's cause adds: an armor-piercing check's own. */
     readonly causeModifiers?: readonly Readonly<{ label: string; value: number }>[];
     /** Internal-explosion protection carried into the resulting critical sequence. */
@@ -1021,9 +1023,11 @@ export class DirectMekAutomationService {
             if (location) {
                 locationId = location.id;
                 floatingDescription = `Floating critical moved to ${floating.locationLabel}.`;
-                if (throughArmor) {
-                    throughArmor = { ...throughArmor, ...struckFacingArmor(snapshot, location.code, throughArmor.rear,
-                        target === 'pending' ? 'preview' : 'committed') };
+                if (throughArmor && locationId !== sourceLocationId) {
+                    const perspective = target === 'pending' ? 'preview' : 'committed';
+                    const facing = struckFacingArmor(snapshot, location.code, throughArmor.rear, perspective);
+                    const protects = facing.armor > 0 && snapshot.query.locationStatus(locationId, perspective) !== 'destroyed';
+                    throughArmor = { ...throughArmor, armorType: protects ? facing.armorType : null };
                 }
             }
         }
@@ -1033,8 +1037,7 @@ export class DirectMekAutomationService {
         const causeModifiers = [...context.causeModifiers ?? []];
         if (throughArmor) {
             // Core armor-piercing rounds strip both armors' protection (Core p.191)
-            const protects = throughArmor.armor > 0
-                && !armorPiercingIgnoresSpecialArmor(snapshot.ruleset, throughArmor.armorType, throughArmor.source);
+            const protects = !armorPiercingIgnoresSpecialArmor(snapshot.ruleset, throughArmor.armorType, throughArmor.source);
             if (protects && throughArmor.armorType === 'ANTI_PENETRATIVE_ABLATION') {
                 // Core ignores the TAC check (Core p.91); Total Warfare gives it -2 (IO:AE p.80)
                 if (snapshot.ruleset === 'core-2026') return;
@@ -2167,18 +2170,19 @@ export class DirectMekAutomationService {
         const initial = this.snapshot(force, instanceId);
         if (!initial) return 0;
         const topology = getTopologyFor([...initial.index.locations.values()].map(location => location.code));
-        const { armor: initialArmor, armorType: initialArmorType } = struckFacingArmor(initial, sourceCode, rearArc, perspective);
         // A rifle hit loses 3 points against the armor where it strikes (`rifleHitDamage`).
         if (group.source.kind === 'weapon' && group.source.rifle) {
-            damage = rifleHitDamage(initial.ruleset, damage, { entity: initial.entity, location: sourceCode, armor: initialArmor });
+            const { armor } = struckFacingArmor(initial, sourceCode, rearArc, perspective);
+            damage = rifleHitDamage(initial.ruleset, damage, { entity: initial.entity, location: sourceCode, armor });
         }
-        // An armor-piercing hit that damages only armor makes an armor-piercing check there; under TW not where
-        // damage transferred to (TW p.140), under Core not after a location this hit destroyed (Core p.191, errata).
+        // A tandem-charge warhead checks the armor it reaches through an already missing limb (TO:AUE p.184).
+        // AP autocannon rounds do so only under Core (Core p.191, errata; TW p.140).
         let armorPiercingCheck: Readonly<{
             locationId: LocationId;
             modifiers: readonly Readonly<{ label: string; value: number }>[];
         }> | null = null;
         let structureDamaged = false;
+        let tacArmor: ArmorType | null = null;
         const visited = new Set<string>();
         while (code && (damage > 0 || sharedCompositePip) && !visited.has(code)) {
             visited.add(code);
@@ -2187,6 +2191,11 @@ export class DirectMekAutomationService {
             if (!snapshot || !location) break;
             const rear = rearArc && MEK_TORSO_LOCATIONS.has(code);
             const nextCode: string | null = topology[code as keyof typeof topology]?.transfersTo ?? null;
+            // A severed limb can still have recorded armor and structure marks.
+            if (snapshot.query.locationStatus(location.id, perspective) === 'destroyed') {
+                code = nextCode;
+                continue;
+            }
             const face = location.armorFaceIds
                 .map(faceId => snapshot!.index.armorFaces.get(faceId))
                 .find(candidate => candidate?.face === (rear ? 'rear' : 'front'));
@@ -2203,6 +2212,7 @@ export class DirectMekAutomationService {
                 remainingArmor,
                 location.armor.type,
                 group.source,
+                snapshot.entity,
             );
             const armorPips = modularDamage + armor.armorDamage;
             if (armorPips > 0) {
@@ -2213,8 +2223,12 @@ export class DirectMekAutomationService {
                 applied ||= result.accepted;
                 groupDamaged ||= result.accepted;
                 if (result.accepted) {
-                    const modifiers = snapshot.ruleset === 'core-2026' || code === sourceCode
-                        ? armorPiercingCheckModifiers(snapshot.ruleset, location.armor.type, group.source) : null;
+                    const criticalArmor = armorForCriticalCheck(snapshot.ruleset, location.armor.type, remainingArmor, armor.armorDamage);
+                    if (code === sourceCode) tacArmor = criticalArmor;
+                    const modifiers = code === sourceCode || armorPiercingCheckPassesDestroyedLocation(snapshot.ruleset, group.source)
+                        ? armorPiercingCheckModifiers(snapshot.ruleset, criticalArmor, group.source,
+                            snapshot.entity.isIndustrial() && location.armor.armor.bar < 10)
+                        : null;
                     armorPiercingCheck = modifiers && { locationId: location.id, modifiers };
                     await this.resolveBreachOrFlood(force, instanceId, { faceId: face.id, target }, dispatch);
                 }
@@ -2271,7 +2285,7 @@ export class DirectMekAutomationService {
                     target,
                     {
                         floatingHitArc: hitArc,
-                        throughArmor: { source: group.source, rear: rearArc, armor: initialArmor, armorType: initialArmorType },
+                        throughArmor: { source: group.source, rear: rearArc, armorType: tacArmor },
                     },
                     dispatch,
                     interactive,

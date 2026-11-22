@@ -3,9 +3,10 @@
 
 import type { CBTRuleset } from '../cbt-ruleset.model';
 import type { ArmorType } from '../entity/types';
-import { TestBattleArmorEntity, TestSupportTankEntity, TestTankEntity } from '../entity/testing/test-entities';
+import { TestAeroSpaceFighterEntity, TestBattleArmorEntity, TestSupportTankEntity, TestTankEntity } from '../entity/testing/test-entities';
 import type { WeaponType } from '../weapon-types.model';
 import {
+    armorForCriticalCheck,
     armorPiercingCheckModifiers,
     armorPiercingIgnoresSpecialArmor,
     FALL_DAMAGE,
@@ -77,6 +78,26 @@ describe('resolveArmorDamage', () => {
         expect(armors.map(armor => total('core-2026', armor, 5))).toEqual([null, null, null, -2, -2, -2, -2]);
         expect(armors.map(armor => total('total-warfare', armor, 5))).toEqual([-5, -3, null, null, null, -1, -2]);
         expect(armorPiercingCheckModifiers('total-warfare', 'STANDARD', weapon('DB'))).toBeNull();
+    });
+
+    it('uses the armor on the receiving face for a tandem-charge warhead', () => {
+        const tandem = { kind: 'weapon' as const, types: ['M' as const], ammo: 'tandem-charge' as const };
+        for (const ruleset of ['core-2026', 'total-warfare'] as const) {
+            const total = (armor: ArmorType, stillArmored = true, lowBar = false) =>
+                armorPiercingCheckModifiers(ruleset, armorForCriticalCheck(ruleset, armor, 2, stillArmored ? 1 : 2), tandem, lowBar)
+                    ?.reduce((sum, row) => sum + row.value, 0) ?? null;
+            expect(total('STANDARD')).toBe(-2);
+            expect(total('BALLISTIC_REINFORCED')).toBe(-2);
+            expect(total('COMMERCIAL', true, true)).toBe(0);
+            expect(total('REFLECTIVE')).toBe(0);
+            expect(total('IMPACT_RESISTANT')).toBe(-1);
+            expect(total('ANTI_PENETRATIVE_ABLATION')).toBe(ruleset === 'core-2026' ? null : -4);
+            expect(total('ANTI_PENETRATIVE_ABLATION', false)).toBe(ruleset === 'core-2026' ? null : -2);
+            for (const armor of ['HARDENED', 'FERRO_LAMELLOR', 'REACTIVE'] as const) expect(total(armor)).toBeNull();
+            expect(resolveArmorDamage(ruleset, 2, 3, 'HARDENED', tandem)).toEqual({ armorDamage: 3, remainingDamage: 0 });
+            expect(resolveArmorDamage(ruleset, 2, 3, 'HARDENED', tandem, new TestAeroSpaceFighterEntity()))
+                .toEqual({ armorDamage: 2, remainingDamage: 0 });
+        }
     });
 
     it('halves damage to heat-dissipating armor only for heat-causing weapons under Core', () => {

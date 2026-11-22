@@ -694,6 +694,7 @@ function weaponHits(
                 arc: hit.location.arc,
                 effects: hit.location.effects,
                 source: hit.source,
+                ...(hit.location.transferred ? { transferred: true as const } : {}),
                 ...(hit.location.aeroCritical === undefined ? {} : { aeroCritical: hit.location.aeroCritical, luckyHit: hit.luckyHit === true }),
             })] : []),
         };

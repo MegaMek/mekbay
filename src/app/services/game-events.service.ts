@@ -56,7 +56,7 @@ export interface AttackWeaponReport {
     readonly critical?: true;
     /** A rifle: each hit loses 3 points where it strikes (`rifleHitDamage`). */
     readonly rifle?: true;
-    /** Armor-piercing autocannon rounds or acid missiles, which special armor treats apart. */
+    /** Ammunition with a special effect on the armor struck. */
     readonly ammo?: ArmorSpecialAmmo;
     /** The size of the autocannon firing armor-piercing rounds, which sets its armor-piercing check. */
     readonly rackSize?: number;
@@ -200,7 +200,7 @@ function parseWeaponReport(value: unknown): AttackWeaponReport | null {
         || (table !== undefined && table !== 'punch' && table !== 'kick' && table !== 'swarm')
         || (critical !== undefined && critical !== true)
         || (rifle !== undefined && (rifle !== true || physical !== undefined))
-        || (ammo !== undefined && ammo !== 'armor-piercing' && ammo !== 'acid')
+        || (ammo !== undefined && ammo !== 'armor-piercing' && ammo !== 'acid' && ammo !== 'tandem-charge')
         || (rackSize !== undefined && (ammo !== 'armor-piercing' || !isInteger(rackSize, 1, MAX_DAMAGE)))
         || (swarmRelease !== undefined && swarmRelease !== true)
         || (swarmStrike !== undefined && !isSwarmStrike(swarmStrike))

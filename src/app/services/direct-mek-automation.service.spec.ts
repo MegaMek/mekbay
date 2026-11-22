@@ -386,8 +386,40 @@ describe('DirectMekAutomationService', () => {
             const floated = armored('core-2026', 'ANTI_PENETRATIVE_ABLATION');
             expect(await chances(floated, [hit('CT', 5, laser)])).toEqual([]);
             expect(await chances(floated, [hit('LT', 2, laser, true)])).toEqual([[]]);
+            // A reroll back to the struck torso keeps the same armor timing as an ordinary TAC.
+            expect(await chances(armored('core-2026', 'ANTI_PENETRATIVE_ABLATION'), [hit('CT', 5, laser, true)]))
+                .toEqual([]);
+            expect(await chances(armored('total-warfare', 'ANTI_PENETRATIVE_ABLATION'), [hit('CT', 5, laser, true)]))
+                .toEqual([[]]);
             floatingCriticals = false;
             expect(await chances(armored('core-2026', 'ANTI_PENETRATIVE_ABLATION'), [hit('LT', 2, laser, true)]))
+                .toEqual([]);
+        });
+
+        it('checks the torso armor reached through a blown-off arm once per tandem-charge warhead', async () => {
+            const tandem: DamageSource = { kind: 'weapon', types: ['M'], ammo: 'tandem-charge' };
+            for (const ruleset of ['total-warfare', 'core-2026'] as const) {
+                const harness = createHarness(ruleset);
+                const sections = [...harness.fixture.index.locations.values()];
+                const arm = sections.find(section => section.code === 'LA')!;
+                const torso = sections.find(section => section.code === 'LT')!;
+                const armor = () => harness.fixture.instance.query().remainingArmor(torso.armorFaceIds[0], 'preview');
+                expect(harness.fixture.instance.dispatch({ type: 'set-location-condition', locationId: arm.id,
+                    condition: 'blown-off', value: 1, target: 'committed' }).accepted).toBeTrue();
+                const before = armor();
+                expect(await chances(harness, [hit('LA', 2, tandem), hit('LA', 2, tandem)])).withContext(ruleset)
+                    .toEqual([['Tandem-charge missile -2'], ['Tandem-charge missile -2']]);
+                expect(armor()).withContext(ruleset).toBe(before - 4);
+            }
+        });
+
+        it('applies the TW ablation modifier to TACs and AP autocannon rounds while armor remains after the hit', async () => {
+            const harness = () => armored('total-warfare', 'ANTI_PENETRATIVE_ABLATION');
+            expect(await chances(harness(), [hit('LT', 4, armorPiercing(5), true)]))
+                .toEqual([['Ablation armor -2'], ['Armor-piercing ammo -3', 'Ablation armor -2']]);
+            expect(await chances(harness(), [hit('LT', 5, armorPiercing(5), true)]))
+                .toEqual([[], ['Armor-piercing ammo -3']]);
+            expect(await chances(armored('core-2026', 'ANTI_PENETRATIVE_ABLATION'), [hit('LT', 5, laser, true)]))
                 .toEqual([]);
         });
 

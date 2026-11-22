@@ -7,7 +7,7 @@ import { STRUCTURE_TYPE } from '../entity/types';
 import { ArmorEquipment, StructureEquipment } from '../equipment.model';
 import { infernoEffect } from '../rules/inferno-rules';
 import type { BaseEntity } from '../entity/base-entity';
-import { TestAeroSpaceFighterEntity, TestQuadMekEntity, TestTankEntity, TestTripodMekEntity } from '../entity/testing/test-entities';
+import { TestAeroSpaceFighterEntity, TestProtoMekEntity, TestQuadMekEntity, TestTankEntity, TestTripodMekEntity } from '../entity/testing/test-entities';
 import { createNonMekUnit } from './cbt-non-mek-unit';
 import { queryNonMekRuntime } from './non-mek-unit-instance';
 import { projectNonMekRecordSheet } from './non-mek-record-sheet';
@@ -179,6 +179,33 @@ describe('readAttackHitLocation', () => {
             expect(readAttackThermalEffects(fighter, 'front', [machineGun, plasma]).heat).toBe(5);
         });
     }
+
+    it('previews a TW rifle after a tandem-charge missile strips torso armor through a ProtoMech arm lost earlier in the volley', () => {
+        const entity = new TestProtoMekEntity();
+        entity.uuid.set(asUnitUuid('019f6767-0dcb-7bb8-992f-aef08202f5e9'));
+        entity.setTonnage(5);
+        entity.setArmorValue('Torso', 'front', 3);
+        const ruleset = 'total-warfare';
+        const unit = createNonMekUnit(entity, { instanceId: 'unit:proto-transfer', uuid: entity.uuid(),
+            deployment: { id: 'default' }, scenario: { id: 'megamek', ruleset }, initialStateProfileId: 'pristine-non-mek' });
+        const index = unit.getIndex();
+        const query = unit.query();
+        const sheet = projectNonMekRecordSheet(entity, index, unit.snapshot(), ruleset, query, 0, 0);
+        const member = { entity, nonMekRecordSheetSnapshot: () => sheet,
+            force: { getUnitSnapshot: () => ({ entity, index, query, ruleset }) } } as unknown as CBTForceMember;
+        const arm = readAttackHitLocation(member, 'front', [5, 5], 1);
+        const torso = readAttackHitLocation(member, 'front', [3, 4], 1);
+        if (arm?.kind !== 'non-mek' || torso?.kind !== 'non-mek') throw new Error('Missing ProtoMech locations');
+        const armPoints = query.remainingInternal(arm.locationId);
+        const tandem = { kind: 'weapon', types: ['M'], ammo: 'tandem-charge' } as const;
+        const rifle = { kind: 'weapon', types: ['DB'], rifle: true } as const;
+        const deal = attackDamagePreview(member, ruleset);
+        expect(attackDamagePreview(member, ruleset)(torso, 5, rifle)).toBe(2);
+        // The first hit destroys the arm and takes one torso armor point. The missile reaches the last two.
+        deal(arm, armPoints + 1, { kind: 'weapon', types: ['DE'] });
+        deal(arm, 2, tandem);
+        expect(deal(torso, 5, rifle)).toBe(5);
+    });
 
     it('reads an inferno against the armor where it strikes, before later hits', () => {
         const { entity, index, instance } = createDirectMekRuntimeFixture('core-2026');

@@ -14,7 +14,7 @@ import type { CBTRuntimeArmorFace, CBTUnitRuntimeIndex } from './cbt-unit-runtim
 import type { AeroCriticalType } from '../rules/aero-critical-rules';
 import { getMekLocationParent, getTopologyFor, MEK_TORSO_LOCATIONS } from '../entity/types/mek';
 import { structureConstructionKind } from '../construction-equipment.model';
-import { isMekEntity } from '../entity/utils/entity-type-guards';
+import { isMekEntity, isProtoMekEntity } from '../entity/utils/entity-type-guards';
 import type { CBTForceMember } from '../force-member.model';
 import type { HitTable } from '../rules/physical-attack-rules';
 import { damageGroups, PLATOON_DAMAGE_GROUP, type HitLocationDice } from '../rules/weapon-attack-resolution';
@@ -405,6 +405,8 @@ export function attackDamagePreview(
             ? rifleHitDamage(snapshot.ruleset, damage, { entity: snapshot.entity, location: struck.code, armor: armorOf(face.id) })
             : damage;
         const topology = location?.kind === 'mek' ? getTopologyFor(sections.map(section => section.code)) : undefined;
+        // When a hit destroys a ProtoMek limb, later damage to it reaches the torso.
+        const protoTorso = isProtoMekEntity(snapshot.entity) ? sections.find(section => section.code === 'Torso') : undefined;
         const internalOf = (locationId: LocationId) => ledger.internal.get(locationId) ?? snapshot.query.remainingInternal(locationId, 'preview');
         const kindOf = (code: string) => {
             const kind = structureConstructionKind(snapshot.entity.structureAt(code).structure);
@@ -412,11 +414,13 @@ export function attackDamagePreview(
         };
         const mek = hasMekRuntime(snapshot) ? snapshot : null;
         const modularOf = (locationId: LocationId) => ledger.modular.get(locationId) ?? (mek ? modularArmorAt(mek, locationId, 'preview') : 0);
+        const destroyed = (id: LocationId) => destroyedByLedger(snapshot.index, ledger, id)
+            || mek?.query.locationStatus(id, 'preview') === 'destroyed';
         // The next location can take a shared composite pip while its structure stands bare.
         const bareComposite = (candidate: typeof struck | undefined) => {
             const candidateFace = candidate && struckArmorFace(snapshot.index, candidate.id, rear(candidate));
             return !!candidate && !!candidateFace && kindOf(candidate.code) === 'composite' && armorOf(candidateFace.id) === 0
-                && modularOf(candidate.id) === 0 && internalOf(candidate.id) > 0 && !destroyedByLedger(snapshot.index, ledger, candidate.id);
+                && modularOf(candidate.id) === 0 && internalOf(candidate.id) > 0 && !destroyed(candidate.id);
         };
         let section: typeof struck | undefined = struck;
         let remaining = dealt;
@@ -425,9 +429,10 @@ export function attackDamagePreview(
             const sectionFace = struckArmorFace(snapshot.index, section.id, rear(section));
             if (!sectionFace) break;
             const next: string | null | undefined = topology?.[section.code as keyof typeof topology]?.transfersTo;
-            const nextSection: typeof struck | undefined = next ? sections.find(candidate => candidate.code === next) : undefined;
+            const nextSection: typeof struck | undefined = next ? sections.find(candidate => candidate.code === next)
+                : section !== protoTorso ? protoTorso : undefined;
             // A limb that went with its side torso earlier in the attack passes the whole hit on.
-            if (!topology || !destroyedByLedger(snapshot.index, ledger, section.id)) {
+            if (!(topology && destroyed(section.id)) && !(protoTorso && internalOf(section.id) === 0)) {
                 // Modular armor panels take the hit before the location's armor, as applying the damage does.
                 if (topology && remaining > 0) {
                     const modular = modularOf(section.id);
@@ -436,13 +441,14 @@ export function attackDamagePreview(
                     remaining -= absorbed;
                 }
                 const armor = armorOf(sectionFace.id);
-                const resolved = resolveArmorDamage(snapshot.ruleset, remaining, armor, snapshot.entity.armorAt(section.code).type, source);
+                const resolved = resolveArmorDamage(snapshot.ruleset, remaining, armor, snapshot.entity.armorAt(section.code).type,
+                    source, snapshot.entity);
                 ledger.armor.set(sectionFace.id, armor - resolved.armorDamage);
-                if (!topology) break;
+                if (!topology && !protoTorso) break;
                 const internal = internalOf(section.id);
                 const received: boolean = sharedPip;
                 const shared: number = received && internal > 0 ? 1 : 0;
-                const kind = kindOf(section.code);
+                const kind = topology ? kindOf(section.code) : 'standard';
                 const structure = resolveMekStructureDamage(resolved.remainingDamage, internal - shared, kind);
                 const internalDamage: number = shared + structure.internalDamage;
                 ledger.internal.set(section.id, internal - internalDamage);

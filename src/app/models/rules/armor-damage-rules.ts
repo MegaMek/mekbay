@@ -17,8 +17,8 @@ import {
 import type { TnTargetUnitType } from '../target-number-calculator.model';
 import type { WeaponType } from '../weapon-types.model';
 
-/** Ammunition that special armor treats apart: an autocannon's armor-piercing rounds, or acid (AX) missiles. */
-export type ArmorSpecialAmmo = 'armor-piercing' | 'acid';
+/** Ammunition with a special effect when it hits armor. */
+export type ArmorSpecialAmmo = 'armor-piercing' | 'acid' | 'tandem-charge';
 
 /** What dealt the damage: a fall, a physical attack, or a weapon attack with its damage types. */
 export type DamageSource =
@@ -141,12 +141,33 @@ export function armorPiercingIgnoresSpecialArmor(
             || armorType === 'HARDENED');
 }
 
-/** Total Warfare ablation armor on a TAC or armor-piercing check while the struck location had armor (IO:AE p.80). */
+/**
+ * Core tests special armor when the hit is applied (p.201). Total Warfare ablation armor modifies a TAC or an
+ * armor-piercing check only while armor remains on the struck face after the hit (IO:AE p.80).
+ */
+export function armorForCriticalCheck(
+    ruleset: CBTRuleset, armorType: ArmorType | null, armorAtHit: number, armorDamage: number,
+): ArmorType | null {
+    const armor = ruleset === 'total-warfare' && armorType === 'ANTI_PENETRATIVE_ABLATION'
+        ? armorAtHit - armorDamage : armorAtHit;
+    return armor > 0 ? armorType : null;
+}
+
+/** Total Warfare ablation armor's modifier to a TAC or armor-piercing check (IO:AE p.80). */
 export const ABLATION_CRITICAL_MODIFIER = Object.freeze({ label: 'Ablation armor', value: -2 });
 
+/** A warhead that passes through a previously destroyed location can still strike the armor further in. */
+export function armorPiercingCheckPassesDestroyedLocation(ruleset: CBTRuleset, source: DamageSource): boolean {
+    return source.kind === 'weapon' && (source.ammo === 'tandem-charge'
+        || (source.ammo === 'armor-piercing' && ruleset === 'core-2026'));
+}
+
 /**
- * The modifiers of the armor-piercing check an armor-piercing autocannon hit that damaged only armor makes, or null when
- * it makes none. Core p.191: AC/2 -3, AC/5 -2, AC/10 and larger -1; ablation, ballistic-reinforced and hardened armor
+ * Modifiers to a critical check for an armor-only hit by AP autocannon rounds or a tandem-charge SRM; null for no check.
+ * TO:AUE p.184: each tandem-charge warhead rolls at −2, or without that penalty against low-BAR industrial armor.
+ * Core p.201 negates any armor-piercing effect on ablation armor. The special rules for tandem-charge warheads
+ * against other armors appear in TO:AUE pp.92–94 and IO:AE p.82.
+ * Core p.191: AC/2 -3, AC/5 -2, AC/10 and larger -1; ablation, ballistic-reinforced and hardened armor
  * negate it. TW p.140: AC/2 -4, AC/5 -3, AC/10 -2, AC/20 -1, sizes between as MegaMek; hardened (TO:AUE p.93),
  * ferro-lamellor (TO:AUE p.92) and reactive armor (TO:AUE p.94) negate it; laser-reflective armor adds +2 (TO:AUE
  * p.93), impact-resistant +1 (IO:AE p.82) and ablation -2 (IO:AE p.80).
@@ -155,21 +176,27 @@ export function armorPiercingCheckModifiers(
     ruleset: CBTRuleset,
     armorType: ArmorType | null,
     source: DamageSource,
+    lowBar = false,
 ): readonly Readonly<{ label: string; value: number }>[] | null {
-    if (source.kind !== 'weapon' || source.ammo !== 'armor-piercing' || source.rackSize === undefined) return null;
-    const size = source.rackSize;
-    if (ruleset === 'core-2026') {
-        return armorPiercingIgnoresSpecialArmor(ruleset, armorType, source)
-            ? null : [Object.freeze({ label: 'Armor-piercing ammo', value: size <= 2 ? -3 : size <= 5 ? -2 : -1 })];
+    if (source.kind !== 'weapon') return null;
+    const modifiers: { label: string; value: number }[] = [];
+    if (source.ammo === 'tandem-charge') {
+        if (ruleset === 'core-2026' && armorType === 'ANTI_PENETRATIVE_ABLATION') return null;
+        if (!lowBar) modifiers.push({ label: 'Tandem-charge missile', value: -2 });
+    } else {
+        const size = source.rackSize;
+        if (source.ammo !== 'armor-piercing' || size === undefined) return null;
+        if (ruleset === 'core-2026') {
+            return armorPiercingIgnoresSpecialArmor(ruleset, armorType, source)
+                ? null : [{ label: 'Armor-piercing ammo', value: size <= 2 ? -3 : size <= 5 ? -2 : -1 }];
+        }
+        modifiers.push({ label: 'Armor-piercing ammo', value: size <= 2 ? -4 : size <= 6 ? -3 : size <= 15 ? -2 : -1 });
     }
     if (armorType === 'HARDENED' || armorType === 'FERRO_LAMELLOR' || armorType === 'REACTIVE') return null;
-    const armor = armorType === 'REFLECTIVE' ? { label: 'Laser-reflective armor', value: 2 }
-        : armorType === 'IMPACT_RESISTANT' ? { label: 'Impact-resistant armor', value: 1 }
-            : armorType === 'ANTI_PENETRATIVE_ABLATION' ? ABLATION_CRITICAL_MODIFIER : null;
-    return [
-        Object.freeze({ label: 'Armor-piercing ammo', value: size <= 2 ? -4 : size <= 6 ? -3 : size <= 15 ? -2 : -1 }),
-        ...(armor ? [Object.freeze(armor)] : []),
-    ];
+    if (armorType === 'REFLECTIVE') modifiers.push({ label: 'Laser-reflective armor', value: 2 });
+    if (armorType === 'IMPACT_RESISTANT') modifiers.push({ label: 'Impact-resistant armor', value: 1 });
+    if (armorType === 'ANTI_PENETRATIVE_ABLATION') modifiers.push(ABLATION_CRITICAL_MODIFIER);
+    return modifiers;
 }
 
 /** Armor marks one damage group removes from a location's armor, and what reaches the structure, for any unit. */
@@ -179,6 +206,7 @@ export function resolveArmorDamage(
     remainingArmor: number,
     armorType: ArmorType | null,
     source: DamageSource,
+    targetEntity?: BaseEntity,
 ): ArmorDamageResolution {
     const incoming = Math.max(0, Math.trunc(damage) || 0);
     const armor = Math.max(0, Math.trunc(remainingArmor) || 0);
@@ -188,9 +216,10 @@ export function resolveArmorDamage(
     const weaponTypes = source.kind === 'weapon' ? source.types : [];
     const ammo = source.kind === 'weapon' ? source.ammo : undefined;
     const standardVsArmorPiercing = armorPiercingIgnoresSpecialArmor(ruleset, armorType, source);
-    if (ammo === 'armor-piercing' && armorType === 'HARDENED') {
-        // Armor-piercing rounds deal "standard damage dealt to standard armor" (Core p.191; TO:AUE p.93): each point
-        // removes a full pip, two hardened marks
+    if (armorType === 'HARDENED' && (ammo === 'armor-piercing'
+        || (ammo === 'tandem-charge' && (!targetEntity || !isAeroEntity(targetEntity))))) {
+        // AP rounds and tandem-charge warheads deal standard damage to hardened armor (Core p.191; TO:AUE p.93).
+        // Each point removes a full pip, two hardened marks.
         return Object.freeze({
             armorDamage: Math.min(armor, 2 * incoming),
             remainingDamage: Math.max(0, incoming - Math.ceil(armor / 2)),

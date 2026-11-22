@@ -97,6 +97,15 @@ describe('parseGameEvent', () => {
         expect(parseGameEvent(autocannon({ rackSize: 2.5 }))).toBeNull();
     });
 
+    it('retains tandem-charge ammunition when a hit report crosses the wire', () => {
+        const missile = { name: 'SRM 2', types: ['M'], targetNumber: 7, toHit: [4, 4], ammo: 'tandem-charge',
+            groups: [{ damage: 2, location: [3, 4], aux: 2 }] };
+        expect(parseGameEvent({ ...attack(), weapons: [missile] })).toEqual(jasmine.objectContaining({
+            weapons: [jasmine.objectContaining({ ammo: 'tandem-charge' })],
+        }));
+        expect(parseGameEvent({ ...attack(), weapons: [{ ...missile, rackSize: 2 }] })).toBeNull();
+    });
+
     it('keeps a hit that struck the swarming infantry, with its battle armor trooper', () => {
         const report = (swarmStrike: unknown) => ({ ...attack(), weapons: [{
             name: 'Medium Laser (struck while swarming)', types: ['DE'], targetNumber: 7, toHit: [5, 5], swarmStrike,

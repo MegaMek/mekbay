@@ -47,6 +47,19 @@ describe('weapon attack resolution', () => {
         expect([profile(null).ammo, profile(null).rackSize]).toEqual([undefined, undefined]);
     });
 
+    it('reports a tandem-charge SRM as one two-point hit per warhead', () => {
+        const launcher = new WeaponEquipment({ id: 'ISSRM2', name: 'SRM 2', type: 'weapon', flags: ['F_SRM', 'F_MISSILE'],
+            weapon: { damage: 'cluster', rackSize: 2, ammoType: 'SRM' } });
+        const ammo = new AmmoEquipment({ id: 'TC', name: 'TC SRM ammo', type: 'ammo',
+            ammo: { type: 'SRM', rackSize: 2, damagePerShot: 2, munitionType: ['M_TANDEM_CHARGE'] } });
+        const profile = weaponAttackProfile({ componentId: weaponId, equipment: launcher, mode: undefined,
+            damage: { values: [2], maximum: 4, unit: 'missile' }, ammo, types: ['M'], name: 'SRM 2',
+            targetNumber: 6, partialCover: false }, TW_GAME_RULES)!;
+        expect(profile.ammo).toBe('tandem-charge');
+        expect(profile.rackSize).toBeUndefined();
+        expect(resolveWeaponAttack(profile, [6, 6], [6, 6]).groups).toEqual([2, 2]);
+    });
+
     it('rolls missiles on the Cluster Hits Table and groups them in five-point clusters', () => {
         const profile = weaponAttackProfile({ componentId: weaponId, equipment: lrm15, mode: undefined, damage: { values: [1], maximum: 15, unit: 'missile' }, ammo: lrmAmmo, types: [], name: 'LRM 15', targetNumber: 8, partialCover: false }, TW_GAME_RULES)!;
 

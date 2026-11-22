@@ -74,7 +74,7 @@ export interface WeaponAttackProfile {
     readonly heatWeapon?: AttackHeatWeapon;
     /** A rifle: each hit loses 3 points where it strikes (`rifleHitDamage`). */
     readonly rifle?: true;
-    /** Armor-piercing autocannon rounds or acid missiles, which special armor treats apart (`resolveArmorDamage`). */
+    /** Ammunition with a special effect on the armor struck (`resolveArmorDamage`). */
     readonly ammo?: ArmorSpecialAmmo;
     /** The size of the autocannon firing armor-piercing rounds (`armorPiercingCheckModifiers`). */
     readonly rackSize?: number;
@@ -199,16 +199,17 @@ function hasIntegralArtemis(equipment: WeaponEquipment): boolean {
     return equipment.ammoType === 'ATM' || isFusilladeLauncher(equipment);
 }
 
+/** Special AC rounds (Core p.191) and short-range missile warheads (Core p.192, TO:AUE p.184). */
+function armorSpecialAmmo(equipment: WeaponEquipment, ammo: AmmoEquipment | null): ArmorSpecialAmmo | null {
+    if (ammo?.hasMunitionType('M_AX_HEAD')) return 'acid';
+    if (ammo?.hasMunitionType('M_TANDEM_CHARGE')) return 'tandem-charge';
+    return ammo?.hasMunitionType('M_ARMOR_PIERCING') && equipment.hasFlag('F_AC') ? 'armor-piercing' : null;
+}
+
 /**
  * Profiles a fired weapon from the exact damage the equipment table shows. Weapons without damage
  * (TAG, NARC pods, AMS) have no attack to resolve.
  */
-/** Armor-piercing rounds only exist for autocannons (Core p.191); acid heads are AX missiles (Core p.192). */
-function armorSpecialAmmo(equipment: WeaponEquipment, ammo: AmmoEquipment | null): ArmorSpecialAmmo | null {
-    if (ammo?.hasMunitionType('M_AX_HEAD')) return 'acid';
-    return ammo?.hasMunitionType('M_ARMOR_PIERCING') && equipment.hasFlag('F_AC') ? 'armor-piercing' : null;
-}
-
 export function weaponAttackProfile(facts: WeaponAttackFacts, rules: CBTGameRules): WeaponAttackProfile | null {
     const { equipment, mode, damage, ammo } = facts;
     const perHit = damage.values[0] ?? 0;

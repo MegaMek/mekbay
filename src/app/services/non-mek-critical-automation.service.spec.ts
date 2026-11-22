@@ -89,7 +89,7 @@ describe('NonMekCriticalAutomationService', () => {
     }
 
     /** A 5-ton ProtoMech with `armor` on the left arm, a torso laser filling die faces 1-2 of torso critical weapon rolls. */
-    function protoMek(autocannon = false, armor = 0) {
+    function protoMek(autocannon = false, armor = 0, ruleset: CBTRuleset = 'core-2026', torsoArmor = 0) {
         const laser = autocannon
             ? new WeaponEquipment({ id: 'Critical_Test_PAC', name: 'ProtoMech AC/2', type: 'weapon',
                 flags: ['F_AC', 'F_BALLISTIC', 'F_DIRECT_FIRE'], weapon: { ammoType: 'PAC', rackSize: 2, damage: '2', ranges: [4, 8, 12] } })
@@ -99,9 +99,10 @@ describe('NonMekCriticalAutomationService', () => {
         entity.uuid.set(UUID);
         entity.setTonnage(5);
         entity.setArmorValue('Left Arm', 'front', armor);
+        entity.setArmorValue('Torso', 'front', torsoArmor);
         const laserId = componentIdForMount(addTestEquipment(entity, laser, { location: 'Torso' }));
         const runtime = createNonMekUnit(entity, { instanceId: 'critical-protomek', uuid: UUID,
-            scenario: { id: 'megamek', options: {} }, deployment: { id: 'default' }, initialStateProfileId: 'pristine' });
+            scenario: { id: 'megamek', ruleset, options: {} }, deployment: { id: 'default' }, initialStateProfileId: 'pristine' });
         const force = { getUnitSnapshot: () => ({ instanceId: runtime.instanceId, entity,
             index: runtime.getIndex(), uuid: UUID, ruleset: runtime.ruleset(), crewAssignment: runtime.getCrewAssignment(),
             editContext: { owner: runtime, state: runtime.snapshot() }, state: runtime.snapshot(), query: runtime.query(),
@@ -115,7 +116,7 @@ describe('NonMekCriticalAutomationService', () => {
     }
 
     /** A fighter with 20 points of nose armor (Damage Threshold 2) and SI 10, and a nose Gauss rifle if asked. */
-    function fighter(withGauss = false) {
+    function fighter(withGauss = false, ruleset: CBTRuleset = 'core-2026') {
         const gauss = new WeaponEquipment({ id: 'Critical_Test_Gauss', name: 'Gauss Rifle', type: 'weapon',
             flags: ['F_BALLISTIC', 'F_DIRECT_FIRE'], stats: { explosive: true, criticalSlots: 7 },
             weapon: { ammoType: 'GAUSS', rackSize: 15, damage: '15', ranges: [7, 15, 22], explosionDamage: 20 } });
@@ -125,7 +126,7 @@ describe('NonMekCriticalAutomationService', () => {
         entity.setArmorValue('Nose', 'front', 20);
         const gaussId = withGauss ? componentIdForMount(addTestEquipment(entity, gauss, { location: 'Nose' })) : null;
         const runtime = createNonMekUnit(entity, { instanceId: 'critical-fighter', uuid: UUID,
-            scenario: { id: 'megamek', options: {} }, deployment: { id: 'default' }, initialStateProfileId: 'pristine' });
+            scenario: { id: 'megamek', ruleset, options: {} }, deployment: { id: 'default' }, initialStateProfileId: 'pristine' });
         const force = { getUnitSnapshot: () => ({ instanceId: runtime.instanceId, entity,
             index: runtime.getIndex(), uuid: UUID, ruleset: runtime.ruleset(), crewAssignment: runtime.getCrewAssignment(),
             editContext: { owner: runtime, state: runtime.snapshot() }, state: runtime.snapshot(), query: runtime.query(),
@@ -179,6 +180,7 @@ describe('NonMekCriticalAutomationService', () => {
         const tac = ['critical', 'through-armor'] as const;
         const cases = [
             ['ANTI_PENETRATIVE_ABLATION', 'total-warfare', 2, tac, undefined, [0, 1]],
+            ['ANTI_PENETRATIVE_ABLATION', 'total-warfare', 10, tac, undefined, [1, 0]],
             ['ANTI_PENETRATIVE_ABLATION', 'total-warfare', 2, ['critical'], undefined, [1, 0]],
             ['HARDENED', 'total-warfare', 2, tac, ap, [0, 1]],
             ['HARDENED', 'total-warfare', 2, ['critical'], undefined, [0, 1]],
@@ -188,6 +190,7 @@ describe('NonMekCriticalAutomationService', () => {
             ['HARDENED', 'core-2026', 21, [], undefined, [1, 0]],
             ['HARDENED', 'core-2026', 2, tac, ap, [1, 0]],
             ['ANTI_PENETRATIVE_ABLATION', 'core-2026', 2, tac, undefined, [0, 0]],
+            ['ANTI_PENETRATIVE_ABLATION', 'core-2026', 10, tac, undefined, [0, 0]],
             ['ANTI_PENETRATIVE_ABLATION', 'core-2026', 2, ['critical'], undefined, [1, 0]],
             ['ANTI_PENETRATIVE_ABLATION', 'core-2026', 2, tac, ap, [1, 0]],
         ] as const;
@@ -227,6 +230,87 @@ describe('NonMekCriticalAutomationService', () => {
             { source: { kind: 'weapon', types: ['DB'], ammo: 'armor-piercing', rackSize: 5 } })])).toBeTrue();
         expect(unit.hits(systemDamageId('left-arm', 1))).toBe(1);
         expect(unit.hits(systemDamageId('left-arm', 2))).toBe(0);
+    });
+
+    for (const ruleset of ['total-warfare', 'core-2026'] as const) {
+        it(`checks the ProtoMech torso armor a tandem-charge SRM hits through a missing arm under ${ruleset}`, async () => {
+            const source = { kind: 'weapon', types: ['M'], ammo: 'tandem-charge' } as const;
+            const unit = protoMek(false, 3, ruleset, 5);
+            const arm = unit.location('Left Arm');
+            const torso = unit.location('Torso');
+            const torsoFace = [...unit.runtime.getIndex().armorFaces.values()].find(face => face.locationId === torso)!;
+            expect(unit.runtime.dispatch({ type: 'damage-internal', locationId: arm,
+                amount: unit.runtime.query().remainingInternal(arm), target: 'committed' }).accepted).toBeTrue();
+
+            rolls(4, 5); // 9 − 2 = 7. The roll is made but does not mark a box.
+            expect(await unit.apply([group(arm, 2, { source })])).toBeTrue();
+            expect(unit.runtime.query().remainingArmor(torsoFace.id)).toBe(3);
+            expect((Math.random as jasmine.Spy).calls.count()).toBe(2);
+            expect(unit.hits(systemDamageId('torso', 1))).toBe(0);
+
+            rolls(5, 5, 1, 6, 6); // 10 − 2 = 8. Apply the one critical to the torso.
+            expect(await unit.apply([group(torso, 2, { source, transferred: true })])).toBeTrue();
+            expect(unit.runtime.query().remainingArmor(torsoFace.id)).toBe(1);
+            expect(unit.hits(systemDamageId('torso', 1))).toBe(1);
+            expect(unit.hits(systemDamageId('torso', 2))).toBe(0);
+        });
+        it(`applies the AP autocannon transfer rule when the hit table already redirected a missing ProtoMech arm under ${ruleset}`, async () => {
+            const unit = protoMek(false, 0, ruleset, 5);
+            const source = { kind: 'weapon', types: ['DB'], ammo: 'armor-piercing', rackSize: 5 } as const;
+            rolls(5, 4);
+            expect(await unit.apply([group(unit.location('Torso'), 2, { source, transferred: true })])).toBeTrue();
+            expect(Math.random).toHaveBeenCalledTimes(ruleset === 'core-2026' ? 2 : 0);
+        });
+    }
+
+    it('does not start a second tandem-charge check where damage spills out of a newly destroyed arm', async () => {
+        const unit = protoMek(false, 0, 'total-warfare', 5);
+        const arm = unit.location('Left Arm');
+        rolls(6, 6, 6, 6); // Crew injury from losing the arm can require its own check.
+        expect(await unit.apply([group(arm, unit.runtime.query().remainingInternal(arm) + 1,
+            { source: { kind: 'weapon', types: ['M'], ammo: 'tandem-charge' } })])).toBeTrue();
+        expect(unit.runtime.query().remainingInternal(arm)).toBe(0);
+        expect(unit.hits(systemDamageId('torso', 1))).toBe(0);
+    });
+
+    it('makes the tandem-charge armor check on a tank and resolves a standard SRM hit on a fighter', async () => {
+        const source = { kind: 'weapon', types: ['M'], ammo: 'tandem-charge' } as const;
+        const vehicle = tank(false, false, undefined, 'total-warfare');
+        rolls(6, 6); // Front column: 12 − 2 = 10 (commander).
+        expect(await vehicle.apply([group(vehicle.location('Front'), 2, { source })])).toBeTrue();
+        expect(vehicle.hits(systemDamageId('commander'))).toBe(1);
+
+        const aero = fighter();
+        rolls(6, 6);
+        expect(await aero.apply([group(aero.location('Nose'), 2, { source, aeroCritical: 'avionics' })])).toBeTrue();
+        expect((Math.random as jasmine.Spy).calls.count()).toBe(0);
+    });
+
+    it('adds a modified fighter AP check for armor-only damage under Core', async () => {
+        const source = { kind: 'weapon', types: ['DB'], ammo: 'armor-piercing', rackSize: 2 } as const;
+        for (const ruleset of ['core-2026', 'total-warfare'] as const) {
+            const unit = fighter(false, ruleset);
+            const nose = unit.location('Nose');
+            const hit = (damage: number) => group(nose, damage, { source, aeroCritical: 'avionics' });
+            // Below or at the damage threshold, only Core rolls. The AC/2 needs 11 to score an 8.
+            rolls(5, 5);
+            expect(await unit.apply([hit(2)])).toBeTrue();
+            expect(Math.random).toHaveBeenCalledTimes(ruleset === 'core-2026' ? 2 : 0);
+            expect(unit.hits(systemDamageId('avionics', 1))).toBe(0);
+            rolls(5, 6);
+            expect(await unit.apply([hit(2)])).toBeTrue();
+            expect(unit.hits(systemDamageId('avionics', 1))).toBe(ruleset === 'core-2026' ? 1 : 0);
+            // The AC/5 exceeds the threshold. The threshold roll succeeds and the separate AP roll (9 - 2) misses.
+            rolls(4, 4, 5, 4);
+            expect(await unit.apply([group(nose, 5,
+                { source: { ...source, rackSize: 5 }, aeroCritical: 'avionics' })])).toBeTrue();
+            expect(Math.random).toHaveBeenCalledTimes(ruleset === 'core-2026' ? 4 : 2);
+            expect(unit.hits(systemDamageId('avionics', ruleset === 'core-2026' ? 2 : 1))).toBe(1);
+            // Eleven points of armor remain. Damage that reaches SI gives only the threshold and SI checks.
+            rolls(3, 4, 3, 4);
+            expect(await unit.apply([hit(13)])).toBeTrue();
+            expect(Math.random).toHaveBeenCalledTimes(4);
+        }
     });
 
     for (const target of ['committed', 'pending'] as const) {
