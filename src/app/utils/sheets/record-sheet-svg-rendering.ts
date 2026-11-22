@@ -604,7 +604,9 @@ export function recordSheetAmmoProfile(entity: BaseEntity): readonly RecordSheet
     const name = mount.equipment ? mount.equipment.shortName || mount.equipment.name : mount.displayName();
     return [{
       componentId: mount.mountId,
-      prefix: protection === 'case-ii' ? 'Ammo (CASE II):' : protection ? 'Ammo (CASE):' : 'Ammo:',
+      // Prototype CASE prints as CASE-P, as its venting can fail (IO:AE p. 65)
+      prefix: protection === 'case-ii' ? 'Ammo (CASE II):' : protection === 'prototype' ? 'Ammo (CASE-P):'
+        : protection ? 'Ammo (CASE):' : 'Ammo:',
       name,
       shots,
     }];
@@ -623,7 +625,7 @@ export function recordSheetDispenserPayload(equipment: Equipment | null | undefi
   return undefined;
 }
 
-const RECORD_SHEET_AMMO_PREFIXES = ['Ammo:', 'Ammo (CASE):', 'Ammo (CASE II):'];
+const RECORD_SHEET_AMMO_PREFIXES = ['Ammo:', 'Ammo (CASE):', 'Ammo (CASE-P):', 'Ammo (CASE II):'];
 
 /** Ammo bins grouped under their prefixes in print order, the generated and the live sheet alike. */
 export function recordSheetAmmoSections(

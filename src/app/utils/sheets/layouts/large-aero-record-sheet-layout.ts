@@ -906,11 +906,8 @@ function largeAeroBayRows(
             configurationKey: largeAeroBayConfigurationKey(entity, groupList, ammo),
             nameLines,
             location: location.label,
-            // Each weapon's heat, and a PPC capacitor's, which a bay counts as always charged (TO:AUE p. 149). Laser
-            // insulators fit only units of 200 tons and less (TO:AUE p. 134), never a bay's DropShip or larger craft.
-            heat: ar10 ? '*' : String(weapons.reduce((total, mount) => total + mount.equipment.heat
-                + (entity.getLinkingMounts(mount).some(source => isPpcCapacitorEquipment(source.equipment))
-                    ? PPC_CAPACITOR_HEAT_BONUS : 0), 0)),
+            // Laser insulators fit only units of 200 tons and less (TO:AUE p. 134), never a bay's DropShip or larger craft
+            heat: ar10 ? '*' : String(weapons.reduce((total, mount) => total + largeAeroWeaponHeat(entity, mount), 0)),
             damageByRange: bayLine ? damageText(bayLine.values) : ['', '', '', ''],
             munitionLines: munitionLines.map(line => ({ name: line.name, damageByRange: damageText(line.values) })),
             componentIds: weapons.map(mount => mount.mountId),
@@ -1358,6 +1355,15 @@ function drawLargeAeroHeatPanel(svg: SVGSVGElement, entity: AeroEntity, box: Box
     values.forEach(value => value.setAttribute('x', valueX));
 }
 
+/**
+ * A large craft weapon's heat: rapid-fire weapons always fire at their maximum rate (TW p. 238), each shot making the
+ * weapon's heat (TW p. 114), and a PPC capacitor adds its 5, as a bay counts it always charged (TO:AUE p. 149).
+ */
+function largeAeroWeaponHeat(entity: AeroEntity, mount: EntityMountedWeapon): number {
+    const capacitated = entity.getLinkingMounts(mount).some(source => isPpcCapacitorEquipment(source.equipment));
+    return mount.equipment.heat * (mount.equipment.getRapidFireCount() || 1) + (capacitated ? PPC_CAPACITOR_HEAT_BONUS : 0);
+}
+
 function largeAeroHeatByArc(entity: AeroEntity): {
     readonly nose: number;
     readonly leftFore: number;
@@ -1372,9 +1378,7 @@ function largeAeroHeatByArc(entity: AeroEntity): {
     entity.rangedWeapons().forEach(mount => {
         const locations = mount.getOccupiedLocations();
         const divisor = Math.max(1, locations.length);
-        const capacitated = entity.getLinkingMounts(mount).some(source => isPpcCapacitorEquipment(source.equipment));
-        const heat = mount.equipment.heat * (mount.equipment.getRapidFireCount() || 1)
-            + (capacitated ? PPC_CAPACITOR_HEAT_BONUS : 0);
+        const heat = largeAeroWeaponHeat(entity, mount);
         locations.forEach(location => {
             let code = entity.componentLocationLabel(location).toUpperCase().replaceAll(/[^A-Z]/gu, '');
             if (mount.rearMounted && ['LS', 'LW', 'LWG', 'RS', 'RW', 'RWG'].includes(code)) code += 'R';

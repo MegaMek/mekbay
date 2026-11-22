@@ -1707,8 +1707,8 @@ async function drawCanonicalMekCriticalContents(
                 height: y(14),
             },
         );
-        // The printed heading names prototype CASE as CASE, as MegaMekLab prints it
-        const caseLabel = mekCriticalCaseLabel(entity, location)?.replace('CASE-P', 'CASE');
+        // Prototype CASE prints as CASE-P, as its venting can fail (IO:AE p. 65)
+        const caseLabel = mekCriticalCaseLabel(entity, location);
         if (caseLabel) {
             const caseX = locationLayout.headingX
                 + (MEK_CRITICAL_CASE_HEADING_OFFSETS[location] ?? 2);

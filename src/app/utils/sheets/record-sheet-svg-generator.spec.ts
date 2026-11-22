@@ -661,6 +661,18 @@ describe('RecordSheetSvgGenerator', () => {
         ]);
     });
 
+    it('heats a bay with rapid-fire weapons at their maximum rate (TW pp. 114, 238)', async () => {
+        const entity = new TestWarShipEntity();
+        const rotary = new WeaponEquipment({
+            id: 'Bay RAC 5', name: 'Rotary AC/5', shortName: 'Rotary AC/5', type: 'weapon',
+            weapon: { heat: 1, ammoType: 'AC_ROTARY', rackSize: 5, av: [20, 20] },
+        });
+        entity.addEquipmentBay('weapon-bay', { mounts: [0, 1].map(() => addTestEquipment(entity, rotary, { location: 'Nose' })) });
+
+        const svg = await RecordSheetSvgGenerator.generate(entity, { ruleset: 'total-warfare' });
+        expect(svg.querySelector('.inventoryEntry.bay')?.querySelector('.heat')?.textContent).toBe('12');
+    });
+
     it('prints an MML bay\'s LRM and SRM values on lines of their own', async () => {
         const entity = new TestWarShipEntity();
         const launcher = addTestEquipment(entity, new WeaponEquipment({

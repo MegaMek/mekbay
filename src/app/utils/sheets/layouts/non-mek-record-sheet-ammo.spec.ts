@@ -75,7 +75,7 @@ describe('generated non-Mek ammo rows', () => {
         expect(recordSheetAmmoEntries([['SRM 2 Ammo', 4]])).toEqual(['(SRM 2) 4']);
     });
 
-    const caseEquipment = (flag: 'F_CASE' | 'F_CASE_II') => new MiscEquipment({ id: flag, name: flag, type: 'misc', flags: [flag] });
+    const caseEquipment = (flag: 'F_CASE' | 'F_CASE_II' | 'F_CASE_P') => new MiscEquipment({ id: flag, name: flag, type: 'misc', flags: [flag] });
     const ammoProfileLines = async (entity: BaseEntity, format: 'compact' | 'letter') =>
         [...(await RecordSheetSvgGenerator.generate(entity, { ruleset: 'total-warfare', format }))
             .querySelectorAll('#ammoProfile text')].map(line => line.textContent);
@@ -89,6 +89,14 @@ describe('generated non-Mek ammo rows', () => {
         }), { location: 'Front', shotsCount: 100 });
 
         expect((await ammoProfileLines(entity, 'compact')).join(' ')).toBe('Ammo (CASE): (AC/5) 24, (MG) 100');
+    });
+
+    it('names prototype CASE CASE-P, as its venting can fail (IO:AE p. 65)', async () => {
+        const entity = new TestTankEntity();
+        addTestEquipment(entity, caseEquipment('F_CASE_P'), { location: 'Body' });
+        addAmmo(entity, 'AC/5');
+
+        expect(await ammoProfileLines(entity, 'compact')).toEqual(['Ammo (CASE-P): (AC/5) 24']);
     });
 
     it('counts the CASE a Clan internal structure carries built in (TM errata p. 210)', async () => {
