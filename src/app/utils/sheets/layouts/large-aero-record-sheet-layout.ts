@@ -1064,11 +1064,15 @@ function standardBayDamageLines(
     }, 0));
     const atm = groups.filter(group => group.equipment.ammoType === 'ATM' || group.equipment.ammoType === 'IATM');
     // A large craft's ATMs fire special munitions only with "at least 10 shots of each ammo type per ATM launcher"
-    // (TM p. 194); bays print only for DropShips and larger craft
-    const atmSpecialMunitions = atm.every(group =>
-        ATM_AMMO_PROFILES.every(profile => rounds(group, profile) >= 10 * group.mounts.length));
+    // (TM p. 194), counted in the bay that fires them (TM p. 195); bays print only for DropShips and larger craft
+    const atmBuiltWith = (profile: AmmoWeaponProfile) => atm.filter(group => bayWeaponFires(group.equipment, profile))
+        .every(group => rounds(group, profile) >= 10 * group.mounts.length);
+    const atmSpecialMunitions = ATM_AMMO_PROFILES.every(atmBuiltWith);
+    // Extended Range and High Explosive missiles fire only as the bay profile (TW p. 304); Improved Magnetic Pulse ones
+    // print a line of their own
     const carried = BAY_MUNITIONS.filter(profile => groups.some(group => munitions(group).includes(profile))
-        && (atmSpecialMunitions || !ATM_SPECIAL_PROFILES.includes(profile)));
+        && !ATM_PROFILE_MUNITIONS.includes(profile)
+        && (profile !== ATM_IMPROVED_MAGNETIC_PULSE_PROFILE || (atmSpecialMunitions && atmBuiltWith(profile))));
     // Each munition's line carries its rounds: LRM (78 rounds)
     const line = (profile: AmmoWeaponProfile): BayDamageLine => ({
         munition: profile,
@@ -1087,11 +1091,9 @@ function standardBayDamageLines(
     return carried.map(line);
 }
 
-/** The ATM munitions other than standard missiles (TW p. 303, IO:AE p. 61) */
-const ATM_SPECIAL_PROFILES: readonly AmmoWeaponProfile[] = [
-    ...ATM_AMMO_PROFILES.filter(profile => profile !== ATM_STANDARD_PROFILE),
-    ATM_IMPROVED_MAGNETIC_PULSE_PROFILE,
-];
+/** The ATM munitions a bay fires only as its profile (TW p. 304) */
+const ATM_PROFILE_MUNITIONS: readonly AmmoWeaponProfile[] =
+    ATM_AMMO_PROFILES.filter(profile => profile !== ATM_STANDARD_PROFILE);
 
 /** A bay location's place in the inventory (MegaMekLab's `WeaponBayText.getLocWeight`); any other prints last. */
 const BAY_LOCATION_ORDER: Readonly<Record<string, number>> = {

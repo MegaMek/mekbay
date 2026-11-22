@@ -391,7 +391,7 @@ export class AttackResolutionService {
                 }),
                 ...(row.heatWeakened === false ? { insulated: true } : {}),
                 ...(activeTargetCalculator(targeting)?.indirectFire === true ? { indirect: true } : {}),
-                ...(ecmJammed ? { ecmJammed: true } : {}),
+                ...(ecmJammed || activeTargetCalculator(targeting)?.ecmShielded === true ? { hostileEcm: true } : {}),
             }, gameRulesFor(fired.ruleset));
             if (!profile) continue;
             profiles.set(target.targetId, [...profiles.get(target.targetId) ?? [], profile]);

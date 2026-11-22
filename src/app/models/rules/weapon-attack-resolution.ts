@@ -152,8 +152,11 @@ export interface WeaponAttackFacts {
     readonly insulated?: boolean;
     /** The weapon fires indirectly, as the target's calculator declares. */
     readonly indirect?: boolean;
-    /** The attacker is inside hostile ECM (its 'jammed' condition), which nullifies Artemis (TW p. 134). */
-    readonly ecmJammed?: boolean;
+    /**
+     * Hostile ECM interferes: the attacker is jammed or the target is shielded by hostile ECM, either of which
+     * nullifies Artemis (TW p. 134, Core p. 200).
+     */
+    readonly hostileEcm?: boolean;
 }
 
 export interface WeaponAttackOutcome {
@@ -219,7 +222,7 @@ export function weaponAttackProfile(facts: WeaponAttackFacts, rules: CBTGameRule
             ...(equipment.ammoType === 'RIFLE' ? { rifle: true as const } : {}),
             ...(specialAmmo === null ? {} : { ammo: specialAmmo }),
             ...(facts.insulated ? { insulated: true as const } : {}),
-            ...(isFusilladeLauncher(equipment) && facts.ecmJammed !== true
+            ...(isFusilladeLauncher(equipment) && facts.hostileEcm !== true
                 ? { clusterModifier: FUSILLADE_ARTEMIS_CLUSTER_MODIFIER } : {}),
         });
     // Each inferno missile that hits is its own group: one hit-location roll, no damage. Core p. 192 skips the roll, but

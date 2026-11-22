@@ -71,7 +71,7 @@ describe('weapon attack resolution', () => {
         expect(resolveWeaponAttack(profile, [4, 3], [4, 4]).hits).toBe(3);
         expect(resolveWeaponAttack(profile, [4, 3], [4, 4], 0).hits).toBe(2);
         // A jammed attacker starts without it: "unless hostile ECM interferes" (IO:AE p. 59; TW p. 134).
-        expect(weaponAttackProfile({ componentId: weaponId, equipment: fusillade, mode: undefined, damage: { values: [2], maximum: 6, unit: 'missile' }, ammo: null, types: [], name: 'Fusillade Launcher', targetNumber: 7, partialCover: false, ecmJammed: true }, TW_GAME_RULES)!
+        expect(weaponAttackProfile({ componentId: weaponId, equipment: fusillade, mode: undefined, damage: { values: [2], maximum: 6, unit: 'missile' }, ammo: null, types: [], name: 'Fusillade Launcher', targetNumber: 7, partialCover: false, hostileEcm: true }, TW_GAME_RULES)!
             .clusterModifier).toBeUndefined();
         // The iATM it derives from carries no integral Artemis.
         expect(weaponAttackProfile({ componentId: weaponId, equipment: iatm, mode: undefined, damage: { values: [2], maximum: 6, unit: 'missile' }, ammo: null, types: [], name: 'iATM 3', targetNumber: 7, partialCover: false }, TW_GAME_RULES)!

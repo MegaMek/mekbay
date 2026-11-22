@@ -655,6 +655,29 @@ describe('RecordSheetSvgGenerator', () => {
         const arcadia = await bay([[standard, 10], [extendedRange, 10], [highExplosive, 10]]);
         expect(bayRanges(arcadia)).toEqual(['4\u202F(40)', '4\u202F(40)', '—', '—']);
         expect(arcadia.querySelectorAll('.bayMunition').length).toBe(0);
+
+        // Two ATM 3s with 20 of each have 10 per launcher but one ton between them: a bay fires Extended Range and High
+        // Explosive missiles only as its profile (TW p. 304), so it prints its standard values, and with 40 the profile
+        const atm3 = async (shots: number) => {
+            const entity = new TestWarShipEntity();
+            const launcher = new WeaponEquipment({
+                id: 'Bay ATM 3', name: 'ATM 3', shortName: 'ATM 3', type: 'weapon',
+                weapon: { heat: 2, ammoType: 'ATM', rackSize: 3, av: [4, 4] },
+            });
+            const bins = ([['Standard', 'M_STANDARD'], ['ER', 'M_EXTENDED_RANGE'], ['HE', 'M_HIGH_EXPLOSIVE']] as const)
+                .map(([name, flag]) => addTestEquipment(entity, new AmmoEquipment({
+                    id: `ATM 3 ${name}`, name: `ATM 3 ${name}`, shortName: `ATM 3 ${name}`, type: 'ammo',
+                    ammo: { type: 'ATM', rackSize: 3, shots: 20, munitionType: [flag] },
+                }), { location: 'Nose', shotsCount: shots }));
+            entity.addEquipmentBay('weapon-bay', { mounts: [
+                ...[0, 1].map(() => addTestEquipment(entity, launcher, { location: 'Nose' })), ...bins,
+            ] });
+            return (await RecordSheetSvgGenerator.generate(entity, { ruleset: 'total-warfare' })).querySelector('.inventoryEntry.bay')!;
+        };
+        const oneTon = await atm3(20);
+        expect(bayRanges(oneTon)).toEqual(['1\u202F(8)', '1\u202F(8)', '—', '—']);
+        expect(oneTon.querySelectorAll('.bayMunition').length).toBe(0);
+        expect(bayRanges(await atm3(40)).slice(0, 2)).toEqual(['1\u202F(12)', '1\u202F(8)']);
     });
 
     it('heats a bay with rapid-fire weapons at their maximum rate (TW pp. 114, 238)', async () => {
@@ -737,14 +760,18 @@ describe('RecordSheetSvgGenerator', () => {
         expect(noHighExplosive.querySelectorAll('.bayMunition').length).toBe(0);
         const lineName = (line: Element) => [...line.querySelectorAll('.name')].map(node => node.textContent).join(' ');
 
+        // Improved Magnetic Pulse missiles need 10 shots per launcher of their own (TM p. 194) before they print a line
+        const shortOfMagneticPulse = await bay([[standard, 20], [extendedRange, 20], [highExplosive, 20], [magneticPulse, 5]]);
+        expect(shortOfMagneticPulse.querySelectorAll('.bayMunition').length).toBe(0);
+
         // With 10 of each of the three per launcher, and so a ton of each, the bay profile applies and the name totals
         // those three; the Improved Magnetic Pulse missiles, which don't count toward it, print their own line under it
-        const profiled = await bay([[standard, 20], [extendedRange, 20], [highExplosive, 20], [magneticPulse, 5]]);
+        const profiled = await bay([[standard, 20], [extendedRange, 20], [highExplosive, 20], [magneticPulse, 20]]);
         expect([...profiled.querySelectorAll(':scope > .name')].map(node => node.textContent).join(' '))
             .toBe('2 iATM 12 (20 Standard, 20 Extended Range, 20 High Explosive)');
         expect(bayRanges(profiled)).toEqual(['7\u202F(72)', '5\u202F(48)', '2\u202F(24)', '2\u202F(24)']);
         expect([...profiled.querySelectorAll('.bayMunition')].map(line => [lineName(line), ...bayRanges(line)]))
-            .toEqual([['Improved Magnetic Pulse (5 rounds)', '2\u202F(24)', '—', '—', '—']]);
+            .toEqual([['Improved Magnetic Pulse (20 rounds)', '2\u202F(24)', '—', '—', '—']]);
     });
 
     it('leaves a launcher out of the munition lines it cannot fire', async () => {
