@@ -118,6 +118,7 @@ const COMMAND_PROFILE_COVERAGE = Object.freeze({
     'set-bombs-spent': 'non-mek-only',
     'set-velocity-record': 'non-mek-only',
     'set-swarming': 'non-mek-only',
+    'set-autocannon-hit': 'non-mek-only',
     'set-elevation': 'non-mek-only',
     // These reach the Mek runtime but have no benchmark scenario yet; the report lists them.
     'complete-turn-step': 'unprofiled',
