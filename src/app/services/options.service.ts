@@ -24,7 +24,7 @@ import { BOUND_OPTIONAL_RULE_DEFAULTS } from '../models/runtime/bound-optional-r
 
 const DEFAULT_OPTIONS: Options = {
   canvasInput: 'all',
-  mouseWheelAction: 'scroll',
+  mouseWheelAction: 'zoom',
   unitDisplayName: 'both',
   displayUnitNameFormat: 'innerSphereClan',
   gameSystem: GameSystem.CBT,
