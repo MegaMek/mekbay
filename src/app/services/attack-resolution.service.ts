@@ -391,7 +391,8 @@ export class AttackResolutionService {
                 }),
                 ...(row.heatWeakened === false ? { insulated: true } : {}),
                 ...(activeTargetCalculator(targeting)?.indirectFire === true ? { indirect: true } : {}),
-                ...(ecmJammed || activeTargetCalculator(targeting)?.ecmShielded === true ? { hostileEcm: true } : {}),
+                // The target's ECM is a fact of the target, whatever target number was entered (Core p. 200)
+                ...(ecmJammed || targeting.tnCalculator?.ecmShielded === true ? { hostileEcm: true } : {}),
             }, gameRulesFor(fired.ruleset));
             if (!profile) continue;
             profiles.set(target.targetId, [...profiles.get(target.targetId) ?? [], profile]);

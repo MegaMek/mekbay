@@ -38,10 +38,14 @@ export function isCaseEquipment(equipment: Equipment | null | undefined): boolea
     return caseEquipmentKind(equipment) !== null;
 }
 
+/** The name a CASE kind prints as: prototype CASE keeps its own, CASE-P (IO:AE p. 65), as its venting can fail */
+export function caseKindLabel(kind: CaseEquipmentKind): 'CASE' | 'CASE II' | 'CASE-P' {
+    return kind === 'case-ii' ? 'CASE II' : kind === 'prototype' ? 'CASE-P' : 'CASE';
+}
+
 export function caseRecordSheetLabel(equipment: Equipment | null | undefined): string | null {
     const kind = caseEquipmentKind(equipment);
-    if (kind === 'case-ii') return '[CASE II]';
-    return kind === null ? null : '[CASE]';
+    return kind === null ? null : `[${caseKindLabel(kind)}]`;
 }
 
 export function caseAlphaStrikeAbility(

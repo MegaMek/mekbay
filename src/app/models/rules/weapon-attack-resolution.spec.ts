@@ -90,9 +90,20 @@ describe('weapon attack resolution', () => {
         // A jammed attacker starts without it: "unless hostile ECM interferes" (IO:AE p. 59; TW p. 134).
         expect(weaponAttackProfile({ componentId: weaponId, equipment: fusillade, mode: undefined, damage: { values: [2], maximum: 6, unit: 'missile' }, ammo: null, types: [], name: 'Fusillade Launcher', targetNumber: 7, partialCover: false, hostileEcm: true }, TW_GAME_RULES)!
             .clusterModifier).toBeUndefined();
-        // The iATM it derives from carries no integral Artemis.
+        // The iATM it derives from rolls no cluster when it fires directly, and Artemis doesn't help it indirectly.
         expect(weaponAttackProfile({ componentId: weaponId, equipment: iatm, mode: undefined, damage: { values: [2], maximum: 6, unit: 'missile' }, ammo: null, types: [], name: 'iATM 3', targetNumber: 7, partialCover: false }, TW_GAME_RULES)!
             .clusterModifier).toBeUndefined();
+    });
+
+    it('adds an ATM\'s integral Artemis to its cluster roll unless hostile ECM interferes (TW p. 138)', () => {
+        const atm = new WeaponEquipment({
+            id: 'CLATM3', name: 'ATM 3', type: 'weapon', flags: ['F_MISSILE', 'F_MEK_WEAPON'],
+            weapon: { damage: 'cluster', rackSize: 3, ammoType: 'ATM' },
+        });
+        const facts = { componentId: weaponId, equipment: atm, mode: undefined, damage: { values: [2], maximum: 6, unit: 'missile' as const }, ammo: null, types: [], name: 'ATM 3', targetNumber: 7, partialCover: false };
+        // A natural 8 on the 3 column hits with 3 missiles, and with 2 under hostile ECM.
+        expect(resolveWeaponAttack(weaponAttackProfile(facts, TW_GAME_RULES)!, [4, 3], [4, 4]).hits).toBe(3);
+        expect(resolveWeaponAttack(weaponAttackProfile({ ...facts, hostileEcm: true }, TW_GAME_RULES)!, [4, 3], [4, 4]).hits).toBe(2);
     });
 
     it('rolls an iATM fired indirectly on the Cluster Hits Table, with no lock to miss (IO:AE p. 60)', () => {

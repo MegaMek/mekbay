@@ -188,11 +188,16 @@ export function locksOnTarget(equipment: WeaponEquipment): boolean {
 }
 
 /**
- * The Fusillade's integral Artemis IV: "A +2 modifier applies to the Cluster Hits Table roll result, to account for the
- * integral Artemis, unless hostile ECM interferes" (IO:AE p. 59). The attack starts without it when the attacker is
- * jammed, the ECM state every Artemis reads (`activeArtemisKind`).
+ * The integral Artemis IV of an ATM, with any of its munitions, and of a Fusillade: "add +2 to the Cluster Hits Table
+ * die roll for the weapon ... and may be jammed by enemy ECM" (TW p. 138; Core p. 186), and "unless hostile ECM
+ * interferes" (IO:AE p. 59). An iATM needs none: fired directly it hits with every missile, and fired indirectly it
+ * rolls as a standard LRM (IO:AE p. 60), which Artemis doesn't help (TW p. 130).
  */
-const FUSILLADE_ARTEMIS_CLUSTER_MODIFIER = 2;
+const INTEGRAL_ARTEMIS_CLUSTER_MODIFIER = 2;
+
+function hasIntegralArtemis(equipment: WeaponEquipment): boolean {
+    return equipment.ammoType === 'ATM' || isFusilladeLauncher(equipment);
+}
 
 /**
  * Profiles a fired weapon from the exact damage the equipment table shows. Weapons without damage
@@ -225,8 +230,8 @@ export function weaponAttackProfile(facts: WeaponAttackFacts, rules: CBTGameRule
             ...(specialAmmo === null ? {} : { ammo: specialAmmo }),
             ...(specialAmmo === 'armor-piercing' ? { rackSize: equipment.rackSize } : {}),
             ...(facts.insulated ? { insulated: true as const } : {}),
-            ...(isFusilladeLauncher(equipment) && facts.hostileEcm !== true
-                ? { clusterModifier: FUSILLADE_ARTEMIS_CLUSTER_MODIFIER } : {}),
+            ...(hasIntegralArtemis(equipment) && facts.hostileEcm !== true
+                ? { clusterModifier: INTEGRAL_ARTEMIS_CLUSTER_MODIFIER } : {}),
         });
     // Each inferno missile that hits is its own group: one hit-location roll, no damage. Core p. 192 skips the roll, but
     // partial cover and heat-dissipating armor can depend on it (Xotl, Core Rulebook forum ruling, 19 Oct 2026).

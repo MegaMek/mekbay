@@ -1049,9 +1049,10 @@ function standardBayDamageLines(
     const values = (profile: AmmoWeaponProfile | null) => [0, 1, 2, 3].map(rangeIndex => groups.reduce((total, group) => {
         const carried = munitions(group);
         const fired = profile !== null && bayWeaponFires(group.equipment, profile) ? profile : null;
-        // An MML or ATM fires only a munition it can fire and carries; one without ammo keeps its listed values
+        // An MML or ATM fires only a munition it can fire and carries (TW p. 103); with no munition named, as in a bay
+        // that carries none, it keeps its listed values
         if (profile !== null && recordSheetAmmoProfiles(group.equipment).length > 0
-            && (fired === null || (carried.length > 0 && !carried.includes(fired)))) return total;
+            && (fired === null || !carried.includes(fired))) return total;
         // Each launcher that fires the munition spends a round of it (TW p. 103)
         const firing = fired !== null && carried.includes(fired) ? group.mounts.slice(0, rounds(group, fired)) : group.mounts;
         return total + firing.reduce((sum, mount) => {

@@ -8,20 +8,12 @@ import type { MekSystemType } from '../models/entity/types/mek';
 import { isCoolantPodEquipment } from '../models/runtime/component-coolant-pod';
 import { recordSheetAmmoName } from './record-sheet-ammo.util';
 import { COCKPIT_CREW_ROLES } from '../models/entity/components/cockpit-data';
+import { caseKindLabel } from '../models/case-equipment.model';
 
-export type MekCriticalCaseLabel = 'CASE' | 'CASE II' | 'CASE-P';
-
-/**
- * CASE annotation shared by Mek critical-slot presentations, from the entity's CASE resolution that play uses.
- * Prototype CASE keeps its own name, CASE-P (IO:AE p. 65), as its venting can fail.
- */
-export function mekCriticalCaseLabel(
-    entity: MekEntity,
-    location: string,
-): MekCriticalCaseLabel | null {
+/** CASE annotation shared by Mek critical-slot presentations, from the entity's CASE resolution that play uses */
+export function mekCriticalCaseLabel(entity: MekEntity, location: string): ReturnType<typeof caseKindLabel> | null {
     const protection = entity.ammoCaseProtection(location);
-    if (protection === null) return null;
-    return protection === 'case-ii' ? 'CASE II' : protection === 'prototype' ? 'CASE-P' : 'CASE';
+    return protection === null ? null : caseKindLabel(protection);
 }
 
 /** One occupant of a Mek critical slot, as the critical table names it. */
