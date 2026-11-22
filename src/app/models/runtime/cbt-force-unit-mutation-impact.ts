@@ -92,6 +92,7 @@ export function commandMayChangeBaseBattleValue(command: CBTUnitCommand): boolea
         case 'set-stealth-state':
         case 'toggle-gauss-power':
         case 'set-component-jammed':
+        case 'record-autocannon-hit':
         case 'set-ppc-capacitor-charge':
         case 'set-bombast-laser-charge':
         case 'edit-c3-emergency-master':

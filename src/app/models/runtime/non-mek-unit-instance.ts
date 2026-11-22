@@ -1,7 +1,7 @@
 // Copyright (C) 2026 The MegaMek Team
 // SPDX-License-Identifier: GPL-3.0-or-later
 
-import { withAmmoConfiguration,withAmmoShotsSpent,withComponentJammed,withComponentMode,withComponentStatuses,withPendingComponentStatuses } from './component-state-change';
+import { withAmmoConfiguration,withAmmoShotsSpent,withComponentAutocannonHit,withComponentJammed,withComponentMode,withComponentStatuses,withPendingComponentStatuses } from './component-state-change';
 import { hotLoadedAmmoForWeapon } from './mek-ammo';
 import { ammoExplosionDamagePerShot } from './mek-critical-hit-v2';
 
@@ -21,7 +21,8 @@ import { isDroneOperatingSystemEquipment } from '../drone-operating-system.model
 import type { BaseEntity } from '../entity/base-entity';
 import type { ArmorFaceId,ComponentId,CrewPositionId,LocationId,SystemDamageTrackId } from '../entity/entity-identifiers';
 import type { EntityStateView } from '../entity/entity-state-view';
-import { ImmutableIndex } from '../entity/immutable-collections';
+import { ImmutableIndex, ImmutableSet } from '../entity/immutable-collections';
+import { weaponSurvivesFirstAutocannonHit } from '../rules/mek-system-damage-rules';
 import {
     MAX_HEAT_VALUE,
     HEAT_DISSIPATION_DEFICIT_ID,
@@ -192,6 +193,8 @@ export interface NonMekPendingDamageTrackState {
 
 export interface NonMekPendingCombatState extends CBTUnitPendingCombatState {
     readonly damageTrackHits: ReadonlyMap<SystemDamageTrackId, NonMekPendingDamageTrackState>;
+    /** Autocannons whose survived first critical hit commits with the phase's damage; absent when none. */
+    readonly autocannonHits?: ReadonlySet<ComponentId>;
     /** Inferno missiles the phase's attacks add to the turn's total once their damage commits; absent when none. */
     readonly infernoMissiles?: number;
 }
@@ -639,7 +642,7 @@ export function freezeNonMekUnitState(raw: NonMekUnitRuntimeState): NonMekUnitRu
                 }),
         }),
         pendingCombat: Object.freeze({
-            ...state.pendingCombat,
+            ...freezePendingAutocannonHits(state.pendingCombat),
             damageTrackHits: new ImmutableIndex([...state.pendingCombat.damageTrackHits].map(([id, value]) => [
                 id,
                 Object.freeze({
@@ -1540,6 +1543,21 @@ function reduceNonMekUnitState(
             candidate = withComponentJammed(state, command.componentId, command.jammed) ?? state;
             break;
         }
+        case 'record-autocannon-hit': {
+            requireDamageTarget(command.target);
+            if (!weaponSurvivesFirstAutocannonHit(index.components.get(command.componentId)?.mount.equipment, ruleset)) {
+                return null;
+            }
+            if (command.target === 'committed') {
+                candidate = withComponentAutocannonHit(state, command.componentId, true) ?? state;
+            } else if (!state.pendingCombat.autocannonHits?.has(command.componentId)) {
+                candidate = { ...state, pendingCombat: Object.freeze({
+                    ...state.pendingCombat,
+                    autocannonHits: new ImmutableSet([...(state.pendingCombat.autocannonHits ?? []), command.componentId]),
+                }) };
+            }
+            break;
+        }
         case 'set-component-mode': {
             const component = index.components.get(command.componentId);
             if (!component) throw new Error('Invalid component mode');
@@ -2251,6 +2269,10 @@ function commitPendingCombat(
         if (!index.components.has(componentId)) continue;
         next = withComponentStatuses(next, [componentId], status) ?? next;
     }
+    for (const componentId of state.pendingCombat.autocannonHits ?? []) {
+        if (!index.components.has(componentId)) continue;
+        next = withComponentAutocannonHit(next, componentId, true) ?? next;
+    }
     const damageTracks = new Map(next.damageTracks);
     for (const [damageTrackId, pending] of state.pendingCombat.damageTrackHits) {
         if (!index.damageTracks.has(damageTrackId)) continue;
@@ -2760,6 +2782,10 @@ function validateState(
             || !rapidFireAutocannonSupportsJamming(definition.mount.equipment, ruleset))) {
             throw new Error(`Runtime has invalid component jam state ${componentId}`);
         }
+        if (component.autocannonHit !== undefined && (component.autocannonHit !== true
+            || !weaponSurvivesFirstAutocannonHit(definition.mount.equipment, ruleset))) {
+            throw new Error(`Runtime has invalid autocannon hit ${componentId}`);
+        }
         if (component.escalatingFailure !== undefined) {
             const failure = nonMekEscalatingFailureDefinition(
                 componentId,
@@ -2907,6 +2933,11 @@ function validateState(
         if (!face) throw new Error(`Pending combat references unknown armor face ${faceId}`);
         boundedDelta(delta, armorDamage(state, face.locationId, faceId), face.maximumPoints);
     }
+    for (const componentId of state.pendingCombat.autocannonHits ?? []) {
+        if (!weaponSurvivesFirstAutocannonHit(index.components.get(componentId)?.mount.equipment, ruleset)) {
+            throw new Error(`Pending combat has invalid autocannon hit ${componentId}`);
+        }
+    }
     for (const [componentId, status] of state.pendingCombat.componentStatus) {
         if (!index.components.has(componentId)) throw new Error(`Pending combat references unknown component ${componentId}`);
         if (status !== 'available' && status !== 'disabled' && status !== 'destroyed') {
@@ -3000,6 +3031,12 @@ function nextRevision(revision: number): number {
     return revision + 1;
 }
 
+/** An empty set of pending autocannon hits stays absent. */
+function freezePendingAutocannonHits(pending: NonMekPendingCombatState): NonMekPendingCombatState {
+    const { autocannonHits, ...rest } = pending;
+    return autocannonHits?.size ? { ...rest, autocannonHits: new ImmutableSet(autocannonHits) } : rest;
+}
+
 function emptyPendingCombat(): NonMekPendingCombatState {
     return Object.freeze({
         locationInternalDamage: new ImmutableIndex<LocationId, number>([]),
@@ -3018,6 +3055,7 @@ function pendingCombatEmpty(value: NonMekPendingCombatState): boolean {
         && value.armorDamage.size === 0
         && value.componentStatus.size === 0
         && value.damageTrackHits.size === 0
+        && !value.autocannonHits?.size
         && value.outsideHeat === undefined
         && value.infernoMissiles === undefined;
 }

@@ -57,6 +57,12 @@ svg:where(.mekbay-sheet):not(:root),
   pointer-events: none;
 }
 
+/* A non-Mek autocannon's noted first hit; red on paper, on screen and at night. */
+:where(.mekbay-sheet) .autocannonHitDot {
+  fill: #d12020;
+  pointer-events: none;
+}
+
 /*
  * One store per carried bomb; the further hardpoints larger bombs take are greyed out and slashed from the end.
  * Spent bombs stay visible, struck out.

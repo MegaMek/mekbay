@@ -342,6 +342,7 @@ describe('CBT game rules', () => {
         const facts = {
             operationalTagCount: 2,
             homingArtilleryLauncherCount: 3,
+            onlyRearTag: false,
             guidedAmmoBv: 47.4,
             homingBombBv: 0,
         } as const;
@@ -352,6 +353,10 @@ describe('CBT game rules', () => {
         const bombs = { ...facts, homingBombBv: 60 };
         expect(CORE_2026_GAME_RULES.calculateTagBVCost(bombs)).toBe(420);
         expect(TW_GAME_RULES.calculateTagBVCost(bombs)).toBeCloseTo(214.8, 10);
+        // Core errata v0.2 p.1: a unit whose only TAG is rear-mounted adds half the launcher surcharge.
+        const rearOnly = { ...facts, onlyRearTag: true };
+        expect(CORE_2026_GAME_RULES.calculateTagBVCost(rearOnly)).toBe(150);
+        expect(TW_GAME_RULES.calculateTagBVCost(rearOnly)).toBeCloseTo(94.8, 10);
     });
 
     // Standard ammo facts determine prices even when the catalog was exported under the other ruleset.

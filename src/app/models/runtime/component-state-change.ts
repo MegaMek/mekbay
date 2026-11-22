@@ -4,7 +4,7 @@
 import type { ComponentId } from '../entity/entity-identifiers';
 import { ImmutableIndex } from '../entity/immutable-collections';
 import type { EquipmentStatus } from '../equipment-status.model';
-import type { CBTUnitRuntimeState } from './cbt-unit-runtime';
+import type { CBTUnitRuntimeState, RuntimeStatePerspective } from './cbt-unit-runtime';
 import type { AmmoRuntimeState,ComponentRuntimeState } from './runtime-state';
 
 export interface ComponentStateChangeResult {
@@ -51,6 +51,34 @@ export function withComponentJammed<State extends CBTUnitRuntimeState>(
         components.set(componentId, Object.freeze({ ...current, jammed: true }));
     } else {
         const { jammed: _removed, ...remaining } = current;
+        if (Object.keys(remaining).length === 0) components.delete(componentId);
+        else components.set(componentId, Object.freeze(remaining));
+    }
+    return { ...state, components: new ImmutableIndex(components) };
+}
+
+/** A non-Mek autocannon's noted first hit: committed, or in the preview also the phase's pending one. */
+export function componentAutocannonHit(
+    state: Pick<CBTUnitRuntimeState, 'components'>
+        & Readonly<{ pendingCombat: Readonly<{ autocannonHits?: ReadonlySet<ComponentId> }> }>,
+    componentId: ComponentId,
+    perspective: RuntimeStatePerspective,
+): boolean {
+    return state.components.get(componentId)?.autocannonHit === true
+        || (perspective === 'preview' && state.pendingCombat.autocannonHits?.has(componentId) === true);
+}
+
+/** The survived first autocannon hit is sparse `true`; callers validate the weapon and ruleset. */
+export function withComponentAutocannonHit<State extends CBTUnitRuntimeState>(
+    state: State, componentId: ComponentId, hit: boolean,
+): State | null {
+    const current = state.components.get(componentId) ?? {};
+    if ((current.autocannonHit ?? false) === hit) return null;
+    const components = new Map(state.components);
+    if (hit) {
+        components.set(componentId, Object.freeze({ ...current, autocannonHit: true }));
+    } else {
+        const { autocannonHit: _removed, ...remaining } = current;
         if (Object.keys(remaining).length === 0) components.delete(componentId);
         else components.set(componentId, Object.freeze(remaining));
     }

@@ -16,6 +16,10 @@ import { MtfSourceLimitError, parseMtf } from './mtf-parser';
 import { writeMtf } from '../writers/mtf-writer';
 import { encodeNativeEntity } from '../write-entity';
 import { evaluateMekRuntimeCapability } from '../../runtime/mek-runtime-capability';
+import { buildMekRuntimeIndex } from '../../runtime/mek-runtime-index';
+import { mekCriticalSlotMaximumHits } from '../../runtime/mek-critical-slot-rules';
+import { componentIdForMount } from '../../runtime/unit-runtime-index';
+import type { MekEntity } from '../entities/mek/mek-entity';
 import { parseEntity, UnsupportedNativeFormatError } from '../parse-entity';
 import { buildEquipmentRegistry } from '../../../services/catalogs/equipment-catalog-builder';
 
@@ -546,6 +550,31 @@ describe('MTF parser identity', () => {
         code: 'CRIT_SLOT_SHARING_INVALID',
       }),
     );
+  });
+
+  it('gives a superheavy autocannon compressed into one slot the two-hit slot and its extra pip', () => {
+    const ac = new WeaponEquipment({
+      id: 'Test Compressed AC',
+      name: 'Test Compressed AC',
+      type: 'weapon',
+      flags: ['F_AC', 'F_BALLISTIC', 'F_DIRECT_FIRE'],
+      stats: { criticalSlots: 2 },
+      weapon: { ammoType: 'AC', rackSize: 2, damage: 2, ranges: [4, 8, 16, 24] },
+    });
+    const entity = parseMtf(
+      minimalMtf().replace('mass:20', 'mass:150') +
+        'Right Arm:\nShoulder\nUpper Arm Actuator\nTest Compressed AC\n',
+      new ParseContext('superheavy-ac.mtf', equipmentRegistry({ [ac.id]: ac })),
+    ) as MekEntity;
+
+    // Core p.240: two slots' worth in one record-sheet slot; Core p.183: a one-slot autocannon takes two hits there
+    const mount = entity.equipment().find((candidate) => candidate.equipmentId === ac.id)!;
+    expect(mount.placedCriticalSlotCount).toBe(1);
+    const index = buildMekRuntimeIndex(entity);
+    const slot = [...index.slots.values()].find((candidate) =>
+      candidate.componentIds.includes(componentIdForMount(mount)))!;
+    expect(mekCriticalSlotMaximumHits(index, 'core-2026', slot)).toBe(2);
+    expect(mekCriticalSlotMaximumHits(index, 'total-warfare', slot)).toBe(1);
   });
 
   it('materializes consecutive single-slot variable cargo as distinct mounts', () => {

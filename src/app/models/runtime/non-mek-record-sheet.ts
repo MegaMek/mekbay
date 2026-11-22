@@ -33,6 +33,7 @@ import type { UnitType } from '../unit-summary.model';
 import { crewSkillsForUnit } from '../unit-crew-policy';
 import { entityAmmoLoadout } from './mek-ammo';
 import { isCoolantPodEquipment } from './component-coolant-pod';
+import { componentAutocannonHit } from './component-state-change';
 import type { NonMekRuntimeIndex } from './non-mek-runtime-index';
 import type { NonMekUnitQueryPort,NonMekUnitRuntimeState } from './non-mek-unit-instance';
 import { systemDamagePresentation } from './system-damage-presentation';
@@ -71,6 +72,9 @@ export interface NonMekRecordSheetComponent {
     readonly sheetLocations: readonly string[];
     readonly status: EquipmentStatus;
     readonly previewStatus: EquipmentStatus;
+    /** The autocannon's first critical hit is noted on the sheet (Core pp.92, 183). */
+    readonly autocannonHit: boolean;
+    readonly previewAutocannonHit: boolean;
     readonly ammo?: Readonly<{
         readonly displayName: string;
         readonly capacity: number;
@@ -233,6 +237,8 @@ export function projectNonMekRecordSheet(
                 .map(location => entity.componentLocationLabel(location))),
             status: query.componentStatus(component.id, 'committed'),
             previewStatus: query.componentStatus(component.id, 'preview'),
+            autocannonHit: componentAutocannonHit(state, component.id, 'committed'),
+            previewAutocannonHit: componentAutocannonHit(state, component.id, 'preview'),
             // The printed ammunition profile: bins only. Coolant pods are catalogued as ammunition but print as
             // equipment, and a one-shot launcher's own shots are not printed as ammunition.
             ...(loadout === null || !(mount.equipment instanceof AmmoEquipment) || isCoolantPodEquipment(mount.equipment) ? {} : {

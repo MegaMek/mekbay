@@ -1975,6 +1975,32 @@ describe('NonMekUnitInstance', () => {
         expect(restored.query().attackerTargetingState().targets.size).toBe(0);
     });
 
+    it('projects a noted Core autocannon first hit onto the record sheet row, committed and pending', () => {
+        const ac = new WeaponEquipment({
+            id: 'TestSheetAC5', name: 'Test AC/5', type: 'weapon',
+            flags: ['F_AC', 'F_BALLISTIC', 'F_DIRECT_FIRE'],
+            weapon: { ammoType: 'AC', rackSize: 5, damage: 5, heat: 1, ranges: [3, 6, 9, 12] },
+        });
+        const entity = new TestTankEntity(createTestEquipmentRegistry({ [ac.id]: ac }));
+        entity.uuid.set(UUID);
+        const committedId = componentIdForMount(addTestEquipment(entity, ac, { location: entity.locationOrder[0] }));
+        const pendingId = componentIdForMount(addTestEquipment(entity, ac, { location: entity.locationOrder[0] }));
+        const runtime = createNonMekRuntimeForTest('unit:tank-ac-sheet', baseline(), entity, CORE_2026_RULESET);
+        expect(runtime.dispatch({ type: 'record-autocannon-hit', componentId: committedId, target: 'committed' }).changed)
+            .toBeTrue();
+        expect(runtime.dispatch({ type: 'record-autocannon-hit', componentId: pendingId, target: 'pending' }).changed)
+            .toBeTrue();
+
+        const sheet = projectNonMekRecordSheet(entity, runtime.getIndex(), runtime.snapshot(), CORE_2026_RULESET,
+            runtime.query(), 0, 0);
+        const row = (componentId: ComponentId) => sheet.components.find(component => component.componentId === componentId)!;
+        // Core pp.92, 183: noted on the sheet, and the weapon keeps working
+        expect(row(committedId)).toEqual(jasmine.objectContaining({
+            autocannonHit: true, previewAutocannonHit: true, status: 'available',
+        }));
+        expect(row(pendingId)).toEqual(jasmine.objectContaining({ autocannonHit: false, previewAutocannonHit: true }));
+    });
+
     it('jams a non-Mek Ultra AC only where the ruleset lets it jam and keeps the jam across save', () => {
         const ultra = new WeaponEquipment({
             id: 'TestUltraAC5',

@@ -74,6 +74,8 @@ export interface InventoryTargetNumberComponentFacts {
     readonly aerospaceWeapon: InventoryTargetNumberAerospaceWeaponFacts | null;
     /** A conventional platoon's range modifier at each hex distance, null out of range (TW p. 217). */
     readonly infantryRangeModifiers?: readonly (number | null)[] | null;
+    /** An energy weapon fired underwater under rules that shift its range bracket (Core p.127). */
+    readonly underwaterEnergy?: boolean;
 }
 
 export interface InventoryTargetDisplay {
@@ -164,7 +166,9 @@ export function inventoryTargetRangeSelection(input: Pick<InventoryTargetNumberI
     if (thresholds.length === 0) return null;
     const normalMaximum = thresholds[thresholds.length - 1];
     const extremeRange = input.extremeRange ?? null;
+    const underwaterEnergy = input.targetNumberFacts.underwaterEnergy === true;
     const extremeEnabled = input.allowExtremeRange === true
+        && !underwaterEnergy
         && normalMaximum.range === 'long'
         && extremeRange !== null
         && extremeRange > normalMaximum.value;
@@ -193,6 +197,23 @@ export function inventoryTargetRangeSelection(input: Pick<InventoryTargetNumberI
             distance: target.distance,
             c3Distance: null,
             rangeModifier: rangeModifier ?? 0,
+        };
+    }
+
+    if (underwaterEnergy) {
+        // Core p.127: "always uses a range bracket one higher than its actual bracket ... in all rules aspects";
+        // attacks at the weapon's long range (medium, without a long bracket) "cannot be made". Minimum range is
+        // unchanged.
+        const blocked = outOfRange || range === normalMaximum.range;
+        return {
+            range: blocked ? range : nextInventoryRangeBracket(range),
+            maximumRange,
+            outOfRange: blocked,
+            outOfLongRange: blocked,
+            outOfExtremeRange: blocked,
+            minimumRangeModifier,
+            distance: target.distance,
+            c3Distance
         };
     }
 

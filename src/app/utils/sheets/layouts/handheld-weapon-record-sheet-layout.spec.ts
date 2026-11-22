@@ -73,6 +73,7 @@ describe('HandheldWeaponRecordSheetLayout', () => {
         const originalPip = svg.querySelector('.ammo.pip');
         const component = { componentId: asComponentId(mount.mountId), equipmentId: 'AC/5 Ammo', label: 'AC/5 Ammo',
             sheetLocations: ['GUN'], status: 'available', previewStatus: 'available',
+            autocannonHit: false, previewAutocannonHit: false,
             ammo: { displayName: 'AC/5 Ammo', capacity: 20, remaining: 13 } } as const;
 
         expect(renderHandheldWeaponAmmoPips(svg, [component])).toBeTrue();

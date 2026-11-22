@@ -686,6 +686,7 @@ function renderComponents(svg: SVGSVGElement, snapshot: NonMekRecordSheetSnapsho
             const component = componentsById.get(componentId);
             return component === undefined ? [] : [component];
         });
+        renderAutocannonHitDot(row, components);
         if (components.length > 0) {
             renderInventoryComponentStatus(row, components);
         } else if (readRecordSheetComponentIds(row).length > 0) {
@@ -796,6 +797,37 @@ function renderTurnTrack(
         else if (element.classList.contains(`${prefix}Value`)) element.textContent = value(turn, element);
     });
     return [...svg.querySelectorAll<SVGElement>(`.${prefix}Cell[data-turn]`)];
+}
+
+/**
+ * A red dot right after the weapon's name notes an autocannon's first critical hit (Core pp.92, 183). It is its own
+ * circle at the measured end of the last name line, so no text metrics differ between browsers.
+ */
+function renderAutocannonHitDot(
+    row: SVGElement,
+    components: readonly Pick<NonMekRecordSheetSnapshot['components'][number], 'autocannonHit' | 'previewAutocannonHit'>[],
+): void {
+    row.querySelectorAll('.autocannonHitDot').forEach(dot => dot.remove());
+    if (!components.some(component => component.previewAutocannonHit)) return;
+    const names = row.querySelectorAll<SVGTextElement>('text.name');
+    const name = names[names.length - 1];
+    if (!name?.parentNode) return;
+    let box: DOMRect;
+    try {
+        box = name.getBBox();
+    } catch {
+        return;
+    }
+    if (box.width === 0 && box.height === 0) return;
+    const fontSize = Number.parseFloat(name.getAttribute('font-size') ?? '') || box.height;
+    const dot = svgElement('circle');
+    setAttributes(dot, {
+        class: `autocannonHitDot${components.some(component => component.autocannonHit) ? '' : ' pending'}`,
+        cx: box.x + box.width + fontSize * 0.45,
+        cy: box.y + box.height / 2,
+        r: fontSize * 0.22,
+    });
+    name.parentNode.insertBefore(dot, name.nextSibling);
 }
 
 function renderInventoryComponentStatus(

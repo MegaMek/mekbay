@@ -455,8 +455,9 @@ export function calculateTargetTnModifierBreakdown(
     }
     add('prone', range <= ADJACENT_RANGE ? 'Prone (adjacent)' : 'Prone', !staticTarget && prone ? getTargetProneModifier(range) : 0);
     add('immobile', 'Immobile', immobile ? TN_IMMOBILE : 0);
+    // Not the target's own terrain, so semi-guided fire does not reduce it (Core p.193); the target hex's cover and
+    // its water or building partial cover do count as terrain (Core p.66)
     add('intervening-woods', 'Intervening Woods', getInterveningWoodsModifier(input.interveningWoods), {
-        adjustmentGroup: 'terrain',
         ignoredByNarcGuidance: true,
         ignoredBySemiGuidedGuidance: true,
     });

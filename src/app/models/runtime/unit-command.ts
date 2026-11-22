@@ -163,6 +163,12 @@ export type CBTUnitCommand =
         readonly jammed: boolean;
     }
     | {
+        /** Notes a non-Mek autocannon's survived first critical hit (Core pp.92, 183). */
+        readonly type: 'record-autocannon-hit';
+        readonly componentId: ComponentId;
+        readonly target: 'committed' | 'pending';
+    }
+    | {
         readonly type: 'edit-escalating-failure';
         readonly componentId: ComponentId;
         readonly edit:

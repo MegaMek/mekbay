@@ -8,6 +8,7 @@ import { rapidFireAutocannonJamRoll, rapidFireAutocannonShotCount } from '../run
 import type { ComponentId } from '../entity/entity-identifiers';
 import { isFusilladeLauncher } from '../entity/utils/weapon-damage-kernel';
 import type { WeaponType } from '../weapon-types.model';
+import type { ArmorSpecialAmmo } from './armor-damage-rules';
 import type { CBTGameRules } from './game-rules';
 import type { MekHitArc } from '../../utils/record-sheet-reference-table';
 import type { TnTargetUnitType } from '../target-number-calculator.model';
@@ -73,6 +74,8 @@ export interface WeaponAttackProfile {
     readonly heatWeapon?: AttackHeatWeapon;
     /** A rifle: each hit loses 3 points where it strikes (`rifleHitDamage`). */
     readonly rifle?: true;
+    /** Armor-piercing autocannon rounds or acid missiles, which special armor treats apart (`resolveArmorDamage`). */
+    readonly ammo?: ArmorSpecialAmmo;
     /** A hit also rolls on the Determining Critical Hits Table: a leg attack, battle armor's swarm damage. */
     readonly critical?: true;
     /**
@@ -190,9 +193,16 @@ const FUSILLADE_ARTEMIS_CLUSTER_MODIFIER = 2;
  * Profiles a fired weapon from the exact damage the equipment table shows. Weapons without damage
  * (TAG, NARC pods, AMS) have no attack to resolve.
  */
+/** Armor-piercing rounds only exist for autocannons (Core p.191); acid heads are AX missiles (Core p.192). */
+function armorSpecialAmmo(equipment: WeaponEquipment, ammo: AmmoEquipment | null): ArmorSpecialAmmo | null {
+    if (ammo?.hasMunitionType('M_AX_HEAD')) return 'acid';
+    return ammo?.hasMunitionType('M_ARMOR_PIERCING') && equipment.hasFlag('F_AC') ? 'armor-piercing' : null;
+}
+
 export function weaponAttackProfile(facts: WeaponAttackFacts, rules: CBTGameRules): WeaponAttackProfile | null {
     const { equipment, mode, damage, ammo } = facts;
     const perHit = damage.values[0] ?? 0;
+    const specialAmmo = armorSpecialAmmo(equipment, ammo);
     const profile = (damagePerHit: number, projectiles: number, groupSize: number, jamRoll: number | null = null) =>
         Object.freeze({
             componentId: facts.componentId,
@@ -207,6 +217,7 @@ export function weaponAttackProfile(facts: WeaponAttackFacts, rules: CBTGameRule
             allHit: locksOnTarget(equipment) && facts.indirect !== true,
             groupSize: Math.max(damagePerHit, groupSize),
             ...(equipment.ammoType === 'RIFLE' ? { rifle: true as const } : {}),
+            ...(specialAmmo === null ? {} : { ammo: specialAmmo }),
             ...(facts.insulated ? { insulated: true as const } : {}),
             ...(isFusilladeLauncher(equipment) && facts.ecmJammed !== true
                 ? { clusterModifier: FUSILLADE_ARTEMIS_CLUSTER_MODIFIER } : {}),

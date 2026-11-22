@@ -103,6 +103,7 @@ export function calculateCBTForceBattleValues(
         const facts: TagBattleValueFacts = {
             operationalTagCount: inventory.operationalTagCount,
             homingArtilleryLauncherCount,
+            onlyRearTag: inventory.onlyRearTag,
             guidedAmmoBv,
             homingBombBv,
         };
@@ -165,6 +166,7 @@ export function calculateCBTForceBattleValues(
 
 interface ReadyTagBattleValueInventory {
     readonly operationalTagCount: number;
+    readonly onlyRearTag: boolean;
     readonly launchers: readonly WeaponEquipment[];
     readonly ammunition: readonly AmmoEquipment[];
     readonly bombs: readonly Readonly<{ ammo: AmmoEquipment; carried: number }>[];
@@ -192,9 +194,11 @@ function tagBattleValueInventory(unit: CBTUnit): ReadyTagBattleValueInventory {
     }
 
     const operationalMounts = mounts.filter(mount => operational.has(mount.mountId));
+    const tagMounts = operationalMounts.filter(mount => mount.equipment?.hasFlag('F_TAG'));
+    const tagPods = bombs.reduce((total, bomb) => total + (isTagPodBomb(bomb.ammo.internalName) ? bomb.carried : 0), 0);
     return Object.freeze({
-        operationalTagCount: operationalMounts.filter(mount => mount.equipment?.hasFlag('F_TAG')).length
-            + bombs.reduce((total, bomb) => total + (isTagPodBomb(bomb.ammo.internalName) ? bomb.carried : 0), 0),
+        operationalTagCount: tagMounts.length + tagPods,
+        onlyRearTag: tagPods === 0 && tagMounts.length > 0 && tagMounts.every(mount => mount.rearMounted),
         launchers: Object.freeze(operationalMounts.flatMap(mount =>
             mount.equipment instanceof WeaponEquipment ? [mount.equipment] : [])),
         ammunition: Object.freeze(ammunition),

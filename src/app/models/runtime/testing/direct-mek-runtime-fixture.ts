@@ -3,15 +3,16 @@
 
 import { asUnitUuid,type UnitUuid } from '../../../services/unit-catalog/unit-catalog.types';
 import { CORE_2026_RULESET,type CBTRuleset } from '../../cbt-ruleset.model';
+import { MountedArmor } from '../../entity/components/armor';
 import type { GyroType } from '../../entity/components/gyro-data';
 import type { MekEntity } from '../../entity/entities/mek/mek-entity';
 import { parseMtf } from '../../entity/parsers/mtf-parser';
 import { ParseContext } from '../../entity/parsers/parse-context';
 import { createTestEquipmentRegistry } from '../../entity/testing/test-equipment-registry';
-import type { EngineType } from '../../entity/types';
+import type { ArmorType, EngineType } from '../../entity/types';
 import type { CockpitType } from '../../entity/types/cockpit';
 import type { EquipmentRegistry } from '../../equipment-lookup';
-import { AmmoEquipment,MiscEquipment,StructureEquipment,WeaponEquipment } from '../../equipment.model';
+import { AmmoEquipment,ArmorEquipment,MiscEquipment,StructureEquipment,WeaponEquipment } from '../../equipment.model';
 import { weaponEnhancementFlag } from '../../weapon-enhancement.model';
 import { CBTUnit,type CBTMekUnit } from '../cbt-unit';
 import { type CBTRuntimeEquipment } from '../cbt-unit-runtime';
@@ -54,6 +55,11 @@ export function createDirectMekRuntimeFixture(
     gyroType: GyroType = 'Standard',
 ): DirectMekRuntimeFixture {
     return createFixture(ruleset, instanceId, { gyroType });
+}
+
+/** Parsed Mek wearing one armor type everywhere, installed before the runtime index reads it. */
+export function createDirectArmorRuntimeFixture(ruleset: CBTRuleset, armorType: ArmorType): DirectMekRuntimeFixture {
+    return createFixture(ruleset, `unit:direct-${armorType.toLowerCase()}-armor`, { armorType });
 }
 
 export function createMixedHeatSinkFixture(ruleset: CBTRuleset): DirectMekRuntimeFixture {
@@ -541,6 +547,7 @@ interface DirectFixtureOptions {
     readonly baseWalkMp?: number;
     readonly engineType?: EngineType;
     readonly industrial?: boolean;
+    readonly armorType?: ArmorType;
 }
 
 function createFixture(
@@ -553,6 +560,11 @@ function createFixture(
         directMekMtf(options),
         new ParseContext('direct-runtime.mtf', registry),
     );
+    if (options.armorType) {
+        entity.setUniformArmor(new MountedArmor({ armor: new ArmorEquipment({
+            id: `Test ${options.armorType}`, name: options.armorType, type: 'armor', armor: { type: options.armorType },
+        }) }));
+    }
     entity.reconcileEquipmentRelationships();
     const index = buildMekRuntimeIndex(entity);
     const identity: UnitUuid = UUID;

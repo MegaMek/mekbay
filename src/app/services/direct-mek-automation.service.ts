@@ -65,7 +65,13 @@ MekPendingFallConsequencesV2,
 import type { MekUnitRuntimeState } from '../models/runtime/runtime-state';
 import type { MekHitArcV2,MekUnitQueryPort } from '../models/runtime/unit-instance';
 import { mekHitLocationTable } from '../utils/record-sheet-reference-table';
-import { FALL_DAMAGE, resolveArmorDamage, rifleHitDamage, type DamageSource } from '../models/rules/armor-damage-rules';
+import {
+    armorPiercingIgnoresSpecialArmor,
+    FALL_DAMAGE,
+    resolveArmorDamage,
+    rifleHitDamage,
+    type DamageSource,
+} from '../models/rules/armor-damage-rules';
 import { uuidv4 } from '../utils/uuid.util';
 import type { SwarmShakeOffCause } from '../models/rules/anti-mek-attack-rules';
 import { loadSwarmService } from './swarm-service-loader';
@@ -165,6 +171,8 @@ interface DirectCriticalChanceContext {
     readonly floatingHitArc?: MekHitArcV2;
     /** Exact armor-facing decision captured when this hit reached structure. */
     readonly hardenedArmorApplies?: boolean;
+    /** Total Warfare through-armor check against a location/facing that still had ablation armor (IO:AE p.80). */
+    readonly ablationArmorApplies?: boolean;
     /** Internal-explosion protection carried into the resulting critical sequence. */
     readonly explosionProtection?: MekInstalledExplosionProtection;
     /** A hit that consumed this location's last structure pip. */
@@ -1008,6 +1016,9 @@ export class DirectMekAutomationService {
         });
         if (snapshot.ruleset === 'core-2026' && context.explosionProtection === 'case-ii') {
             modifiers.push(Object.freeze({ label: 'CASE II internal explosion', value: -1 }));
+        }
+        if (context.ablationArmorApplies) {
+            modifiers.push(Object.freeze({ label: 'Ablation armor', value: -2 }));
         }
         const dice = roll2D6();
         const modifier = modifiers.reduce((total, row) =>
@@ -2152,7 +2163,8 @@ export class DirectMekAutomationService {
                 damage -= modularDamage;
             }
             const remainingArmor = snapshot.query.remainingArmor(face.id, perspective);
-            const hardenedArmorApplies = location.armor.type === 'HARDENED' && remainingArmor > 0;
+            const hardenedArmorApplies = location.armor.type === 'HARDENED' && remainingArmor > 0
+                && !armorPiercingIgnoresSpecialArmor(snapshot.ruleset, location.armor.type, group.source);
             const armor = resolveArmorDamage(
                 snapshot.ruleset,
                 damage,
@@ -2213,9 +2225,12 @@ export class DirectMekAutomationService {
                 && this.canShareCompositePip(force, instanceId, nextCode, rearArc, perspective);
             code = nextCode;
         }
-        const blockedAblativeCritical = initial?.ruleset === 'core-2026'
-            && initialArmorType === 'ANTI_PENETRATIVE_ABLATION'
-            && initialArmor > 0;
+        // Ablation armor blocks the TAC under Core (Core p.91) but only gives -2 under Total Warfare (IO:AE p.80);
+        // Core armor-piercing rounds strip both special armors' protection (Core p.191).
+        const specialArmorProtects = initialArmor > 0
+            && !armorPiercingIgnoresSpecialArmor(initial.ruleset, initialArmorType, group.source);
+        const ablationArmor = specialArmorProtects && initialArmorType === 'ANTI_PENETRATIVE_ABLATION';
+        const blockedAblativeCritical = ablationArmor && initial.ruleset === 'core-2026';
         if (throughArmorCritical && groupDamaged && !blockedAblativeCritical) {
             const latest = this.snapshot(force, instanceId);
             const location = latest && [...latest.index.locations.values()].find(row => row.code === sourceCode);
@@ -2227,7 +2242,8 @@ export class DirectMekAutomationService {
                     target,
                     {
                         floatingHitArc: hitArc,
-                        hardenedArmorApplies: initialArmorType === 'HARDENED' && initialArmor > 0,
+                        hardenedArmorApplies: specialArmorProtects && initialArmorType === 'HARDENED',
+                        ablationArmorApplies: ablationArmor,
                     },
                     dispatch,
                     interactive,

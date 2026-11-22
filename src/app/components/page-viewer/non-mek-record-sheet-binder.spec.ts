@@ -890,7 +890,7 @@ describe('bindNonMekRecordSheet', () => {
             ...soldierSnapshot(3),
             components: Object.freeze([Object.freeze({
                 componentId: asComponentId('law'), equipmentId: 'InfantryLAW', label: 'LAW', sheetLocations: [],
-                status, previewStatus: status,
+                status, previewStatus: status, autocannonHit: false, previewAutocannonHit: false,
             })]),
         });
         const binding = bindNonMekRecordSheet(svg, withLaw('available'));
@@ -1088,6 +1088,37 @@ describe('bindNonMekRecordSheet', () => {
         binding.destroy();
     });
 
+    it('puts a red dot after the weapon name for a noted autocannon first hit', () => {
+        const svg = inventorySheet();
+        // The dot sits at the measured end of the name, which needs a laid-out SVG
+        document.body.appendChild(svg);
+        try {
+            const recordSheet = (hit: boolean) => Object.freeze({
+                ...snapshot(3),
+                components: Object.freeze([Object.freeze({
+                    componentId: asComponentId('weapon-1'),
+                    equipmentId: 'weapon',
+                    label: 'AC/5',
+                    sheetLocations: Object.freeze(['FR']),
+                    status: 'available' as const,
+                    previewStatus: 'available' as const,
+                    autocannonHit: hit,
+                    previewAutocannonHit: hit,
+                })]),
+            });
+            const binding = bindNonMekRecordSheet(svg, recordSheet(true), () => undefined);
+            const dot = svg.querySelector('.autocannonHitDot');
+            expect(dot?.previousElementSibling?.classList.contains('name')).toBeTrue();
+            const name = svg.querySelector<SVGTextElement>('text.name')!.getBBox();
+            expect(Number(dot!.getAttribute('cx'))).toBeGreaterThan(name.x + name.width);
+            binding.render(recordSheet(false));
+            expect(svg.querySelector('.autocannonHitDot')).toBeNull();
+            binding.destroy();
+        } finally {
+            svg.remove();
+        }
+    });
+
     it('binds generated non-Mek weapon rows to stable component IDs', () => {
         const svg = inventorySheet();
         const interactions: RecordSheetInteraction[] = [];
@@ -1101,6 +1132,8 @@ describe('bindNonMekRecordSheet', () => {
                 sheetLocations: Object.freeze(['FR']),
                 status: 'available' as const,
                 previewStatus: 'available' as const,
+                autocannonHit: false,
+                previewAutocannonHit: false,
             })]),
         });
         const equipmentPanel = {
@@ -1270,6 +1303,8 @@ describe('bindNonMekRecordSheet', () => {
             sheetLocations: Object.freeze(['FR']),
             status,
             previewStatus,
+            autocannonHit: false,
+            previewAutocannonHit: false,
         });
         const recordSheet = (bothDestroyed: boolean) => Object.freeze({
             ...snapshot(3),
@@ -1308,6 +1343,8 @@ describe('bindNonMekRecordSheet', () => {
                 sheetLocations: Object.freeze(['FR']),
                 status: 'available' as const,
                 previewStatus: 'available' as const,
+                autocannonHit: false,
+                previewAutocannonHit: false,
             }))),
         });
         const equipmentPanel = {
@@ -1362,6 +1399,8 @@ describe('bindNonMekRecordSheet', () => {
                 sheetLocations: Object.freeze(['FR']),
                 status: 'available' as const,
                 previewStatus: 'available' as const,
+                autocannonHit: false,
+                previewAutocannonHit: false,
             })]),
         });
         const equipmentPanel = {
@@ -1426,6 +1465,8 @@ function ammoSnapshot(ammunition: readonly (readonly [string, number])[]): NonMe
             sheetLocations: ['FR'],
             status: 'available' as const,
             previewStatus: 'available' as const,
+            autocannonHit: false,
+            previewAutocannonHit: false,
             ammo: { displayName, remaining, capacity: 20 },
         })),
     };

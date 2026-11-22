@@ -1756,6 +1756,56 @@ describe('direct Mek entity/runtime projections', () => {
         ).targetModifier).toBe(0);
     });
 
+    it('reduces only the target hex terrain for Core semi-guided direct fire', () => {
+        const fixture = createDirectMekRuntimeFixture('core-2026');
+        const launcher = fixture.equipmentComponent('Test Artemis Launcher');
+        const ammo = fixture.equipmentComponent('Test Artemis Ammo');
+        const targetId = asEncounterTargetId('target:tagged');
+        const registry: TargetRegistrySnapshot = Object.freeze({
+            revision: 0,
+            targets: Object.freeze([Object.freeze({
+                id: targetId,
+                letter: 'A',
+                name: 'Tagged target',
+                color: '#123456',
+                unitType: 'mek-biped' as const,
+                tnCalculator: Object.freeze({
+                    interveningWoods: 'light1' as const, targetHexCover: 'light' as const, tagged: true,
+                }),
+            })]),
+        });
+        const munitionKey = fixture.instance.query().ammoLoadout(ammo.id).munitionKey;
+        expect(fixture.instance.dispatchAttackerTargeting({
+            type: 'edit-attacker-targeting',
+
+
+
+            edit: {
+                kind: 'set-component-ammo',
+                componentId: launcher.id,
+                ammo: { munitionKey, preferredSourceId: ammo.id },
+            },
+        }, registry, false).accepted).toBeTrue();
+        expect(fixture.instance.dispatchAttackerTargeting({
+            type: 'edit-attacker-targeting',
+
+
+
+            edit: { kind: 'set-target-facts', targetId, facts: { distance: 3 } },
+        }, registry, false).accepted).toBeTrue();
+
+        const panel = projectMekEquipmentPanel(
+            fixture.entity, fixture.index, fixture.instance.ruleset(), fixture.instance.query(), registry, {},
+        );
+        const row = panel.components.find(component => component.componentId === launcher.id)!;
+        const target = projectTargetingTarget(panel.targets[0], panel.ruleset);
+        expect(target.tnModifier).toBe(2);
+        // Core p.193: the -2 comes off the target's light cover, not the intervening woods
+        expect(projectWeaponTargetPresentation(
+            row, target, stationaryAttack(panel.crew.gunnery), panel.ruleset,
+        ).targetModifier).toBe(1);
+    });
+
     it('owns Core standing attempts, spent MP, failure, and heat in sparse V2 state', () => {
         const fixture = createDirectMekRuntimeFixture('core-2026');
 
@@ -2115,6 +2165,44 @@ describe('direct Mek entity/runtime projections', () => {
         expect(destroyLeg(twHip, 'FLL', 'tw-quad-hip:FLL').accepted).toBeTrue();
         expect(hitActuator(twHip, 'RRL', 'Hip', 'tw-quad-hip:hip').accepted).toBeTrue();
         expect(movement(twHip)).toEqual(jasmine.objectContaining({ walkMp: 2, runMp: 3 }));
+
+        // Core p.238: a quad's first hip hit has none of a biped hip hit's effects; the second one has them
+        const coreHips = createDirectQuadRuntimeFixture('core-2026', 'unit:core-quad-hips');
+        const pristineWalk = movement(coreHips).walkMp;
+        expect(hitActuator(coreHips, 'FLL', 'Hip', 'core-quad-hips:first').accepted).toBeTrue();
+        expect(movement(coreHips).walkMp).toBe(pristineWalk);
+        expect(hitActuator(coreHips, 'RRL', 'Hip', 'core-quad-hips:second').accepted).toBeTrue();
+        expect(movement(coreHips).walkMp).toBe(pristineWalk - 1);
+        expect(coreHips.instance.dispatch({
+            type: 'declare-mek-movement',
+            declaration: { mode: 'run', distance: 1, boosterComponentIds: [] },
+        }).accepted).toBeTrue();
+        expect(coreHips.instance.query().mekPilotChecks()
+            .filter(check => check.source.sourceKind === 'movement').length).toBe(1);
+    });
+
+    it('rolls once per damaged leg when a Core Mek runs', () => {
+        for (const [ruleset, rolls] of [['core-2026', 2]] as const) {
+            const fixture = createDirectMekRuntimeFixture(ruleset);
+            for (const code of ['LL', 'RL']) {
+                const slot = [...fixture.index.slots.values()].find(candidate =>
+                    fixture.index.locations.get(candidate.locationId)?.code === code
+                    && candidate.componentIds.some(componentId => {
+                        const component = fixture.index.components.get(componentId);
+                        return component?.kind === 'system' && component.systemType === 'Hip';
+                    }))!;
+                expect(fixture.instance.dispatch({
+                    type: 'hit-critical', slotId: slot.id, hits: 1, target: 'committed',
+                }).accepted).toBeTrue();
+            }
+            expect(fixture.instance.dispatch({
+                type: 'declare-mek-movement',
+                declaration: { mode: 'run', distance: 1, boosterComponentIds: [] },
+            }).accepted).toBeTrue();
+            // Core p.111: "Ran at least one hex with: gyro hit, hip actuator hit, leg destroyed (each)"
+            expect(fixture.instance.query().mekPilotChecks()
+                .filter(check => check.source.sourceKind === 'movement').length).withContext(ruleset).toBe(rolls);
+        }
     });
 
     it('applies submerged heat-sink cooling from the shared Mek water state', () => {

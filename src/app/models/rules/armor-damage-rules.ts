@@ -17,23 +17,31 @@ import {
 import type { TnTargetUnitType } from '../target-number-calculator.model';
 import type { WeaponType } from '../weapon-types.model';
 
+/** Ammunition that special armor treats apart: an autocannon's armor-piercing rounds, or acid (AX) missiles. */
+export type ArmorSpecialAmmo = 'armor-piercing' | 'acid';
+
 /** What dealt the damage: a fall, a physical attack, or a weapon attack with its damage types. */
 export type DamageSource =
     | Readonly<{ kind: 'fall' }>
     | Readonly<{ kind: 'physical' }>
     /** `rifle`: each hit loses 3 points where it strikes (`rifleHitDamage`). */
-    | Readonly<{ kind: 'weapon'; types: readonly WeaponType[]; rifle?: true }>;
+    | Readonly<{ kind: 'weapon'; types: readonly WeaponType[]; rifle?: true; ammo?: ArmorSpecialAmmo }>;
 
 export const FALL_DAMAGE: DamageSource = Object.freeze({ kind: 'fall' });
 export const PHYSICAL_DAMAGE: DamageSource = Object.freeze({ kind: 'physical' });
 
 /** The source of an attack's hits: a physical attack, or its weapon's damage types and whether it is a rifle. */
 export function attackDamageSource(
-    attack: Readonly<{ physical?: unknown; types: readonly WeaponType[]; rifle?: true }>,
+    attack: Readonly<{ physical?: unknown; types: readonly WeaponType[]; rifle?: true; ammo?: ArmorSpecialAmmo }>,
 ): DamageSource {
     return attack.physical
         ? PHYSICAL_DAMAGE
-        : Object.freeze({ kind: 'weapon', types: attack.types, ...(attack.rifle ? { rifle: true as const } : {}) });
+        : Object.freeze({
+            kind: 'weapon',
+            types: attack.types,
+            ...(attack.rifle ? { rifle: true as const } : {}),
+            ...(attack.ammo ? { ammo: attack.ammo } : {}),
+        });
 }
 
 /**
@@ -113,6 +121,20 @@ export interface ArmorDamageResolution {
     readonly remainingDamage: number;
 }
 
+/**
+ * Core p.191: against armor-piercing rounds, ABA, ballistic-reinforced and hardened armor take "standard damage dealt
+ * to standard armor" and "provide no damage reduction or other special protective bonuses of any kind".
+ */
+export function armorPiercingIgnoresSpecialArmor(
+    ruleset: CBTRuleset,
+    armorType: ArmorType | null,
+    source: DamageSource,
+): boolean {
+    return ruleset === 'core-2026' && source.kind === 'weapon' && source.ammo === 'armor-piercing'
+        && (armorType === 'ANTI_PENETRATIVE_ABLATION' || armorType === 'BALLISTIC_REINFORCED'
+            || armorType === 'HARDENED');
+}
+
 /** Armor marks one damage group removes from a location's armor, and what reaches the structure, for any unit. */
 export function resolveArmorDamage(
     ruleset: CBTRuleset,
@@ -127,12 +149,25 @@ export function resolveArmorDamage(
     const fall = source.kind === 'fall';
     const physical = source.kind === 'physical';
     const weaponTypes = source.kind === 'weapon' ? source.types : [];
-    if ((ruleset === 'core-2026' && armorType === 'HEAT_DISSIPATING' && weaponTypes.includes('H'))
-        || WEAPON_HALVING_ARMOR[armorType ?? 'STANDARD']?.some(type => weaponTypes.includes(type))) {
+    const ammo = source.kind === 'weapon' ? source.ammo : undefined;
+    const standardVsArmorPiercing = armorPiercingIgnoresSpecialArmor(ruleset, armorType, source);
+    if (standardVsArmorPiercing && armorType === 'HARDENED') {
+        // "each single point of damage removes one full armor pip": two hardened marks per point (Core p.191)
+        return Object.freeze({
+            armorDamage: Math.min(armor, 2 * incoming),
+            remainingDamage: Math.max(0, incoming - Math.ceil(armor / 2)),
+        });
+    }
+    // Core: acid missiles' damage "is not reduced by special armor rules" (p.192)
+    const unreduced = standardVsArmorPiercing || (ruleset === 'core-2026' && ammo === 'acid');
+    if (!unreduced
+        && ((ruleset === 'core-2026' && armorType === 'HEAT_DISSIPATING' && weaponTypes.includes('H'))
+        || WEAPON_HALVING_ARMOR[armorType ?? 'STANDARD']?.some(type => weaponTypes.includes(type)))) {
         // Total Warfare halves the damage (rounding down, minimum 1); Core lets a leftover point destroy a pip.
         const pips = ruleset === 'core-2026' ? Math.ceil(incoming / 2) : Math.max(1, Math.floor(incoming / 2));
-        const armorDamage = Math.min(armor, pips);
-        return Object.freeze({ armorDamage, remainingDamage: armorDamage < pips ? incoming - 2 * armorDamage : 0 });
+        // Each pip absorbs up to two points, so only damage beyond twice the remaining pips reaches the structure
+        // (Core pp.201-202; TO:AUE pp.93-94)
+        return Object.freeze({ armorDamage: Math.min(armor, pips), remainingDamage: Math.max(0, incoming - 2 * armor) });
     }
     // Laser-reflective armor is brittle: falls, physical attacks and area-effect weapons deal double damage.
     if (armorType === 'REFLECTIVE' && (fall || physical || weaponTypes.includes('AE'))) {
@@ -143,7 +178,7 @@ export function resolveArmorDamage(
     }
     // Impact-resistant armor takes 1 off every 3 points (or fraction) of a physical attack, and of a fall under Total
     // Warfare (IO p. 81); Core halves a fall instead (p. 202). Both deal at least 1.
-    const modifiedDamage = armorType === 'FERRO_LAMELLOR'
+    const modifiedDamage = armorType === 'FERRO_LAMELLOR' && !unreduced
         ? Math.floor(incoming * 4 / 5)
         : armorType === 'IMPACT_RESISTANT' && (fall || physical)
             ? Math.max(1, ruleset === 'core-2026' && fall

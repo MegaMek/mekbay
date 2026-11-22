@@ -4,11 +4,14 @@
 import { TestBed } from '@angular/core/testing';
 
 import type { CBTForce } from '../models/cbt-force.model';
+import type { CBTRuleset } from '../models/cbt-ruleset.model';
+import { MountedArmor } from '../models/entity/components/armor';
 import type { LocationId } from '../models/entity/entity-identifiers';
 import { TestAeroSpaceFighterEntity, TestProtoMekEntity, TestTankEntity } from '../models/entity/testing/test-entities';
 import { createTestEquipmentRegistry } from '../models/entity/testing/test-equipment-registry';
 import { addTestEquipment } from '../models/entity/testing/test-mounted-equipment';
-import { AmmoEquipment, WeaponEquipment } from '../models/equipment.model';
+import type { ArmorType } from '../models/entity/types';
+import { AmmoEquipment, ArmorEquipment, WeaponEquipment } from '../models/equipment.model';
 import { aeroCriticalType } from '../models/rules/aero-critical-rules';
 import { systemDamageId } from '../models/rules/system-damage-rules';
 import { createNonMekUnit } from '../models/runtime/cbt-non-mek-unit';
@@ -54,31 +57,42 @@ describe('NonMekCriticalAutomationService', () => {
     });
 
     /** A 20-ton tank with 10 points of armor on each location; dice come from `rolls` (1–6 each). */
-    function tank(withAmmo = false) {
+    function tank(withAmmo = false, withAutocannon = false, armorType?: ArmorType, ruleset: CBTRuleset = 'core-2026') {
         const ammo = new AmmoEquipment({ id: 'Ammo_AC_5_Critical_Test', name: 'AC/5 Ammo', type: 'ammo',
             stats: { explosive: true }, ammo: { type: 'AC', rackSize: 5, shots: 20, damagePerShot: 1 } });
-        const entity = new TestTankEntity(createTestEquipmentRegistry({ [ammo.id]: ammo }));
+        const autocannon = new WeaponEquipment({ id: 'Critical_Test_AC5', name: 'AC/5', type: 'weapon',
+            flags: ['F_AC', 'F_BALLISTIC', 'F_DIRECT_FIRE'], weapon: { ammoType: 'AC', rackSize: 5, damage: '5', ranges: [3, 6, 12] } });
+        const entity = new TestTankEntity(createTestEquipmentRegistry({ [ammo.id]: ammo, [autocannon.id]: autocannon }));
         entity.uuid.set(UUID);
         entity.setTonnage(20);
+        if (armorType) {
+            entity.setUniformArmor(new MountedArmor({ armor: new ArmorEquipment({
+                id: armorType, name: armorType, type: 'armor', armor: { type: armorType } }) }));
+        }
         for (const location of entity.locationOrder) entity.setArmorValue(location, 'front', 10);
         const ammoId = withAmmo ? componentIdForMount(addTestEquipment(entity, ammo, { location: 'Rear', shotsCount: 2 })) : null;
+        const acId = withAutocannon ? componentIdForMount(addTestEquipment(entity, autocannon, { location: 'Rear' })) : null;
         const runtime = createNonMekUnit(entity, { instanceId: 'critical-tank', uuid: UUID,
-            scenario: { id: 'megamek', options: {} }, deployment: { id: 'default' }, initialStateProfileId: 'pristine' });
+            scenario: { id: 'megamek', ruleset, options: {} }, deployment: { id: 'default' }, initialStateProfileId: 'pristine' });
         const force = { getUnitSnapshot: () => ({ instanceId: runtime.instanceId, entity,
             index: runtime.getIndex(), uuid: UUID, ruleset: runtime.ruleset(), crewAssignment: runtime.getCrewAssignment(),
             editContext: { owner: runtime, state: runtime.snapshot() }, state: runtime.snapshot(), query: runtime.query(),
         }) } as unknown as CBTForce;
         const location = (code: string) => [...runtime.getIndex().locations.values()].find(row => row.code === code)!.id;
-        const apply = (groups: readonly NonMekDamageGroup[]) => service.applyWeaponHits(force, runtime.instanceId, groups,
-            'committed', async (command: CBTUnitCommand) => runtime.dispatch(command));
+        const apply = (groups: readonly NonMekDamageGroup[], target: 'committed' | 'pending' = 'committed') =>
+            service.applyWeaponHits(force, runtime.instanceId, groups, target,
+                async (command: CBTUnitCommand) => runtime.dispatch(command));
         const hits = (id: ReturnType<typeof systemDamageId>) => runtime.snapshot().damageTracks.get(id)?.hits ?? 0;
-        return { runtime, location, apply, hits, ammoId };
+        return { runtime, location, apply, hits, ammoId, acId };
     }
 
     /** A 5-ton ProtoMech without armor, a torso laser filling die faces 1-2 of torso critical weapon rolls. */
-    function protoMek() {
-        const laser = new WeaponEquipment({ id: 'Critical_Test_Laser', name: 'ER Small Laser', type: 'weapon',
-            weapon: { damage: '5', ranges: [2, 4, 5] } });
+    function protoMek(autocannon = false) {
+        const laser = autocannon
+            ? new WeaponEquipment({ id: 'Critical_Test_PAC', name: 'ProtoMech AC/2', type: 'weapon',
+                flags: ['F_AC', 'F_BALLISTIC', 'F_DIRECT_FIRE'], weapon: { ammoType: 'PAC', rackSize: 2, damage: '2', ranges: [4, 8, 12] } })
+            : new WeaponEquipment({ id: 'Critical_Test_Laser', name: 'ER Small Laser', type: 'weapon',
+                weapon: { damage: '5', ranges: [2, 4, 5] } });
         const entity = new TestProtoMekEntity(createTestEquipmentRegistry({ [laser.id]: laser }));
         entity.uuid.set(UUID);
         entity.setTonnage(5);
@@ -148,6 +162,50 @@ describe('NonMekCriticalAutomationService', () => {
         expect(unit.hits(systemDamageId('commander'))).toBe(1);
     });
 
+    it('applies ablation and hardened armor to vehicle critical checks by ruleset and armor-piercing ammo', async () => {
+        // 5 + 5 = 10 hits the commander; 8 moves down past the stabilizer to the sensors. Total Warfare: ablation
+        // gives the hit-location check -2 (IO:AE p.80), hardened every check -2 even against armor-piercing rounds
+        // (TO:AUE p.93). Core: ablation blocks it, and armor-piercing rounds strip both armors (Core pp.91, 191).
+        const ap = { kind: 'weapon', types: ['DB'], ammo: 'armor-piercing' } as const;
+        const cases = [
+            ['ANTI_PENETRATIVE_ABLATION', 'total-warfare', 2, ['critical'], undefined, [0, 1]],
+            ['HARDENED', 'total-warfare', 2, ['critical'], ap, [0, 1]],
+            ['HARDENED', 'total-warfare', 21, [], undefined, [0, 1]],
+            ['HARDENED', 'core-2026', 2, ['critical'], ap, [1, 0]],
+            ['ANTI_PENETRATIVE_ABLATION', 'core-2026', 2, ['critical'], undefined, [0, 0]],
+            ['ANTI_PENETRATIVE_ABLATION', 'core-2026', 2, ['critical'], ap, [1, 0]],
+        ] as const;
+        for (const [armor, ruleset, damage, effects, source, expected] of cases) {
+            const unit = tank(false, false, armor, ruleset);
+            rolls(5, 5);
+            expect(await unit.apply([group(unit.location('Front'), damage, { effects, ...(source ? { source } : {}) })]))
+                .toBeTrue();
+            expect([unit.hits(systemDamageId('commander')), unit.hits(systemDamageId('sensors', 1))])
+                .withContext(`${armor} ${ruleset} ${damage}${source ? ' armor-piercing' : ''}`).toEqual([...expected]);
+        }
+    });
+
+    for (const target of ['committed', 'pending'] as const) {
+        it(`destroys a Core autocannon on a second ${target} hit later in the same batch`, async () => {
+            const unit = tank(false, true);
+            // 11 on the rear column without ammunition: Weapon Destroyed; each 1D6 then picks the only weapon
+            rolls(5, 6, 1, 5, 6, 1);
+            const rear = unit.location('Rear');
+            const perspective = target === 'pending' ? 'preview' : 'committed';
+            expect(await unit.apply([group(rear, 2, { effects: ['critical'] })], target)).toBeTrue();
+            // Core pp.92, 183: the first is only noted
+            expect(unit.runtime.query().componentStatus(unit.acId!, perspective)).toBe('available');
+            rolls(5, 6, 1, 5, 6, 1);
+            const batch = tank(false, true);
+            const batchRear = batch.location('Rear');
+            expect(await batch.apply([
+                group(batchRear, 2, { effects: ['critical'] }),
+                group(batchRear, 2, { effects: ['critical'] }),
+            ], target)).toBeTrue();
+            expect(batch.runtime.query().componentStatus(batch.acId!, perspective)).toBe('destroyed');
+        });
+    }
+
     it('explodes all ammunition into the struck location', async () => {
         const unit = tank(true);
         // 11 on the rear column: Ammunition, 2 shots × 5 damage into the rear structure.
@@ -186,6 +244,20 @@ describe('NonMekCriticalAutomationService', () => {
         expect(unit.hits(systemDamageId('torso', 1))).toBe(1);
         expect(unit.runtime.query().componentStatus(unit.laserId)).toBe('destroyed');
         expect(unit.pilot().wounds).toBe(1);
+    });
+
+    it('leaves a Core autocannon working on its first torso weapon critical and destroys it on the second', async () => {
+        const unit = protoMek(true);
+        rolls(4, 4, 1, 6, 6);
+        expect(await unit.apply([group(unit.location('Torso'), 1)])).toBeTrue();
+        // Core pp.92, 183: the first critical hit to an autocannon is noted and the gun keeps working
+        expect(unit.runtime.query().componentStatus(unit.laserId)).toBe('available');
+        expect(unit.runtime.snapshot().components.get(unit.laserId)?.autocannonHit).toBeTrue();
+        expect(unit.runtime.dispatch({ type: 'set-system-damage-level', system: 'torso', level: 0, target: 'committed',
+            timestamp: 1 }).accepted).toBeTrue();
+        rolls(4, 4, 1, 6, 6);
+        expect(await unit.apply([group(unit.location('Torso'), 1)])).toBeTrue();
+        expect(unit.runtime.query().componentStatus(unit.laserId)).toBe('destroyed');
     });
 
     it('reads the critical an aerospace hit-location roll threatens', () => {

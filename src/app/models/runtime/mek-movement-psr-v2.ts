@@ -1745,8 +1745,9 @@ function movementNumbers(
                 walk -= destroyedHips;
             }
         } else {
-            walk -= destroyedHips;
-            impaired ||= destroyedHips > 0;
+            // A quad's first hip hit has none of a biped hip hit's effects (Core p.238)
+            walk -= Math.max(0, destroyedHips - 1);
+            impaired ||= destroyedHips > 1;
             if (destroyedLegs <= 2) walk -= destroyedLegs;
             else if (destroyedLegs === 3) {
                 walk = Math.min(profile.movement.originalWalkMp, 1);
@@ -2017,10 +2018,17 @@ function permanentPsr(
             facts.dedicatedPilotFunctional ? 'Dedicated Pilot' : 'Dedicated Pilot disabled',
         ));
     }
+    // A Core quad's first hip hit has no standard effects, its +1 included (Core p.238)
+    let quadHipIgnored = !(quadruped && profile.rulesFlavor === 'core-2026');
     for (const leg of legs) {
         if (leg.destroyed) continue;
-        if (leg.hipHits > 0) modifiers.push(psrModifier(
-            leg.hipHits * (profile.rulesFlavor === 'total-warfare' ? 2 : 1),
+        let hipHits = leg.hipHits;
+        if (!quadHipIgnored && hipHits > 0) {
+            quadHipIgnored = true;
+            hipHits -= 1;
+        }
+        if (hipHits > 0) modifiers.push(psrModifier(
+            hipHits * (profile.rulesFlavor === 'total-warfare' ? 2 : 1),
             'Hip Destroyed',
             { locationId: leg.locationId },
         ));
@@ -2521,10 +2529,11 @@ function movementCheckSeeds(
         }, 'Landing with primitive prototype jump jets'));
     }
     if (!movementModeRaisesDamageChecks(profile, declaration)) return Object.freeze([...seeds]);
+    const mode = declaration.mode;
     const damagedGyro = canonicalIds(profile.gyro.criticalSlotIds.filter(slotId =>
         facts.criticalSlotUnavailable(slotId)), 'damaged gyro critical slot') as CriticalSlotId[];
-    if (damagedGyro.length > 0 && damagedGyroMovementRaisesCheck(profile, declaration.mode)) {
-        return Object.freeze([...seeds, seed({
+    const gyroSeed = damagedGyro.length > 0 && damagedGyroMovementRaisesCheck(profile, declaration.mode)
+        ? seed({
             sourceKind: 'movement',
             triggerKind: 'move-damaged-gyro',
             witness: canonicalWitness({ declaration, damagedGyro, heavyDuty: profile.gyro.heavyDuty }),
@@ -2532,68 +2541,78 @@ function movementCheckSeeds(
             locationIds: gyroLocationIds(profile),
         }, coreHeavyDutyGyro(profile)
             ? 'Jumping with damaged HD gyro'
-            : `${movementModeVerb(declaration.mode)} with damaged gyro`)]);
-    }
+            : `${movementModeVerb(mode)} with damaged gyro`)
+        : null;
     const legs = legDamage(profile, facts);
     const quadruped = profile.form === 'quad' || profile.form === 'quadvee';
     const destroyed = legs.filter(leg => leg.destroyed);
-    const representativeDestroyedLeg = destroyed[0];
-    const coreQuadHipEquivalent = profile.rulesFlavor === 'core-2026'
-        && quadruped
-        && destroyed.length === 2;
-    if (representativeDestroyedLeg && coreQuadHipEquivalent) {
-        return Object.freeze([...seeds, seed({
-            sourceKind: 'movement',
-            triggerKind: 'move-damaged-leg',
-            witness: canonicalWitness({
-                declaration,
-                locationId: representativeDestroyedLeg.locationId,
-                quadruped,
-            }),
-            criticalSlotIds: [],
-            locationIds: [representativeDestroyedLeg.locationId],
-        }, `${movementModeVerb(declaration.mode)} with damaged hip`)]);
-    }
-    const destroyedLegRequiresCheck = destroyedLegMovementRaisesCheck(profile, declaration.mode)
-        && destroyed.length >= (profile.rulesFlavor === 'core-2026' && quadruped ? 2 : 1);
-    if (representativeDestroyedLeg && destroyedLegRequiresCheck) {
-        return Object.freeze([...seeds, seed({
-            sourceKind: 'movement',
-            triggerKind: 'move-damaged-leg',
-            witness: canonicalWitness({
-                declaration,
-                locationId: representativeDestroyedLeg.locationId,
-                quadruped,
-            }),
-            criticalSlotIds: [],
-            locationIds: [representativeDestroyedLeg.locationId],
-        }, `${movementModeVerb(declaration.mode)} with damaged leg`)]);
-    }
-
+    const legSeed = (locationId: LocationId, damage: string) => seed({
+        sourceKind: 'movement',
+        triggerKind: 'move-damaged-leg',
+        witness: canonicalWitness({ declaration, locationId, quadruped }),
+        criticalSlotIds: [],
+        locationIds: [locationId],
+    }, `${movementModeVerb(mode)} with ${damage}`);
     const relevantKinds: readonly MekActuatorKind[] = declaration.mode === 'jump'
         ? ['hip', 'upper-leg', 'lower-leg', 'foot']
         : ['hip'];
+    const damagedActuatorSlots = (leg: LegDamageSummaryV2, kinds: readonly MekActuatorKind[]) => canonicalIds(
+        profile.limbs.find(limb => limb.locationId === leg.locationId)?.actuators
+            .filter(actuator => kinds.includes(actuator.kind))
+            .flatMap(actuator => actuator.criticalSlotIds)
+            .filter(slotId => facts.criticalSlotUnavailable(slotId)) ?? [],
+        'damaged actuator critical slot',
+    ) as CriticalSlotId[];
+    const actuatorSeed = (leg: LegDamageSummaryV2, slots: CriticalSlotId[]) => seed({
+        sourceKind: 'movement',
+        triggerKind: 'move-damaged-actuator',
+        witness: canonicalWitness({ declaration, locationId: leg.locationId, slotIds: slots }),
+        criticalSlotIds: slots,
+        locationIds: [leg.locationId],
+    }, declaration.mode === 'jump'
+        ? 'Jumping with damaged leg actuator'
+        : `${movementModeVerb(mode)} with damaged hip`);
+
+    if (profile.rulesFlavor === 'core-2026') {
+        // Core p.111: a run of at least one hex forces a roll for each gyro hit, hip hit and destroyed leg, and a
+        // jump one per damaged leg; leg damage forces at most one roll per leg (p.110), and a destroyed leg replaces
+        // the effects of the other damage to it (p.90). A quad counts in biped terms (p.238): one destroyed leg
+        // forces nothing, two act as a hip hit, three as a destroyed leg, and its first hip hit has no effect. All
+        // rolls share one target, and the rest are ignored once one fails (p.110).
+        const coreSeeds: MekPilotCheckSeedV2[] = gyroSeed ? [gyroSeed] : [];
+        if (!quadruped) {
+            coreSeeds.push(...destroyed.map(leg => legSeed(leg.locationId, 'damaged leg')));
+        } else if (destroyed.length >= 3) {
+            coreSeeds.push(legSeed(destroyed[0]!.locationId, 'damaged leg'));
+        } else if (destroyed.length === 2) {
+            coreSeeds.push(legSeed(destroyed[0]!.locationId, 'damaged hip'));
+        }
+        let quadHipIgnored = !quadruped;
+        for (const leg of legs.filter(candidate => !candidate.destroyed)) {
+            let kinds = relevantKinds;
+            if (!quadHipIgnored && damagedActuatorSlots(leg, ['hip']).length > 0) {
+                quadHipIgnored = true;
+                kinds = relevantKinds.filter(kind => kind !== 'hip');
+            }
+            const slots = damagedActuatorSlots(leg, kinds);
+            if (slots.length > 0) coreSeeds.push(actuatorSeed(leg, slots));
+        }
+        return Object.freeze([...seeds, ...coreSeeds]);
+    }
+
+    // Total Warfare makes one roll for the first damage found
+    if (gyroSeed) return Object.freeze([...seeds, gyroSeed]);
+    const representativeDestroyedLeg = destroyed[0];
+    if (representativeDestroyedLeg && destroyedLegMovementRaisesCheck(profile, declaration.mode)) {
+        return Object.freeze([...seeds, legSeed(representativeDestroyedLeg.locationId, 'damaged leg')]);
+    }
     for (const leg of legs.filter(candidate => !candidate.destroyed)) {
-        const slots = canonicalIds(
-            profile.limbs.find(limb => limb.locationId === leg.locationId)?.actuators
-                .filter(actuator => relevantKinds.includes(actuator.kind))
-                .flatMap(actuator => actuator.criticalSlotIds)
-                .filter(slotId => facts.criticalSlotUnavailable(slotId)) ?? [],
-            'damaged actuator critical slot',
-        ) as CriticalSlotId[];
-        if (slots.length === 0) continue;
-        return Object.freeze([...seeds, seed({
-            sourceKind: 'movement',
-            triggerKind: 'move-damaged-actuator',
-            witness: canonicalWitness({ declaration, locationId: leg.locationId, slotIds: slots }),
-            criticalSlotIds: slots,
-            locationIds: [leg.locationId],
-        }, declaration.mode === 'jump'
-            ? 'Jumping with damaged leg actuator'
-            : `${movementModeVerb(declaration.mode)} with damaged hip`)]);
+        const slots = damagedActuatorSlots(leg, relevantKinds);
+        if (slots.length > 0) return Object.freeze([...seeds, actuatorSeed(leg, slots)]);
     }
     return Object.freeze([...seeds]);
 }
+
 
 function sprintBoosterCheckSeeds(
     profile: MekMechanicsProfile,
@@ -2633,6 +2652,7 @@ function sprintBoosterCheckSeeds(
  */
 
 /** Core makes no movement-mode roll for a Run or Sprint of less than one hex (Core p.113). */
+
 function movementModeRaisesDamageChecks(profile: MekMechanicsProfile, declaration: MekMovementDeclarationV2): boolean {
     return profile.rulesFlavor === 'total-warfare' || declaration.mode === 'jump' || declaration.distance >= 1;
 }
@@ -2855,6 +2875,13 @@ function damageMutationSeeds(
         const actuator = profile.limbs.flatMap(limb => limb.actuators.map(group => ({ limb, group })))
             .find(entry => entry.group.criticalSlotIds.includes(mutation.slotId));
         if (actuator?.group.kind === 'hip') {
+            // A Core quad's first hip hit forces no roll (Core p.238)
+            const quadruped = profile.form === 'quad' || profile.form === 'quadvee';
+            if (profile.rulesFlavor === 'core-2026' && quadruped
+                && legDamage(profile, facts).filter(leg => !leg.destroyed)
+                    .reduce((sum, leg) => sum + leg.hipHits, 0) <= 1) {
+                return Object.freeze([]);
+            }
             return Object.freeze([seed({
                 sourceKind: 'damage', triggerKind: 'hip-hit',
                 witness: canonicalWitness(mutation), criticalSlotIds: [mutation.slotId],

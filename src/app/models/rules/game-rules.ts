@@ -159,6 +159,8 @@ export interface TargetAttackTraits {
 export interface TagBattleValueFacts {
     readonly operationalTagCount: number;
     readonly homingArtilleryLauncherCount: number;
+    /** True when the unit's only operational TAG functionality is rear-mounted. */
+    readonly onlyRearTag: boolean;
     readonly guidedAmmoBv: number;
     /** Carried homing Arrow IV bombs' BV, added per TAG under both rulesets. */
     readonly homingBombBv: number;
@@ -261,6 +263,8 @@ export abstract class CBTGameRules {
     abstract readonly narcIndirectFireIgnoresAllTerrain: boolean;
     abstract readonly indirectFireUsesSpotterPartialCover: boolean;
     abstract readonly semiGuidedIgnoresCover: boolean;
+    /** An energy weapon fired underwater uses the next range bracket, and its last bracket cannot be used. */
+    abstract readonly energyWeaponsShiftRangeUnderwater: boolean;
     abstract readonly semiGuidedIgnoresIndirectFireModifier: boolean;
     abstract readonly physicalLocationRows: readonly PhysicalLocationRow[];
     abstract readonly quadPhysicalLocationRows: readonly PhysicalLocationRow[];
@@ -359,7 +363,9 @@ export abstract class CBTGameRules {
     }
 
     calculateTagBVCost(facts: TagBattleValueFacts): number {
-        return (50 * Math.max(0, facts.homingArtilleryLauncherCount) + Math.max(0, facts.homingBombBv))
+        // Core errata v0.2 p.1: 50 BV per Homing launcher per TAG; a unit whose only TAG is rear-mounted adds half.
+        const perLauncher = facts.onlyRearTag ? 25 : 50;
+        return (perLauncher * Math.max(0, facts.homingArtilleryLauncherCount) + Math.max(0, facts.homingBombBv))
             * Math.max(0, facts.operationalTagCount);
     }
 
@@ -510,6 +516,8 @@ export class GameRules extends CBTGameRules {
     readonly narcIndirectFireIgnoresAllTerrain = false;
     readonly indirectFireUsesSpotterPartialCover = false;
     readonly semiGuidedIgnoresCover = true;
+    /** Core p.127, Underwater Ranges */
+    readonly energyWeaponsShiftRangeUnderwater = true;
     readonly semiGuidedIgnoresIndirectFireModifier = false;
     readonly physicalLocationRows = CORE_2026_PHYSICAL_LOCATION_ROWS;
     readonly quadPhysicalLocationRows = CORE_2026_QUAD_PHYSICAL_LOCATION_ROWS;
@@ -652,6 +660,7 @@ export class TWGameRules extends CBTGameRules {
     readonly narcIndirectFireIgnoresAllTerrain = true;
     readonly indirectFireUsesSpotterPartialCover = true;
     readonly semiGuidedIgnoresCover = false;
+    readonly energyWeaponsShiftRangeUnderwater = false;
     readonly semiGuidedIgnoresIndirectFireModifier = true;
     readonly physicalLocationRows = TW_PHYSICAL_LOCATION_ROWS;
     readonly quadPhysicalLocationRows = TW_QUAD_PHYSICAL_LOCATION_ROWS;

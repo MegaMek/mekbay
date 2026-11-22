@@ -142,6 +142,7 @@ export const CBT_COMPONENT_STATE_FIELD = {
     gaussPower: 'g',
     shieldDamage: 'h',
     modularArmorDamage: 'r',
+    autocannonHit: 'a',
 } as const;
 
 export const CBT_PPC_CAPACITOR_FIELD = {
@@ -231,4 +232,5 @@ export const CBT_NON_MEK_PENDING_COMBAT_FIELD = {
     damageTrackHits: 'q',
     outsideHeat: 'o',
     infernoMissiles: 'i',
+    autocannonHits: 'h',
 } as const;

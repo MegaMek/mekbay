@@ -151,6 +151,19 @@ describe('inventory target number rules profiles', () => {
         expect(inventoryTargetNumberState(input).text).toBe('X');
     });
 
+    it('shifts an underwater energy weapon one bracket up, with no long or extreme attack (Core p.127)', () => {
+        const underwater = (distance: number) => ({
+            ...c3LaserInput(distance, distance, true),
+            targetNumberFacts: { ...targetNumberFacts('er-large-laser'), underwaterEnergy: true },
+            target: { ...c3LaserInput(distance, distance, true).target!, useC3: false },
+        });
+
+        expect(inventoryTargetRangeSelection(underwater(5))).toEqual(jasmine.objectContaining({ range: 'medium', outOfRange: false }));
+        expect(inventoryTargetRangeSelection(underwater(12))).toEqual(jasmine.objectContaining({ range: 'long', outOfRange: false }));
+        expect(inventoryTargetRangeSelection(underwater(16))).toEqual(jasmine.objectContaining({ outOfRange: true }));
+        expect(inventoryTargetRangeSelection(underwater(22))).toEqual(jasmine.objectContaining({ outOfRange: true }));
+    });
+
     it('allows ground Extreme attacks through the exact Extreme boundary when enabled', () => {
         const firstExtreme = c3LaserInput(20, 20, true);
         const exactExtreme = c3LaserInput(25, 25, true);

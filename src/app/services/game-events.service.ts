@@ -11,6 +11,7 @@ import {
     type PhysicalAttackKind,
 } from '../models/rules/physical-attack-rules';
 import { AIMED_SHOT_LEG_REROLLS, type AimedShotRoll } from '../models/rules/aimed-shot-rules';
+import type { ArmorSpecialAmmo } from '../models/rules/armor-damage-rules';
 import type { HitLocationDice, TwoDice } from '../models/rules/weapon-attack-resolution';
 import { WEAPON_TYPES, type WeaponType } from '../models/weapon-types.model';
 import type { MekHitArc } from '../utils/record-sheet-reference-table';
@@ -55,6 +56,8 @@ export interface AttackWeaponReport {
     readonly critical?: true;
     /** A rifle: each hit loses 3 points where it strikes (`rifleHitDamage`). */
     readonly rifle?: true;
+    /** Armor-piercing autocannon rounds or acid missiles, which special armor treats apart. */
+    readonly ammo?: ArmorSpecialAmmo;
     /**
      * The swarming infantry struck comes off the unit it swarms: a brush off that hits, or the infantry shaken off by
      * a jump, a fall or erratic manoeuvres.
@@ -184,7 +187,7 @@ function parseWeaponReport(value: unknown): AttackWeaponReport | null {
     if (value === null || typeof value !== 'object' || Array.isArray(value)) return null;
     const {
         name, types, partialCover, targetNumber, toHit, cluster, table, physical, arc, inferno, heat, aim,
-        critical, rifle, swarmRelease, swarmStrike, groups,
+        critical, rifle, ammo, swarmRelease, swarmStrike, groups,
     } = value as Record<string, unknown>;
     if (!isId(name) || !isInteger(targetNumber, -100, 100) || !isTwoDice(toHit)
         || !Array.isArray(types) || types.length > WEAPON_TYPES.length
@@ -195,6 +198,7 @@ function parseWeaponReport(value: unknown): AttackWeaponReport | null {
         || (table !== undefined && table !== 'punch' && table !== 'kick' && table !== 'swarm')
         || (critical !== undefined && critical !== true)
         || (rifle !== undefined && (rifle !== true || physical !== undefined))
+        || (ammo !== undefined && ammo !== 'armor-piercing' && ammo !== 'acid')
         || (swarmRelease !== undefined && swarmRelease !== true)
         || (swarmStrike !== undefined && !isSwarmStrike(swarmStrike))
         || (physical !== undefined && !PHYSICAL_ATTACK_KINDS.includes(physical as PhysicalAttackKind))
@@ -241,6 +245,7 @@ function parseWeaponReport(value: unknown): AttackWeaponReport | null {
         ...(table === undefined ? {} : { table: table as Exclude<HitTable, 'standard'> }),
         ...(critical ? { critical: true as const } : {}),
         ...(rifle ? { rifle: true as const } : {}),
+        ...(ammo === undefined ? {} : { ammo: ammo as ArmorSpecialAmmo }),
         ...(swarmRelease ? { swarmRelease: true as const } : {}),
         ...(swarmStrike === undefined ? {} : {
             swarmStrike: Object.freeze((swarmStrike as { trooper?: number }).trooper === undefined

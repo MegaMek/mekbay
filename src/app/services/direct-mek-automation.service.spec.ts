@@ -14,6 +14,7 @@ import { type DamageSource } from '../models/rules/armor-damage-rules';
 import { riscOverrideKitMalfunction } from '../models/runtime/mek-automation-rules';
 
 import {
+createDirectArmorRuntimeFixture,
 createDirectCommandConsoleRuntimeFixture,
 createDirectExplosionRuntimeFixture,
 createDirectHotLoadedAmmoRuntimeFixture,
@@ -310,6 +311,35 @@ describe('DirectMekAutomationService', () => {
         expect(await attack('total-warfare', false)).toEqual([2, 2]);
         expect(await attack('total-warfare', true)).toEqual([5, 5]);
         expect(await attack('core-2026', true)).toEqual([2, 2]);
+    });
+
+    it('applies ablation and hardened armor to the through-armor critical by ruleset and armor-piercing ammo', async () => {
+        const armorPiercing = { kind: 'weapon' as const, types: ['DB' as const], ammo: 'armor-piercing' as const };
+        spyOn(Math, 'random').and.returnValue(0);
+        const chances = async (
+            ruleset: 'core-2026' | 'total-warfare',
+            armor: 'ANTI_PENETRATIVE_ABLATION' | 'HARDENED',
+            source: DamageSource,
+        ) => {
+            const fixture = createDirectArmorRuntimeFixture(ruleset, armor);
+            const harness = createHarnessForFixture(fixture, ruleset, fixture.instance.instanceId);
+            resolveAutomation.calls.reset();
+            expect(await service.applyWeaponHits(harness.force, harness.instanceId, [
+                { location: 'LT', rear: false, damage: 2, arc: 'front', throughArmorCritical: true, source },
+            ], 'pending', harness.dispatch)).toBeTrue();
+            return resolveAutomation.calls.allArgs()
+                .filter(args => args[0] === 'criticalHitChanceCheck')
+                .map(args => (args[1] as readonly { readonly breakdown: readonly { label: string; value: number }[] }[])
+                    .flatMap(event => event.breakdown.map(row => `${row.label} ${row.value}`)));
+        };
+        // Total Warfare: ablation gives the check -2 (IO:AE p.80); hardened keeps its -2 against armor-piercing
+        // rounds (TO:AUE p.93). Core: ablation blocks the check, and armor-piercing rounds strip both (Core pp.91, 191).
+        expect(await chances('total-warfare', 'ANTI_PENETRATIVE_ABLATION', laser)).toEqual([['Ablation armor -2']]);
+        expect(await chances('total-warfare', 'HARDENED', armorPiercing))
+            .toEqual([['Hardened armor in damaged facing -2']]);
+        expect(await chances('core-2026', 'ANTI_PENETRATIVE_ABLATION', laser)).toEqual([]);
+        expect(await chances('core-2026', 'ANTI_PENETRATIVE_ABLATION', armorPiercing)).toEqual([[]]);
+        expect(await chances('core-2026', 'HARDENED', armorPiercing)).toEqual([[]]);
     });
 
     describe('weapon head hits and consciousness', () => {

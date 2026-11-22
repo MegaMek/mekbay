@@ -23,6 +23,10 @@ import {
     protoMekCriticalReferences,
     protoMekTorsoCriticalResults,
 } from '../models/rules/protomek-critical-rules';
+import { armorPiercingIgnoresSpecialArmor } from '../models/rules/armor-damage-rules';
+import { gameRulesFor } from '../models/rules/game-rules';
+import { weaponSurvivesFirstAutocannonHit } from '../models/rules/mek-system-damage-rules';
+import { componentAutocannonHit } from '../models/runtime/component-state-change';
 import { systemDamageId, type SystemDamageKind } from '../models/rules/system-damage-rules';
 import {
     vehicleCriticalColumn,
@@ -260,17 +264,17 @@ export class NonMekCriticalAutomationService {
             }
             case 'weapon-destroyed': {
                 const { choice, weapon } = chooseDestroyedWeapon(weapons)!;
-                const explosion = weapon.explosionDamage > 0
+                const hit = weaponCriticalHit(snapshot, weapon, target);
+                const explosion = hit.destroyed && weapon.explosionDamage > 0
                     ? this.explosion(snapshot, location, weapon.explosionDamage, facts, target)
                     : null;
                 return Object.freeze({
                     effects: Object.freeze([
-                        `1D6 ${choice}: the ${choice <= 3 ? 'defender' : 'attacker'} chooses — ${weapon.name} is destroyed`,
+                        `1D6 ${choice}: the ${choice <= 3 ? 'defender' : 'attacker'} chooses — ${hit.effect}`,
                         ...(explosion?.effects ?? []),
                     ]),
-                    apply: async (dispatch: CBTForceUnitCommandDispatch) => await dispatchAll(dispatch, [{
-                        type: 'set-component-status', componentId: weapon.componentId, status: 'destroyed', target,
-                    }]) && (!explosion || await explosion.apply(dispatch)),
+                    apply: async (dispatch: CBTForceUnitCommandDispatch) => await dispatchAll(dispatch, [hit.command])
+                        && (!explosion || await explosion.apply(dispatch)),
                 });
             }
             case 'stabilizer':
@@ -423,15 +427,21 @@ export class NonMekCriticalAutomationService {
                 + (count === 0 ? 'no critical hit' : `${count} critical hit${count === 1 ? '' : 's'}`);
             if (count === 0) return Object.freeze({ description, effects: Object.freeze([]), apply: async () => true });
         }
+        // An autocannon struck twice by this one critical takes its first hit, then is destroyed
+        const struckThisCritical = new Set<ComponentId>();
         const torsoWeapons = system === 'torso' && !locationDestroyed
             ? Array.from({ length: Math.max(0, Math.min(to, 2) - filled) }, () => {
                 const roll = rollD6();
                 const mount = protoMekTorsoCriticalResults(entity)
                     .find(result => roll >= result.firstRoll && roll <= result.lastRoll)?.mount;
                 const componentId = mount ? componentIdForMount(mount) : null;
-                const destroys = componentId !== null
-                    && snapshot.query.componentStatus(componentId, perspective) !== 'destroyed';
-                return Object.freeze({ roll, name: mount?.displayName(), componentId: destroys ? componentId : null });
+                if (componentId === null || snapshot.query.componentStatus(componentId, perspective) === 'destroyed') {
+                    return Object.freeze({ roll, hit: null });
+                }
+                const hit = weaponCriticalHit(snapshot, { componentId, name: mount!.displayName() }, target,
+                    struckThisCritical.has(componentId));
+                struckThisCritical.add(componentId);
+                return Object.freeze({ roll, hit });
             })
             : [];
         const destroysLocation = !locationDestroyed && to === boxes && system !== 'torso' && system !== 'main-gun';
@@ -443,14 +453,12 @@ export class NonMekCriticalAutomationService {
                 ...reference.effects.slice(filled, to)
                     .map(effect => effect.detail ? `${effect.text} ${effect.detail}` : effect.text),
                 ...torsoWeapons.map(weapon => `Torso weapon roll ${weapon.roll}: `
-                    + (weapon.componentId ? `${weapon.name} destroyed` : 'no weapon destroyed')),
+                    + (weapon.hit ? weapon.hit.effect : 'no weapon destroyed')),
                 ...(pilotHits > 0 ? [`The pilot takes ${pilotHits} hit${pilotHits === 1 ? '' : 's'}`] : []),
             ]),
             apply: async (dispatch: CBTForceUnitCommandDispatch) => await dispatchAll(dispatch, [
                 { type: 'set-system-damage-level', system, level: to, target, timestamp },
-                ...torsoWeapons.flatMap(weapon => weapon.componentId ? [{
-                    type: 'set-component-status', componentId: weapon.componentId, status: 'destroyed', target,
-                } as const] : []),
+                ...torsoWeapons.flatMap(weapon => weapon.hit ? [weapon.hit.command] : []),
                 ...(destroysLocation ? [{
                     type: 'damage-internal', locationId: location.id,
                     amount: snapshot.query.remainingInternal(location.id, perspective), target,
@@ -528,15 +536,15 @@ export class NonMekCriticalAutomationService {
             case 'weapon': {
                 const chosen = chooseDestroyedWeapon(locationWeapons(snapshot, location, perspective));
                 if (!chosen) return none(['No weapon in this location: no effect']);
+                const hit = weaponCriticalHit(snapshot, chosen.weapon, target);
                 return Object.freeze({
                     description,
                     effects: Object.freeze([
-                        `1D6 ${chosen.choice}: the ${chosen.choice <= 3 ? 'defender' : 'attacker'} chooses — ${chosen.weapon.name} is destroyed`,
-                        ...(chosen.weapon.explosionDamage > 0 ? ['It explodes: resolve as an ammunition explosion'] : []),
+                        `1D6 ${chosen.choice}: the ${chosen.choice <= 3 ? 'defender' : 'attacker'} chooses — ${hit.effect}`,
+                        ...(hit.destroyed && chosen.weapon.explosionDamage > 0
+                            ? ['It explodes: resolve as an ammunition explosion'] : []),
                     ]),
-                    apply: (dispatch: CBTForceUnitCommandDispatch) => dispatchAll(dispatch, [{
-                        type: 'set-component-status', componentId: chosen.weapon.componentId, status: 'destroyed', target,
-                    }]),
+                    apply: (dispatch: CBTForceUnitCommandDispatch) => dispatchAll(dispatch, [hit.command]),
                 });
             }
             case 'bomb': {
@@ -668,8 +676,20 @@ function vehicleCriticalChecks(
             checks.push({ locationId: struck.id, modifier: armoredChassis ? -1 : 0, reason: 'penetrating' });
         }
     }
-    if (group.effects.includes('critical')) checks.push({ locationId: group.locationId, modifier: 0, reason: 'hit location' });
-    for (const locationId of outcome.structureDamaged) checks.push({ locationId, modifier: 0, reason: 'internal structure' });
+    // Special armor on the struck face while it had armor: hardened gives -2 on every check (Core p.91, TO:AUE p.93);
+    // ablation blocks the through-armor check under Core (Core pp.91, 201) and gives it -2 under Total Warfare
+    // (IO:AE p.80). Core armor-piercing rounds strip both (Core p.191).
+    const struckArmorType = struck === undefined ? null : entity.armorAt(struck.code)?.type ?? null;
+    const specialArmorProtects = outcome.struckArmor > 0
+        && !armorPiercingIgnoresSpecialArmor(snapshot.ruleset, struckArmorType, group.source);
+    const hardened = specialArmorProtects && struckArmorType === 'HARDENED' ? -2 : 0;
+    const ablation = specialArmorProtects && struckArmorType === 'ANTI_PENETRATIVE_ABLATION';
+    if (group.effects.includes('critical') && !(ablation && snapshot.ruleset === 'core-2026')) {
+        checks.push({ locationId: group.locationId, modifier: hardened + (ablation ? -2 : 0), reason: 'hit location' });
+    }
+    for (const locationId of outcome.structureDamaged) {
+        checks.push({ locationId, modifier: hardened, reason: 'internal structure' });
+    }
     return checks;
 }
 
@@ -700,7 +720,34 @@ function vehicleCriticalFacts(
     });
 }
 
+/**
+ * A critical hit that destroys a weapon. Under Core an autocannon's first one only "must be noted on the record
+ * sheet" and the gun keeps working (Core pp.92, 183); `alreadyStruck` counts a hit earlier in the same critical.
+ */
+function weaponCriticalHit(
+    snapshot: CBTNonMekUnitSnapshot,
+    weapon: Readonly<{ componentId: ComponentId; name: string | undefined }>,
+    target: Target,
+    alreadyStruck = false,
+): Readonly<{ destroyed: boolean; effect: string; command: CBTUnitCommand }> {
+    const equipment = snapshot.index.components.get(weapon.componentId)?.mount.equipment;
+    const recorded = alreadyStruck || componentAutocannonHit(snapshot.state, weapon.componentId, perspectiveOf(target));
+    if (weaponSurvivesFirstAutocannonHit(equipment, snapshot.ruleset) && !recorded) {
+        return Object.freeze({
+            destroyed: false,
+            effect: `${weapon.name} takes its first autocannon hit and keeps working`,
+            command: { type: 'record-autocannon-hit' as const, componentId: weapon.componentId, target },
+        });
+    }
+    return Object.freeze({
+        destroyed: true,
+        effect: `${weapon.name} is destroyed`,
+        command: { type: 'set-component-status' as const, componentId: weapon.componentId, status: 'destroyed' as const, target },
+    });
+}
+
 function locationWeapons(snapshot: CBTNonMekUnitSnapshot, location: CBTRuntimeLocation, perspective: RuntimeStatePerspective) {
+    const rules = gameRulesFor(snapshot.ruleset);
     return [...snapshot.index.components.values()].flatMap(component => {
         const equipment = component.mount.equipment;
         if (!(equipment instanceof WeaponEquipment) || !component.mount.getOccupiedLocations().includes(location.code)) return [];
@@ -709,7 +756,10 @@ function locationWeapons(snapshot: CBTNonMekUnitSnapshot, location: CBTRuntimeLo
             name: equipment.name,
             status: snapshot.query.componentStatus(component.id, perspective),
             bv: typeof equipment.bv === 'number' ? equipment.bv : 0,
-            explosionDamage: Math.max(0, equipment.weapon.explosionDamage),
+            // An explosive weapon deals its ruleset's damage: Core 2 per slot it takes, on any unit (Core p.96)
+            explosionDamage: equipment.weapon.explosionDamage > 0
+                ? rules.getExplosiveWeaponDamage(equipment, typeof equipment.critSlots === 'number' ? equipment.critSlots : 0)
+                : 0,
         })];
     });
 }

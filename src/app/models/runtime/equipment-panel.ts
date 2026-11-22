@@ -436,6 +436,10 @@ export function projectWeaponTargetPresentation(
             maxRangeBracket: weapon.aerospace.maximumBracket,
         }),
         infantryRangeModifiers: weapon.platoon?.rangeModifiers ?? null,
+        underwaterEnergy: rules.energyWeaponsShiftRangeUnderwater
+            && weapon.underwater
+            && row.equipment instanceof WeaponEquipment
+            && row.equipment.hasFlag('F_ENERGY'),
     });
     const display = weaponTargetDisplay(weapon);
     const rangeInput = {

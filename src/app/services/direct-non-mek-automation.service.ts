@@ -96,6 +96,8 @@ export interface NonMekDamageGroupOutcome {
     readonly structureDamaged: readonly LocationId[];
     /** Aerospace: points of structural integrity lost. */
     readonly structuralIntegrityDamage: number;
+    /** Armor left on the struck location's face when the hit was applied. */
+    readonly struckArmor: number;
 }
 
 type NonMekSnapshot = Omit<CBTUnitSnapshot, 'entity' | 'index' | 'state'> & Readonly<{
@@ -295,6 +297,7 @@ export class DirectNonMekAutomationService {
         const struck = this.nonMekSnapshot(force, instanceId);
         const struckLocation = struck?.index.locations.get(group.locationId);
         const struckFace = struck && struckLocation ? struckArmorFace(struck.index, struckLocation.id, false) : undefined;
+        const struckArmor = struck && struckFace ? struck.query.remainingArmor(struckFace.id, perspective) : 0;
         // A rifle hit loses 3 points against the armor where it strikes (`rifleHitDamage`).
         const weaponDamage = struck && struckLocation && group.source.kind === 'weapon' && group.source.rifle
             ? rifleHitDamage(struck.ruleset, group.damage, {
@@ -347,7 +350,11 @@ export class DirectNonMekAutomationService {
                 : undefined;
             locationId = torso?.id ?? null;
         }
-        return Object.freeze({ structureDamaged: Object.freeze(structureDamaged), structuralIntegrityDamage });
+        return Object.freeze({
+            structureDamaged: Object.freeze(structureDamaged),
+            structuralIntegrityDamage,
+            struckArmor,
+        });
     }
 
     async prepareCommand(

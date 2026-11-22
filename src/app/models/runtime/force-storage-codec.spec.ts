@@ -18,6 +18,8 @@ import { componentIdForMount } from './unit-runtime-index';
 
 import { TestAeroSpaceFighterEntity,TestInfantryEntity,TestTankEntity } from '../entity/testing/test-entities';
 import { addTestEquipment, addTestEquipmentWithFlags } from '../entity/testing/test-mounted-equipment';
+import { createTestEquipmentRegistry } from '../entity/testing/test-equipment-registry';
+import { WeaponEquipment } from '../equipment.model';
 import { encodeNativeEntity } from '../entity/write-entity';
 import { isSerializedNonMekUnit,type SerializedNonMekUnit } from './non-mek-unit-persistence';
 import {
@@ -835,6 +837,45 @@ describe('force storage codec', () => {
 
         const decoded = decodeForceFromStorage(JSON.parse(JSON.stringify(stored)));
         expect(decoded.cbt!.roster.groups[0].formationTargetGroupId).toBe('group:target');
+    });
+
+    it('round-trips a non-Mek autocannon first hit, committed and pending', () => {
+        const ac = new WeaponEquipment({ id: 'TestCodecAC5', name: 'Test AC/5', type: 'weapon',
+            flags: ['F_AC', 'F_BALLISTIC', 'F_DIRECT_FIRE'], weapon: { ammoType: 'AC', rackSize: 5, damage: 5, ranges: [3, 6, 9, 12] } });
+        const entity = new TestTankEntity(createTestEquipmentRegistry({ [ac.id]: ac }));
+        const uuid = asUnitUuid('019f6767-0dcb-7bb8-992f-aef08202f5e3');
+        entity.uuid.set(uuid);
+        entity.setTonnage(20);
+        const committedId = componentIdForMount(addTestEquipment(entity, ac, { location: entity.locationOrder[0] }));
+        const pendingId = componentIdForMount(addTestEquipment(entity, ac, { location: entity.locationOrder[0] }));
+        const ready = createNonMekUnit(entity, {
+            instanceId: 'unit:codec-ac-hit', uuid, deployment: { id: 'default' },
+            scenario: { id: 'megamek', ruleset: 'core-2026' }, initialStateProfileId: 'pristine-non-mek',
+        });
+        expect(ready.dispatch({ type: 'record-autocannon-hit', componentId: committedId, target: 'committed' }).changed)
+            .toBeTrue();
+        expect(ready.dispatch({ type: 'record-autocannon-hit', componentId: pendingId, target: 'pending' }).changed)
+            .toBeTrue();
+
+        const unit = ready.serialize();
+        const stored = encodeForceForStorage(forceWithUnit(unit, 'force:codec-ac-hit', 'AC hit'));
+        const decoded = decodeForceFromStorage(JSON.parse(JSON.stringify(stored))).cbt!.units[0]!.unit as SerializedNonMekUnit;
+        expect(decoded.componentState).toEqual(unit.componentState);
+        expect(decoded.pendingCombat).toEqual(unit.pendingCombat);
+        expect(storedUnitState(stored)['c']).toEqual([[committedId, { a: 1 }]]);
+        const restored = restoreNonMekUnit(decoded, entity, uuid, { id: 'megamek', ruleset: 'core-2026' });
+        expect(restored.serialize().componentState).toEqual(unit.componentState);
+        expect(restored.serialize().pendingCombat).toEqual(unit.pendingCombat);
+        // The phase's pending damage, the noted hit included, commits at the end of the phase
+        expect(restored.dispatch({ type: 'end-phase' }).accepted).toBeTrue();
+        expect(restored.snapshot().components.get(pendingId)?.autocannonHit).toBeTrue();
+        // Total Warfare has no surviving first hit
+        const tw = createNonMekUnit(entity, {
+            instanceId: 'unit:codec-ac-hit-tw', uuid, deployment: { id: 'default' },
+            scenario: { id: 'megamek', ruleset: 'total-warfare' }, initialStateProfileId: 'pristine-non-mek',
+        });
+        expect(tw.dispatch({ type: 'record-autocannon-hit', componentId: committedId, target: 'committed' }).changed)
+            .toBeFalse();
     });
 
     it('round-trips non-Mek damage and ordered damage-track timestamps', () => {

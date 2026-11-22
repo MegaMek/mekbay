@@ -40,6 +40,7 @@ import { componentEscalatingFailureProfile } from './component-escalating-failur
 import { rapidFireAutocannonSupportsJamming } from './component-rapid-fire-autocannon';
 import { entityAmmoLoadout } from './mek-ammo';
 import { gameRulesFor } from '../rules/game-rules';
+import { weaponSurvivesFirstAutocannonHit } from '../rules/mek-system-damage-rules';
 import { HEAT_TURN_STEP } from '../rules/turn-sequence';
 import { isEndTurnCheckpoint,type EndTurnCheckpoint } from './end-turn-checkpoint';
 import { freezeEquipmentRowOrder,type EquipmentRowOrderState } from './equipment-row-order';
@@ -100,6 +101,7 @@ export interface SerializedNonMekUnit {
         readonly status?: Exclude<EquipmentStatus, 'available'>;
         readonly mode?: string;
         readonly jammed?: true;
+        readonly autocannonHit?: true;
         readonly escalatingFailure?: ComponentRuntimeState['escalatingFailure'];
     }>[];
     readonly damageTrackState?: readonly Readonly<{
@@ -179,6 +181,7 @@ export interface SerializedNonMekUnit {
             readonly hitDelta: number;
             readonly hitTimestamps: readonly number[];
         }>[];
+        readonly autocannonHits?: readonly ComponentId[];
         readonly outsideHeat?: number;
         readonly infernoMissiles?: number;
     }>;
@@ -261,12 +264,13 @@ export function serializeNonMekUnit(input: SerializeNonMekUnitInput): Serialized
         .flatMap(([componentId, component]) => {
             const status = component.statusOverride;
             if (status === undefined && component.mode === undefined && component.jammed !== true
-                && component.escalatingFailure === undefined) return [];
+                && component.autocannonHit !== true && component.escalatingFailure === undefined) return [];
             return [Object.freeze({
                 componentId,
                 ...(status === undefined ? {} : { status }),
                 ...(component.mode === undefined ? {} : { mode: component.mode }),
                 ...(component.jammed === true ? { jammed: true as const } : {}),
+                ...(component.autocannonHit === true ? { autocannonHit: true as const } : {}),
                 ...(component.escalatingFailure === undefined
                     ? {}
                     : { escalatingFailure: Object.freeze({ ...component.escalatingFailure }) }),
@@ -383,6 +387,8 @@ export function restoreNonMekRuntime(
             ...(entry.status === undefined ? {} : { statusOverride: entry.status }),
             ...(mode === undefined ? {} : { mode }),
             ...(entry.jammed === true && rapidFireAutocannonSupportsJamming(equipment, ruleset) ? { jammed: true } : {}),
+            ...(entry.autocannonHit === true && weaponSurvivesFirstAutocannonHit(equipment, ruleset)
+                ? { autocannonHit: true } : {}),
             ...(entry.escalatingFailure === undefined || entry.escalatingFailure.sequence > failureSteps
                 ? {}
                 : { escalatingFailure: Object.freeze({ ...entry.escalatingFailure }) }),
@@ -666,6 +672,7 @@ function serializePendingCombat(state: NonMekUnitRuntimeState): SerializedNonMek
         && pending.armorDamage.size === 0
         && pending.componentStatus.size === 0
         && pending.damageTrackHits.size === 0
+        && !pending.autocannonHits?.size
         && pending.outsideHeat === undefined
         && pending.infernoMissiles === undefined) return undefined;
     const internalDamage = [...pending.locationInternalDamage]
@@ -689,6 +696,9 @@ function serializePendingCombat(state: NonMekUnitRuntimeState): SerializedNonMek
         ...(armorDamage.length === 0 ? {} : { armorDamage: Object.freeze(armorDamage) }),
         ...(componentStatus.length === 0 ? {} : { componentStatus: Object.freeze(componentStatus) }),
         ...(damageTrackHits.length === 0 ? {} : { damageTrackHits: Object.freeze(damageTrackHits) }),
+        ...(!pending.autocannonHits?.size ? {} : {
+            autocannonHits: Object.freeze([...pending.autocannonHits].sort(compareText)),
+        }),
         ...(pending.outsideHeat === undefined ? {} : { outsideHeat: pending.outsideHeat }),
         ...(pending.infernoMissiles === undefined ? {} : { infernoMissiles: pending.infernoMissiles }),
     });
@@ -711,6 +721,10 @@ function restorePendingCombat(saved: SerializedNonMekUnit, installed: (component
                 hitTimestamps: Object.freeze([...entry.hitTimestamps]),
             }),
         ])),
+        ...(saved.pendingCombat?.autocannonHits === undefined ? {} : {
+            autocannonHits: new Set(saved.pendingCombat.autocannonHits.map(asComponentId)
+                .filter(componentId => installed(componentId))),
+        }),
         ...(saved.pendingCombat?.outsideHeat === undefined ? {} : { outsideHeat: saved.pendingCombat.outsideHeat }),
         ...(saved.pendingCombat?.infernoMissiles === undefined ? {} : {
             infernoMissiles: saved.pendingCombat.infernoMissiles,

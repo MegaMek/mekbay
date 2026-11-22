@@ -4,7 +4,14 @@
 import type { CBTRuleset } from '../cbt-ruleset.model';
 import { TestBattleArmorEntity, TestSupportTankEntity, TestTankEntity } from '../entity/testing/test-entities';
 import type { WeaponType } from '../weapon-types.model';
-import { FALL_DAMAGE, PHYSICAL_DAMAGE, reflectedHeat, resolveArmorDamage, rifleHitDamage } from './armor-damage-rules';
+import {
+    armorPiercingIgnoresSpecialArmor,
+    FALL_DAMAGE,
+    PHYSICAL_DAMAGE,
+    reflectedHeat,
+    resolveArmorDamage,
+    rifleHitDamage,
+} from './armor-damage-rules';
 
 describe('resolveArmorDamage', () => {
     const weapon = (...types: WeaponType[]) => ({ kind: 'weapon' as const, types });
@@ -27,6 +34,26 @@ describe('resolveArmorDamage', () => {
         // Reactive armor runs out: the rest reaches the structure at full strength.
         expect(resolveArmorDamage('core-2026', 7, 2, 'REACTIVE', weapon('M')))
             .toEqual({ armorDamage: 2, remainingDamage: 3 });
+        // Total Warfare too: two pips hold four of five points, so one reaches the structure (TO:AUE pp. 93-94).
+        expect(resolveArmorDamage('total-warfare', 5, 2, 'REFLECTIVE', weapon('DE')))
+            .toEqual({ armorDamage: 2, remainingDamage: 1 });
+    });
+
+    it('lets Core armor-piercing rounds and acid missiles past special armor reduction', () => {
+        const ap = { kind: 'weapon' as const, types: ['DB'] as WeaponType[], ammo: 'armor-piercing' as const };
+        const acid = { kind: 'weapon' as const, types: ['M'] as WeaponType[], ammo: 'acid' as const };
+        // Core p. 191: ballistic-reinforced armor gives no reduction against armor-piercing rounds; TW still halves.
+        expect(resolveArmorDamage('core-2026', 5, 10, 'BALLISTIC_REINFORCED', ap).armorDamage).toBe(5);
+        expect(resolveArmorDamage('total-warfare', 5, 10, 'BALLISTIC_REINFORCED', ap).armorDamage).toBe(2);
+        // Core p. 192: acid damage "is not reduced by special armor rules".
+        expect(resolveArmorDamage('core-2026', 6, 10, 'REACTIVE', acid).armorDamage).toBe(6);
+        expect(resolveArmorDamage('core-2026', 6, 10, 'BALLISTIC_REINFORCED', acid).armorDamage).toBe(6);
+        // Core p. 191: against armor-piercing rounds each point removes a full hardened pip (two marks).
+        expect(resolveArmorDamage('core-2026', 5, 6, 'HARDENED', ap)).toEqual({ armorDamage: 6, remainingDamage: 2 });
+        expect(resolveArmorDamage('total-warfare', 5, 6, 'HARDENED', ap)).toEqual({ armorDamage: 5, remainingDamage: 0 });
+        expect(armorPiercingIgnoresSpecialArmor('core-2026', 'ANTI_PENETRATIVE_ABLATION', ap)).toBeTrue();
+        expect(armorPiercingIgnoresSpecialArmor('core-2026', 'REACTIVE', ap)).toBeFalse();
+        expect(armorPiercingIgnoresSpecialArmor('total-warfare', 'HARDENED', ap)).toBeFalse();
     });
 
     it('halves damage to heat-dissipating armor only for heat-causing weapons under Core', () => {

@@ -1083,6 +1083,7 @@ function packNonMekUnit(unit: SerializedNonMekUnit, c3Position: C3UnitPosition |
             [CBT_COMPONENT_STATE_FIELD.status]: row.status,
             [CBT_COMPONENT_STATE_FIELD.mode]: row.mode,
             [CBT_COMPONENT_STATE_FIELD.jammed]: row.jammed ? 1 : undefined,
+            [CBT_COMPONENT_STATE_FIELD.autocannonHit]: row.autocannonHit ? 1 : undefined,
             [CBT_COMPONENT_STATE_FIELD.escalatingFailure]: row.escalatingFailure
                 && [row.escalatingFailure.sequence, row.escalatingFailure.active ? 1 : 0],
             }),
@@ -1173,6 +1174,12 @@ function unpackNonMekUnit(value: Record<string, unknown>, path: string, header: 
                         jammed: truthyOne(
                             state[CBT_COMPONENT_STATE_FIELD.jammed],
                             `${rowPath}[1].${CBT_COMPONENT_STATE_FIELD.jammed}`,
+                        ),
+                    }),
+                    ...(state[CBT_COMPONENT_STATE_FIELD.autocannonHit] === undefined ? {} : {
+                        autocannonHit: truthyOne(
+                            state[CBT_COMPONENT_STATE_FIELD.autocannonHit],
+                            `${rowPath}[1].${CBT_COMPONENT_STATE_FIELD.autocannonHit}`,
                         ),
                     }),
                     ...(escalating === undefined ? {} : {
@@ -2194,6 +2201,7 @@ function packNonMekPending(value: SerializedNonMekUnit['pendingCombat']): unknow
             value.damageTrackHits,
             row => [row.damageTrackId, row.hitDelta, row.hitTimestamps?.slice()],
         ),
+        [CBT_NON_MEK_PENDING_COMBAT_FIELD.autocannonHits]: value.autocannonHits?.slice(),
         [CBT_NON_MEK_PENDING_COMBAT_FIELD.outsideHeat]: value.outsideHeat,
         [CBT_NON_MEK_PENDING_COMBAT_FIELD.infernoMissiles]: value.infernoMissiles,
     });
@@ -2242,6 +2250,15 @@ function unpackNonMekPending(value: unknown, path: string): NonNullable<Serializ
                 hitTimestamps: unpackIntegerArray(row[2], `${rowPath}[2]`),
                 }),
             ),
+        }),
+        ...(pending[CBT_NON_MEK_PENDING_COMBAT_FIELD.autocannonHits] === undefined ? {} : {
+            autocannonHits: array(
+                pending[CBT_NON_MEK_PENDING_COMBAT_FIELD.autocannonHits],
+                `${path}.${CBT_NON_MEK_PENDING_COMBAT_FIELD.autocannonHits}`,
+            ).map((componentId, index) => asComponentId(text(
+                componentId,
+                `${path}.${CBT_NON_MEK_PENDING_COMBAT_FIELD.autocannonHits}[${index}]`,
+            ))),
         }),
         ...(pending[CBT_NON_MEK_PENDING_COMBAT_FIELD.outsideHeat] === undefined ? {} : {
             outsideHeat: integer(
