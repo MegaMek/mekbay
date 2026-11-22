@@ -1131,6 +1131,27 @@ describe('direct Mek entity/runtime projections', () => {
         ]);
     });
 
+    for (const ruleset of ['total-warfare', 'core-2026'] as const) {
+        it(`waives a successful TAG spotter's own weapon and physical attack penalties under ${ruleset}`, () => {
+            const { entity, index, instance } = createDirectMekRuntimeFixture(ruleset);
+            const panel = () => projectMekEquipmentPanel(
+                entity, index, ruleset, instance.query(), emptyCBTEncounterSnapshot(), {},
+            );
+            const unmodified = panel();
+            expect(instance.dispatch({
+                type: 'replace-turn-state', turn: { ...instance.query().turnState(), spotting: 'tag' },
+            }).accepted).toBeTrue();
+            const spotted = panel();
+            expect(spotted.components.find(component => component.label === 'Medium Laser')?.weapon?.hitModifierBreakdown)
+                .toEqual(unmodified.components.find(component => component.label === 'Medium Laser')?.weapon?.hitModifierBreakdown);
+            expect(spotted.physicalAttacks.map(attack => attack.hitModifiers))
+                .toEqual(unmodified.physicalAttacks.map(attack => attack.hitModifiers));
+            expect(instance.serialize().turn?.spotting).toBe('tag');
+            expect(instance.dispatch({ type: 'end-turn', policy: 'automatic' }).accepted).toBeTrue();
+            expect(instance.serialize().turn?.spotting).toBeUndefined();
+        });
+    }
+
     it('ports Mek heat, sensor, prone, and arm-actuator attack modifiers to direct V2 state', () => {
         const fixture = createDirectMekRuntimeFixture('core-2026');
         const slot = (systemType: string, locationCode: string) =>

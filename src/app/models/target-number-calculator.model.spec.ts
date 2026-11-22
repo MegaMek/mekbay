@@ -38,6 +38,19 @@ describe('target number calculator rules profiles', () => {
         })).toBe(2);
     });
 
+    for (const rules of [TW_GAME_RULES, CORE_2026_GAME_RULES]) {
+        it(`waives only the attacking spotter's successful TAG on this target under ${rules.id}`, () => {
+            const input = { unitType: 'vehicle', indirectFire: true, spotterMoveMode: 'walk' } as const;
+            const tn = (declaration: true | 'tag', tagged: boolean) => calculateTargetTnModifier({
+                ...input, spotterDeclaredAttacks: declaration, tagged,
+            }, rules);
+            expect(tn(true, false)).toBe(3);
+            expect(tn(true, true)).toBe(3); // A different unit can designate the target.
+            expect(tn('tag', true)).toBe(2);
+            expect(tn('tag', false)).toBe(3); // A shared designation can be cleared externally.
+        });
+    }
+
     it('adds a finite custom modifier to the total and breakdown', () => {
         expect(calculateTargetTnModifier({
             targetMovementBracket: '3-4',

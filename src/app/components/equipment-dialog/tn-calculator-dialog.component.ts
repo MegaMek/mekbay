@@ -46,6 +46,7 @@ import {
     type TnTargetNumberCalculatorState,
     type TnTargetUnitType,
     type TnSpotterMoveMode,
+    type SpottingMode,
 } from '../../models/target-number-calculator.model';
 import { getUnitConditionDefinition } from '../../models/unit-status-presentation';
 import type { CBTGameRules } from '../../models/rules/game-rules';
@@ -231,9 +232,14 @@ export interface TnCalculatorDialogResult {
                                         <button type="button" class="bt-button move-button" [class.selected]="spotterMoveMode() === 'jump'" [attr.aria-pressed]="spotterMoveMode() === 'jump'" (click)="selectSpotterMove('jump')"><span>Jump</span><span class="modifier-badge">+3</span></button>
                                     </div>
                                     <div class="button-row">
-                                        <button type="button" class="bt-button move-button" [class.selected]="spotterDeclaredAttacks()" [attr.aria-pressed]="spotterDeclaredAttacks()" (click)="toggleSpotterDeclaredAttacks()">
+                                        <button type="button" class="bt-button move-button" [class.selected]="spotterDeclaredAttacks() === true" [attr.aria-pressed]="spotterDeclaredAttacks() === true" (click)="toggleSpotterDeclaredAttacks()">
                                             <span>Declared Attacks</span><span class="modifier-badge">+1</span>
                                         </button>
+                                        @if (!taggedUnavailable() && (!targetStateReadOnly || tagged())) {
+                                            <button type="button" class="bt-button move-button" [class.selected]="spotterDeclaredAttacks() === 'tag'" [attr.aria-pressed]="spotterDeclaredAttacks() === 'tag'" (click)="toggleSpotterTag()">
+                                                <span>Declared Attacks after TAG Hit</span><span class="modifier-badge">+0</span>
+                                            </button>
+                                        }
                                     </div>
                                 </div>
                         }
@@ -1243,12 +1249,16 @@ export class TnCalculatorDialogComponent {
         && canTnTargetTypeBeLarge(this.initialUnitType),
     );
     readonly spotterMoveMode = signal<TnSpotterMoveMode>(this.initialCalculator?.spotterMoveMode ?? 'stationary');
-    readonly spotterDeclaredAttacks = signal<boolean>(this.initialCalculator?.spotterDeclaredAttacks ?? false);
     readonly narcAboveWater = signal<boolean>(this.initialCalculator?.narcAboveWater ?? false);
     readonly narcUnderwater = signal<boolean>(this.initialCalculator?.narcUnderwater ?? false);
     readonly tagged = signal<boolean>(
         (this.initialCalculator?.tagged ?? false)
         && this.data.gameRules.allowsTagDesignation(this.initialUnitType),
+    );
+    readonly spotterDeclaredAttacks = signal<SpottingMode>(
+        this.initialCalculator?.spotterDeclaredAttacks === 'tag' && !this.tagged()
+            ? true
+            : this.initialCalculator?.spotterDeclaredAttacks ?? false,
     );
     readonly ecmShielded = signal<boolean>(this.initialCalculator?.ecmShielded ?? false);
     readonly stealthChoice = signal<TnStealthChoiceId>(this.initialStealthChoice);
@@ -1351,8 +1361,8 @@ export class TnCalculatorDialogComponent {
     readonly c3BlockedByIndirectFire = computed(() => this.indirectFire());
     readonly c3Enabled = computed(() => this.showC3Distance() && this.useC3() && !this.c3BlockedByIndirectFire());
     readonly c3DistanceLabel = computed(() => this.c3Enabled() ? `${this.c3Distance()}` : '');
-    readonly indirectFireModifier = computed(() => getIndirectFireModifier(this.indirectFire(), this.spotterMoveMode(), this.spotterDeclaredAttacks()));
-    readonly indirectFireModifierLabel = computed(() => this.formatModifier(getIndirectFireModifier(true, this.spotterMoveMode(), this.spotterDeclaredAttacks())));
+    readonly indirectFireModifier = computed(() => getIndirectFireModifier(this.indirectFire(), this.spotterMoveMode(), this.spotterDeclaredAttacks(), this.tagged()));
+    readonly indirectFireModifierLabel = computed(() => this.formatModifier(getIndirectFireModifier(true, this.spotterMoveMode(), this.spotterDeclaredAttacks(), this.tagged())));
     readonly totalModifier = computed(() => calculateTargetTnModifier({
         unitType: this.unitType(),
         range: this.range(),
@@ -1374,6 +1384,7 @@ export class TnCalculatorDialogComponent {
         largeTarget: this.largeTarget(),
         spotterMoveMode: this.spotterMoveMode(),
         spotterDeclaredAttacks: this.spotterDeclaredAttacks(),
+        tagged: this.tagged(),
         stealth: this.stealth(),
         customModifier: this.customModifier(),
     }, this.gameRules()));
@@ -1426,7 +1437,10 @@ export class TnCalculatorDialogComponent {
         if (this.targetStateReadOnly) return;
         this.unitType.set(value as TnTargetUnitType);
         this.clearUnavailableLargeTarget();
-        if (this.taggedUnavailable()) this.tagged.set(false);
+        if (this.taggedUnavailable()) {
+            this.tagged.set(false);
+            if (this.spotterDeclaredAttacks() === 'tag') this.spotterDeclaredAttacks.set(true);
+        }
         this.clearStaticTargetModifiers();
         this.clampInfantryMovement();
         this.clearUnavailableStealthChoice();
@@ -1549,12 +1563,22 @@ export class TnCalculatorDialogComponent {
     }
 
     toggleSpotterDeclaredAttacks(): void {
-        this.spotterDeclaredAttacks.set(!this.spotterDeclaredAttacks());
+        this.spotterDeclaredAttacks.set(this.spotterDeclaredAttacks() !== true);
+    }
+
+    toggleSpotterTag(): void {
+        if (this.spotterDeclaredAttacks() === 'tag') {
+            this.spotterDeclaredAttacks.set(true);
+        } else if (!this.taggedUnavailable() && (!this.targetStateReadOnly || this.tagged())) {
+            this.tagged.set(true);
+            this.spotterDeclaredAttacks.set('tag');
+        }
     }
 
     toggleTagged(): void {
         if (this.targetStateReadOnly || this.taggedUnavailable()) return;
         this.tagged.update(value => !value);
+        if (!this.tagged() && this.spotterDeclaredAttacks() === 'tag') this.spotterDeclaredAttacks.set(true);
     }
 
     toggleNarcAboveWater(): void {

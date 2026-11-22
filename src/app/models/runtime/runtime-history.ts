@@ -264,7 +264,7 @@ export function formatRuntimeHistoryMessage(
         case RUNTIME_HISTORY_MESSAGE.COMPONENT_MODE_CHANGED:
             return scoped(`${target('component')} mode: ${mode(data[2])} → ${mode(data[3])}`);
         case RUNTIME_HISTORY_MESSAGE.SPOTTING_CHANGED:
-            return scoped(data[2] === true ? 'Declared spotting' : 'Stopped spotting');
+            return scoped(data[2] === 'tag' ? 'Spotted via TAG' : data[2] === true ? 'Declared spotting' : 'Stopped spotting');
         case RUNTIME_HISTORY_MESSAGE.COVER_CHANGED:
             return scoped(formatCoverChange(number(data[2])));
     }

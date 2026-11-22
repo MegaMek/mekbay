@@ -47,7 +47,7 @@ export interface AttackerLocalCalculatorInputs {
     readonly secondaryTarget?: true;
     readonly secondaryTargetSideBack?: true;
     readonly spotterMoveMode?: 'walk' | 'run' | 'jump';
-    readonly spotterDeclaredAttacks?: true;
+    readonly spotterDeclaredAttacks?: true | 'tag';
     readonly customModifier?: number;
 }
 
@@ -907,10 +907,11 @@ function canonicalCalculator(
         calculator.indirectFire,
         calculator.secondaryTarget,
         calculator.secondaryTargetSideBack,
-        calculator.spotterDeclaredAttacks,
     ]) {
         if (value !== undefined && value !== true) throw new Error('Invalid sparse calculator boolean');
     }
+    if (calculator.spotterDeclaredAttacks !== undefined && calculator.spotterDeclaredAttacks !== true
+        && calculator.spotterDeclaredAttacks !== 'tag') throw new Error('Invalid spotter attack state');
     if (calculator.spotterMoveMode !== undefined
         && calculator.spotterMoveMode !== 'walk'
         && calculator.spotterMoveMode !== 'run'
@@ -945,8 +946,8 @@ function canonicalCalculator(
         ...(calculator.spotterMoveMode === undefined
             ? {}
             : { spotterMoveMode: calculator.spotterMoveMode }),
-        ...(calculator.spotterDeclaredAttacks === true
-            ? { spotterDeclaredAttacks: true as const }
+        ...(calculator.spotterDeclaredAttacks
+            ? { spotterDeclaredAttacks: calculator.spotterDeclaredAttacks }
             : {}),
         ...(calculator.customModifier === undefined || calculator.customModifier === 0
             ? {}

@@ -64,6 +64,32 @@ describe('Entity equipment panel projection', () => {
         expect(row()).toEqual(['Flamer', false]);
     });
 
+    for (const ruleset of [TOTAL_WARFARE_RULESET, CORE_2026_RULESET]) {
+        it(`applies a vehicle spotter's weapon and charge modifiers under ${ruleset}`, () => {
+            const laser = new WeaponEquipment({
+                id: 'TestLaser', name: 'Test Laser', type: 'weapon', weapon: { damage: 5, ranges: [3, 6, 9, 12] },
+            });
+            const entity = new TestTankEntity(createTestEquipmentRegistry({ [laser.id]: laser }));
+            entity.uuid.set(UUID);
+            const mount = addTestEquipment(entity, laser, { location: entity.locationOrder[0] });
+            const runtime = createNonMekRuntimeForTest('unit:tank-spotter', { ...baseline(), ruleset }, entity, ruleset);
+            const spottingPenalty = (spotting: true | 'tag') => {
+                expect(runtime.dispatch({ type: 'set-spotting', spotting }).accepted).toBeTrue();
+                const panel = projectNonMekEquipmentPanel(entity, runtime.getIndex(), ruleset,
+                    runtime.snapshot(), runtime.query(), { revision: 0, targets: [] }, {});
+                const gun = panel.components.find(row => row.componentId === asComponentId(mount.mountId))!.weapon!;
+                const charge = panel.physicalAttacks.find(row => row.kind === 'charge')!;
+                return [gun.hitModifierBreakdown, charge.hitModifierBreakdown].map(
+                    entries => entries?.find(entry => entry.label === 'Spotting')?.modifier ?? 0,
+                );
+            };
+            expect(spottingPenalty(true)).toEqual([1, 1]);
+            expect(spottingPenalty('tag')).toEqual([0, 0]);
+            expect(runtime.dispatch({ type: 'end-turn', policy: 'manual' }).accepted).toBeTrue();
+            expect(runtime.snapshot().turn.spotting).toBeFalse();
+        });
+    }
+
     it('passes linked Artemis support to vehicle ammo selection', () => {
         const weapon = new WeaponEquipment({
             id: 'LRM 15', name: 'LRM 15', type: 'weapon', flags: ['F_ARTEMIS_COMPATIBLE'],

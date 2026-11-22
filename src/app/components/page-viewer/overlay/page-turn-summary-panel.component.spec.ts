@@ -313,6 +313,36 @@ describe('PageTurnSummaryPanelComponent', () => {
         expect(badge.classList.contains('empty-modifier')).toBeFalse();
     });
 
+    it('records a manual TAG spot with an operational mount', () => {
+        const harness = entityTurnMember([], false, 'available');
+        const fixture = createComponent(harness.member, overlayManager());
+        fixture.detectChanges();
+        const tagButton = Array.from<HTMLButtonElement>(fixture.nativeElement.querySelectorAll('button'))
+            .find(button => button.textContent?.includes('Spotted via TAG'))!;
+        expect(tagButton.disabled).toBeFalse();
+        tagButton.click();
+        expect(harness.dispatch).toHaveBeenCalledOnceWith('tank-1', { type: 'set-spotting', spotting: 'tag' });
+    });
+
+    it('shows the ordinary spotting modifier when TAG spotting is selected', () => {
+        const base = turnSnapshot();
+        const active = createComponent(turnMember({ ...base, turn: { ...base.turn, spotting: 'tag' } }).member, overlayManager());
+        active.detectChanges();
+        expect(active.nativeElement.querySelector('.spotting-button .modifier-badge').textContent.trim()).toBe('+1');
+        expect(active.nativeElement.querySelector('.spotting-button').getAttribute('aria-pressed')).toBe('false');
+    });
+
+    it('cannot report a new TAG hit using a destroyed mount', () => {
+        const damaged = entityTurnMember([], false, 'destroyed');
+        const unavailable = createComponent(damaged.member, overlayManager());
+        unavailable.detectChanges();
+        const disabledButton = Array.from<HTMLButtonElement>(unavailable.nativeElement.querySelectorAll('button'))
+            .find(button => button.textContent?.includes('Spotted via TAG'))!;
+        expect(disabledButton.disabled).toBeTrue();
+        unavailable.componentInstance.toggleSpotting('tag');
+        expect(damaged.dispatch).not.toHaveBeenCalled();
+    });
+
     it('uses the shared turn panel for direct vehicle Entity movement', () => {
         const manager = overlayManager();
         const harness = entityTurnMember();
@@ -501,6 +531,7 @@ function createComponent(member: CBTForceMember, manager: ReturnType<typeof over
 function entityTurnMember(
     damageTrackSheetIds: readonly ReturnType<typeof systemDamageId>[] = [],
     withSupercharger = false,
+    tagStatus?: 'available' | 'destroyed',
 ) {
     const changed = new Subject<void>();
     const entity = new TestTankEntity();
@@ -513,6 +544,7 @@ function entityTurnMember(
             { location: entity.locationOrder[0] },
         ))
         : undefined;
+    if (tagStatus) addTestEquipmentWithFlags(entity, 'F_TAG', { location: entity.locationOrder[0] });
     const index = buildNonMekRuntimeIndex(entity);
     const pristine = createPristineNonMekUnitState(entity);
     const damageTracks = new Map(pristine.damageTracks);
@@ -528,7 +560,12 @@ function entityTurnMember(
         sourceRef: {},
         ruleset: 'core-2026' as const,
         state: { ...pristine, damageTracks },
-        query: { hasPendingPhaseChanges: () => false },
+        query: {
+            hasPendingPhaseChanges: () => false,
+            destroyed: () => false,
+            hasCondition: () => false,
+            componentStatus: () => tagStatus ?? 'available',
+        },
     };
     const dispatch = jasmine.createSpy('dispatchUnitCommand').and.resolveTo({
         accepted: true,

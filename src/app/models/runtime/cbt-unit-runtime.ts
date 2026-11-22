@@ -8,6 +8,7 @@ import { ImmutableIndex,ImmutableSet } from '../entity/immutable-collections';
 import type { EntityMountedEquipment } from '../entity/types';
 import type { EquipmentStatus } from '../equipment-status.model';
 import type { AmmoEquipment } from '../equipment.model';
+import type { SpottingMode } from '../target-number-calculator.model';
 import type { UnitConditionKey } from '../unit-condition.model';
 import { compareText } from '../../utils/string.util';
 import { serializeUnitCover,type UnitCover } from '../unit-cover.model';
@@ -271,7 +272,7 @@ export interface CBTTurnRuntimeState extends TurnHeatLedger {
     readonly firedWeapons?: readonly ComponentId[];
     /** Heat from outside sources such as inferno missiles, settled with this turn's heat; absent at 0. */
     readonly outsideHeat?: number;
-    readonly spotting: boolean;
+    readonly spotting: SpottingMode;
     /** A committed phase-scoped edit exists and has not crossed End Phase yet. */
     readonly phaseStateChanged: boolean;
     readonly endTurnCheckpoint?: EndTurnCheckpoint;
@@ -293,7 +294,7 @@ export function serializeSharedTurnFacts(turn: CBTTurnRuntimeState) {
         ...(turn.weaponsHeat === 0 ? {} : { weaponsHeat: turn.weaponsHeat }),
         ...(turn.firedWeapons === undefined ? {} : { firedWeapons: turn.firedWeapons }),
         ...(turn.outsideHeat ? { outsideHeat: turn.outsideHeat } : {}),
-        ...(turn.spotting ? { spotting: true as const } : {}),
+        ...(turn.spotting ? { spotting: turn.spotting } : {}),
         ...(turn.phaseStateChanged ? { phaseStateChanged: true as const } : {}),
         ...(turn.endTurnCheckpoint === undefined ? {} : { endTurnCheckpoint: turn.endTurnCheckpoint }),
         ...(turn.turnStep === 0 ? {} : { turnStep: turn.turnStep }),

@@ -257,6 +257,35 @@ describe('TnCalculatorDialogComponent C3 degradation', () => {
         expect(buttons[0].disabled).toBeTrue();
     });
 
+    it('keeps declared attacks when a spotter loses its own TAG designation', () => {
+        component.gameRules.set(TW_GAME_RULES);
+        component.selectUnitType('vehicle');
+        component.toggleIndirectFire();
+        component.toggleSpotterDeclaredAttacks();
+        component.toggleTagged(); // A different unit designated this target.
+        expect(component.indirectFireModifier()).toBe(2);
+
+        component.toggleSpotterTag();
+        expect(component.spotterDeclaredAttacks()).toBe('tag');
+        expect(component.indirectFireModifier()).toBe(1);
+        component.toggleSpotterTag();
+        expect(component.spotterDeclaredAttacks()).toBeTrue();
+        expect(component.tagged()).toBeTrue();
+        component.toggleSpotterTag();
+        component.toggleTagged();
+        expect(component.spotterDeclaredAttacks()).toBeTrue();
+        expect(component.indirectFireModifier()).toBe(2);
+
+        component.toggleSpotterTag();
+        component.selectUnitType('infantry');
+        expect(component.tagged()).toBeFalse();
+        expect(component.spotterDeclaredAttacks()).toBeTrue();
+        component.toggleSpotterTag();
+        expect(component.spotterDeclaredAttacks()).toBeTrue();
+        component.toggleIndirectFire();
+        expect(component.spotterDeclaredAttacks()).toBeFalse();
+    });
+
     it('clears and disables ordinary partial cover outside the spotter-LOS group for Core indirect fire', () => {
         component.togglePartialCover();
         expect(component.partialCover()).toBeTrue();

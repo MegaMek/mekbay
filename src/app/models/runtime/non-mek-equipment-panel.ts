@@ -219,6 +219,10 @@ export function effectiveSwarming(
     return target?.readOnly === true && target.calculator?.swarmed !== true ? null : state.swarming;
 }
 
+function spottingModifiers(state: NonMekUnitRuntimeState): readonly ToHitModifierBreakdownEntry[] {
+    return state.turn.spotting === true ? [{ label: 'Spotting', modifier: 1 }] : [];
+}
+
 /** Troopers still fighting: a platoon's strength, or the battle armor suits not destroyed. */
 function activeTroopers(entity: BaseEntity, index: NonMekRuntimeIndex, query: NonMekUnitQueryPort): number {
     const locations = [...index.locations.values()];
@@ -284,6 +288,7 @@ function projectAntiMekAttacks(
         const modifier = antiMekTrooperModifier(attack, battleArmor, troopers);
         return modifier === null ? null : [
             Object.freeze({ label: 'Troopers', modifier }),
+            ...spottingModifiers(state),
             ...(attack === 'swarm' && entity.equipment().some(mount => isMagnetClawEquipment(mount.equipment))
                 ? [Object.freeze({ label: 'Magnetic Claws', modifier: SWARM_MAGNETIC_CLAW_MODIFIER })] : []),
         ];
@@ -445,6 +450,7 @@ function projectComponent(
     const selectedAmmo = targetSubject?.selectedAmmo ?? null;
     const ammoProfile = resolveAmmoWeaponProfile(selectedAmmo);
     const stateModifiers = Object.freeze([
+        ...spottingModifiers(state),
         ...(aeroRules?.modifiers.ranged ?? []),
         ...(protoMekRules === null ? [] : protoMekCriticalModifiers(protoMekRules.criticalHits, mount.getOccupiedLocations())),
         ...(vehicleRules === null ? [] : [
@@ -819,6 +825,7 @@ function projectProtoMekFrenzy(
             targetingComputerWeapon: null,
             targetingComputer: null,
         }),
+        stateModifiers: spottingModifiers(state),
     });
     const hitModifiers: EntityWeaponHitModifier[] = resolution.value === 'Vs'
         ? ['versus']
@@ -871,7 +878,7 @@ function projectVehicleCharge(
             targetingComputerWeapon: null,
             targetingComputer: null,
         }),
-        stateModifiers: rules.modifiers.physical,
+        stateModifiers: [...rules.modifiers.physical, ...spottingModifiers(state)],
     });
     const hitModifiers: EntityWeaponHitModifier[] = resolution.value === 'Vs'
         ? ['versus']

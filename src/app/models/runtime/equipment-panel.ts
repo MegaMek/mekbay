@@ -1298,7 +1298,7 @@ function mekTurnAttackModifiers(
     if (gameRulesFor(ruleset).supportsSkidding && query.hasCondition('skidding')) {
         modifiers.push({ label: 'Skidding', modifier: TN_SKIDDING_ATTACKER });
     }
-    if (query.turnState().spotting) {
+    if (query.turnState().spotting === true) {
         const modifier = projectMekSpottingModifier(entity, index, query);
         if (modifier !== 0) modifiers.push({ label: 'Spotting', modifier });
     }

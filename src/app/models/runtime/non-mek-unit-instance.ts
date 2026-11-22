@@ -49,7 +49,7 @@ import { projectInfantryRuntimeRules,type InfantryRuntimeRulesProjection } from 
 import { projectProtoMekRuntimeRules,protoMekMovement,type ProtoMekRuntimeRulesProjection } from '../rules/protomek-runtime-rules';
 import { isCumulativeSystemDamage,type SystemDamageKind } from '../rules/system-damage-rules';
 import { projectVehicleRuntimeRules,type VehicleRuntimeRulesProjection } from '../rules/vehicle-runtime-rules';
-import { getDefaultAttackerMovementModifier,getTargetMovementBracketForDistance,getTargetUnitTypeModifier,TN_AIRBORNE_MOVE_TYPE_MODIFIER,TN_IMMOBILE,TN_SKIDDING_MODIFIER } from '../target-number-calculator.model';
+import { type SpottingMode,getDefaultAttackerMovementModifier,getTargetMovementBracketForDistance,getTargetUnitTypeModifier,TN_AIRBORNE_MOVE_TYPE_MODIFIER,TN_IMMOBILE,TN_SKIDDING_MODIFIER } from '../target-number-calculator.model';
 import { conditionsCarriedIntoNextTurn,isUnitConditionKey,type UnitConditionKey } from '../unit-condition.model';
 import { isUnitCover,isUnitWaterDepth,type UnitCover } from '../unit-cover.model';
 import { createPristineAttackerTargetingState,freezeAttackerTargetingState,MAX_ATTACKER_TARGETING_COMPONENTS,reconcileAttackerTargetingState,reduceAttackerTargetingCommand,type AttackerAmmoSelection,type AttackerTargetingValidationContext } from './attacker-targeting-state';
@@ -245,7 +245,7 @@ export interface NonMekTurnRuntimeState extends TurnHeatLedger {
     /** Inferno missiles that struck the unit this turn, for the every-three effects (TW pp. 141-142); absent at 0. */
     readonly infernoMissiles?: number;
     readonly cover: UnitCover | null;
-    readonly spotting: boolean;
+    readonly spotting: SpottingMode;
     /** Durable origin/next phase-dirty marker, cleared only by a phase boundary. */
     readonly phaseStateChanged: boolean;
     readonly endTurnCheckpoint?: EndTurnCheckpoint;
@@ -1950,7 +1950,7 @@ function reduceNonMekUnitState(
             };
             break;
         case 'set-spotting': {
-            if (typeof command.spotting !== 'boolean'
+            if ((typeof command.spotting !== 'boolean' && command.spotting !== 'tag')
                 || (command.spotting && state.turn.movement?.mode === 'sprint')
                 || (command.spotting
                     && !canNonMekTakeActiveActions(entity, index, state, ruleset, crewAssignment))) {
@@ -2870,7 +2870,7 @@ function validateState(
             && (!Number.isSafeInteger(state.pendingCombat.infernoMissiles) || state.pendingCombat.infernoMissiles <= 0))
         || (state.turn.airborne !== null && typeof state.turn.airborne !== 'boolean')
         || (state.turn.cover !== null && !isUnitCover(state.turn.cover))
-        || typeof state.turn.spotting !== 'boolean'
+        || (typeof state.turn.spotting !== 'boolean' && state.turn.spotting !== 'tag')
         || typeof state.turn.phaseStateChanged !== 'boolean'
         || !Number.isSafeInteger(state.turn.turnStep) || state.turn.turnStep < 0
         || state.turn.turnStep > HEAT_TURN_STEP

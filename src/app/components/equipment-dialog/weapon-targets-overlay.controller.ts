@@ -560,8 +560,8 @@ function canonicalCalculator(
             || calculator.spotterMoveMode === 'jump')
             ? { spotterMoveMode: calculator.spotterMoveMode }
             : {}),
-        ...(indirectFire && calculator.spotterDeclaredAttacks === true
-            ? { spotterDeclaredAttacks: true }
+        ...(indirectFire && calculator.spotterDeclaredAttacks
+            ? { spotterDeclaredAttacks: calculator.spotterDeclaredAttacks }
             : {}),
         ...(customModifier === 0 ? {} : { customModifier }),
     };

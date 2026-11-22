@@ -203,7 +203,7 @@ export class MekTurnSummaryRuntimeController {
         });
     }
 
-    public async toggleSpotting(): Promise<void> {
+    public async toggleSpotting(mode: true | 'tag' = true): Promise<void> {
         if (!this.snapshot().canTakeActiveActions
             || this.currentMovement()?.mode === 'sprint') return;
         const turn = this.snapshot().turn;
@@ -211,7 +211,7 @@ export class MekTurnSummaryRuntimeController {
             type: 'replace-turn-state',
             turn: {
                 ...turn,
-                spotting: !turn.spotting,
+                spotting: turn.spotting === mode ? false : mode,
             },
         });
     }

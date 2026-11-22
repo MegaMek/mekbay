@@ -11,6 +11,8 @@ import type {
 CBTEquipmentChoice,
 CBTForceEndTurnAllResult,
 } from '../../../models/cbt-force.types';
+import { projectCBTUnitTagEcmCapabilitySummary } from '../../../models/runtime/cbt-unit-capability-projection';
+import type { SpottingMode } from '../../../models/target-number-calculator.model';
 import { hasNonMekRuntime } from '../../../models/cbt-unit-snapshot';
 import {
 calculateModifierTotal,
@@ -212,7 +214,7 @@ export abstract class TurnTrackerControls {
             || hasNonMekAirborneTurnSelection(snapshot.entity, state)
             || state.turn.movement !== null
             || state.turn.cover !== null
-            || state.turn.spotting
+            || !!state.turn.spotting
             || member.force.hasRuntimeHistoryForUnitTurn(member.id, state.turn.turnCounter + 1)
             || member.force.hasPendingEndTurnForUnit(member.id);
     }
@@ -531,6 +533,13 @@ export abstract class TurnTrackerControls {
         const modes = this.moveModes();
         return modes.length === 1 && modes[0]?.mode === 'stationary';
     });
+    readonly installedTag = computed(() => {
+        this.forceRuntimeVersion();
+        const member = this.member();
+        if (!member?.entity.equipment().some(mount => mount.equipment?.hasFlag('F_TAG'))) return null;
+        const snapshot = member.force.getUnitSnapshot(member.id);
+        return snapshot ? projectCBTUnitTagEcmCapabilitySummary(snapshot).tag : null;
+    });
     readonly canSpot = computed(() => {
         const runtime = this.runtime();
         if (runtime) {
@@ -653,17 +662,18 @@ export abstract class TurnTrackerControls {
         }
     }
 
-    toggleSpotting(): void {
+    toggleSpotting(mode: true | 'tag' = true): void {
         const runtime = this.runtime();
         if (!this.canSpot()) return;
+        if (mode === 'tag' && this.spotting() !== 'tag' && this.installedTag()?.unavailable !== false) return;
         if (runtime) {
-            void runtime.toggleSpotting();
+            void runtime.toggleSpotting(mode);
             return;
         }
         const snapshot = this.entitySnapshot();
         if (snapshot) void this.dispatchEntity({
             type: 'set-spotting',
-            spotting: !snapshot.state.turn.spotting,
+            spotting: snapshot.state.turn.spotting === mode ? false : mode,
         });
     }
 
@@ -839,7 +849,7 @@ export abstract class TurnTrackerControls {
             readonly cover: UnitCover | null;
         }> | Readonly<{
             readonly type: 'set-spotting';
-            readonly spotting: boolean;
+            readonly spotting: SpottingMode;
         }> | Readonly<{
             readonly type: 'end-phase';
         }> | Readonly<{

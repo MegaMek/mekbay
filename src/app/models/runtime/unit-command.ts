@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 
 import type { MekConversionMode } from '../mek-conversion-mode';
+import type { SpottingMode } from '../target-number-calculator.model';
 import type { HeatAutomationPolicy } from './cbt-unit-runtime';
 
 import type { BombLoadChoice,BombSection } from '../aerospace-bomb.model';
@@ -422,5 +423,5 @@ export type CBTUnitCommand =
     | { readonly type: 'set-mek-conversion-mode'; readonly mode: MekConversionMode }
     | { readonly type: 'set-movement'; readonly movement: NonMekMovementDeclaration | null }
     | { readonly type: 'set-cover'; readonly cover: UnitCover | null }
-    | { readonly type: 'set-spotting'; readonly spotting: boolean }
+    | { readonly type: 'set-spotting'; readonly spotting: SpottingMode }
     | { readonly type: 'set-control-recovery'; readonly workflow: NonMekControlRecoveryWorkflow | null };

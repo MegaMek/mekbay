@@ -16,6 +16,7 @@ import {
     serializeUnitCover,
     type UnitCover,
 } from '../unit-cover.model';
+import type { SpottingMode } from '../target-number-calculator.model';
 import { isHeatValue,readFiredWeapons,serializeSharedTurnFacts } from './cbt-unit-runtime';
 import { HEAT_TURN_STEP } from '../rules/turn-sequence';
 import { MAX_OUTSIDE_HEAT_PER_TURN } from '../rules/inferno-rules';
@@ -93,7 +94,7 @@ export interface MekTurnStateV2 extends TurnHeatLedger {
     readonly firedWeapons?: readonly ComponentId[];
     /** Heat from outside sources such as inferno missiles, capped per turn; absent at 0. */
     readonly outsideHeat?: number;
-    readonly spotting: boolean;
+    readonly spotting: SpottingMode;
     readonly phaseStateChanged: boolean;
     readonly endTurnCheckpoint?: EndTurnCheckpoint;
     readonly turnStep: number;
@@ -124,7 +125,7 @@ export interface SerializedMekTurnStateV2 {
         readonly heat: number;
     }[];
     readonly heatDissipationConsumed?: number;
-    readonly spotting?: true;
+    readonly spotting?: true | 'tag';
     readonly phaseStateChanged?: true;
     readonly endTurnCheckpoint?: EndTurnCheckpoint;
     readonly turnStep?: number;
@@ -211,7 +212,7 @@ export function canonicalizeMekTurnStateV2(value: MekTurnStateV2): MekTurnStateV
             '$',
             fail,
         ),
-        spotting: requiredBoolean(record['spotting'], '$.spotting'),
+        spotting: record['spotting'] === 'tag' ? 'tag' : requiredBoolean(record['spotting'], '$.spotting'),
         phaseStateChanged: requiredBoolean(
             record['phaseStateChanged'],
             '$.phaseStateChanged',
@@ -277,9 +278,8 @@ export function deserializeMekTurnStateV2(value: unknown): MekTurnStateV2 {
             ? {}
             : { outsideHeat: positiveOutsideHeat(record['outsideHeat'], '$.outsideHeat') }),
         ...readTurnHeatLedger(record['settledHeat'], record['heatDissipationConsumed'], '$', fail),
-        spotting: record['spotting'] === undefined
-            ? false
-            : requireExactBoolean(record['spotting'], true, '$.spotting'),
+        spotting: record['spotting'] === 'tag' ? 'tag' : record['spotting'] !== undefined
+            && requireExactBoolean(record['spotting'], true, '$.spotting'),
         phaseStateChanged: record['phaseStateChanged'] === undefined
             ? false
             : requireExactBoolean(record['phaseStateChanged'], true, '$.phaseStateChanged'),

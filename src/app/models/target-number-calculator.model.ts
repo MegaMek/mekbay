@@ -119,6 +119,8 @@ export const TN_TARGET_MOVEMENT_BRACKETS: readonly TnTargetMovementBracket[] = [
 export type TnInterveningWoods = 'none' | 'light1' | 'light2';
 export type TnTargetHexCover = 'none' | 'light' | 'heavy';
 export type TnAttackDirection = 'front' | 'left' | 'rear' | 'right';
+/** A successful TAG designation is reported manually for the particular spotter and its target. */
+export type SpottingMode = boolean | 'tag';
 export type TnSpotterMoveMode = 'stationary' | 'walk' | 'run' | 'jump';
 export type TnRangeBracket = 'short' | 'medium' | 'long' | 'extreme';
 
@@ -211,7 +213,8 @@ export interface TnTargetNumberCalculatorState {
     /** Applies the scenario/unit-size Large Target to-hit modifier. */
     largeTarget?: boolean;
     spotterMoveMode?: TnSpotterMoveMode;
-    spotterDeclaredAttacks?: boolean;
+    /** The spotter attacked in the Weapon Attack Phase; 'tag' also identifies it as this target's designator. */
+    spotterDeclaredAttacks?: SpottingMode;
     narcAboveWater?: boolean;
     narcUnderwater?: boolean;
     tagged?: boolean;
@@ -401,11 +404,20 @@ export function stealthDisallowsSecondaryTarget(
         || (!!stealth && typeof stealth === 'object' && stealth.secondaryTargetRestricted === true);
 }
 
-export function getIndirectFireModifier(indirectFire: boolean | null | undefined, spotterMoveMode: TnSpotterMoveMode | null | undefined, spotterDeclaredAttacks: boolean | null | undefined): number {
+function spotterAttackModifier(declaration: SpottingMode | null | undefined, tagged: boolean | undefined): number {
+    return declaration === true || (declaration === 'tag' && !tagged) ? 1 : 0;
+}
+
+export function getIndirectFireModifier(
+    indirectFire: boolean | null | undefined,
+    spotterMoveMode: TnSpotterMoveMode | null | undefined,
+    spotterDeclaredAttacks: SpottingMode | null | undefined,
+    tagged?: boolean,
+): number {
     if (!indirectFire) return 0;
     return TN_INDIRECT_FIRE_MODIFIER
         + getDefaultAttackerMovementModifier(spotterMoveMode ?? 'stationary')
-        + (spotterDeclaredAttacks ? 1 : 0);
+        + spotterAttackModifier(spotterDeclaredAttacks, tagged);
 }
 
 export function calculateTargetTnModifier(
@@ -535,7 +547,9 @@ export function calculateTargetTnModifierBreakdown(
             ignoredBySemiGuidedGuidance: true,
         } as const;
         add('spotter-movement', spotterMoveLabel, spotterMovementModifier, ignoredSpotterModifier);
-        add('spotter-declared-attack', 'Spotter Declared Attack', input.spotterDeclaredAttacks ? 1 : 0, ignoredSpotterModifier);
+        add('spotter-declared-attack', 'Spotter Declared Attack', spotterAttackModifier(
+            input.spotterDeclaredAttacks, input.tagged && gameRules.allowsTagDesignation(input.unitType),
+        ), ignoredSpotterModifier);
     }
 
     return breakdown;

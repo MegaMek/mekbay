@@ -133,6 +133,8 @@ describe('WeaponTargetsOverlayController target-registry routing', () => {
                     prone: true,
                     indirectFire: true,
                     secondaryTarget: true,
+                    tagged: true,
+                    spotterDeclaredAttacks: 'tag',
                 },
             },
         });
@@ -142,7 +144,7 @@ describe('WeaponTargetsOverlayController target-registry routing', () => {
             targetId: asEncounterTargetId('A'),
             patch: {
                 unitType: 'vehicle',
-                tnCalculator: { largeTarget: false, prone: true },
+                tnCalculator: { largeTarget: false, prone: true, tagged: true },
             },
         }, 'user');
         expect(harness.dispatchTargeting).toHaveBeenCalledOnceWith(harness.member.id, {
@@ -154,7 +156,7 @@ describe('WeaponTargetsOverlayController target-registry routing', () => {
                     distance: 8,
                     c3Distance: 3,
                     useC3: true,
-                    calculator: { indirectFire: true, secondaryTarget: true },
+                    calculator: { indirectFire: true, secondaryTarget: true, spotterDeclaredAttacks: 'tag' },
                 },
             },
         });

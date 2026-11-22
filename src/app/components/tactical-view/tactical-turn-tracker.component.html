@@ -170,14 +170,19 @@
             <button
                 type="button"
                 class="bt-button spotting-button"
-                [class.selected]="spotting()"
-                [attr.aria-pressed]="spotting()"
+                [class.selected]="spotting() === true"
+                [attr.aria-pressed]="spotting() === true"
                 [disabled]="!canSpot()"
                 (click)="toggleSpotting()"
             >
                 <span>Spotting</span>
                 <span class="modifier-badge">{{ spottingModifierLabel() }}</span>
             </button>
+            @if (installedTag() || spotting() === 'tag') {
+                <button type="button" class="bt-button" [class.selected]="spotting() === 'tag'"
+                    [attr.aria-pressed]="spotting() === 'tag'" [disabled]="!canSpot() || (spotting() !== 'tag' && installedTag()?.unavailable)"
+                    (click)="toggleSpotting('tag')"><span>Spotted via TAG</span><span class="modifier-badge">+0</span></button>
+            }
 
             <div class="readout defense-readout" [tooltip]="defenseTargetModifierTooltip()">
                 <span class="readout-caption">Defense</span>

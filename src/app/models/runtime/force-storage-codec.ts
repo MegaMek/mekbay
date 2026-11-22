@@ -1335,7 +1335,7 @@ function packNonMekTurn(value: SerializedNonMekUnit['turn']): unknown {
         movement,
         value.weaponsHeat ?? (value.cover !== undefined || value.spotting ? 0 : undefined),
         value.cover,
-        value.spotting ? 1 : undefined,
+        packSpotting(value.spotting),
         packEndTurnCheckpoint(value.endTurnCheckpoint),
         value.controlRecovery === undefined
             ? undefined
@@ -1375,7 +1375,7 @@ function unpackNonMekTurn(value: unknown, path: string): NonNullable<SerializedN
             cover: rowInteger(turn, 4, path) as NonNullable<SerializedNonMekUnit['turn']>['cover'],
         }),
         ...(turn[5] === undefined || turn[5] === null ? {} : {
-            spotting: truthyOne(turn[5], `${path}[5]`),
+            spotting: unpackSpotting(turn[5], `${path}[5]`),
         }),
         ...(turn[6] === undefined || turn[6] === null ? {} : {
             endTurnCheckpoint: unpackEndTurnCheckpoint(turn[6], `${path}[6]`),
@@ -1940,7 +1940,7 @@ function packTurn(value: SerializedMekTurnStateV2): unknown {
         [CBT_TURN_FIELD.outsideHeat]: value.outsideHeat,
         [CBT_TURN_FIELD.settledHeat]: value.settledHeat?.map(row => [row.sourceId, row.heat]),
         [CBT_TURN_FIELD.heatDissipationConsumed]: value.heatDissipationConsumed,
-        [CBT_TURN_FIELD.spotting]: value.spotting ? 1 : undefined,
+        [CBT_TURN_FIELD.spotting]: packSpotting(value.spotting),
         [CBT_TURN_FIELD.phaseStateChanged]: value.phaseStateChanged ? 1 : undefined,
         [CBT_TURN_FIELD.endTurnCheckpoint]: packEndTurnCheckpoint(value.endTurnCheckpoint),
         [CBT_TURN_FIELD.turnStep]: value.turnStep,
@@ -1997,7 +1997,7 @@ function unpackTurn(value: unknown, path: string): SerializedMekTurnStateV2 {
         ),
         spotting: turn[CBT_TURN_FIELD.spotting] === undefined
             ? undefined
-            : truthyOne(turn[CBT_TURN_FIELD.spotting], `${path}.${CBT_TURN_FIELD.spotting}`),
+            : unpackSpotting(turn[CBT_TURN_FIELD.spotting], `${path}.${CBT_TURN_FIELD.spotting}`),
         phaseStateChanged: turn[CBT_TURN_FIELD.phaseStateChanged] === undefined
             ? undefined
             : truthyOne(
@@ -2620,6 +2620,14 @@ function finiteNumber(value: unknown, path: string): number {
 function booleanValue(value: unknown, path: string): boolean {
     if (typeof value !== 'boolean') throw new Error(`${path} must be a boolean`);
     return value;
+}
+
+function packSpotting(value: true | 'tag' | undefined): number | undefined {
+    return value === 'tag' ? 2 : value ? 1 : undefined;
+}
+
+function unpackSpotting(value: unknown, path: string): true | 'tag' {
+    return value === 2 ? 'tag' : truthyOne(value, path);
 }
 
 function truthyOne(value: unknown, path: string): true {

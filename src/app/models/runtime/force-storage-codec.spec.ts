@@ -168,6 +168,10 @@ describe('force storage codec', () => {
             const stored = encodeForceForStorage(withTurn(current));
             expect(JSON.stringify(encodeForceForStorage(withTurn(earlier)))).toBe(JSON.stringify(stored));
             expect(decodeForceFromStorage(JSON.parse(JSON.stringify(stored))).cbt!.units[0].unit.turn).toEqual(current);
+
+            const taggedTurn = { ...current, spotting: 'tag' as const };
+            const tagged = encodeForceForStorage(withTurn(taggedTurn));
+            expect(decodeForceFromStorage(JSON.parse(JSON.stringify(tagged))).cbt!.units[0].unit.turn).toEqual(taggedTurn);
         });
     }
 

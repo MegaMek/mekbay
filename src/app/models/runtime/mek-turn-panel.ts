@@ -195,7 +195,7 @@ export function isMekTurnPanelDirty(snapshot: MekTurnPanelSnapshot): boolean {
         || (snapshot.turn.outsideHeat ?? 0) > 0
         || snapshot.turn.settledHeat.size > 0
         || snapshot.turn.heatDissipationConsumed !== undefined
-        || snapshot.turn.spotting
+        || !!snapshot.turn.spotting
         || snapshot.turn.phaseStateChanged
         || snapshot.heat.pendingOverride !== undefined
         || (snapshot.heatProjection.kind === 'supported'

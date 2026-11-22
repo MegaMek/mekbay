@@ -155,7 +155,7 @@ export interface SerializedNonMekUnit {
         readonly settledHeat?: readonly Readonly<{ readonly sourceId: string; readonly heat: number }>[];
         readonly heatDissipationConsumed?: number;
         readonly cover?: SerializedUnitCover;
-        readonly spotting?: true;
+        readonly spotting?: true | 'tag';
         readonly phaseStateChanged?: true;
         readonly endTurnCheckpoint?: EndTurnCheckpoint;
         readonly turnStep?: number;
@@ -568,7 +568,7 @@ function restoreNonMekTurn(saved: SerializedNonMekUnit): NonMekUnitRuntimeState[
         cover: saved.turn?.cover === undefined
             ? null
             : deserializeUnitCover(saved.turn.cover) ?? null,
-        spotting: saved.turn?.spotting === true,
+        spotting: saved.turn?.spotting ?? false,
         phaseStateChanged: saved.turn?.phaseStateChanged === true,
         ...(saved.turn?.endTurnCheckpoint === undefined
             ? {}
@@ -614,8 +614,8 @@ function validateSerializedNonMekTurn(value: unknown): void {
     if (turn['cover'] !== undefined && deserializeUnitCover(turn['cover']) === undefined) {
         throw new Error('Non-Mek cover state is invalid');
     }
-    if (turn['spotting'] !== undefined && turn['spotting'] !== true) {
-        throw new Error('Non-Mek spotting state must be true when present');
+    if (turn['spotting'] !== undefined && turn['spotting'] !== true && turn['spotting'] !== 'tag') {
+        throw new Error('Invalid non-Mek spotting state');
     }
     readTurnHeatLedger(turn['settledHeat'], turn['heatDissipationConsumed'], 'entity turn', failTurn);
     if (turn['firedWeapons'] !== undefined) readFiredWeapons(turn['firedWeapons'], 'entity turn fired weapons', failTurn);
