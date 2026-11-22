@@ -2330,59 +2330,45 @@ describe('direct Mek entity/runtime projections', () => {
         expect(heat.projection.underwaterBonus).toBe(6);
     });
 
-    it('subtracts only the surviving partial-wing bonus from jump heat', () => {
-        const currentMovementHeat = (
-            fixture: ReturnType<typeof createDirectPartialWingRuntimeFixture>,
-        ): number | undefined => {
-            const heat = fixture.instance.query().heatProjection();
-            expect(heat.kind).toBe('supported');
-            if (heat.kind !== 'supported') return undefined;
-            return heat.projection.committedSources.find(source => source.id === 'movement')?.value;
-        };
-        const movementHeat = (
-            fixture: ReturnType<typeof createDirectPartialWingRuntimeFixture>,
-            distance: number,
-        ): number | undefined => {
-            expect(fixture.instance.dispatch({
-                type: 'declare-mek-movement',
-
-
-                declaration: {
-                    mode: 'jump',
-                    distance,
-                    boosterComponentIds: [],
-                },
+    for (const ruleset of ['core-2026', 'total-warfare'] as const) {
+        it(`charges a jump for the partial-wing bonus at takeoff under ${ruleset}`, async () => {
+            const fixture = createDirectPartialWingRuntimeFixture(ruleset);
+            let unit = fixture.instance;
+            const jump = (distance: number) => expect(unit.dispatch({
+                type: 'declare-mek-movement', declaration: { mode: 'jump', distance, boosterComponentIds: [] },
             }).accepted).toBeTrue();
-            return currentMovementHeat(fixture);
-        };
-
-        const intact = createDirectPartialWingRuntimeFixture(
-            'core-2026', 'unit:partial-wing:intact',
-        );
-        expect(movementHeat(intact, 6)).toBe(4);
-
-        const damaged = createDirectPartialWingRuntimeFixture(
-            'core-2026', 'unit:partial-wing:damaged',
-        );
-        expect(movementHeat(damaged, 6)).toBe(4);
-        const wing = damaged.equipmentComponent('Test Partial Wing');
-        const wingSlot = [...damaged.index.slots.values()].find(slot =>
-            slot.componentIds.includes(wing.id))!;
-        expect(damaged.instance.dispatch({
-            type: 'hit-critical',
-
-
-            slotId: wingSlot.id,
-            hits: 1,
-            target: 'committed',
-        }).accepted).toBeTrue();
-        expect(currentMovementHeat(damaged)).toBe(5);
-
-        const minimum = createDirectPartialWingRuntimeFixture(
-            'core-2026', 'unit:partial-wing:minimum',
-        );
-        expect(movementHeat(minimum, 3)).toBe(3);
-    });
+            const heat = () => {
+                const result = unit.query().heatProjection();
+                if (result.kind !== 'supported') throw new Error('Missing heat projection');
+                return result.projection.committedSources.find(source => source.id === 'movement')?.value;
+            };
+            jump(3);
+            expect(heat()).toBe(3); // Fusion engine minimum.
+            jump(5);
+            expect(heat()).toBe(3);
+            const wing = fixture.equipmentComponent('Test Partial Wing');
+            const slot = [...fixture.index.slots.values()].find(slot => slot.componentIds.includes(wing.id))!;
+            expect(unit.dispatch({ type: 'hit-critical', slotId: slot.id, hits: 1, target: 'committed' }).changed).toBeTrue();
+            expect(heat()).toBe(3);
+            expect(unit.query().mekMovementPsr()).toEqual(jasmine.objectContaining({
+                declaration: jasmine.objectContaining({ legal: true }),
+            }));
+            const saved = unit.serialize();
+            const restore = (record: typeof saved) => restoreMekUnit(record, fixture.entity, fixture.identity, {
+                profileId: 'pristine', deployment: { id: 'default' }, scenario: { id: 'megamek', ruleset },
+            });
+            unit = await restore(saved);
+            expect(heat()).toBe(3);
+            unit.dispatch({ type: 'clear-mek-movement' });
+            jump(5);
+            expect(heat()).toBe(4);
+            // Earlier saves for full-size jets have no takeoff count. Use the remaining wing bonus in that case.
+            const { jumpJetsFired, ...oldMovement } = saved.movementPsr.movement!;
+            expect(jumpJetsFired).toBe(3);
+            unit = await restore({ ...saved, movementPsr: { ...saved.movementPsr, movement: oldMovement } });
+            expect(heat()).toBe(4);
+        });
+    }
 
     it('clears prone only after a successful standing roll', () => {
         const fixture = createDirectMekRuntimeFixture('total-warfare');

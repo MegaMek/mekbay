@@ -17,6 +17,25 @@ describe('weapon attack resolution', () => {
         ammo: { type: 'LRM', rackSize: 15, damagePerShot: 1 },
     });
 
+    it('burns out a charged Total Warfare PPC on a natural 2 even when 2 would hit', () => {
+        const ppc = new WeaponEquipment({
+            id: 'ISPPC', name: 'PPC', type: 'weapon', flags: ['F_PPC', 'F_ENERGY'],
+            weapon: { damage: 10 },
+        });
+        const attack = (rules: CBTGameRules, chargedPpc: boolean, targetNumber: number) => weaponAttackProfile({
+            componentId: weaponId, equipment: ppc, mode: undefined, ammo: null, types: ['DE'], name: 'PPC',
+            damage: { values: [chargedPpc ? 15 : 10], maximum: chargedPpc ? 15 : 10 },
+            partialCover: false, targetNumber, chargedPpc,
+        }, rules)!;
+        for (const targetNumber of [2, 7]) {
+            expect(resolveWeaponAttack(attack(TW_GAME_RULES, true, targetNumber), [1, 1], null))
+                .toEqual({ capacitorBurnout: true, hit: false, hits: 0, groups: [], heat: 0, jammed: false });
+        }
+        expect(resolveWeaponAttack(attack(TW_GAME_RULES, true, 2), [1, 2], null).groups).toEqual([15]);
+        expect(resolveWeaponAttack(attack(TW_GAME_RULES, false, 2), [1, 1], null).groups).toEqual([10]);
+        expect(resolveWeaponAttack(attack(CORE_2026_GAME_RULES, true, 2), [1, 1], null).groups).toEqual([15]);
+    });
+
     it('marks a rifle, whose hits lose their 3 points only where they strike (`rifleHitDamage`)', () => {
         const rifle = weaponAttackProfile({
             componentId: weaponId,

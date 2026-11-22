@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 
 import type { MekEntity } from '../entity/entities/mek/mek-entity';
-import type { ComponentId } from '../entity/entity-identifiers';
+import type { ComponentId, CriticalSlotId } from '../entity/entity-identifiers';
 import type { EquipmentStatus } from '../equipment-status.model';
 import { WeaponEquipment } from '../equipment.model';
 import {
@@ -16,6 +16,7 @@ isPpcCapacitorEquipment,
 } from '../ppc-capacitor.model';
 import { isWeaponEnhancementEquipment } from '../weapon-enhancement.model';
 import type { WeaponType } from '../weapon-types.model';
+import { componentCriticalSlotIds, mekCriticalSlotDirectHitThreshold } from './mek-critical-slot-rules';
 import { type CBTMekUnit } from './cbt-unit';
 import { componentHeatSourceId, type TurnHeatLedger } from './turn-heat-ledger';
 import {
@@ -110,6 +111,22 @@ export function createComponentPpcCapacitorDefinition(input: {
 export function ppcCapacitorForWeapon(index: MekRuntimeIndex, weaponId: ComponentId): ComponentId | undefined {
     return index.relationships.linkedSourcesByTarget.get(weaponId)?.find(id =>
         isPpcCapacitorEquipment(equipmentForComponent(index, id)));
+}
+
+/** Burnout inflicts one critical on the capacitor and first PPC slot. Each slot's armor can absorb it (BMM pp. 105, 118). */
+export function ppcCapacitorBurnoutHits(
+    index: MekRuntimeIndex,
+    runtime: Pick<ReturnType<CBTMekUnit['query']>, 'criticalHits'>,
+    weaponId: ComponentId,
+): readonly Readonly<{ slotId: CriticalSlotId; hits: number }>[] {
+    const capacitorId = ppcCapacitorForWeapon(index, weaponId);
+    if (capacitorId === undefined) return [];
+    const slots = new Set([componentCriticalSlotIds(index, weaponId)[0], componentCriticalSlotIds(index, capacitorId)[0]]);
+    return [...slots].flatMap(slotId => {
+        if (slotId === undefined) return [];
+        const destroyedAt = mekCriticalSlotDirectHitThreshold(index.slots.get(slotId)!);
+        return runtime.criticalHits(slotId, 'preview') < destroyedAt ? [{ slotId, hits: 1 }] : [];
+    });
 }
 
 export function ppcCapacitorWeaponId(

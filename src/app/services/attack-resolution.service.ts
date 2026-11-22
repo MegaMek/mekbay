@@ -20,6 +20,7 @@ import { WeaponEquipment } from '../models/equipment.model';
 import { gameRulesFor } from '../models/rules/game-rules';
 import { isCBTMekForceMember, type CBTForceMember } from '../models/force-member.model';
 import { hasMekRuntime } from '../models/cbt-unit-snapshot';
+import { ppcCapacitorBurnoutHits } from '../models/runtime/component-ppc-capacitor';
 import { mekUnitWaterState } from '../models/runtime/mek-targeting-rules';
 import { attackDamageSource, PHYSICAL_DAMAGE, type DamageSource } from '../models/rules/armor-damage-rules';
 import {
@@ -241,6 +242,13 @@ export class AttackResolutionService {
         const target = this.options.options().trackPhaseAndTurn ? 'pending' : 'committed';
         const snapshot = member.force.getUnitSnapshot(member.id);
         const mek = snapshot && hasMekRuntime(snapshot) ? snapshot : null;
+        if (mek) {
+            for (const weaponId of resolution.burnedOutPpcs) {
+                for (const hit of ppcCapacitorBurnoutHits(mek.index, mek.query, weaponId)) {
+                    await member.force.dispatchUnitCommand(member.id, { type: 'hit-critical', ...hit, target });
+                }
+            }
+        }
         for (const componentId of resolution.insulatorFailed) {
             const slot = mek && [...mek.index.slots.values()].find(candidate =>
                 candidate.componentIds.includes(componentId) && mek.query.criticalHits(candidate.id, 'preview') === 0);
@@ -390,6 +398,7 @@ export class AttackResolutionService {
                     aim: Object.freeze({ location: presentation.aim.location, dice: aimedShotDice(fired.ruleset) }),
                 }),
                 ...(row.heatWeakened === false ? { insulated: true } : {}),
+                ...(weapon.chargedPpc ? { chargedPpc: true } : {}),
                 ...(activeTargetCalculator(targeting)?.indirectFire === true ? { indirect: true } : {}),
                 // The target's ECM is a fact of the target, whatever target number was entered (Core p. 200)
                 ...(ecmJammed || targeting.tnCalculator?.ecmShielded === true ? { hostileEcm: true } : {}),

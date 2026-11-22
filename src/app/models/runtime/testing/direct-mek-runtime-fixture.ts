@@ -57,6 +57,11 @@ export function createDirectMekRuntimeFixture(
     return createFixture(ruleset, instanceId, { gyroType });
 }
 
+/** The linked PPC occupies three arm slots so burnout can be distinguished from a component explosion. */
+export function createDirectPpcBurnoutRuntimeFixture(armor: 'standard' | 'armored' = 'standard'): DirectMekRuntimeFixture {
+    return createFixture('total-warfare', 'unit:ppc-burnout', { multiSlotPpc: armor });
+}
+
 /** Parsed Mek wearing one armor type everywhere, installed before the runtime index reads it. */
 export function createDirectArmorRuntimeFixture(ruleset: CBTRuleset, armorType: ArmorType): DirectMekRuntimeFixture {
     return createFixture(ruleset, `unit:direct-${armorType.toLowerCase()}-armor`, { armorType });
@@ -494,6 +499,7 @@ export function createDirectSpotWelderRuntimeFixture(
 }
 
 interface DirectFixtureOptions {
+    readonly multiSlotPpc?: 'standard' | 'armored';
     readonly hotLoadedAmmo?: boolean;
     readonly forcedWithdrawal?: boolean;
     readonly sprinting?: boolean;
@@ -555,7 +561,7 @@ function createFixture(
     instanceId: string,
     options: DirectFixtureOptions,
 ): DirectMekRuntimeFixture {
-    const registry = directMekEquipmentRegistry();
+    const registry = directMekEquipmentRegistry(options);
     const entity = parseMtf(
         directMekMtf(options),
         new ParseContext('direct-runtime.mtf', registry),
@@ -635,7 +641,7 @@ function directFixtureScenario(options: DirectFixtureOptions): Readonly<{
     });
 }
 
-function directMekEquipmentRegistry() {
+function directMekEquipmentRegistry(options: DirectFixtureOptions) {
     const compositeStructure = new StructureEquipment({
         id: 'IS Composite', name: 'Composite', type: 'structure',
         flags: ['F_COMPOSITE'], tech: { base: 'IS' }, structure: { typeId: 5 },
@@ -735,7 +741,7 @@ function directMekEquipmentRegistry() {
     const ppc = new WeaponEquipment({
         id: 'Test PPC', name: 'Test PPC', type: 'weapon',
         flags: ['F_PPC', 'F_PPC_CAPACITOR_COMPATIBLE', 'F_DIRECT_FIRE', 'F_ENERGY'],
-        stats: { criticalSlots: 1, bv: 88 },
+        stats: { criticalSlots: options.multiSlotPpc ? 3 : 1, bv: 88 },
         weapon: { damage: 5, heat: 5, ranges: [6, 12, 18, 24] },
     });
     const ppcCapacitor = new MiscEquipment({
@@ -1142,6 +1148,8 @@ function directMekMtf(options: DirectFixtureOptions): string {
             ? ['Test CASE II'] : []),
         ...(options.explosionProtection === 'prototype' ? ['Test CASE-P'] : []),
     ];
+    const ppcArmor = options.multiSlotPpc === 'armored' ? ' (ARMORED)' : '';
+    const ppc = `Test PPC${ppcArmor}`;
     const leftArmEquipment = [
         'ISMediumLaser',
         ...(includeRiscLaserPulse ? ['Test RISC Laser Pulse Module'] : []),
@@ -1149,10 +1157,10 @@ function directMekMtf(options: DirectFixtureOptions): string {
         'Test AC',
         options.sharedAmmoSlot ? 'Test Ammo|Test Ammo' : 'Test Ammo',
         'Test MML',
-        ...(laserInsulators > 1 ? [] : ['Test ATM', 'Test ATM Ammo']),
-        'Test PPC',
+        ...(options.multiSlotPpc ? [ppc, ppc] : laserInsulators > 1 ? [] : ['Test ATM', 'Test ATM Ammo']),
+        ppc,
         ...(!includeRiscLaserPulse && !laserInsulators
-            ? [includePairedArmAes ? 'Test AES' : 'Test PPC Capacitor']
+            ? [includePairedArmAes ? 'Test AES' : `Test PPC Capacitor${ppcArmor}`]
             : []),
     ];
     const leftTorsoEquipment = [

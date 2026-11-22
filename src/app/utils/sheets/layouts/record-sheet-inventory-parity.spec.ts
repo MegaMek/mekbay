@@ -57,7 +57,7 @@ describe('record-sheet inventory content parity', () => {
         }
     });
 
-    it('prints a fighter MML with its Artemis line, then its LRM and SRM values, with the bonus for Artemis missiles only', async () => {
+    it('prints a fighter MML with its Artemis line and its design ratings for both ammunition families', async () => {
         const entity = new TestAeroSpaceFighterEntity();
         entity.setTonnage(50);
         const mml = addTestEquipment(entity, new WeaponEquipment({ id: 'ISMML7', name: 'MML 7', type: 'weapon',
@@ -66,7 +66,7 @@ describe('record-sheet inventory content parity', () => {
         const artemis = addTestEquipment(entity, new MiscEquipment({ id: 'ISArtemisIV', name: 'Artemis IV FCS', type: 'misc',
             flags: ['F_WEAPON_ENHANCEMENT', 'F_ARTEMIS'] }), { location: 'Nose' });
         entity.linkEquipment(artemis, mml);
-        // Its LRM bin holds Artemis missiles, its SRM bin normal ones, which fire "as a normal launcher" (TW p. 130)
+        // Only the LRM bin carries Artemis missiles, but both sheet rows show the mounted system's rating (TW p. 303).
         for (const [id, flag, munition] of [['IS Ammo MML-7 LRM Artemis-capable', 'F_MML_LRM', 'M_ARTEMIS_CAPABLE'],
             ['IS Ammo MML-7 SRM', 'F_MML_SRM', 'M_STANDARD']] as const) {
             addTestEquipment(entity, new AmmoEquipment({ id, name: id, type: 'ammo', flags: [flag],
@@ -78,12 +78,12 @@ describe('record-sheet inventory content parity', () => {
             .map(field => line.querySelector(`:scope > .${field}`)?.textContent);
         const modes = [...row.querySelectorAll(':scope > .alternativeMode')];
 
-        // Ungrouped, so no # column; MML 7 with Artemis IV is 6, and its SRM without it 8 (TW p. 303)
+        // An MML 7 with Artemis IV is rated 6 with LRM ammunition and 12 with SRM ammunition.
         expect(row.querySelector(':scope > .quantity')).toBeNull();
         expect(row.querySelector(':scope > .inventoryEntry.linked > .name')?.textContent).toBe('w/Artemis IV');
         expect(modes.map(mode => mode.querySelector('.name')?.textContent)).toEqual(['LRM', 'SRM']);
         expect(values(modes[0])).toEqual(['6', '6', '6', '—']);
-        expect(values(modes[1])).toEqual(['8', '—', '—', '—']);
+        expect(values(modes[1])).toEqual(['12', '—', '—', '—']);
         expect(svg.querySelector('.inventoryEntry .name')?.textContent).not.toContain('Artemis IV FCS [E]');
     });
 

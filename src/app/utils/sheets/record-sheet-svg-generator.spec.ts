@@ -585,11 +585,18 @@ describe('RecordSheetSvgGenerator', () => {
             id: 'Bay LB 10-X AC', name: 'LB 10-X AC', shortName: 'LB 10-X AC', type: 'weapon',
             weapon: { heat: 2, ammoType: 'AC_LBX', rackSize: 10, av: [6, 6, 0, 0] },
         }), [['LB 10-X', 10], ['LB 10-X Cluster', 10]]);
+        const barracuda = new WeaponEquipment({
+            id: 'Barracuda', name: 'Barracuda', type: 'weapon', flags: ['F_MISSILE'],
+            weapon: { capital: true, heat: 10, ammoType: 'BARRACUDA', av: [2, 2, 2, 2] },
+        });
+        bay('FLS', barracuda, [['Barracuda', 1]]);
+        bay('FRS', barracuda, [['Barracuda', 2]]);
 
         const svg = await RecordSheetSvgGenerator.generate(entity, { ruleset: 'total-warfare' });
         const names = [...svg.querySelectorAll<SVGGElement>('.inventoryEntry.bay')]
             .map(row => [...row.querySelectorAll(':scope > .name')].map(node => node.textContent).join(' '));
-        expect(names).toEqual(['1 LRM 20 (18 rounds)', '1 LB 10-X AC (10 Standard, 10 Cluster)']);
+        expect(names).toEqual(['1 Barracuda (1 missile)', '1 Barracuda (2 missiles)', '1 LRM 20 (18 rounds)',
+            '1 LB 10-X AC (10 Standard, 10 Cluster)']);
     });
 
     it('prints "*" for an AR10 bay\'s values, which depend on the missile fired', async () => {
@@ -729,7 +736,27 @@ describe('RecordSheetSvgGenerator', () => {
 
         const row = (await RecordSheetSvgGenerator.generate(entity, { ruleset: 'total-warfare' })).querySelector('.inventoryEntry.bay')!;
         expect([...row.querySelectorAll('.bayMunition')].map(line => [line.querySelector('.name')?.textContent,
-            ...bayRanges(line)])[1]).toEqual(['SRM (1 rounds)', '1 (10)', '—', '—', '—']);
+            ...bayRanges(line)])[1]).toEqual(['SRM (1 round)', '1 (10)', '—', '—', '—']);
+    });
+
+    it('prints the mounted Artemis IV rating for an MML 9 bay carrying only ordinary SRM ammunition', async () => {
+        const entity = new TestWarShipEntity();
+        const launcher = addTestEquipment(entity, new WeaponEquipment({
+            id: 'ISMML9', name: 'MML 9', type: 'weapon', flags: ['F_ARTEMIS_COMPATIBLE'],
+            weapon: { heat: 5, ammoType: 'MML', rackSize: 9, av: [5, 5, 5] },
+        }), { location: 'Nose' });
+        const ammo = addTestEquipment(entity, new AmmoEquipment({
+            id: 'IS Ammo MML-9 SRM', name: 'MML 9/SRM', type: 'ammo', flags: ['F_MML_SRM'],
+            ammo: { type: 'MML', rackSize: 9, shots: 11, munitionType: ['M_STANDARD'] },
+        }), { location: 'Nose', shotsCount: 11 });
+        const artemis = addTestEquipmentWithFlags(entity, 'F_ARTEMIS', { location: 'Nose' });
+        entity.linkEquipment(artemis, launcher);
+        entity.addEquipmentBay('weapon-bay', { mounts: [launcher, artemis, ammo] });
+
+        const svg = await RecordSheetSvgGenerator.generate(entity, { ruleset: 'total-warfare' });
+        const row = svg.querySelector('.inventoryEntry.bay')!;
+        expect(row.querySelector('.name')?.textContent).toBe('1 MML 9 (11 SRM)*');
+        expect(bayRanges(row)).toEqual(['1\u202F(14)', '—', '—', '—']);
     });
 
     it('adds a launcher without ammo to no bay munition line (TW p. 103)', async () => {
@@ -824,10 +851,10 @@ describe('RecordSheetSvgGenerator', () => {
     });
 
     it('names a bay\'s only MML or ATM munition unless it is the launcher\'s first', async () => {
-        const bay = async (weapon: WeaponEquipment, ammo: AmmoEquipment) => {
+        const bay = async (weapon: WeaponEquipment, ammo: AmmoEquipment, shotsCount = 10) => {
             const entity = new TestWarShipEntity();
             entity.addEquipmentBay('weapon-bay', { mounts: [addTestEquipment(entity, weapon, { location: 'Nose' }),
-                addTestEquipment(entity, ammo, { location: 'Nose', shotsCount: 10 })] });
+                addTestEquipment(entity, ammo, { location: 'Nose', shotsCount })] });
             const row = (await RecordSheetSvgGenerator.generate(entity, { ruleset: 'total-warfare' })).querySelector('.inventoryEntry.bay')!;
             return [[...row.querySelectorAll(':scope > .name')].map(node => node.textContent).join(' '), ...bayRanges(row)];
         };
@@ -846,6 +873,7 @@ describe('RecordSheetSvgGenerator', () => {
 
         // The values are the munition's, so a munition other than the launcher's first prints by name
         expect(await bay(mml, ammo(mml, 'LRM'))).toEqual(['1 MML 9 (10 rounds)', '1\u202F(5)', '1\u202F(5)', '1\u202F(5)', '—']);
+        expect((await bay(mml, ammo(mml, 'LRM'), 1))[0]).toBe('1 MML 9 (1 round)');
         expect(await bay(mml, ammo(mml, 'SRM'))).toEqual(['1 MML 9 (10 SRM)', '1\u202F(10)', '—', '—', '—']);
         expect(await bay(iatm, ammo(iatm, 'Standard', ['M_STANDARD'])))
             .toEqual(['1 iATM 12 (10 rounds)', '2\u202F(24)', '2\u202F(24)', '—', '—']);

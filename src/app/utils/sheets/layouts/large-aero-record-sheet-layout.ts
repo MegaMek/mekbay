@@ -972,9 +972,10 @@ function bayAmmoText(weapon: EntityMountedWeapon['equipment'], shots: ReadonlyMa
     if (totals.length === 1 && weapon.ammoType !== 'AR10') {
         const [[name, count]] = totals;
         const munition = BAY_MUNITIONS.find(profile => profile.displayName === name);
-        const unit = munition !== undefined && munition !== recordSheetAmmoProfiles(weapon)[0] ? name
-            : weapon.capital && weapon.hasFlag('F_MISSILE') ? 'missiles' : 'rounds';
-        return ` (${formatWholeNumber(count)} ${unit})`;
+        if (munition !== undefined && munition !== recordSheetAmmoProfiles(weapon)[0]) {
+            return ` (${formatWholeNumber(count)} ${name})`;
+        }
+        return ` (${formatBayAmmoCount(count, weapon.capital && weapon.hasFlag('F_MISSILE') ? 'missile' : 'round')})`;
     }
     const words = totals.map(([name]) => name.split(/[ /]/u));
     const shortest = Math.min(...words.map(name => name.length));
@@ -986,6 +987,10 @@ function bayAmmoText(weapon: EntityMountedWeapon['equipment'], shots: ReadonlyMa
     while (head + tail < shortest && shared(name => name[name.length - 1 - tail])) tail++;
     return ` (${totals.map(([, count], index) => `${formatWholeNumber(count)} ${
         words[index].slice(head, words[index].length - tail).join(' ') || 'Standard'}`).join(', ')})`;
+}
+
+function formatBayAmmoCount(count: number, unit: 'round' | 'missile'): string {
+    return `${formatWholeNumber(count)} ${unit}${count === 1 ? '' : 's'}`;
 }
 
 /** Printed rounds omit munition identity; symmetric bays must still carry the same total of each munition. */
@@ -1075,12 +1080,14 @@ function standardBayDamageLines(
         && !ATM_PROFILE_MUNITIONS.includes(profile)
         && (profile !== ATM_IMPROVED_MAGNETIC_PULSE_PROFILE || (atmSpecialMunitions && atmBuiltWith(profile))));
     // Each munition's line carries its rounds: LRM (78 rounds)
-    const line = (profile: AmmoWeaponProfile): BayDamageLine => ({
-        munition: profile,
-        name: `${profile.displayName} (${formatWholeNumber(groups.reduce((total, group) =>
-            total + rounds(group, profile), 0))} rounds)`,
-        values: values(profile),
-    });
+    const line = (profile: AmmoWeaponProfile): BayDamageLine => {
+        const count = groups.reduce((total, group) => total + rounds(group, profile), 0);
+        return {
+            munition: profile,
+            name: `${profile.displayName} (${formatBayAmmoCount(count, 'round')})`,
+            values: values(profile),
+        };
+    };
     if (atm.length > 0 && atmSpecialMunitions
         && atm.every(group => ATM_AMMO_PROFILES.every(profile => tons(group, profile) >= group.mounts.length))) {
         // Short range times 1.5, medium unchanged, long and extreme half the standard value, each rounded up

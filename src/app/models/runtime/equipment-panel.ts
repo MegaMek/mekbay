@@ -182,6 +182,8 @@ export interface EquipmentPanelWeapon {
     readonly heat: number;
     /** Total heat applied when this mode fires. */
     readonly firingHeat: number;
+    /** The PPC will use its linked capacitor's charge when fired. */
+    readonly chargedPpc?: true;
     /** Variable ground heat is resolved from die evidence when fired. */
     readonly heatSuffix?: '*';
     readonly selectable: boolean;
@@ -1607,6 +1609,7 @@ function projectMekEquipmentComponents(
                 ? undefined
                 : Object.freeze({
                     heat: operatingWeaponHeat,
+                    ...(ppcCapacitorCharged ? { chargedPpc: true as const } : {}),
                     firingHeat: operatingWeaponHeat
                         * rapidFireShotCount * machineGunArrayMemberCount,
                     ...(prototypeMaximumHeat === 0 ? {} : { heatSuffix: '*' as const }),

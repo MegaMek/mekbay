@@ -75,6 +75,7 @@ export interface AttackResolution {
     readonly jammed: readonly ComponentId[];
     /** Insulated lasers that suffer a critical hit (`LASER_INSULATOR_FAILURE_TARGET`). */
     readonly insulatorFailed: readonly ComponentId[];
+    readonly burnedOutPpcs: readonly ComponentId[];
     /** Weapons whose lock-on roll failed (`locksOnTarget`): they fire nothing and make no heat. */
     readonly noLock: readonly ComponentId[];
     readonly physical: readonly PhysicalAttackOutcome[];
@@ -131,7 +132,8 @@ export class AttackResolutionDialogComponent {
                 : sum + weapon.groups.reduce((total, group) => total + group.damage, 0), 0),
         };
     }));
-    protected readonly deliverable = computed(() => this.data.targets.filter(target => target.delivery !== null));
+    protected readonly deliverable = computed(() => this.targets().filter(({ target, weapons }) =>
+        target.delivery !== null && weapons.some(weapon => !weapon.capacitorBurnout)));
 
     protected rerollAll(): void {
         this.rolls.set(this.data.targets.map(target => target.profiles.map(rollWeapon)));
@@ -159,14 +161,17 @@ export class AttackResolutionDialogComponent {
 
     protected send(): void {
         this.dialogRef.close(Object.freeze({
-            deliveries: Object.freeze(this.targets().flatMap(({ target }, t) => target.delivery ? [Object.freeze({
-                name: target.name,
-                ...target.delivery,
-                arc: target.arc,
-                weapons: Object.freeze(target.profiles.map((profile, w) => deliveredWeapon(profile, this.rolls()[t][w]))),
-            })] : [])),
+            deliveries: Object.freeze(this.targets().flatMap(({ target, weapons }, t) => {
+                if (!target.delivery) return [];
+                const reports = target.profiles.flatMap((profile, w) => weapons[w].capacitorBurnout
+                    ? [] : [deliveredWeapon(profile, this.rolls()[t][w])]);
+                return reports.length ? [Object.freeze({
+                    name: target.name, ...target.delivery, arc: target.arc, weapons: Object.freeze(reports),
+                })] : [];
+            })),
             jammed: this.jammed(),
             insulatorFailed: this.insulatorFailed(),
+            burnedOutPpcs: this.burnedOutPpcs(),
             noLock: this.noLock(),
             physical: this.physical(),
         }));
@@ -176,7 +181,7 @@ export class AttackResolutionDialogComponent {
     protected close(): void {
         this.dialogRef.close(Object.freeze({
             deliveries: Object.freeze([]), jammed: this.jammed(), insulatorFailed: this.insulatorFailed(),
-            noLock: this.noLock(), physical: this.physical(),
+            burnedOutPpcs: this.burnedOutPpcs(), noLock: this.noLock(), physical: this.physical(),
         }));
     }
 
@@ -209,6 +214,11 @@ export class AttackResolutionDialogComponent {
             profile.componentId !== null && profile.allHit
                 && !resolveWeaponAttack(profile, this.rolls()[t][w].toHit, this.rolls()[t][w].cluster).hit
                 ? [profile.componentId] : [])));
+    }
+
+    private burnedOutPpcs(): readonly ComponentId[] {
+        return Object.freeze(this.targets().flatMap(({ target, weapons }) => target.profiles.flatMap((profile, w) =>
+            profile.componentId !== null && weapons[w].capacitorBurnout ? [profile.componentId] : [])));
     }
 
     private heatDiceUsed(target: number, weapon: number): number {
@@ -308,6 +318,7 @@ function reportWeapon(
         ...(physicalAttackAlwaysHits(profile.physical) ? { automaticHit: true as const } : {}),
         toHit: rolls.toHit,
         hit: outcome.hit,
+        ...(outcome.capacitorBurnout ? { capacitorBurnout: true as const } : {}),
         jammed: outcome.jammed,
         ...(insulator ? { insulator } : {}),
         cluster: cluster

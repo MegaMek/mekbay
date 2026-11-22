@@ -33,6 +33,7 @@ export interface AttackReportWeapon {
     readonly automaticHit?: true;
     readonly toHit: TwoDice;
     readonly hit: boolean;
+    readonly capacitorBurnout?: true;
     readonly jammed?: boolean;
     /** An insulated laser's failure roll after a to-hit roll of 2, and whether the laser suffers a critical hit. */
     readonly insulator?: Readonly<{ dice: TwoDice; failed: boolean }>;

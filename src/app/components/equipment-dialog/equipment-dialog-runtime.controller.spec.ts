@@ -843,7 +843,7 @@ describe('EquipmentDialogRuntimeController', () => {
         const fire = jasmine.createSpy('fireSelectedWeapons').and.resolveTo({
             accepted: true, changed: false, prototypeHeat: [],
         });
-        const resolution = { deliveries: [], jammed: [], insulatorFailed: [], noLock: ['mount:medium-laser' as ComponentId], physical: [] };
+        const resolution = { deliveries: [], jammed: [], insulatorFailed: [], burnedOutPpcs: [], noLock: ['mount:medium-laser' as ComponentId], physical: [] };
         const rollAttacks = jasmine.createSpy('rollAttacks').and.resolveTo(resolution);
         const settleAttacks = jasmine.createSpy('settleAttacks').and.resolveTo();
         const member = {

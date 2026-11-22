@@ -5,13 +5,14 @@ import { type CBTMekUnit } from '../models/runtime/cbt-unit';
 import {
 componentPpcCapacitorDefinition,
 componentPpcCapacitorFacts,
+ppcCapacitorBurnoutHits,
 ppcCapacitorChargedForWeapon,
 ppcCapacitorWeaponTypes,
 setComponentPpcCapacitorCharge,
 } from '../models/runtime/component-ppc-capacitor';
 import { projectMekEquipmentPanel } from '../models/runtime/equipment-panel';
 import { canPerformMekAction } from '../models/runtime/mek-action-availability';
-import { createDirectMekRuntimeFixture,emptyCBTEncounterSnapshot } from '../models/runtime/testing/direct-mek-runtime-fixture';
+import { createDirectMekRuntimeFixture,createDirectPpcBurnoutRuntimeFixture,emptyCBTEncounterSnapshot } from '../models/runtime/testing/direct-mek-runtime-fixture';
 
 import {
 PPC_CAPACITOR_CHARGED_STATE,
@@ -55,7 +56,7 @@ describe('PpcCapacitorHandler direct V2 runtime', () => {
         expect(componentPpcCapacitorFacts(setup.runtime, setup.definition).chargeState)
             .toBe(PPC_CAPACITOR_CHARGED_STATE);
         expect(canFire(setup)).toBeTrue();
-        expect(projectedWeapon(setup)).toEqual(jasmine.objectContaining({ damage: 10, heat: 10 }));
+        expect(projectedWeapon(setup)).toEqual(jasmine.objectContaining({ damage: 10, heat: 10, chargedPpc: true }));
         const baseTypes = new Set<WeaponType>(['DE']);
         expect([...ppcCapacitorWeaponTypes(baseTypes, ppcCapacitorChargedForWeapon(
             setup.fixture.entity,
@@ -123,6 +124,7 @@ describe('PpcCapacitorHandler direct V2 runtime', () => {
             setup.runtime, setup.definition, setup.queryContext,
         )).toEqual([]);
         expect(projectedWeapon(setup)).toEqual(jasmine.objectContaining({ damage: 5, heat: 5 }));
+        expect(projectedWeapon(setup).chargedPpc).toBeUndefined();
         expect(ppcCapacitorWeaponTypes(types, ppcCapacitorChargedForWeapon(
             setup.fixture.entity,
             setup.fixture.index,
@@ -130,10 +132,61 @@ describe('PpcCapacitorHandler direct V2 runtime', () => {
             setup.weapon.id,
         ))).toBe(types);
     });
+
+    it('marks only the PPC and its discharged capacitor when a shot burns out', () => {
+        const setup = directPpcSetup(createDirectPpcBurnoutRuntimeFixture());
+        fireChargedPpc(setup);
+        const index = setup.fixture.index;
+        const ppcSlots = [...index.slots.values()].filter(slot => slot.componentIds.includes(setup.weapon.id));
+        expect(ppcSlots.length).toBe(3);
+        const hits = ppcCapacitorBurnoutHits(index, setup.runtime.query(), setup.weapon.id);
+        expect(hits.map(hit => index.slots.get(hit.slotId)!.componentIds)).toEqual([[setup.weapon.id], [setup.capacitor.id]]);
+        for (const hit of hits) {
+            expect(setup.runtime.dispatch({ type: 'hit-critical', ...hit, target: 'committed' }).accepted).toBeTrue();
+        }
+        expect(setup.runtime.query().componentStatus(setup.weapon.id)).toBe('destroyed');
+        expect(setup.runtime.query().componentStatus(setup.capacitor.id)).toBe('destroyed');
+        expect(ppcSlots.map(slot => setup.runtime.query().criticalHits(slot.id, 'preview'))).toEqual([1, 0, 0]);
+        expect(ppcCapacitorBurnoutHits(index, setup.runtime.query(), setup.weapon.id)).toEqual([]);
+        expect([...index.slots.values()].filter(slot => setup.runtime.query().criticalHits(slot.id, 'preview') > 0)
+            .length).toBe(2);
+    });
+
+    it('absorbs the first burnout with armor and damages the same slots on a second charged shot', () => {
+        const setup = directPpcSetup(createDirectPpcBurnoutRuntimeFixture('armored'));
+        const { runtime, fixture: { index }, weapon, capacitor } = setup;
+        const ppcSlots = [...index.slots.values()].filter(slot => slot.componentIds.includes(weapon.id));
+        const capacitorSlot = [...index.slots.values()].find(slot => slot.componentIds.includes(capacitor.id))!;
+        const slots = [...ppcSlots, capacitorSlot];
+        const marks = (perspective: 'committed' | 'preview') => slots.map(slot =>
+            runtime.query().criticalHits(slot.id, perspective));
+        const markBurnout = (target: 'pending' | 'committed') => {
+            const hits = ppcCapacitorBurnoutHits(index, runtime.query(), weapon.id);
+            expect(hits).toEqual([{ slotId: ppcSlots[0].id, hits: 1 }, { slotId: capacitorSlot.id, hits: 1 }]);
+            for (const hit of hits) {
+                expect(runtime.dispatch({ type: 'hit-critical', ...hit, target }).accepted).toBeTrue();
+            }
+        };
+        expect(slots.every(slot => slot.armored)).toBeTrue();
+        fireChargedPpc(setup);
+        markBurnout('pending');
+        expect(marks('preview')).toEqual([1, 0, 0, 1]);
+        expect(marks('committed')).toEqual([0, 0, 0, 0]);
+        expect(runtime.dispatch({ type: 'commit-pending' }).accepted).toBeTrue();
+        expect(marks('committed')).toEqual([1, 0, 0, 1]);
+        expect(runtime.query().componentStatus(weapon.id)).toBe('available');
+        expect(runtime.query().componentStatus(capacitor.id)).toBe('available');
+
+        endTurn(runtime, 'ppc:end-first-burnout-turn');
+        fireChargedPpc(setup);
+        markBurnout('committed');
+        expect(marks('committed')).toEqual([2, 0, 0, 2]);
+        expect(runtime.query().componentStatus(weapon.id)).toBe('destroyed');
+        expect(runtime.query().componentStatus(capacitor.id)).toBe('destroyed');
+    });
 });
 
-function directPpcSetup() {
-    const fixture = createDirectMekRuntimeFixture();
+function directPpcSetup(fixture = createDirectMekRuntimeFixture()) {
     const capacitor = [...fixture.index.components.values()].find(component =>
         component.kind === 'equipment' && component.mount.equipmentId === 'Test PPC Capacitor');
     const weapon = [...fixture.index.components.values()].find(component =>
@@ -163,6 +216,15 @@ function directPpcSetup() {
 }
 
 type DirectPpcSetup = ReturnType<typeof directPpcSetup>;
+
+function fireChargedPpc(setup: DirectPpcSetup): void {
+    expect(setComponentPpcCapacitorCharge(setup.runtime, setup.definition, PPC_CAPACITOR_CHARGING_STATE).accepted)
+        .toBeTrue();
+    endTurn(setup.runtime, 'ppc:end-before-burnout');
+    expect(projectedWeapon(setup).chargedPpc).toBeTrue();
+    expect(setup.runtime.dispatch({ type: 'fire-weapons', selections: [{ weaponId: setup.weapon.id }] }).accepted)
+        .toBeTrue();
+}
 
 function projectedWeapon(setup: DirectPpcSetup) {
     const row = projectMekEquipmentPanel(

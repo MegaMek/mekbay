@@ -24,7 +24,7 @@
                         <ng-container *ngTemplateOutlet="rollChip; context: {
                             dice: weapon.toHit, weapon: w, roll: 'to-hit', label: 'Set ' + weapon.name + ' to-hit roll' }" />
                     }
-                    <span class="verdict">{{ weapon.hit ? 'HIT' : 'MISS' }}</span>
+                    <span class="verdict">{{ weapon.capacitorBurnout ? 'PPC BURNOUT' : weapon.hit ? 'HIT' : 'MISS' }}</span>
                     @if (weapon.jammed) { <span class="jammed" title="The weapon jammed; its shots still fire">JAMMED</span> }
                     @if (editable()) {
                         <button type="button" class="reroll" [attr.aria-label]="'Re-roll ' + weapon.name"

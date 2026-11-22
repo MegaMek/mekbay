@@ -49,7 +49,7 @@ export type MekPilotCheckStatusV2 = 'pending' | MekPilotCheckOutcomeV2;
 export interface MekMovementDeclarationV2 {
     readonly mode: MekMovementModeV2;
     readonly distance: number;
-    /** Actual jets fired when fractional donor jets are installed (CO p. 213). */
+    /** Jets fired at takeoff when donor size or a partial wing affects the jump's heat. */
     readonly jumpJetsFired?: number;
     /** Water depth at takeoff, independent of the landing hex. Omitted on land. */
     readonly jumpFromDepth?: number;
@@ -919,8 +919,14 @@ export function declareMekMovementV2(
                 ?? ['Declaration legality was not projected']),
         });
     }
-    if (projected.declaration.jumpJets && canonicalDeclaration.jumpJetsFired === undefined) {
-        canonicalDeclaration = { ...canonicalDeclaration, jumpJetsFired: projected.declaration.jumpJets.minimum };
+    const jumpJets = projected.declaration.jumpJets;
+    const fired = canonicalDeclaration.jumpJetsFired;
+    // Check the available jets at declaration. Later criticals cannot invalidate the number already fired.
+    if (fired !== undefined && (!jumpJets || fired < jumpJets.minimum || fired > jumpJets.maximum)) {
+        return Object.freeze({ accepted: false, reason: 'ILLEGAL_DECLARATION', blockers: ['NO_MOVEMENT_POINTS'] });
+    }
+    if (jumpJets && fired === undefined) {
+        canonicalDeclaration = { ...canonicalDeclaration, jumpJetsFired: jumpJets.minimum };
     }
     const retained = canonicalState.checks.filter(check =>
         check.source.sourceKind !== 'movement' || check.status !== 'pending');
@@ -2483,13 +2489,14 @@ function declarationLegality(
             );
         }
     }
-    const jumpJets = declaration.mode === 'jump' && profile.jumpJets.some(jet => jet.mpContribution < 1)
-        ? { minimum: minimumJumpJets(Math.max(0, declaration.distance - numbers.wingJumpMp), numbers.workingJetThrust),
-            maximum: numbers.workingJetThrust.length }
-        : undefined;
-    if (declaration.jumpJetsFired !== undefined && (!jumpJets || declaration.jumpJetsFired < jumpJets.minimum
-        || declaration.jumpJetsFired > jumpJets.maximum)) {
-        reasons.push(blocker('NO_MOVEMENT_POINTS', 'Select an available number of jump jets for this distance.'));
+    let jumpJets: MekDeclarationLegalityV2['jumpJets'];
+    if (declaration.mode === 'jump' && numbers.workingJetThrust.length > 0) {
+        const fractionalJets = profile.jumpJets.some(jet => jet.mpContribution < 1);
+        if (fractionalJets || profile.partialWings.length > 0) {
+            // TO:AUE p. 106: the wing supplies part of this jump at takeoff. Later criticals affect future jumps.
+            const minimum = minimumJumpJets(Math.max(0, declaration.distance - numbers.wingJumpMp), numbers.workingJetThrust);
+            jumpJets = { minimum, maximum: fractionalJets ? numbers.workingJetThrust.length : minimum };
+        }
     }
     if (declaration.distance > maximumMp) {
         reasons.push(blocker('NO_MOVEMENT_POINTS', `Declared distance exceeds ${declaration.mode} MP`));

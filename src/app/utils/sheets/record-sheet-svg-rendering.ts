@@ -430,9 +430,8 @@ function recordSheetInsulatedHeatText(heat: number, insulated: boolean): string 
 }
 
 /**
- * The Artemis system linked to a weapon, whose values a sheet prints when one of the bins the weapon fires from holds
- * that system's own missiles of `munition` (any munition when null): a launcher "loaded with normal ammo ... functions
- * as a normal launcher" (TW p. 130).
+ * An MML sheet lists the LRM and SRM design ratings for its installed Artemis (TW p. 303). Other launchers use the
+ * bonus when a matching bin carries Artemis ammunition (TW p. 130).
  */
 export function recordSheetWeaponArtemis(
   entity: BaseEntity,
@@ -441,6 +440,7 @@ export function recordSheetWeaponArtemis(
   munition: AmmoWeaponProfile | null,
 ): ArtemisKind | null {
   const kind = artemisKind(entity.getLinkingMounts(mount).find(source => isArtemisEquipment(source.equipment))?.equipment);
+  if (mount.equipment.ammoType === 'MML') return kind;
   return kind !== null && bins.some(ammo => (munition === null || resolveAmmoWeaponProfile(ammo) === munition)
     && firesArtemisAmmo(kind, ammo)) ? kind : null;
 }

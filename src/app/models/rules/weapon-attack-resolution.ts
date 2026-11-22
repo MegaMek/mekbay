@@ -58,6 +58,8 @@ export interface WeaponAttackProfile {
     readonly clusterModifier?: number;
     /** A laser with a working laser insulator, which a to-hit roll of 2 can damage (`LASER_INSULATOR_FAILURE_TARGET`). */
     readonly insulated?: true;
+    /** A charged PPC that burns out on a natural 2 (TO:AUE p. 149). */
+    readonly capacitorBurnoutOnTwo?: true;
     /** The table each group is read on: the punch and kick tables roll 1D6. */
     readonly table: HitTable;
     /** A physical attack, whose hit or miss also forces Piloting Skill Rolls. */
@@ -152,6 +154,7 @@ export interface WeaponAttackFacts {
     readonly aim?: Readonly<{ location: string; dice: 1 | 2 }>;
     /** The laser has a working laser insulator. */
     readonly insulated?: boolean;
+    readonly chargedPpc?: boolean;
     /** The weapon fires indirectly, as the target's calculator declares. */
     readonly indirect?: boolean;
     /**
@@ -163,6 +166,7 @@ export interface WeaponAttackFacts {
 
 export interface WeaponAttackOutcome {
     readonly hit: boolean;
+    readonly capacitorBurnout?: true;
     /** The rapid-fire weapon jammed; its shots still fire. */
     readonly jammed: boolean;
     /** Projectiles that hit; 0 on a miss. */
@@ -231,6 +235,7 @@ export function weaponAttackProfile(facts: WeaponAttackFacts, rules: CBTGameRule
             ...(specialAmmo === null ? {} : { ammo: specialAmmo }),
             ...(specialAmmo === 'armor-piercing' ? { rackSize: equipment.rackSize } : {}),
             ...(facts.insulated ? { insulated: true as const } : {}),
+            ...(facts.chargedPpc && rules.id === 'total-warfare' ? { capacitorBurnoutOnTwo: true as const } : {}),
             ...(hasIntegralArtemis(equipment) && facts.hostileEcm !== true
                 ? { clusterModifier: INTEGRAL_ARTEMIS_CLUSTER_MODIFIER } : {}),
         });
@@ -378,6 +383,9 @@ export function resolveWeaponAttack(
     heatDice: readonly number[] = MAXIMUM_HEAT_DICE,
 ): WeaponAttackOutcome {
     const jammed = profile.jamRoll !== null && toHit[0] + toHit[1] <= profile.jamRoll;
+    if (profile.capacitorBurnoutOnTwo && toHit[0] + toHit[1] === 2) {
+        return Object.freeze({ hit: false, capacitorBurnout: true, jammed, hits: 0, groups: [], heat: 0 });
+    }
     if (!toHitSucceeds(toHit, profile.targetNumber)) return Object.freeze({ hit: false, jammed, hits: 0, groups: [], heat: 0 });
     let hits = profile.projectiles;
     if (needsClusterRoll(profile)) {
