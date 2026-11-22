@@ -64,7 +64,7 @@
                     <span class="cluster-hits">{{ insulator.failed ? 'Critical hit on the laser' : 'No effect' }}</span>
                 </div>
             }
-            @if (weapon.hit && weapon.cluster; as cluster) {
+            @if (weapon.cluster; as cluster) {
                 <div class="cluster-line">
                     <span class="step-label">Cluster</span>
                     @if (cluster.additionalDice?.length) { <span>Column {{ missileColumns(cluster.projectiles)[0] }}</span> }
@@ -76,16 +76,17 @@
                             label: 'Set ' + weapon.name + ' cluster roll ' + (i + 2) }" />
                     }
                     <ng-container *ngTemplateOutlet="modifierControl; context: { cluster, w, name: weapon.name }" />
-                    <span class="cluster-hits"><strong>{{ cluster.hits }}</strong> / {{ cluster.projectiles }} hit</span>
+                    <span class="cluster-hits"><strong>{{ cluster.hits }}</strong> / {{ cluster.projectiles }} {{ weapon.hit ? 'hit' : 'hit the building' }}</span>
                 </div>
             }
-            @if (weapon.hit && weapon.heat; as heat) {
+            @if ((weapon.hit || weapon.buildingDamage) && weapon.heat; as heat) {
                 <!-- Plasma dice add heat to a unit that tracks it, and damage to any other. -->
                 <div class="cluster-line">
                     <span class="step-label">{{ heat.value > 0 || heat.reduced ? 'Heat' : 'Damage' }}</span>
                     @if (heat.dice.length > 0) {
                         <ng-container *ngTemplateOutlet="rollChip; context: {
-                            dice: heat.dice, weapon: w, roll: 'heat', label: 'Set ' + weapon.name + ' heat roll' }" />
+                            dice: heat.dice, weapon: w, roll: 'heat',
+                            label: 'Set ' + weapon.name + (weapon.hit ? ' heat roll' : ' building damage roll') }" />
                     }
                     @if (heat.value > 0 || heat.reduced) {
                         <span class="cluster-hits"><strong>+{{ heat.value }}</strong></span>

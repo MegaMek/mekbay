@@ -12,12 +12,13 @@ import { AmmoEquipment, WeaponEquipment } from '../models/equipment.model';
 import { addTestEquipment } from '../models/entity/testing/test-mounted-equipment';
 import { createTestEquipmentRegistry } from '../models/entity/testing/test-equipment-registry';
 import { createNonMekUnit } from '../models/runtime/cbt-non-mek-unit';
+import { entityTargetRosterRow } from '../models/runtime/cbt-force-target-roster';
 import { projectNonMekEquipmentPanel } from '../models/runtime/non-mek-equipment-panel';
 import { componentIdForMount } from '../models/runtime/unit-runtime-index';
 import { asUnitUuid } from './unit-catalog/unit-catalog.types';
 import { resolveWeaponAttack } from '../models/rules/weapon-attack-resolution';
 import type { CBTUnitCommand } from '../models/runtime/unit-command';
-import { TestAeroSpaceFighterEntity, TestDropShipEntity } from '../models/entity/testing/test-entities';
+import { TestAeroSpaceFighterEntity, TestDropShipEntity, TestTankEntity } from '../models/entity/testing/test-entities';
 import { asEncounterTargetId } from '../models/runtime/encounter-runtime';
 import { projectMekEquipmentPanel, type EquipmentPanelSnapshot } from '../models/runtime/equipment-panel';
 import { createDirectMachineGunArrayRuntimeFixture, createDirectMekRuntimeFixture } from '../models/runtime/testing/direct-mek-runtime-fixture';
@@ -246,6 +247,45 @@ describe('AttackResolutionService hit locations', () => {
         expect(outcome.groups).toEqual([0]);
         expect(outcome.absorbed).toEqual([2]);
     });
+
+    for (const ruleset of ['total-warfare', 'core-2026'] as const) {
+        it(`projects fire against a sheltered tank at one and two hexes under ${ruleset}`, async () => {
+            const entity = new TestTankEntity();
+            const uuid = asUnitUuid('019f6767-0dcb-7bb8-992f-aef08202f5f1');
+            entity.uuid.set(uuid);
+            entity.setTonnage(40);
+            const tank = createNonMekUnit(entity, { instanceId: 'tank', uuid, deployment: { id: 'default' },
+                scenario: { id: 'megamek', ruleset }, initialStateProfileId: 'pristine-non-mek' });
+            expect(tank.dispatch({ type: 'set-cover', cover: 'building-1' }).changed).toBeTrue();
+            const { targetId, name, unitType, tnCalculator } = entityTargetRosterRow('defender', tank);
+            const registry = { revision: 1, targets: [{ id: targetId, name, unitType, tnCalculator,
+                letter: 'A', color: '#abc', source: 'opfor', readOnly: true }] } as const;
+            const fixture = createDirectMekRuntimeFixture(ruleset);
+            const gun = fixture.equipmentComponent('ISMediumLaser');
+            const member = { id: fixture.instance.instanceId, entity: fixture.entity, force: {
+                getUnitSnapshot: () => null } } as unknown as CBTForceMember;
+            expect(fixture.instance.dispatchAttackerTargeting({ type: 'edit-attacker-targeting',
+                edit: { kind: 'set-component-selection', componentId: gun.id, selection: { kind: 'target', targetId } },
+            }, registry, false).changed).toBeTrue();
+            for (const distance of [1, 2]) {
+                expect(fixture.instance.dispatchAttackerTargeting({ type: 'edit-attacker-targeting',
+                    edit: { kind: 'set-target-facts', targetId, facts: { distance, calculator: { buildingCf: 38 } } },
+                }, registry, false).changed).toBeTrue();
+                const panel = projectMekEquipmentPanel(fixture.entity, fixture.index, ruleset, fixture.instance.query(), registry, {});
+                await TestBed.inject(AttackResolutionService).rollAttacks(member, panel, {
+                    gunnery: 4, pilotingSkill: 5, movementMode: null, allowExtremeRange: false, missingMovementModifier: false,
+                    attackModifierBreakdown: [], c3Available: false, c3DegradationSource: 'none',
+                });
+                const data: AttackResolutionDialogData = dialog.calls.mostRecent().args[1].data;
+                const [target] = data.targets;
+                expect(target.unitType).toBe('vehicle');
+                const [profile] = target.profiles;
+                expect(profile.componentId).toBe(gun.id);
+                expect(profile.adjacentShelter).toBe(ruleset === 'total-warfare' && distance === 1 ? 'missed-attack' : undefined);
+                expect(profile.buildingAbsorption).toBe(ruleset === 'total-warfare' ? 4 : undefined);
+            }
+        });
+    }
 
     it('reads the defender-selected building hex and level from a local report', () => {
         const level = 'Level 0 0.0,0.0,0.0';

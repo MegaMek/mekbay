@@ -312,7 +312,7 @@ export class AttackResolutionDialogComponent {
     }
 
     private heatDiceUsed(target: number, weapon: number): number {
-        return heatDiceRead(this.data.targets[target].profiles[weapon], this.rolls()[target][weapon].heat);
+        return this.targets()[target].weapons[weapon].heat?.dice.length ?? 0;
     }
 
     private updateWeapon(target: number, weapon: number, update: (rolls: WeaponRolls) => WeaponRolls): void {
@@ -395,6 +395,11 @@ function heatDiceRead(profile: WeaponAttackProfile, dice: readonly number[]): nu
     return heat ? resolveHeatWeaponHit(heat.weapon, 0, heat.mode, heat.ruleset, heat.target, dice).dice : 0;
 }
 
+function againstBuilding(profile: WeaponAttackProfile): WeaponAttackProfile {
+    const target = { tracksHeat: false, fireResistant: false };
+    return profile.heatWeapon ? { ...profile, heatWeapon: { ...profile.heatWeapon, target } } : profile;
+}
+
 /** Sets the first `used` heat dice to `total`, as evenly as six-sided dice allow. */
 function heatDiceForTotal(dice: readonly number[], used: number, total: number): readonly number[] {
     const set = Array.from({ length: used }, (_, index) => Math.floor(total / used) + (index < total % used ? 1 : 0));
@@ -415,14 +420,14 @@ function reportWeapon(
     countCasualties: (damage: number) => number,
 ): AttackReportWeapon {
     const source = attackDamageSource(profile);
-    const cluster = needsClusterRoll(profile);
     const outcome = resolveWeaponAttack(profile, rolls.toHit, rolls.cluster, rolls.clusterModifier, rolls.heat,
         rolls.amsDice?.length ? rolls.amsDice.reduce((sum, die) => sum + die, 0) : undefined, rolls.additionalClusters, rolls.laserAms);
     const heat = profile.heatWeapon;
-    const heatDice = rolls.heat.slice(0, heatDiceRead(profile, rolls.heat));
     const aim = aimedShotRoll(profile, rolls);
     const insulator = insulatorCheck(rolls);
     const delivered = deliveredWeapon(profile, rolls, outcome);
+    const heatProfile = !outcome.hit && delivered.strayBuildingDamage ? againstBuilding(profile) : profile;
+    const heatDice = rolls.heat.slice(0, heatDiceRead(heatProfile, rolls.heat));
     const casualty = isConventionalTarget(target) && outcome.hit && !profile.inferno && !profile.narcPod;
     const infantry = target.defender && isInfantryEntity(target.defender.entity) ? target.defender.entity : null;
     const casualties = casualty ? countCasualties(reportedInfantryCasualties(delivered, infantry?.isMechanized() ?? false,
@@ -442,7 +447,7 @@ function reportWeapon(
         ...(outcome.capacitorBurnout ? { capacitorBurnout: true as const } : {}),
         jammed: outcome.jammed,
         ...(insulator ? { insulator } : {}),
-        cluster: cluster ? clusterReport(profile, rolls, outcome.hits) : null,
+        cluster: delivered.cluster ?? null,
         ...(profile.inferno ? { inferno: true } : {}),
         ...(profile.narcPod ? { narcPod: true } : {}),
         buildingDamage: shelterDamage(target.defender, target.arc, delivered, target.ruleset, target.unitType),
@@ -479,17 +484,20 @@ function clusterReport(profile: WeaponAttackProfile, rolls: WeaponRolls, hits: n
 
 function deliveredWeapon(profile: WeaponAttackProfile, rolls: WeaponRolls,
     outcome = resolveWeaponAttack(profile, rolls.toHit, rolls.cluster, rolls.clusterModifier, rolls.heat, undefined, rolls.additionalClusters)): AttackWeaponReport {
-    // AMS destroys missiles. Only rounds that would already have missed the occupant can strike the wall.
     let strayBuildingDamage = 0;
-    if (profile.adjacentShelter && !profile.inferno && !profile.narcPod && !outcome.capacitorBurnout
-        && (outcome.hit || (profile.adjacentShelter === 'all-misses' && !profile.lockRequired))) {
-        const undefended = rolls.amsDice?.length
-            ? resolveWeaponAttack(profile, rolls.toHit, rolls.cluster, rolls.clusterModifier, rolls.heat, undefined, rolls.additionalClusters)
-            : outcome;
-        const buildingProfile = profile.heatWeapon ? { ...profile, heatWeapon: { ...profile.heatWeapon,
-            target: { tracksHeat: false, fireResistant: false } } } : profile;
+    if (outcome.buildingHits !== undefined || (profile.adjacentShelter === 'all-misses' && !profile.inferno
+        && !profile.narcPod && !outcome.capacitorBurnout && (outcome.hit || !profile.lockRequired))) {
+        const buildingProfile = againstBuilding(profile);
         const wallDamage = (hits: number) => attackEffect(buildingProfile, hits, rolls.heat).groups.reduce((sum, damage) => sum + damage, 0);
-        strayBuildingDamage = Math.max(0, wallDamage(profile.projectiles) - wallDamage(undefended.hits));
+        if (outcome.buildingHits !== undefined) {
+            strayBuildingDamage = wallDamage(outcome.buildingHits);
+        } else {
+            // BMM p. 72 includes misses within a salvo against a Mek. Intercepted missiles never reach the wall.
+            const undefended = rolls.amsDice?.length
+                ? resolveWeaponAttack(profile, rolls.toHit, rolls.cluster, rolls.clusterModifier, rolls.heat, undefined, rolls.additionalClusters)
+                : outcome;
+            strayBuildingDamage = Math.max(0, wallDamage(profile.projectiles) - wallDamage(undefended.hits));
+        }
     }
     const aim = outcome.hit ? aimedShotRoll(profile, rolls) : undefined;
     const intercepted = outcome.hit && rolls.amsDie ? resolveWeaponAttack(profile, rolls.toHit, rolls.cluster,
@@ -536,8 +544,8 @@ function deliveredWeapon(profile: WeaponAttackProfile, rolls: WeaponRolls,
         ...(outcome.heat > 0 ? { heat: outcome.heat } : {}),
         ...(outcome.heat && profile.squadFlamers ? { heatPerGroup: outcome.heat / outcome.hits } : {}),
         ...(aim ? { aim } : {}),
-        ...(outcome.hit && needsClusterRoll(profile) ? {
-            cluster: clusterReport(profile, rolls, outcome.hits),
+        ...((outcome.hit || outcome.buildingHits !== undefined) && needsClusterRoll(profile) ? {
+            cluster: clusterReport(profile, rolls, outcome.buildingHits ?? outcome.hits),
         } : {}),
         groups: Object.freeze(outcome.groups.map((damage, index) =>
             Object.freeze({ damage, ...rolls.locations[index],

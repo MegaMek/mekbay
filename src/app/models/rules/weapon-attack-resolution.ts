@@ -69,7 +69,7 @@ export interface WeaponAttackProfile {
     readonly narcPod?: true;
     readonly buildingAbsorption?: number;
     /** Stray rounds from an adjacent attacker that hit the occupied hex. */
-    readonly adjacentShelter?: 'cluster-misses' | 'all-misses';
+    readonly adjacentShelter?: 'missed-attack' | 'all-misses';
     /** A leg hit intercepted by this building credits its remaining damage to the hex. */
     readonly buildingCover?: true;
     readonly shelteringBuilding?: import('../unit-cover.model').ShelteringBuilding;
@@ -217,6 +217,8 @@ export interface WeaponAttackFacts {
 }
 
 export interface WeaponAttackOutcome {
+    /** Projectiles striking a sheltered non-Mek's building after missing the declared target (TW p. 171). */
+    readonly buildingHits?: number;
     /** CF absorbed per location group before any leg hit is redirected to building cover. */
     readonly absorbed?: readonly number[];
     readonly hit: boolean;
@@ -502,9 +504,13 @@ export function resolveWeaponAttack(
     if (profile.capacitorBurnoutOnTwo && toHit[0] + toHit[1] === 2) {
         return Object.freeze({ hit: false, capacitorBurnout: true, jammed, hits: 0, groups: [], heat: 0 });
     }
-    if (!toHitSucceeds(toHit, profile.targetNumber)) return Object.freeze({ hit: false, jammed, hits: 0, groups: [], heat: 0 });
+    const hit = toHitSucceeds(toHit, profile.targetNumber);
+    // TW p. 171 reserves full cluster damage for shots declared against the adjacent building itself.
+    const hitsBuilding = !hit && profile.adjacentShelter === 'missed-attack' && !profile.lockRequired
+        && !profile.inferno && !profile.narcPod;
+    if (!hit && !hitsBuilding) return Object.freeze({ hit: false, jammed, hits: 0, groups: [], heat: 0 });
     let hits = profile.projectiles;
-    const defended = amsDie !== undefined && profile.missileDefense !== undefined;
+    const defended = hit && amsDie !== undefined && profile.missileDefense !== undefined;
     let effectiveProfile = profile;
     if (defended && profile.aerospace) {
         const attackValue = Math.max(0, profile.aerospace.attackValue - amsDie);
@@ -525,6 +531,7 @@ export function resolveWeaponAttack(
                 : clusterHits(Math.max(2, Math.min(12, adjusted)), column));
         }, 0);
     }
+    if (hitsBuilding) return Object.freeze({ hit: false, jammed, hits: 0, buildingHits: hits, groups: [], heat: 0 });
     const effect = attackEffect(effectiveProfile, hits, heatDice);
     if (profile.buildingAbsorption === undefined || profile.inferno || profile.narcPod) {
         return Object.freeze({ hit: true, jammed, hits, groups: effect.groups, heat: effect.heat });

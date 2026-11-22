@@ -38,7 +38,7 @@ const INSULATED_LASER: WeaponAttackProfile = Object.freeze({
 });
 
 function createAttackDialog(profiles: readonly WeaponAttackProfile[], ruleset: CBTRuleset, infantry = false, defender: CBTForceMember | null = null,
-    targetOptions: Pick<AttackResolutionTarget, 'buildingChargeHexes'> = {}) {
+    targetOptions: Pick<AttackResolutionTarget, 'buildingChargeHexes' | 'unitType'> = {}) {
     const close = jasmine.createSpy('close');
     const data: AttackResolutionDialogData = {
         attacker: 'Attacker',
@@ -204,10 +204,11 @@ describe('AttackResolutionDialogComponent floating criticals', () => {
 });
 
 describe('Building protection in the resolution dialog', () => {
-    it('credits adjacent misses to the shelter, without crediting missiles destroyed by AMS', () => {
+    it('credits misses against an adjacent sheltered Mek under the BMM, excluding missiles destroyed by AMS', () => {
         const lrm: WeaponAttackProfile = { ...INSULATED_LASER, name: 'LRM 15', projectiles: 15, damagePerHit: 1, groupSize: 5,
             buildingAbsorption: 4, buildingCover: true, adjacentShelter: 'all-misses', missileDefense: 'total-warfare' };
-        const { dialog, result } = createAttackDialog([lrm, { ...lrm, adjacentShelter: undefined }, { ...lrm, lockRequired: true }], 'total-warfare');
+        const { dialog, result } = createAttackDialog([lrm, { ...lrm, adjacentShelter: undefined }, { ...lrm, lockRequired: true }],
+            'total-warfare', false, null, { unitType: 'mek-biped' });
         for (const weapon of [0, 1, 2]) {
             dialog['setRoll'](0, { weapon, roll: 'to-hit', total: 10 });
             dialog['setRoll'](0, { weapon, roll: 'cluster', total: 7 });
@@ -225,6 +226,79 @@ describe('Building protection in the resolution dialog', () => {
         expect(defended.groups.reduce((sum, group) => sum + (group.buildingDamage ?? 0), 0)).toBeLessThan(8);
         for (const weapon of [0, 1, 2]) dialog['setRoll'](0, { weapon, roll: 'to-hit', total: 3 });
         expect(dialog['targets']()[0].weapons.map(weapon => weapon.buildingDamage)).toEqual([15, 0, 0]);
+    });
+
+    it('reports and delivers only whole misses and per-group absorption to a tank’s shelter under Total Warfare', () => {
+        const shelter = { forceId: 'owner', unitId: 'warehouse', location: 'Level 0 0.0,0.0,0.0' };
+        const cannon: WeaponAttackProfile = { ...INSULATED_LASER, name: 'AC/10', types: ['DB'], damagePerHit: 10,
+            groupSize: 10, insulated: undefined, adjacentShelter: 'missed-attack', buildingAbsorption: 4,
+            buildingCover: true, shelteringBuilding: shelter };
+        const lrm: WeaponAttackProfile = { ...cannon, name: 'LRM 15', types: ['M'], projectiles: 15,
+            damagePerHit: 1, groupSize: 5, missileDefense: 'total-warfare' };
+        const streak: WeaponAttackProfile = { ...lrm, name: 'Streak SRM 6', componentId: 'mount:streak' as ComponentId,
+            projectiles: 6, damagePerHit: 2, groupSize: 2, streak: true, allHit: true, lockRequired: true };
+        const { dialog, result } = createAttackDialog([cannon, lrm, lrm, { ...cannon, adjacentShelter: undefined }, streak],
+            'total-warfare', false, null, { unitType: 'vehicle' });
+        for (const [weapon, total] of [3, 10, 3, 3, 3].entries()) {
+            dialog['setRoll'](0, { weapon, roll: 'to-hit', total });
+        }
+        for (const weapon of [1, 2]) dialog['setRoll'](0, { weapon, roll: 'cluster', total: 7 });
+        dialog['send']();
+        const event = parseGameEvent({ kind: 'attack', id: 'tank', fromForce: 'sender', fromUnit: 'gunner',
+            attacker: 'Gunner', turn: 1, ...result().deliveries[0] });
+        if (event?.kind !== 'attack') return fail('Expected a valid attack packet');
+        expect(event.weapons.map(weapon => weapon.strayBuildingDamage ?? 0)).toEqual([10, 0, 9, 0, 0]);
+        expect(event.weapons.map(weapon => weapon.groups.map(group => group.damage))).toEqual([[], [1, 0], [], [], []]);
+        expect(event.weapons[1].groups.map(group => group.buildingDamage)).toEqual([4, 4]);
+        expect(event.weapons[1].cluster?.hits).toBe(9);
+        expect(result().noLock).toEqual([streak.componentId!]);
+
+        dialog['recordOnTable'](0);
+        dialog['confirmManualDefense'](0, 1, 0);
+        const report = dialog['targets']()[0];
+        expect(report.weapons.map(weapon => weapon.buildingDamage)).toEqual([10, 8, 9, 0, 0]);
+        expect(report.damage).toBe(1);
+        dialog['send']();
+        const buildingHits = result().deliveries;
+        expect(buildingHits.map(hit => hit.toUnit)).toEqual([shelter.unitId, shelter.unitId, shelter.unitId]);
+        expect(buildingHits.map(hit => hit.weapons[0].groups[0].damage)).toEqual([10, 8, 9]);
+    });
+
+    it('edits the three plasma cannon damage dice for the building when the shot misses a heat-tracking occupant', () => {
+        const plasma: WeaponAttackProfile = { ...INSULATED_LASER, name: 'Plasma Cannon', insulated: undefined,
+            damagePerHit: 0, types: ['H'], adjacentShelter: 'missed-attack', buildingCover: true, buildingAbsorption: 4,
+            heatWeapon: { weapon: { kind: 'plasma-cannon' }, mode: 'both', ruleset: 'total-warfare',
+                target: { tracksHeat: true, fireResistant: false } } };
+        const { fixture, dialog, result } = createAttackDialog([plasma], 'total-warfare', false, null, { unitType: 'aero' });
+        const host = fixture.nativeElement as HTMLElement;
+        const select = (label: string) => host.querySelector<HTMLSelectElement>(`select[aria-label="Set Plasma Cannon ${label} roll"]`);
+        const choose = (control: HTMLSelectElement, total: number) => {
+            control.value = String(total);
+            control.dispatchEvent(new Event('change'));
+            fixture.detectChanges();
+        };
+        fixture.detectChanges();
+        choose(select('to-hit')!, 3);
+        const wallDice = select('building damage');
+        if (!wallDice) return fail('Expected editable building damage dice for the missed plasma cannon');
+        expect(Array.from(wallDice.options, option => Number(option.value))).toEqual(Array.from({ length: 16 }, (_, i) => i + 3));
+        choose(wallDice, 17);
+        expect(dialog['targets']()[0].weapons[0].buildingDamage).toBe(17);
+        dialog['send']();
+        const miss = result().deliveries[0].weapons[0];
+        expect(miss.strayBuildingDamage).toBe(17);
+        expect(miss.heat).toBeUndefined();
+        expect(miss.groups).toEqual([]);
+
+        choose(select('to-hit')!, 10);
+        expect(select('building damage')).toBeNull();
+        const heatDice = select('heat')!;
+        expect(heatDice.options[heatDice.options.length - 1].value).toBe('12');
+        choose(heatDice, 8);
+        dialog['send']();
+        const hit = result().deliveries[0].weapons[0];
+        expect(hit.heat).toBe(8);
+        expect(hit.strayBuildingDamage).toBeUndefined();
     });
 
     it('shows and delivers the split between CF and occupant, including a covered leg', () => {

@@ -529,7 +529,7 @@ export class AttackResolutionService {
             profiles.set(target.targetId, [...profiles.get(target.targetId) ?? [], {
                 ...absorption, infantryInOpen,
                 ...(adjacentShelter ? { adjacentShelter: (targeting.unitType ?? 'mek-biped').startsWith('mek-')
-                    ? 'all-misses' as const : 'cluster-misses' as const } : {}),
+                    ? 'all-misses' as const : 'missed-attack' as const } : {}),
                 ...(adjacentBuilding ? { automaticBuildingHit: true as const, targetNumber: 2, allHit: true } : {}),
                 ...(targeting.tnCalculator?.buildingCover && (partialCover || protectedCf || adjacentShelter)
                     ? { buildingCover: true as const, shelteringBuilding: shelter } : {}),
