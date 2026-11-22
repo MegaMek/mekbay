@@ -92,6 +92,7 @@ entityWeaponTechBasesForAmmo,
 weaponAcceptsAmmo,
 type AmmoLoadout,
 } from './mek-ammo';
+import { canSpotWithoutTag } from './non-mek-airborne-state';
 import type { NonMekRuntimeIndex } from './non-mek-runtime-index';
 import {
 effectiveNonMekComponentMode,
@@ -219,8 +220,9 @@ export function effectiveSwarming(
     return target?.readOnly === true && target.calculator?.swarmed !== true ? null : state.swarming;
 }
 
-function spottingModifiers(state: NonMekUnitRuntimeState): readonly ToHitModifierBreakdownEntry[] {
-    return state.turn.spotting === true ? [{ label: 'Spotting', modifier: 1 }] : [];
+function spottingModifiers(entity: BaseEntity, state: NonMekUnitRuntimeState): readonly ToHitModifierBreakdownEntry[] {
+    return state.turn.spotting === true && canSpotWithoutTag(entity, state.turn.airborne)
+        ? [{ label: 'Spotting', modifier: 1 }] : [];
 }
 
 /** Troopers still fighting: a platoon's strength, or the battle armor suits not destroyed. */
@@ -288,7 +290,7 @@ function projectAntiMekAttacks(
         const modifier = antiMekTrooperModifier(attack, battleArmor, troopers);
         return modifier === null ? null : [
             Object.freeze({ label: 'Troopers', modifier }),
-            ...spottingModifiers(state),
+            ...spottingModifiers(entity, state),
             ...(attack === 'swarm' && entity.equipment().some(mount => isMagnetClawEquipment(mount.equipment))
                 ? [Object.freeze({ label: 'Magnetic Claws', modifier: SWARM_MAGNETIC_CLAW_MODIFIER })] : []),
         ];
@@ -450,7 +452,7 @@ function projectComponent(
     const selectedAmmo = targetSubject?.selectedAmmo ?? null;
     const ammoProfile = resolveAmmoWeaponProfile(selectedAmmo);
     const stateModifiers = Object.freeze([
-        ...spottingModifiers(state),
+        ...spottingModifiers(entity, state),
         ...(aeroRules?.modifiers.ranged ?? []),
         ...(protoMekRules === null ? [] : protoMekCriticalModifiers(protoMekRules.criticalHits, mount.getOccupiedLocations())),
         ...(vehicleRules === null ? [] : [
@@ -825,7 +827,7 @@ function projectProtoMekFrenzy(
             targetingComputerWeapon: null,
             targetingComputer: null,
         }),
-        stateModifiers: spottingModifiers(state),
+        stateModifiers: spottingModifiers(entity, state),
     });
     const hitModifiers: EntityWeaponHitModifier[] = resolution.value === 'Vs'
         ? ['versus']
@@ -878,7 +880,7 @@ function projectVehicleCharge(
             targetingComputerWeapon: null,
             targetingComputer: null,
         }),
-        stateModifiers: [...rules.modifiers.physical, ...spottingModifiers(state)],
+        stateModifiers: [...rules.modifiers.physical, ...spottingModifiers(entity, state)],
     });
     const hitModifiers: EntityWeaponHitModifier[] = resolution.value === 'Vs'
         ? ['versus']

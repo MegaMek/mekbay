@@ -38,7 +38,7 @@ import type { MekMovementModeV2 } from '../../../models/runtime/mek-movement-psr
 import {
 isMekTurnPanelDirty,
 } from '../../../models/runtime/mek-turn-panel';
-import { canSwitchNonMekAirGroundState } from '../../../models/runtime/non-mek-airborne-state';
+import { canSpotWithoutTag, canSwitchNonMekAirGroundState } from '../../../models/runtime/non-mek-airborne-state';
 import {
 hasNonMekAirborneTurnSelection,
 hasPendingNonMekChanges,
@@ -549,6 +549,10 @@ export abstract class TurnTrackerControls {
         return this.entityMovementCapabilities()?.canTakeActiveActions === true
             && this.entitySnapshot()?.state.turn.movement?.mode !== 'sprint';
     });
+    readonly canSpotNormally = computed(() => {
+        const snapshot = this.entitySnapshot();
+        return this.canSpot() && (!snapshot || canSpotWithoutTag(snapshot.entity, snapshot.state.turn.airborne));
+    });
     readonly equipmentTrackControlRows = computed<readonly EquipmentTrackControlRow[]>(() => {
         this.forceRuntimeVersion();
         const member = this.member();
@@ -664,7 +668,7 @@ export abstract class TurnTrackerControls {
 
     toggleSpotting(mode: true | 'tag' = true): void {
         const runtime = this.runtime();
-        if (!this.canSpot()) return;
+        if (!this.canSpot() || (mode === true && !this.canSpotNormally() && this.spotting() !== true)) return;
         if (mode === 'tag' && this.spotting() !== 'tag' && this.installedTag()?.unavailable !== false) return;
         if (runtime) {
             void runtime.toggleSpotting(mode);

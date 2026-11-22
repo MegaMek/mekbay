@@ -90,6 +90,25 @@ describe('Entity equipment panel projection', () => {
         });
     }
 
+    it('requires TAG for aerospace spotters except a grounded spheroid DropShip', () => {
+        const fighter = new TestAeroSpaceFighterEntity();
+        const dropship = new TestDropShipEntity();
+        dropship.motiveType.set('Spheroid');
+        for (const entity of [fighter, dropship]) {
+            entity.uuid.set(UUID);
+            addTestEquipmentWithFlags(entity, 'F_TAG', { location: entity.locationOrder[0] });
+            entity.structuralIntegrity.set(8);
+            const runtime = createNonMekRuntimeForTest('unit:aero-spotter',
+                { ...baseline(), ruleset: TOTAL_WARFARE_RULESET }, entity, TOTAL_WARFARE_RULESET);
+            expect(runtime.dispatch({ type: 'set-airborne', airborne: false }).accepted).toBeTrue();
+            expect(runtime.dispatch({ type: 'set-spotting', spotting: true }).changed).toBe(entity === dropship);
+            expect(runtime.dispatch({ type: 'set-airborne', airborne: true }).accepted).toBeTrue();
+            expect(runtime.snapshot().turn.spotting).toBeFalse();
+            expect(runtime.dispatch({ type: 'set-spotting', spotting: true }).changed).toBeFalse();
+            expect(runtime.dispatch({ type: 'set-spotting', spotting: 'tag' }).changed).toBeTrue();
+        }
+    });
+
     it('passes linked Artemis support to vehicle ammo selection', () => {
         const weapon = new WeaponEquipment({
             id: 'LRM 15', name: 'LRM 15', type: 'weapon', flags: ['F_ARTEMIS_COMPATIBLE'],

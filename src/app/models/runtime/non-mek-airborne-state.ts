@@ -42,6 +42,11 @@ export function nonMekFliesAtElevation(entity: BaseEntity): boolean {
     return nonMekAirGroundCapability(entity) === 'switchable' && !isAeroEntity(entity);
 }
 
+/** TW p. 111: an aerospace unit needs a successful TAG hit unless it is a grounded spheroid DropShip. */
+export function canSpotWithoutTag(entity: BaseEntity, airborne: boolean | null): boolean {
+    return !isAeroEntity(entity) || (entity.entityType === 'DropShip' && entity.motiveType() === 'Spheroid' && airborne === false);
+}
+
 /** Whether grounded versus airborne is a meaningful per-turn user choice. */
 export function canSwitchNonMekAirGroundState(entity: BaseEntity): boolean {
     return nonMekAirGroundCapability(entity) === 'switchable';

@@ -178,7 +178,7 @@
                 class="bt-button spotting-button"
                 [class.selected]="spotting() === true"
                 [attr.aria-pressed]="spotting() === true"
-                [disabled]="!canSpot()"
+                [disabled]="!canSpot() || (!canSpotNormally() && spotting() !== true)"
                 (click)="toggleSpotting()"
             >
                 <span>Spotting</span>

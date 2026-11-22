@@ -86,7 +86,7 @@ import { rapidFireAutocannonShotCount,rapidFireAutocannonSupportsJamming } from 
 import type { EndTurnCheckpoint } from './end-turn-checkpoint';
 import type { EquipmentChoiceSurface,EquipmentInteractionChoice } from './equipment-interaction';
 import { elevationAt,elevationRecordEntryIssue,withElevationRecordValue,type ElevationRecordEntry } from '../elevation-record.model';
-import { canonicalNonMekAirborneState,canSwitchNonMekAirGroundState,nonMekFliesAtElevation,projectedNonMekAirGroundCondition } from './non-mek-airborne-state';
+import { canonicalNonMekAirborneState,canSpotWithoutTag,canSwitchNonMekAirGroundState,nonMekFliesAtElevation,projectedNonMekAirGroundCondition } from './non-mek-airborne-state';
 import { applyWeaponTargetPolicies,reconcileWeaponTargetPolicies,type WeaponTargetSubject,type WeaponTargetSubjectResolver } from './weapon-target-policy';
 import { componentIdForMount } from './unit-runtime-index';
 import type { BoundOptionalRules } from './bound-optional-rules';
@@ -1853,6 +1853,7 @@ function reduceNonMekUnitState(
                 turn: Object.freeze({
                     ...state.turn,
                     airborne: command.airborne,
+                    ...(state.turn.spotting === true && !canSpotWithoutTag(entity, command.airborne) ? { spotting: false } : {}),
                     movement: null,
                     phaseStateChanged: true,
                 }),
@@ -1951,6 +1952,7 @@ function reduceNonMekUnitState(
             break;
         case 'set-spotting': {
             if ((typeof command.spotting !== 'boolean' && command.spotting !== 'tag')
+                || (command.spotting === true && !canSpotWithoutTag(entity, state.turn.airborne))
                 || (command.spotting && state.turn.movement?.mode === 'sprint')
                 || (command.spotting
                     && !canNonMekTakeActiveActions(entity, index, state, ruleset, crewAssignment))) {
