@@ -52,7 +52,7 @@ import { projectVehicleRuntimeRules,type VehicleRuntimeRulesProjection } from '.
 import { type SpottingMode,getDefaultAttackerMovementModifier,getTargetMovementBracketForDistance,getTargetUnitTypeModifier,TN_AIRBORNE_MOVE_TYPE_MODIFIER,TN_IMMOBILE,TN_SKIDDING_MODIFIER } from '../target-number-calculator.model';
 import { conditionsCarriedIntoNextTurn,isUnitConditionKey,type UnitConditionKey } from '../unit-condition.model';
 import { isUnitCover,isUnitWaterDepth,type UnitCover } from '../unit-cover.model';
-import { createPristineAttackerTargetingState,freezeAttackerTargetingState,MAX_ATTACKER_TARGETING_COMPONENTS,reconcileAttackerTargetingState,reduceAttackerTargetingCommand,type AttackerAmmoSelection,type AttackerTargetingValidationContext } from './attacker-targeting-state';
+import { createPristineAttackerTargetingState,expireSpotterTagDesignations,freezeAttackerTargetingState,MAX_ATTACKER_TARGETING_COMPONENTS,reconcileAttackerTargetingState,reduceAttackerTargetingCommand,type AttackerAmmoSelection,type AttackerTargetingValidationContext } from './attacker-targeting-state';
 import { projectComponentLocationStatuses,type ComponentStatusProjection } from './component-status-projection';
 import type { TargetRegistrySnapshot } from './encounter-runtime';
 import { ammoSourceFeedsWeapon,entityAmmoDefaultMunitionKey,entityAmmoLoadout,entityAmmoLoadouts,weaponAcceptsAmmo,type AmmoLoadout } from './mek-ammo';
@@ -2057,6 +2057,9 @@ function reduceNonMekUnitState(
         }
     }
     if (candidate === state) return null;
+    if (command.type === 'reset-turn-state' || candidate.turn.turnCounter !== state.turn.turnCounter) {
+        candidate = { ...candidate, attackerTargeting: expireSpotterTagDesignations(candidate.attackerTargeting) };
+    }
     return freezeNonMekUnitState({ ...candidate, stateRevision: nextRevision(state.stateRevision) });
 }
 

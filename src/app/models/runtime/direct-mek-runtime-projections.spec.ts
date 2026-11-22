@@ -1147,8 +1147,18 @@ describe('direct Mek entity/runtime projections', () => {
             expect(spotted.physicalAttacks.map(attack => attack.hitModifiers))
                 .toEqual(unmodified.physicalAttacks.map(attack => attack.hitModifiers));
             expect(instance.serialize().turn?.spotting).toBe('tag');
+            const targetId = asEncounterTargetId('target:tag-spot');
+            const registry = { revision: 0, targets: [{ id: targetId, letter: 'A', name: 'Building', color: '#123456' }] };
+            expect(instance.dispatchAttackerTargeting({
+                type: 'edit-attacker-targeting',
+                edit: { kind: 'set-target-facts', targetId, facts: { distance: 6,
+                    calculator: { indirectFire: true, spotterDeclaredAttacks: 'tag' } } },
+            }, registry, false).changed).toBeTrue();
             expect(instance.dispatch({ type: 'end-turn', policy: 'automatic' }).accepted).toBeTrue();
             expect(instance.serialize().turn?.spotting).toBeUndefined();
+            expect(instance.query().attackerTargetingState().targets.get(targetId)).toEqual({
+                distance: 6, calculator: { indirectFire: true, spotterDeclaredAttacks: true },
+            });
         });
     }
 

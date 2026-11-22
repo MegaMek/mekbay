@@ -253,6 +253,20 @@ export function createPristineAttackerTargetingState(): AttackerTargetingState {
     });
 }
 
+/** TAG expires at the turn boundary. Keep the attacker's ordinary targeting inputs. */
+export function expireSpotterTagDesignations(state: AttackerTargetingState): AttackerTargetingState {
+    let targets: Map<EncounterTargetId, AttackerLocalTargetState> | undefined;
+    for (const [id, facts] of state.targets) {
+        if (facts.calculator?.spotterDeclaredAttacks !== 'tag') continue;
+        targets ??= new Map(state.targets);
+        targets.set(id, Object.freeze({
+            ...facts,
+            calculator: Object.freeze({ ...facts.calculator, spotterDeclaredAttacks: true }),
+        }));
+    }
+    return targets ? Object.freeze({ ...state, targets: new ImmutableIndex(targets) }) : state;
+}
+
 /** Copies, canonicalizes, sorts, and deeply freezes the complete state. */
 export function freezeAttackerTargetingState(
     state: AttackerTargetingState,

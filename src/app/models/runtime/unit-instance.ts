@@ -38,7 +38,7 @@ import { activeStealthHeatComponents,getActiveStealthTnModifiers,hasFunctionalEc
 import type { TnStealthModifiers } from '../target-number-calculator.model';
 import { conditionsCarriedIntoNextTurn,isUnitConditionKey,type UnitConditionKey } from '../unit-condition.model';
 import { VIBROBLADE_ON_MODE } from '../vibroblade-mode.model';
-import { createPristineAttackerTargetingState,reconcileAttackerTargetingState,reduceAttackerTargetingCommand,type AttackerTargetingValidationContext } from './attacker-targeting-state';
+import { createPristineAttackerTargetingState,expireSpotterTagDesignations,reconcileAttackerTargetingState,reduceAttackerTargetingCommand,type AttackerTargetingValidationContext } from './attacker-targeting-state';
 import { BOMBAST_LASER_CHARGED_STATE,BOMBAST_LASER_CHARGING_STATE,isCoreBombastLaserComponent } from './component-bombast-laser';
 import { BOOBY_TRAP_ARMED_MODE,BOOBY_TRAP_DETONATED_MODE,isBoobyTrapDetonated } from './component-booby-trap';
 import { isC3EmergencyMasterComponent } from './component-c3-emergency-master';
@@ -2251,6 +2251,9 @@ function reduce(
     // checks and settles resolved evidence atomically.
     if (!changed && movementBoundaryNeedsEvaluation(state, command.type)) changed = state;
     if (!changed) return unchanged(state);
+    if (command.type === 'reset-turn-state' || changed.turn.turnCounter !== state.turn.turnCounter) {
+        changed = { ...changed, attackerTargeting: expireSpotterTagDesignations(changed.attackerTargeting) };
+    }
     const ruleCheckReconciliation = reconcileMekRuleChecksContextV2(
         mechanicsContext,
         entity,

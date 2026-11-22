@@ -85,8 +85,19 @@ describe('Entity equipment panel projection', () => {
             };
             expect(spottingPenalty(true)).toEqual([1, 1]);
             expect(spottingPenalty('tag')).toEqual([0, 0]);
+            const targetId = asEncounterTargetId('target:vehicle-tag-spot');
+            const registry = { revision: 0, targets: [{ id: targetId, letter: 'A', name: 'Target', color: '#123456' }] };
+            expect(runtime.dispatchAttackerTargeting({
+                type: 'edit-attacker-targeting',
+                edit: { kind: 'set-target-facts', targetId, facts: { calculator: {
+                    indirectFire: true, spotterDeclaredAttacks: 'tag',
+                } } },
+            }, registry, false).changed).toBeTrue();
             expect(runtime.dispatch({ type: 'end-turn', policy: 'manual' }).accepted).toBeTrue();
             expect(runtime.snapshot().turn.spotting).toBeFalse();
+            expect(runtime.snapshot().attackerTargeting.targets.get(targetId)?.calculator).toEqual({
+                indirectFire: true, spotterDeclaredAttacks: true,
+            });
         });
     }
 

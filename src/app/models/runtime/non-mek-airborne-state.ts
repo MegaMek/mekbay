@@ -44,7 +44,8 @@ export function nonMekFliesAtElevation(entity: BaseEntity): boolean {
 
 /** TW p. 111: an aerospace unit needs a successful TAG hit unless it is a grounded spheroid DropShip. */
 export function canSpotWithoutTag(entity: BaseEntity, airborne: boolean | null): boolean {
-    return !isAeroEntity(entity) || (entity.entityType === 'DropShip' && entity.motiveType() === 'Spheroid' && airborne === false);
+    return !isAeroEntity(entity)
+        || (entity.entityType === 'DropShip' && entity.motiveType() === 'Spheroid' && airborne === false);
 }
 
 /** Whether grounded versus airborne is a meaningful per-turn user choice. */
