@@ -11,6 +11,7 @@ import { systemDamageId } from '../models/rules/system-damage-rules';
 import type { CBTForceUnitCommandResult } from '../models/cbt-force.types';
 import { CORE_2026_RULESET } from '../models/cbt-ruleset.model';
 import type { CBTUnitSnapshot } from '../models/cbt-unit-snapshot';
+import { MountedEngine } from '../models/entity/components/engine';
 import { TestAeroSpaceFighterEntity, TestBattleArmorEntity, TestTankEntity, TestVtolEntity } from '../models/entity/testing/test-entities';
 import { createTestEquipmentRegistry } from '../models/entity/testing/test-equipment-registry';
 import {
@@ -124,18 +125,26 @@ describe('DirectNonMekAutomationService', () => {
 
     it('applies the TW fuel tank errata to actual tank and VTOL power plants', async () => {
         spyOn(Math, 'random').and.returnValue(0.99); // A roll of 12 on each side critical table.
+        const powerPlants = [
+            { type: 'ICE', installed: true, result: 'fuel-tank' },
+            { type: 'Fuel Cell', installed: true, result: 'fuel-tank' },
+            { type: 'Fission', installed: true, result: 'engine' },
+            { type: 'Fusion', installed: true, result: 'engine' },
+            { type: 'Fuel Cell', installed: false, result: null },
+        ] as const;
         for (const Vehicle of [TestTankEntity, TestVtolEntity]) {
-            for (const engine of ['ICE', 'Fuel Cell', 'Fission', 'Fusion'] as const) {
+            for (const { type, installed, result } of powerPlants) {
                 const design = new Vehicle();
-                design.mountedEngine().type.set(engine);
+                design.mountedEngine.set(new MountedEngine({ type, installed, rating: 100, techBase: 'IS' }));
+                const context = `${design.entityType} ${type} (installed: ${installed})`;
                 const unit = vehicle(design);
                 const hit = { locationId: unit.location('Left').id, arc: 'left' as const, damage: 1,
                     effects: ['critical' as const], source: { kind: 'weapon' as const, types: [] } };
                 expect(await service.applyWeaponHits(unit.force, 'vehicle', [hit], 'committed', unit.dispatch)).toBeTrue();
-                const fuel = engine === 'ICE' || engine === 'Fuel Cell';
-                expect(unit.runtime.snapshot().damageTracks.has(systemDamageId('fuel-tank', 1))).withContext(design.entityType + ' ' + engine).toBe(fuel);
-                expect(unit.runtime.snapshot().damageTracks.has(systemDamageId('engine', 1))).withContext(design.entityType + ' ' + engine).toBe(!fuel);
-                expect(unit.runtime.query().destroyed()).withContext(design.entityType + ' ' + engine).toBe(fuel);
+                const tracks = unit.runtime.snapshot().damageTracks;
+                expect(tracks.has(systemDamageId('fuel-tank', 1))).withContext(context).toBe(result === 'fuel-tank');
+                expect(tracks.has(systemDamageId('engine', 1))).withContext(context).toBe(result === 'engine');
+                expect(unit.runtime.query().destroyed()).withContext(context).toBe(result === 'fuel-tank');
             }
         }
     });

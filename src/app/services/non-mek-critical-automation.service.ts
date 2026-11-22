@@ -872,6 +872,7 @@ function vehicleCriticalFacts(
     perspective: RuntimeStatePerspective,
 ): VehicleCriticalFacts {
     const vtol = snapshot.entity.unitType() === 'VTOL';
+    const engine = snapshot.entity.mountedEngine();
     const hit = (system: SystemDamageKind, stage?: number, scope?: string) =>
         trackHits(snapshot, systemDamageId(system, stage, scope), perspective) > 0;
     let sensorHits = 0;
@@ -886,8 +887,7 @@ function vehicleCriticalFacts(
         stabilizerHit: hit('stabilizer', undefined, location.code),
         sensorHits,
         engineHit: hit('engine', 1),
-        fusionEngine: snapshot.entity.mountedEngine().isFusion,
-        fissionEngine: snapshot.entity.mountedEngine().isFission,
+        powerSource: engine.installed ? engine.powerSource : 'none',
         hasAmmo: ammunition(snapshot, perspective).length > 0,
         turretLocked: hit('engine', 1) || hit('turret-lock', undefined, location.code),
         turretJammedBefore: hit('turret-jam', undefined, location.code),

@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 
 import type { EquipmentStatus } from '../equipment-status.model';
+import type { EnginePowerSource } from '../entity/components/engine-data';
 import type { VehicleMotiveType } from '../entity/types/motive';
 import type { NonMekHitArc } from '../runtime/non-mek-hit-location';
 
@@ -57,8 +58,7 @@ export interface VehicleCriticalFacts {
     readonly stabilizerHit: boolean;
     readonly sensorHits: number;
     readonly engineHit: boolean;
-    readonly fusionEngine: boolean;
-    readonly fissionEngine?: boolean;
+    readonly powerSource: EnginePowerSource;
     readonly hasAmmo: boolean;
     readonly hasInternalLoad?: boolean;
     readonly turretLocked: boolean;
@@ -122,9 +122,14 @@ export function applicableVehicleCriticalEffect(
         case 'sensors':
             return facts.sensorHits < 4 ? effect : null;
         case 'engine-hit':
-            return facts.engineHit ? null : effect;
+            return facts.engineHit || facts.powerSource === 'none' ? null : effect;
         case 'fuel-tank':
-            return facts.fusionEngine || facts.fissionEngine ? applicableVehicleCriticalEffect('engine-hit', facts) : effect;
+            // TW pp. 195, 197–198 (v12.0 PRE errata). VTOLs use their own Fuel Tank rule.
+            if (facts.powerSource === 'none') return null;
+            if (facts.powerSource === 'fusion' || facts.powerSource === 'fission') {
+                return applicableVehicleCriticalEffect('engine-hit', facts);
+            }
+            return facts.vtol || facts.powerSource === 'combustion' || facts.powerSource === 'fuel-cell' ? effect : null;
         case 'ammunition':
             return facts.hasAmmo ? effect : applicableVehicleCriticalEffect('weapon-destroyed', facts);
         case 'cargo-hit':

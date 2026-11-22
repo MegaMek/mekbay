@@ -8,8 +8,10 @@ import type { CBTRuleset } from '../models/cbt-ruleset.model';
 import { StaticEmplacementEntity } from '../models/entity/entities/misc/static-emplacement-entity';
 import { buildingLocationName } from '../models/entity/types/building';
 import { MountedArmor } from '../models/entity/components/armor';
+import { MountedEngine } from '../models/entity/components/engine';
+import type { VehicleEntity } from '../models/entity/entities/vehicle/vehicle-entity';
 import type { LocationId } from '../models/entity/entity-identifiers';
-import { TestAeroSpaceFighterEntity, TestDropShipEntity, TestInfantryEntity, TestProtoMekEntity, TestTankEntity } from '../models/entity/testing/test-entities';
+import { TestAeroSpaceFighterEntity, TestDropShipEntity, TestInfantryEntity, TestProtoMekEntity, TestSupportTankEntity, TestSupportVtolEntity, TestTankEntity } from '../models/entity/testing/test-entities';
 import { createTestEquipmentRegistry } from '../models/entity/testing/test-equipment-registry';
 import { addTestEquipment, addTestEquipmentWithFlags } from '../models/entity/testing/test-mounted-equipment';
 import type { ArmorType } from '../models/entity/types';
@@ -71,7 +73,6 @@ describe('NonMekCriticalAutomationService', () => {
             flags: ['F_AC', 'F_BALLISTIC', 'F_DIRECT_FIRE'], stats: { explosive: true, criticalSlots: 4 },
             weapon: { ammoType: 'AC', rackSize: 5, damage: '5', ranges: [3, 6, 12], explosionDamage: 5 } });
         const entity = new TestTankEntity(createTestEquipmentRegistry({ [ammo.id]: ammo, [autocannon.id]: autocannon }));
-        entity.uuid.set(UUID);
         entity.setTonnage(caseFlag ? 200 : 20);
         if (troopBay) entity.transporters.set([{ id: 'hold', kind: 'troop-space', totalSpace: 10, omni: false }]);
         if (caseFlag) {
@@ -85,6 +86,11 @@ describe('NonMekCriticalAutomationService', () => {
         for (const location of entity.locationOrder) entity.setArmorValue(location, 'front', caseFlag ? 20 : 10);
         const ammoId = withAmmo ? componentIdForMount(addTestEquipment(entity, ammo, { location: 'Rear', shotsCount: caseFlag ? 20 : 2 })) : null;
         const acId = withAutocannon ? componentIdForMount(addTestEquipment(entity, autocannon, { location: 'Rear' })) : null;
+        return { ...vehicleRuntime(entity, ruleset), ammoId, acId };
+    }
+
+    function vehicleRuntime<T extends VehicleEntity>(entity: T, ruleset: CBTRuleset) {
+        entity.uuid.set(UUID);
         const runtime = createNonMekUnit(entity, { instanceId: 'critical-tank', uuid: UUID,
             scenario: { id: 'megamek', ruleset, options: {} }, deployment: { id: 'default' }, initialStateProfileId: 'pristine' });
         const force = { getUnitSnapshot: () => ({ instanceId: runtime.instanceId, entity,
@@ -96,7 +102,7 @@ describe('NonMekCriticalAutomationService', () => {
             service.applyWeaponHits(force, runtime.instanceId, groups, target,
                 async (command: CBTUnitCommand) => runtime.dispatch(command));
         const hits = (id: ReturnType<typeof systemDamageId>) => runtime.snapshot().damageTracks.get(id)?.hits ?? 0;
-        return { entity, runtime, force, location, apply, hits, ammoId, acId };
+        return { entity, runtime, force, location, apply, hits };
     }
 
     /** A 5-ton ProtoMech with `armor` on the left arm, a torso laser filling die faces 1-2 of torso critical weapon rolls. */
@@ -184,6 +190,26 @@ describe('NonMekCriticalAutomationService', () => {
             unit.runtime.getIndex().locations.get(unit.location('Front'))!.internalPoints);
         expect(unit.hits(systemDamageId('sensors', 1))).toBe(1);
     });
+
+    for (const [Vehicle, result] of [[TestSupportTankEntity, 'engine'], [TestSupportVtolEntity, 'fuel-tank']] as const) {
+        it(`applies a battery-powered ${Vehicle.name} rear critical of 12 as ${result} when damage commits`, async () => {
+            const entity = new Vehicle();
+            entity.setTonnage(20);
+            entity.setArmorValue('Rear', 'front', 10);
+            entity.barRating.set(5);
+            entity.mountedEngine.set(new MountedEngine({ type: 'Battery', rating: 0, techBase: 'IS' }));
+            const unit = vehicleRuntime(entity, 'total-warfare');
+            const track = systemDamageId(result, 1);
+            rolls(6, 6);
+            expect(await unit.apply([group(unit.location('Rear'), 1, { effects: ['critical'] })], 'pending')).toBeTrue();
+            expect(Math.random).toHaveBeenCalledTimes(2);
+            expect(unit.hits(track)).toBe(0);
+            expect(unit.runtime.query().destroyed()).toBeFalse();
+            expect(unit.runtime.dispatch({ type: 'end-phase' }).accepted).toBeTrue();
+            expect(unit.hits(track)).toBe(1);
+            expect(unit.runtime.query().destroyed()).toBe(result === 'fuel-tank');
+        });
+    }
 
     it('rolls for the hit-location critical even when armor holds, and skips everything when automation is off', async () => {
         const unit = tank();
