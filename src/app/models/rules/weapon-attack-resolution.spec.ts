@@ -71,6 +71,21 @@ describe('weapon attack resolution', () => {
     const salvo = { componentId: weaponId, equipment: lrm15, mode: undefined, ammo: lrmAmmo, types: [],
         name: 'Salvo', targetNumber: 7, partialCover: false, damage: { values: [1], maximum: 15, unit: 'missile' as const } };
 
+    it('hits an adjacent TW building with a full rack even on a natural 2 and still checks weapon effects', () => {
+        const profile = weaponAttackProfile({ ...salvo, adjacentBuilding: true }, TW_GAME_RULES)!;
+        const shot = resolveWeaponAttack({ ...profile, jamRoll: 2 }, [1, 1], null);
+        expect(shot).toEqual(jasmine.objectContaining({ hit: true, hits: 15, groups: [5, 5, 5], jammed: true }));
+        expect(resolveWeaponAttack(weaponAttackProfile(salvo, TW_GAME_RULES)!, [1, 1], [1, 1]).hit).toBeFalse();
+    });
+
+    it('keeps the CF actually absorbed by each group for the owner of the building', () => {
+        const profile = weaponAttackProfile({ ...salvo, buildingCf: 38 }, TW_GAME_RULES)!;
+        const result = resolveWeaponAttack(profile, [4, 4], [1, 1]);
+        expect(result.groups).toEqual([1]);
+        expect(result.absorbed).toEqual([4]);
+        expect(resolveWeaponAttack({ ...profile, allHit: true, projectiles: 2 }, [4, 4], null).absorbed).toEqual([2]);
+    });
+
     it('rolls a Silver Bullet Gauss rack of 15 and locates every pellet separately', () => {
         const equipment = new WeaponEquipment({ id: 'ISSBGauss', name: 'SB Gauss', type: 'weapon',
             weapon: { damage: 15, ammoType: 'SBGAUSS', rackSize: 15 } });
@@ -363,6 +378,22 @@ describe('weapon attack resolution', () => {
         const profile = weaponAttackProfile({ componentId: weaponId, equipment: array, mode: undefined, damage: { values: [2], maximum: 8, unit: 'shot' }, ammo: null, types: [], name: 'MGA', targetNumber: 6, partialCover: false }, TW_GAME_RULES)!;
         // Roll 7 on the 4 column: 3 guns hit.
         expect(resolveWeaponAttack(profile, [4, 4], [3, 4])).toEqual({ hit: true, jammed: false, hits: 3, groups: [2, 2, 2], heat: 0 });
+    });
+
+    it('fires airborne rapid autocannons at maximum rate even in single-shot mode (TW p. 238)', () => {
+        for (const [ammoType, maximum, threshold] of [['AC_ULTRA', 2, 2], ['AC_ROTARY', 6, 4]] as const) {
+            const gun = new WeaponEquipment({ id: ammoType, name: ammoType, type: 'weapon', flags: ['F_AC'],
+                weapon: { damage: 5, ammoType }, modes: ['Single', 'Double'] });
+            const facts = { ...salvo, equipment: gun, mode: 'Single', types: ['DB'] as const,
+                damage: { values: [5], maximum: 5 }, aerospaceFiringRate: true };
+            const groundTarget = weaponAttackProfile(facts, TW_GAME_RULES)!;
+            const airTarget = weaponAttackProfile({ ...facts, aerospace: { attackValue: 7, scale: 1,
+                grouping: 'single', heatWeapons: [] } }, TW_GAME_RULES)!;
+            expect(groundTarget.projectiles).toBe(maximum);
+            expect(airTarget.jamRoll).toBe(threshold);
+            expect(resolveWeaponAttack(airTarget, [1, threshold - 1], null).jammed).toBeTrue();
+            expect(resolveWeaponAttack(airTarget, [1, threshold], null).jammed).toBeFalse();
+        }
     });
 
     it('jams rapid-firing autocannons on low to-hit rolls, by ruleset', () => {

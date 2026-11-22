@@ -4,6 +4,8 @@
 import { UnitNameService } from './unit-name.service';
 import { forceOpforTargetId } from '../models/runtime/cbt-force-target-roster';
 import { DestroyRef, effect, inject, Injectable, Injector, type EffectRef, type Signal, untracked } from '@angular/core';
+import { StaticEmplacementEntity } from '../models/entity/entities/misc/static-emplacement-entity';
+import { parseBuildingLocation } from '../models/entity/types/building';
 import { CBTForce } from '../models/cbt-force.model';
 import { hasNonMekRuntime } from '../models/cbt-unit-snapshot';
 import type { InventoryControlTargetRosterRow } from '../models/cbt-force.types';
@@ -54,6 +56,34 @@ export class InventoryControlOpforService {
     targetName(targetId: string, fallback: string): string {
         const target = this.resolveOpforTarget(targetId);
         return target ? this.unitNames.name(target.member.entity) : fallback;
+    }
+
+    /** Floors available as cover. TW uses committed hex CF for the duration of the phase (p. 171). */
+    buildingFloors() {
+        return this.loadedForces().flatMap(({ force }) => {
+            const forceId = force.instanceId();
+            if (!(force instanceof CBTForce) || !forceId) return [];
+            return force.getCBTMembers().flatMap(member => {
+                if (!(member.entity instanceof StaticEmplacementEntity)) return [];
+                const building = member.entity;
+                const floors = member.nonMekRecordSheetSnapshot()?.locations ?? [];
+                const cfByHex = new Map<string, number>();
+                for (const floor of floors) {
+                    const hex = parseBuildingLocation(floor.code)?.hex;
+                    if (!hex) continue;
+                    const key = hex.q + ',' + hex.r;
+                    cfByHex.set(key, Math.min(cfByHex.get(key) ?? Infinity, floor.remainingInternal));
+                }
+                return floors.flatMap(floor => {
+                    const entry = parseBuildingLocation(floor.code);
+                    if (!entry) return [];
+                    return [{ ref: { forceId, unitId: member.id, location: floor.code },
+                        label: this.unitNames.name(building) + ' · ' + floor.code,
+                        cf: cfByHex.get(entry.hex.q + ',' + entry.hex.r)!,
+                        levelsBelowRoof: building.hexHeight(entry.hex) - entry.floor }];
+                });
+            });
+        });
     }
 
     /** The loaded unit an OPFOR target stands for, if its force is open here. */

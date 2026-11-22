@@ -207,6 +207,8 @@ export interface TnTargetNumberCalculatorState {
     waterDepth?: UnitWaterDepth;
     buildingCover?: UnitBuildingLevel;
     buildingCf?: number;
+    levelsBelowRoof?: number;
+    shelteringBuilding?: import('./unit-cover.model').ShelteringBuilding;
     infantryBuildingType?: import('./rules/infantry-building-damage').InfantryBuildingType;
     insideTargetBuilding?: true;
     angelEcm?: boolean;
@@ -347,15 +349,21 @@ export function resolveTnTargetWaterState(
 }
 
 export function resolveTnTargetBuildingCoverState(
-    input: Pick<TnTargetNumberCalculatorState, 'buildingCover' | 'targetHeight' | 'largeTarget' | 'prone'> & { unitType?: TnTargetUnitType },
+    input: Pick<TnTargetNumberCalculatorState, 'buildingCover' | 'targetHeight' | 'largeTarget' | 'prone' | 'levelsBelowRoof'> & { unitType?: TnTargetUnitType },
+    rules: CBTGameRules = CORE_2026_GAME_RULES,
 ): UnitBuildingCoverState {
+    // TW p. 171: only a standing Mek immediately below the roof receives partial cover.
+    if (rules.id === 'total-warfare') {
+        return input.buildingCover && (input.levelsBelowRoof !== undefined ? input.levelsBelowRoof === 1 : input.buildingCover === 'building-1') && !input.prone && (input.unitType ?? 'mek-biped').startsWith('mek-')
+            ? { effect: 'partial', modifier: 1 } : { effect: 'none', modifier: 0 };
+    }
     return resolveUnitBuildingCoverState(
         input.buildingCover,
         resolveTnTargetHeight(input),
     );
 }
 
-function resolveTnTargetHeight(
+export function resolveTnTargetHeight(
     input: Pick<TnTargetNumberCalculatorState, 'targetHeight' | 'largeTarget' | 'prone'> & { unitType?: TnTargetUnitType },
 ): UnitHeight {
     const isMek = input.unitType?.startsWith('mek-') === true;
@@ -451,9 +459,8 @@ export function calculateTargetTnModifierBreakdown(
     const staticTarget = isStaticTargetType(input.unitType);
     const prone = input.prone ?? false;
     const waterState = resolveTnTargetWaterState(input);
-    const buildingCoverState = resolveTnTargetBuildingCoverState(input);
-    const interiorInfantry = gameRules.id === 'total-warfare' && input.insideTargetBuilding && input.buildingCover
-        && (input.unitType === 'infantry' || input.unitType === 'battle-armor');
+    const buildingCoverState = resolveTnTargetBuildingCoverState(input, gameRules);
+    const interior = gameRules.id === 'total-warfare' && input.insideTargetBuilding && input.buildingCover;
     const immobile = isTnTargetImmobile(input.unitType, input.immobile);
     const terrainTarget = isTerrainTargetType(input.unitType);
     const aerospaceTarget = input.unitType === 'aero';
@@ -498,13 +505,13 @@ export function calculateTargetTnModifierBreakdown(
             });
         }
     }
-    add('building-cover', interiorInfantry ? 'Interior building hexes and levels' : 'Heavy Cover (building)', interiorInfantry
+    add('building-cover', interior ? 'Interior building hexes and levels' : 'Heavy Cover (building)', interior
         ? interiorBuildingDistance(range, input.targetLevelDifference) : !staticTarget && buildingCoverState.effect === 'heavy' ? buildingCoverState.modifier : 0, {
             adjustmentGroup: 'terrain',
             ...(gameRules.narcIndirectFireIgnoresAllTerrain && { ignoredByNarcGuidance: true }),
             ignoredBySemiGuidedGuidance: true,
         });
-    const specialPartialCover = waterState.partiallyUnderwater || (!interiorInfantry && buildingCoverState.effect === 'partial');
+    const specialPartialCover = waterState.partiallyUnderwater || (!interior && buildingCoverState.effect === 'partial');
     const ordinaryPartialCoverAllowed = input.indirectFire
         ? gameRules.indirectFireUsesSpotterPartialCover
         : range > ADJACENT_RANGE;

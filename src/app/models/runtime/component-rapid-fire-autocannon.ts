@@ -58,6 +58,12 @@ export function rapidFireAutocannonJamRoll(
         : null;
 }
 
+/** TW pp. 238, 243: aerospace rapid fire always uses the highest firing rate. */
+export function aerospaceRapidFireShots(equipment: WeaponEquipment): number {
+    if (equipment.ammoType === 'AC_ROTARY') return 6;
+    return equipment.ammoType === 'AC_ULTRA' || equipment.ammoType === 'AC_ULTRA_THB' ? 2 : 1;
+}
+
 /** The jam control of one component in either runtime family; null when it cannot jam. */
 export function componentJamDefinition(
     componentId: ComponentId,

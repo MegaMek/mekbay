@@ -29,11 +29,15 @@ export interface AttackReportGroup {
 }
 
 export interface AttackReportWeapon {
+    readonly casualtyDice?: readonly number[];
+    readonly manualInfantry?: Readonly<{ mechanized: number; armorApplies?: boolean }>;
     readonly collateral?: Readonly<{ damage: number; troopers?: number }>;
     readonly name: string;
     readonly targetNumber: number;
     /** The attack hits without a to-hit roll (`physicalAttackAlwaysHits`). */
     readonly automaticHit?: true;
+    readonly rollForEffects?: true;
+    readonly buildingDamage?: number;
     readonly toHit: TwoDice;
     readonly hit: boolean;
     readonly capacitorBurnout?: true;
@@ -44,7 +48,7 @@ export interface AttackReportWeapon {
     /** Each group is one inferno missile rather than damage. */
     readonly inferno?: boolean;
     readonly narcPod?: boolean;
-    readonly amsDie?: number;
+    readonly amsDice?: readonly number[];
     /**
      * Outside heat a heat-causing weapon's hit applies, with the heat dice it read (none for a flamer); `reduced` when
      * armor or partial cover reduces the heat.
@@ -129,6 +133,8 @@ const CLUSTER_MODIFIERS = Object.freeze([-4, -3, -2, -1, 0, 1, 2, 3, 4]);
 export class AttackReportComponent {
     readonly weapons = input.required<readonly AttackReportWeapon[]>();
     readonly editable = input(false);
+    readonly concealed = input<readonly boolean[]>([]);
+    readonly locked = input<readonly boolean[]>([]);
 
     readonly rollSet = output<AttackReportRollEdit>();
     readonly clusterModifierSet = output<Readonly<{ weapon: number; modifier: number }>>();

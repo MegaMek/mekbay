@@ -20,12 +20,25 @@ import {
 import { CORE_2026_GAME_RULES, TW_GAME_RULES } from './rules/game-rules';
 
 describe('target number calculator rules profiles', () => {
-    it('counts only interior hexes and levels for a TW attack from inside the target infantry’s building', () => {
-        const target = { unitType: 'infantry' as const, buildingCover: 'building-1' as const, insideTargetBuilding: true as const };
-        for (const [range, diff, expected] of [[0, 0, 0], [1, 1, 2], [2, -1, 3]]) {
-            const entries = calculateTargetTnModifierBreakdown({ ...target, range, targetLevelDifference: diff }, TW_GAME_RULES);
-            expect(entries.find(m => m.id === 'building-cover')?.modifier ?? 0).toBe(expected);
-            expect(entries.some(m => m.id === 'partial-cover')).toBeFalse();
+    it('gives TW building partial cover only to a standing Mek one level below the roof', () => {
+        const input = { buildingCover: 'building-3' as const, range: 2, unitType: 'mek-biped' as const };
+        for (const [unitType, levelsBelowRoof, prone, expected] of [
+            ['vehicle', 1, false, 0], ['mek-biped', 3, false, 0], ['mek-biped', 1, false, 1], ['mek-biped', 1, true, 0],
+        ] as const) {
+            const modifiers = calculateTargetTnModifierBreakdown({ ...input, unitType, levelsBelowRoof, prone }, TW_GAME_RULES);
+            expect(modifiers.filter(m => m.id === 'building-cover' || m.id === 'partial-cover')
+                .reduce((sum, m) => sum + m.modifier, 0)).toBe(expected);
+        }
+    });
+
+    it('counts interior hexes and levels instead of exterior partial cover for units in the same TW building', () => {
+        for (const unitType of ['infantry', 'mek-biped', 'vehicle'] as const) {
+            const target = { unitType, buildingCover: 'building-1' as const, insideTargetBuilding: true as const };
+            for (const [range, diff, expected] of [[0, 0, 0], [1, 1, 2], [2, -1, 3]]) {
+                const entries = calculateTargetTnModifierBreakdown({ ...target, range, targetLevelDifference: diff }, TW_GAME_RULES);
+                expect(entries.find(m => m.id === 'building-cover')?.modifier ?? 0).toBe(expected);
+                expect(entries.some(m => m.id === 'partial-cover')).toBeFalse();
+            }
         }
     });
 
@@ -213,54 +226,20 @@ describe('target number calculator rules profiles', () => {
         }, CORE_2026_GAME_RULES)).toBe(0);
     });
 
-    it('applies building cover by target height and posture', () => {
-        expect(calculateTargetTnModifier({
-            unitType: 'vehicle',
-            range: 5,
-            buildingCover: 'building-1',
-        }, TW_GAME_RULES)).toBe(2);
-        expect(calculateTargetTnModifier({
-            unitType: 'mek-biped',
-            range: 5,
-            buildingCover: 'building-1',
-        }, TW_GAME_RULES)).toBe(1);
-        expect(calculateTargetTnModifier({
-            unitType: 'mek-biped',
-            range: 5,
-            buildingCover: 'building-2',
-        }, TW_GAME_RULES)).toBe(2);
-        expect(calculateTargetTnModifier({
-            unitType: 'mek-biped',
-            range: 5,
-            prone: true,
-            buildingCover: 'building-2',
-        }, TW_GAME_RULES)).toBe(3);
-        expect(calculateTargetTnModifier({
-            unitType: 'mek-biped',
-            range: 5,
-            largeTarget: true,
-            buildingCover: 'building-1',
-        }, TW_GAME_RULES)).toBe(-1);
-        expect(calculateTargetTnModifier({
-            unitType: 'mek-biped',
-            range: 5,
-            largeTarget: true,
-            buildingCover: 'building-2',
-        }, TW_GAME_RULES)).toBe(0);
-        expect(calculateTargetTnModifier({
-            unitType: 'mek-biped',
-            range: 5,
-            prone: true,
-            largeTarget: true,
-            buildingCover: 'building-1',
-        }, TW_GAME_RULES)).toBe(1);
-        expect(calculateTargetTnModifier({
-            unitType: 'mek-biped',
-            range: 5,
-            prone: true,
-            largeTarget: true,
-            buildingCover: 'building-2',
-        }, TW_GAME_RULES)).toBe(2);
+    it('combines TW building partial cover with the separate prone and large-target modifiers', () => {
+        for (const [unitType, buildingCover, prone, largeTarget, expected] of [
+            ['vehicle', 'building-1', false, false, 0],
+            ['mek-biped', 'building-1', false, false, 1],
+            ['mek-biped', 'building-2', false, false, 0],
+            ['mek-biped', 'building-2', true, false, 1],
+            ['mek-biped', 'building-1', false, true, 0],
+            ['mek-biped', 'building-2', false, true, -1],
+            ['mek-biped', 'building-1', true, true, 0],
+            ['mek-biped', 'building-2', true, true, 0],
+        ] as const) {
+            expect(calculateTargetTnModifier({ unitType, range: 5, buildingCover, prone, largeTarget }, TW_GAME_RULES))
+                .withContext([unitType, buildingCover, prone, largeTarget].join(', ')).toBe(expected);
+        }
     });
 
     it('retains building partial cover for adjacent and indirect attacks', () => {

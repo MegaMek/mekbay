@@ -46,6 +46,32 @@ describe('Mek jump into water', () => {
             const saved = serializeMekMovementPsrStateV2(instance.snapshot().movementPsr);
             expect(serializeMekMovementPsrStateV2(deserializeMekMovementPsrStateV2(saved))).toEqual(saved);
         });
+        it(`remembers water entries made before declaring the movement under ${ruleset}`, () => {
+            const { instance } = createDirectMekRuntimeFixture(ruleset);
+            water(instance, 1);
+            water(instance, 2);
+            const saved = serializeMekMovementPsrStateV2(instance.snapshot().movementPsr);
+            expect(deserializeMekMovementPsrStateV2(saved).undeclaredWaterEntries).toEqual([1, 2]);
+            const declare = (distance: number) => instance.dispatch({ type: 'declare-mek-movement', declaration: {
+                mode: ruleset === 'core-2026' ? 'run' : 'walk', distance, boosterComponentIds: [],
+            } });
+            declare(0);
+            expect(checks(instance)).toEqual([]);
+            declare(2);
+            const targets = [piloting(instance) - (ruleset === 'total-warfare' ? 1 : 0), piloting(instance)];
+            expect(checks(instance).map(check => check[1])).toEqual(targets);
+            declare(3);
+            expect(checks(instance).map(check => check[1])).toEqual(targets);
+        });
+        it(`does not carry an untraveled entry into the next phase under ${ruleset}`, () => {
+            const { instance } = createDirectMekRuntimeFixture(ruleset);
+            water(instance, 1);
+            instance.dispatch({ type: 'end-phase' });
+            instance.dispatch({ type: 'declare-mek-movement', declaration: {
+                mode: ruleset === 'core-2026' ? 'run' : 'walk', distance: 2, boosterComponentIds: [],
+            } });
+            expect(checks(instance)).toEqual([]);
+        });
         it(`keeps turning in water and leaving it free of entry checks under ${ruleset}`, () => {
             const { instance } = createDirectMekRuntimeFixture(ruleset);
             water(instance, 1);

@@ -151,6 +151,8 @@ export interface MekMovementPsrStateV2 {
     readonly standAttempts: number;
     readonly carefulStand: boolean;
     readonly damageThisPhase: number;
+    /** Depths of water hexes entered this phase before the player supplied a movement mode and distance. */
+    readonly undeclaredWaterEntries?: readonly number[];
     /** This phase's checks: the phase boundary settles or dismisses them and clears the ledger. */
     readonly checks: readonly MekPilotCheckRecordV2[];
     readonly automaticFalls: readonly MekAutomaticFallV2[];
@@ -417,6 +419,7 @@ export interface SerializedMekMovementPsrStateV2 {
     readonly standAttempts?: number;
     readonly carefulStand?: true;
     readonly damageThisPhase?: number;
+    readonly undeclaredWaterEntries?: readonly number[];
     readonly checks?: readonly MekPilotCheckRecordV2[];
     readonly automaticFalls?: readonly MekAutomaticFallV2[];
 }
@@ -652,8 +655,11 @@ export function canonicalizeMekMovementPsrStateV2(
     if (!isObjectLiteralRecord(value)
         || !exactKeys(value, [
             'movement', 'action', 'standAttempts', 'carefulStand', 'damageThisPhase', 'checks',
-            'automaticFalls',
+            'automaticFalls', 'undeclaredWaterEntries',
         ])
+        || value.undeclaredWaterEntries !== undefined && (!Array.isArray(value.undeclaredWaterEntries)
+            || !value.undeclaredWaterEntries.length || value.undeclaredWaterEntries.length > MAX_MEK_PILOT_CHECKS_V2
+            || value.undeclaredWaterEntries.some(depth => !Number.isSafeInteger(depth) || depth < 1 || depth > 3))
         || !Array.isArray(value.checks)
         || value.checks.length > MAX_MEK_PILOT_CHECKS_V2
         || !Array.isArray(value.automaticFalls)
@@ -685,6 +691,7 @@ export function canonicalizeMekMovementPsrStateV2(
         standAttempts: value.standAttempts,
         carefulStand: value.carefulStand,
         damageThisPhase: value.damageThisPhase,
+        undeclaredWaterEntries: value.undeclaredWaterEntries,
         checks,
         automaticFalls,
     });
@@ -1274,17 +1281,23 @@ export function appendMekPhysicalAttackChecksV2(
 /** Each entered water hex is a separate roll, even after the previous hex's roll succeeds. */
 export function raiseWaterEntryCheck(
     profile: MekMechanicsProfile, facts: MekMovementPsrRuntimeFactsV2,
-    state: MekMovementPsrStateV2, revision: number, immediate: boolean,
+    state: MekMovementPsrStateV2, revision: number, immediate: boolean, enteredWater: boolean,
 ): MekMovementPsrStateV2 {
     const declaration = state.movement;
+    const previous = state.undeclaredWaterEntries ?? [];
     const depth = facts.waterDepth ?? 0;
-    if (!declaration || declaration.distance < 1 || depth < 1 || cannotFall(facts) || facts.conditions.has('prone')
-        || declaration.mode !== (profile.rulesFlavor === 'core-2026' ? 'run' : 'walk')) return state;
-    const check = seed({
+    const depths = enteredWater && depth > 0 ? [...previous, depth] : previous;
+    if (!depths.length) return state;
+    if (!declaration || declaration.distance === 0) {
+        return depths === previous ? state : freezeState({ ...state, undeclaredWaterEntries: depths });
+    }
+    const requiresCheck = declaration.mode === (profile.rulesFlavor === 'core-2026' ? 'run' : 'walk')
+        && !cannotFall(facts) && !facts.conditions.has('prone');
+    const checks = requiresCheck ? appendSeeds(state.checks, depths.map(depth => seed({
         sourceKind: 'movement', triggerKind: 'enter-water',
         witness: canonicalWitness({ declaration, depth }), criticalSlotIds: [], locationIds: [],
-    }, 'Entered water');
-    return freezeState({ ...state, checks: appendSeeds(state.checks, [check], revision, immediate) });
+    }, 'Entered water')), revision, immediate) : state.checks;
+    return freezeState({ ...state, undeclaredWaterEntries: undefined, checks });
 }
 
 /** The one jump-into-water roll of a phase, as the movement's other rolls: the turn records its jump and water. */
@@ -1500,10 +1513,11 @@ export function resetMekMovementPsrPhaseV2(state: MekMovementPsrStateV2): MekMov
     const canonical = canonicalizeMekMovementPsrStateV2(state);
     assertNoPendingPilotChecks(canonical, 'phase');
     return canonical.damageThisPhase === 0
+        && !canonical.undeclaredWaterEntries
         && canonical.checks.length === 0
         && canonical.automaticFalls.length === 0
         ? canonical
-        : freezeState({ ...canonical, damageThisPhase: 0, checks: [], automaticFalls: [] });
+        : freezeState({ ...canonical, damageThisPhase: 0, undeclaredWaterEntries: undefined, checks: [], automaticFalls: [] });
 }
 
 export function resetMekMovementPsrTurnV2(state: MekMovementPsrStateV2): MekMovementPsrStateV2 {
@@ -1521,6 +1535,7 @@ export function serializeMekMovementPsrStateV2(
         ...(state.action === null ? {} : { action: state.action }),
         ...(state.standAttempts === 0 ? {} : { standAttempts: state.standAttempts }),
         ...(state.carefulStand ? { carefulStand: true as const } : {}),
+        ...(state.undeclaredWaterEntries ? { undeclaredWaterEntries: state.undeclaredWaterEntries } : {}),
         ...(state.damageThisPhase === 0 ? {} : { damageThisPhase: state.damageThisPhase }),
         ...(state.checks.length === 0 ? {} : {
             checks: Object.freeze(state.checks.map(check => Object.freeze({
@@ -1545,7 +1560,7 @@ export function deserializeMekMovementPsrStateV2(value: unknown): MekMovementPsr
     if (!isObjectLiteralRecord(value)
         || !exactKeys(value, [
             'movement', 'action', 'standAttempts', 'carefulStand',
-            'damageThisPhase', 'checks', 'automaticFalls',
+            'damageThisPhase', 'checks', 'automaticFalls', 'undeclaredWaterEntries',
         ])) {
         throw new Error('Invalid serialized Mek movement/PSR state');
     }
@@ -1582,6 +1597,7 @@ export function deserializeMekMovementPsrStateV2(value: unknown): MekMovementPsr
         carefulStand,
         damageThisPhase,
         checks,
+        ...(value['undeclaredWaterEntries'] === undefined ? {} : { undeclaredWaterEntries: value['undeclaredWaterEntries'] as readonly number[] }),
         automaticFalls: rawAutomaticFalls.map(canonicalizeMekAutomaticFallV2),
     });
 }
@@ -1652,6 +1668,7 @@ export function remapMekMovementPsrStateIdsV2(
                 standAttempts: state.standAttempts,
                 carefulStand: state.carefulStand,
                 damageThisPhase: state.damageThisPhase,
+                undeclaredWaterEntries: state.undeclaredWaterEntries,
                 checks,
                 automaticFalls,
             }),
@@ -3747,6 +3764,7 @@ function freezeState(value: MekMovementPsrStateV2): MekMovementPsrStateV2 {
         standAttempts: value.standAttempts,
         carefulStand: value.carefulStand,
         damageThisPhase: value.damageThisPhase,
+        ...(value.undeclaredWaterEntries ? { undeclaredWaterEntries: Object.freeze([...value.undeclaredWaterEntries]) } : {}),
         checks: Object.freeze(value.checks.map(check => Object.freeze({
             ...check,
             source: Object.freeze({

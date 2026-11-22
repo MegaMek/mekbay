@@ -88,6 +88,46 @@ export function weaponHitLocation(
         weapon.partialCover === true, weapon.table, weapon.aim, group.floating);
 }
 
+/** A building owner receives the credited CF at the floor identified by the attacker's cover selection. */
+export function shelterHitReport(name: string, damage: number, location: string): AttackWeaponReport {
+    return { name, types: [], targetNumber: 2, automaticBuildingHit: true, cfHit: true, toHit: [1, 1],
+        groups: [{ damage, buildingLocation: location, location: [1, 1], aux: 1 }] };
+}
+
+/** The hex takes its absorbed CF and all remaining damage from a leg struck through building cover. */
+export function shelterDamage(member: CBTForceMember | null, arc: NonMekHitArc, weapon: AttackWeaponReport,
+    ruleset: CBTRuleset, unitType?: TnTargetUnitType): number {
+    return weapon.groups.reduce((sum, group) => sum + shelterGroupDamage(member, arc, weapon, group, ruleset, unitType), weapon.strayBuildingDamage ?? 0);
+}
+
+export function shelterGroupDamage(member: CBTForceMember | null, arc: NonMekHitArc, weapon: AttackWeaponReport,
+    group: AttackHitGroup, ruleset: CBTRuleset, unitType?: TnTargetUnitType): number {
+    if (group.buildingDamage === undefined) return 0;
+    const absorbed = group.buildingDamage;
+    if (!weapon.partialCover || !group.damage) return absorbed;
+    if (member) {
+        const hit = weaponHitLocation(member, arc, weapon, group);
+        return absorbed + (hit?.kind === 'miss' && hit.label === 'Cover' ? group.damage : 0);
+    }
+    if (unitType && !unitType.startsWith('mek-')) return absorbed;
+    const chassis = { chassisConfig: targetMekConfig(unitType) };
+    const direction = fourDirection(weapon.arc ?? arc);
+    const total = group.location.reduce((a, b) => a + b, 0);
+    let leg = false;
+    if (weapon.table === 'kick') leg = true;
+    else if (weapon.table === 'punch') {
+        const row = mekPhysicalLocationRows(mekHitLocationTable(chassis), ruleset).find(r => r.roll === total);
+        const column = direction === 'left' ? 'punchLeftSide' : direction === 'right' ? 'punchRightSide' : 'punchFrontRear';
+        if (row) leg = isMekLegLocation(chassis.chassisConfig, row[column].split('/')[0]);
+    } else if (weapon.table !== 'swarm') {
+        const hit = standardMekTableHit(chassis, direction, total, group.aux, weapon.aim);
+        const loc = hit?.throughArmorCritical && group.floating
+            ? resolveMekHitLocation(mekHitLocationTable(chassis), direction, hit.hitLocationRoll, group.aux, twoD6Total(group.floating)).location : hit?.location;
+        leg = !!loc && isMekLegLocation(chassis.chassisConfig, loc);
+    }
+    return absorbed + (leg ? group.damage : 0);
+}
+
 /** Reroll covered legs, accept a second 2 as a torso hit (Core p. 95, TO:AR p. 75). */
 export function rollFloatingMekHitLocation(entity: Pick<MekEntity, 'chassisConfig'>, arc: MekHitArc, partialCover = false, aux?: number) {
     const table = mekHitLocationTable(entity);
@@ -363,7 +403,8 @@ export function readAttackHitLocation(
         const cell = row[`${table}${arc === 'left' ? 'LeftSide' : arc === 'right' ? 'RightSide' : 'FrontRear'}`];
         const [front, rear = front] = cell.split('/');
         const location = arc === 'rear' ? rear! : front!;
-        if (partialCover && table === 'punch' && entity.locationIsLeg(location)) {
+        // A Core kick-table attack intercepted by Level 1 building cover hits the building (p. 136).
+        if (partialCover && (table === 'kick' || entity.locationIsLeg(location))) {
             return Object.freeze({ kind: 'miss', label: 'Cover' });
         }
         const rearArmor = arc === 'rear' && MEK_TORSO_LOCATIONS.has(location);

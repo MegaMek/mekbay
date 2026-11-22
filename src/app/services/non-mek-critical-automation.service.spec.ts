@@ -18,6 +18,7 @@ import { aeroCriticalType } from '../models/rules/aero-critical-rules';
 import { systemDamageId, workingBayDoors } from '../models/rules/system-damage-rules';
 import { restoreNonMekRuntimeForTest } from '../models/runtime/testing/unit-runtime-owner-fixture';
 import { createDirectMekRuntimeFixture } from '../models/runtime/testing/direct-mek-runtime-fixture';
+import { internalPassengerLoad } from '../models/runtime/internal-bay-loads';
 import { aeroCargoLoss } from './non-mek-critical-automation.service';
 import { createNonMekUnit } from '../models/runtime/cbt-non-mek-unit';
 import type { CBTUnitCommand } from '../models/runtime/unit-command';
@@ -95,7 +96,7 @@ describe('NonMekCriticalAutomationService', () => {
             service.applyWeaponHits(force, runtime.instanceId, groups, target,
                 async (command: CBTUnitCommand) => runtime.dispatch(command));
         const hits = (id: ReturnType<typeof systemDamageId>) => runtime.snapshot().damageTracks.get(id)?.hits ?? 0;
-        return { runtime, force, location, apply, hits, ammoId, acId };
+        return { entity, runtime, force, location, apply, hits, ammoId, acId };
     }
 
     /** A 5-ton ProtoMech with `armor` on the left arm, a torso laser filling die faces 1-2 of torso critical weapon rolls. */
@@ -129,7 +130,7 @@ describe('NonMekCriticalAutomationService', () => {
 
     /** A fighter with 20 points of nose armor (Damage Threshold 2) and SI 10, and a nose Gauss rifle if asked. */
     function fighter(withGauss = false, ruleset: CBTRuleset = 'core-2026', transport = false,
-        passenger?: ReturnType<typeof createDirectMekRuntimeFixture>) {
+        passenger?: ReturnType<typeof createDirectMekRuntimeFixture> | ReturnType<typeof tank>) {
         const gauss = new WeaponEquipment({ id: 'Critical_Test_Gauss', name: 'Gauss Rifle', type: 'weapon',
             flags: ['F_BALLISTIC', 'F_DIRECT_FIRE'], stats: { explosive: true, criticalSlots: 7 },
             weapon: { ammoType: 'GAUSS', rackSize: 15, damage: '15', ranges: [7, 15, 22], explosionDamage: 20 } });
@@ -140,25 +141,26 @@ describe('NonMekCriticalAutomationService', () => {
         if (transport) entity.transporters.set([{ id: 'hold', kind: 'bay', doors: 2, capacity: 600, bayNumber: 1,
             configuration: { type: 'cargo' }, omni: false },
             ...(passenger ? [{ id: 'mek', kind: 'bay' as const, doors: 1, capacity: 1, bayNumber: 2,
-                configuration: { type: 'mek' as const }, omni: false }] : [])]);
+                configuration: { type: 'instance' in passenger ? 'mek' as const : 'light-vehicle' as const }, omni: false }] : [])]);
         entity.uuid.set(UUID);
         entity.structuralIntegrity.set(10);
         entity.setArmorValue('Nose', 'front', 20);
         const gaussId = withGauss ? componentIdForMount(addTestEquipment(entity, gauss, { location: 'Nose' })) : null;
         const runtime = createNonMekUnit(entity, { instanceId: 'critical-fighter', uuid: UUID,
             scenario: { id: 'megamek', ruleset, options: {} }, deployment: { id: 'default' }, initialStateProfileId: 'pristine' });
+        const carried = passenger && ('instance' in passenger ? passenger.instance : passenger.runtime);
         const force = {
-            getUnitSnapshot: (id: string) => passenger && id === passenger.instance.instanceId
-                ? { entity: passenger.entity, index: passenger.index, query: passenger.instance.query() }
+            getUnitSnapshot: (id: string) => passenger && carried && id === carried.instanceId
+                ? { entity: passenger.entity, index: carried.getIndex(), query: carried.query() }
                 : { instanceId: runtime.instanceId, entity, index: runtime.getIndex(), uuid: UUID, ruleset: runtime.ruleset(),
                     crewAssignment: runtime.getCrewAssignment(), editContext: { owner: runtime, state: runtime.snapshot() },
                     state: runtime.snapshot(), query: runtime.query() },
-            dispatchUnitCommand: (id: string, command: CBTUnitCommand) => id === passenger?.instance.instanceId
-                ? passenger.instance.dispatch(command) : { accepted: false },
+            dispatchUnitCommand: (id: string, command: CBTUnitCommand) => carried && id === carried.instanceId
+                ? carried.dispatch(command) : { accepted: false },
         } as unknown as CBTForce;
         const location = (code: string) => [...runtime.getIndex().locations.values()].find(row => row.code === code)!.id;
-        const apply = (groups: readonly NonMekDamageGroup[]) => service.applyWeaponHits(force, runtime.instanceId, groups,
-            'committed', async (command: CBTUnitCommand) => runtime.dispatch(command));
+        const apply = (groups: readonly NonMekDamageGroup[], target: 'pending' | 'committed' = 'committed') =>
+            service.applyWeaponHits(force, runtime.instanceId, groups, target, async (command: CBTUnitCommand) => runtime.dispatch(command));
         const hits = (id: ReturnType<typeof systemDamageId>) => runtime.snapshot().damageTracks.get(id)?.hits ?? 0;
         return { entity, runtime, location, apply, hits, gaussId };
     }
@@ -616,6 +618,19 @@ describe('NonMekCriticalAutomationService', () => {
         expect(restored.snapshot().internalBayLoads).toEqual(unit.runtime.snapshot().internalBayLoads);
     });
 
+    it('uses the generic cargo tonnage for a foot LRM platoon and design tonnage for a custom formation of the same size', () => {
+        const carrier = fighter(false, 'total-warfare', true).entity;
+        const infantry = new TestInfantryEntity();
+        infantry.squadSize.set(5);
+        infantry.squadCount.set(4);
+        infantry.chassis.set('Foot Platoon');
+        infantry.model.set('(LRM)');
+        const load = () => internalPassengerLoad(carrier, 'hold', infantry, 'troops');
+        expect(load()).toEqual({ bay: 'hold', unitId: 'troops', tons: infantry.tonnage(), spaces: 3 });
+        infantry.chassis.set('Custom Scouts');
+        expect(load()).toEqual({ bay: 'hold', unitId: 'troops', tons: infantry.tonnage(), spaces: infantry.tonnage() });
+    });
+
     it('destroys the carried Mek selected by a unit-bay cargo critical', async () => {
         const passenger = createDirectMekRuntimeFixture('total-warfare', 'carried-mek');
         const unit = fighter(false, 'total-warfare', true, passenger);
@@ -626,6 +641,43 @@ describe('NonMekCriticalAutomationService', () => {
         expect(await unit.apply([group(unit.location('Nose'), 3, { aeroCritical: 'cargo' })])).toBeTrue();
         expect(passenger.instance.query().destroyed()).toBeTrue();
         expect(unit.runtime.snapshot().internalBayLoads).toBeUndefined();
+    });
+
+    it('discards pending aerospace cargo loss after reload and commits only the lost tonnage', async () => {
+        const unit = fighter(false, 'total-warfare', true);
+        const load = { bay: 'hold', cargo: 'food', tons: 100 };
+        unit.runtime.dispatch({ type: 'set-internal-bay-loads', loads: [load] });
+        rolls(5, 5, 1, 1);
+        expect(await unit.apply([group(unit.location('Nose'), 4, { aeroCritical: 'cargo' })], 'pending')).toBeTrue();
+        expect(unit.runtime.snapshot().internalBayLoads).toEqual([load]);
+        const saved = unit.runtime.serialize();
+        const losses = saved.pendingCombat?.lostCargo;
+        expect(losses?.length).toBe(1);
+        const restored = restoreNonMekRuntimeForTest(saved, unit.entity, 'total-warfare');
+        restored.dispatch({ type: 'cancel-pending' });
+        expect(restored.snapshot().internalBayLoads).toEqual([load]);
+        unit.runtime.dispatch({ type: 'end-phase' });
+        expect(unit.runtime.snapshot().internalBayLoads).toEqual([{ ...load, tons: 100 - losses![0].tons }]);
+    });
+
+    it('keeps a carried tank operational until a unit-bay critical commits and releases its berth', async () => {
+        const passenger = tank();
+        const unit = fighter(false, 'total-warfare', true, passenger);
+        const load = { bay: 'mek', unitId: passenger.runtime.instanceId, tons: passenger.entity.tonnage() };
+        expect(unit.runtime.dispatch({ type: 'set-internal-bay-loads', loads: [{ ...load, spaces: 0.5 }, { ...load, spaces: 0.5, unitId: 'another' }] }).changed).toBeFalse();
+        expect(unit.runtime.dispatch({ type: 'set-internal-bay-loads', loads: [load] }).changed).toBeTrue();
+        rolls(5, 5, 6, 1);
+        expect(await unit.apply([group(unit.location('Nose'), 4, { aeroCritical: 'cargo' })], 'pending')).toBeTrue();
+        expect(passenger.runtime.query().destroyed()).toBeFalse();
+        expect(passenger.runtime.serialize().pendingCombat?.destroyed).toBeTrue();
+        const saved = passenger.runtime.serialize();
+        passenger.runtime.dispatch({ type: 'cancel-pending' });
+        unit.runtime.dispatch({ type: 'cancel-pending' });
+        expect(unit.runtime.snapshot().internalBayLoads).toEqual([load]);
+        expect(passenger.runtime.serialize().pendingCombat).toBeUndefined();
+        const restored = restoreNonMekRuntimeForTest(saved, passenger.entity, 'total-warfare');
+        restored.dispatch({ type: 'end-phase' });
+        expect(restored.query().destroyed()).toBeTrue();
     });
 
     it('rounds both stages of the published cargo loss example', () => {

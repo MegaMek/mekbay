@@ -78,7 +78,7 @@ import { mekRiscLaserPulseActive, mekRiscLaserPulseLink } from './component-risc
 import { RISC_LASER_PULSE_HEAT_BONUS, riscLaserPulseToHitAdjustment } from '../risc-laser-mode.model';
 import { prototypeLaserMaximumExtraHeat } from '../prototype-laser-heat.model';
 import { rapidFireAutocannonShotCount } from './component-rapid-fire-autocannon';
-import { MAGNETIC_CLAW_SHAKE_OFF_MODIFIER } from '../rules/anti-mek-attack-rules';
+import { isAntiMekAttack, MAGNETIC_CLAW_SHAKE_OFF_MODIFIER } from '../rules/anti-mek-attack-rules';
 import {
     AIMED_SHOT_MODIFIER,
     aimedShot,
@@ -528,9 +528,11 @@ export function projectWeaponTargetPresentation(
             : rangeSelection.rangeModifier
                 ?? ({ short: 0, medium: 2, long: 4, extreme: 6 } as const)[rangeSelection.range];
     const weaponToHitModifier = typeof hitResolution.value === 'number' ? hitResolution.value : 0;
+    const adjacentBuilding = ruleset === 'total-warfare' && target?.unitType === 'building'
+        && target.distance <= 1 && !rangeSelection?.outOfRange && targetNumber.breakdown !== null;
     return Object.freeze({
         rangeSelection,
-        targetNumberText: targetNumber.text,
+        targetNumberText: adjacentBuilding ? 'Auto' : targetNumber.text,
         outOfRange: rangeSelection?.outOfRange === true,
         weaponToHitModifier,
         attackerMovementModifier,
@@ -547,8 +549,8 @@ export function projectWeaponTargetPresentation(
         targetNumberBreakdown: targetNumber.breakdown === null
             ? null
             : Object.freeze({
-                total: targetNumber.breakdown.total,
-                lines: Object.freeze([...targetNumber.breakdown.lines]),
+                total: adjacentBuilding ? 2 : targetNumber.breakdown.total,
+                lines: adjacentBuilding ? [] : Object.freeze([...targetNumber.breakdown.lines]),
             }),
         aimedShotKind: aiming === null ? null : aimedShotKind(ruleset, aiming.weapon, aiming.target),
         aim,
@@ -1022,13 +1024,16 @@ export interface MekPhysicalAttackRow {
 
 /** Whether the row may be declared at the target: its reach, and the one target a swarming unit attacks. */
 export function physicalRowTargetIssue(
-    row: Pick<MekPhysicalAttackRow, 'kind' | 'reach' | 'onlyTarget' | 'ruleset' | 'hitTable' | 'attackerWater' | 'jumpMp' | 'insideBuilding'>,
+    row: Pick<MekPhysicalAttackRow, 'kind' | 'reach' | 'onlyTarget' | 'ruleset' | 'hitTable' | 'attackerWater' | 'jumpMp' | 'insideBuilding' | 'selection'>,
     target: Parameters<typeof physicalTargetIssue>[2] & Readonly<{ id: string }>,
 ): ReturnType<typeof physicalTargetIssue> {
+    // The jump MP for an already declared Core DFA were spent in Movement (Core p. 79).
+    const declaredDfa = row.kind === 'death-from-above' && row.ruleset === 'core-2026'
+        && row.selection?.kind === 'target' && row.selection.targetId === target.id;
     return row.onlyTarget !== undefined && row.onlyTarget !== target.id
         ? 'invalid'
         : physicalTargetIssue(row.kind, row.reach, target, row.ruleset, row.hitTable,
-            row.ruleset ? { jumpMp: row.jumpMp, partiallyUnderwater: row.attackerWater?.partiallyUnderwater,
+            row.ruleset ? { jumpMp: declaredDfa ? undefined : row.jumpMp, partiallyUnderwater: row.attackerWater?.partiallyUnderwater,
                 insideBuilding: row.insideBuilding } : null);
 }
 
@@ -1107,6 +1112,21 @@ export function physicalAttackMeetsPartialCover(
             : physicalAttackMeetsBuildingCover(row.ruleset, row.kind, table, quad);
     }
     return (target.partialCover.water ? row.meetsWaterCover : row.meetsBuildingCover) !== false;
+}
+
+/** Whether a physical location roll can strike the declared cover instead of the target. */
+export function physicalHitUsesCover(
+    row: Partial<MekPhysicalAttackRow>, target: Pick<TargetingTarget, 'partialCover' | 'tnCalculator' | 'unitType'>,
+    table: HitTable, ruleset: CBTRuleset,
+): boolean {
+    if (isAntiMekAttack(row.kind)) return false;
+    if (target.tnCalculator?.buildingCover && !target.partialCover?.water) {
+        if (ruleset === 'total-warfare' && target.tnCalculator.insideTargetBuilding) return false;
+        return physicalAttackMeetsPartialCover(row, target);
+    }
+    if (row.kind === 'charge' || table === 'kick') return false;
+    if (ruleset !== 'core-2026' && target.partialCover?.water && target.tnCalculator?.targetLevelDifference) return false;
+    return physicalAttackMeetsPartialCover(row, target);
 }
 
 export type MekPhysicalAttackPresentation =

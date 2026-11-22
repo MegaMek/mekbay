@@ -216,6 +216,11 @@ export type CBTUnitCommand =
     }
     | {
         readonly type: 'destroy-bay-cargo';
+        readonly losses: readonly import('./internal-bay-loads').InternalBayLoad[];
+        readonly target: 'pending' | 'committed';
+    }
+    | {
+        readonly type: 'destroy-bay-cargo';
         readonly bay: string;
         readonly cargo: string;
         readonly target: 'pending' | 'committed';
@@ -436,7 +441,7 @@ export type CBTUnitCommand =
     | { readonly type: 'rewind-turn-step'; readonly step: number }
     | { readonly type: 'commit-pending' }
     | { readonly type: 'cancel-pending' }
-    | { readonly type: 'set-destroyed'; readonly destroyed: boolean }
+    | { readonly type: 'set-destroyed'; readonly destroyed: boolean; readonly target?: 'pending' | 'committed' }
     | { readonly type: 'set-internal-damage'; readonly locationId: LocationId; readonly damage: number }
     | { readonly type: 'set-armor-damage'; readonly faceId: ArmorFaceId; readonly damage: number }
     | { readonly type: 'damage-track'; readonly damageTrackId: SystemDamageTrackId; readonly amount: number; readonly target: 'committed' | 'pending'; readonly timestamp: number }

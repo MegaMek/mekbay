@@ -1,7 +1,7 @@
 // Copyright (C) 2026 The MegaMek Team
 // SPDX-License-Identifier: GPL-3.0-or-later
 
-import type { WeaponEquipment } from '../equipment.model';
+import type { AmmoEquipment, WeaponEquipment } from '../equipment.model';
 import { interiorInfantryDamage, ordinaryInfantryTroopers, type InfantryBuildingType } from './infantry-building-damage';
 import type { WeaponType } from '../weapon-types.model';
 
@@ -9,7 +9,8 @@ export const INFANTRY_HIT_CLASSES = ['ordinary', 'squad-direct', 'plasma', 'infa
 export type InfantryHitClass = typeof INFANTRY_HIT_CLASSES[number];
 
 /** TW p. 217, Burst-Fire Weapon Damage vs. Conventional Infantry. */
-export function infantryHitClass(weapon: WeaponEquipment, battleArmor: boolean): InfantryHitClass {
+export function infantryHitClass(weapon: WeaponEquipment, battleArmor: boolean, ammo?: AmmoEquipment | null): InfantryHitClass {
+    if (ammo?.hasMunitionType('M_FLECHETTE') || ammo?.hasMunitionType('M_FRAGMENTATION')) return 'infantry';
     if (weapon.isInfantryWeapon()) return 'infantry';
     if (weapon.hasFlag('F_PLASMA')) return 'plasma';
     if (weapon.hasFlag('F_FLAMER')) return battleArmor ? 'burst-3' : 'burst-4';
@@ -26,6 +27,12 @@ export function infantryHitClass(weapon: WeaponEquipment, battleArmor: boolean):
         if (/grenade/i.test(weapon.id)) return /heavy/i.test(weapon.id) ? 'burst-1' : 'burst-half';
     }
     return battleArmor ? 'squad-direct' : 'ordinary';
+}
+
+/** Roll burst dice once for the report and replay them on the defending sheet. */
+export function infantryCasualtyDiceCount(hit: InfantryHitClass | undefined, groups: number, bonus = 0): number {
+    const count = hit?.startsWith('burst-') ? hit === 'burst-half' ? 1 : Number(hit.slice(-1)) : 0;
+    return bonus + groups * count;
 }
 
 /** Convert the whole weapon hit before rounding. Each burst rolls separately (TW pp. 215–217). */

@@ -1,7 +1,7 @@
 // Copyright (C) 2026 The MegaMek Team
 // SPDX-License-Identifier: GPL-3.0-or-later
 
-import { internalCargoBays, readInternalBayLoads, remainingInternalBayLoads, type InternalBayLoad } from './internal-bay-loads';
+import { accumulateBayLosses, usedBayCapacity, internalCargoBays, readInternalBayLoads, remainingInternalBayLoads, type InternalBayLoad } from './internal-bay-loads';
 import { TURRET_CLEAR_ACTIONS } from '../rules/vehicle-runtime-rules';
 
 import { missileDefenseSystems, fireMissileDefense } from './anti-missile-defense';
@@ -88,7 +88,8 @@ import { effectiveEcmMode,electronicClaims,electronicComponentModes,electronicRu
 import { componentEscalatingFailureChoices,componentEscalatingFailureProfile,createComponentEscalatingFailureDefinition,isMascEquipment,movementBoosterUsableWhile,editEscalatingFailureComponentState,settleEscalatingFailureComponentState,type ComponentEscalatingFailureDefinition } from './component-escalating-failure';
 import { inventoryEquipmentModes } from './component-inventory-mode';
 import { HPG_IDLE_MODE,isMobileHpgMode,mobileHpgBlocksMovement,mobileHpgBlocksWeaponAttacks,mobileHpgComponentModes,mobileHpgMode,mobileHpgModeChangeReason,mobileHpgOperatingHeat,settleMobileHpgMode,type MobileHpgComponentFact } from './component-mobile-hpg';
-import { rapidFireAutocannonShotCount,rapidFireAutocannonSupportsJamming } from './component-rapid-fire-autocannon';
+import { aerospaceRapidFireShots,rapidFireAutocannonShotCount,rapidFireAutocannonSupportsJamming } from './component-rapid-fire-autocannon';
+import { usesAerospaceFiringRates } from './non-mek-weapon-attack-groups';
 import type { EndTurnCheckpoint } from './end-turn-checkpoint';
 import type { EquipmentChoiceSurface,EquipmentInteractionChoice } from './equipment-interaction';
 import { elevationAt,elevationRecordEntryIssue,withElevationRecordValue,type ElevationRecordEntry } from '../elevation-record.model';
@@ -207,6 +208,7 @@ export interface NonMekPendingDamageTrackState {
 }
 
 export interface NonMekPendingCombatState extends CBTUnitPendingCombatState {
+    readonly destroyed?: true;
     readonly crewStuns?: number;
     readonly lostCargo?: readonly InternalBayLoad[];
     readonly narcPods?: readonly LocationId[];
@@ -671,6 +673,7 @@ export function freezeNonMekUnitState(raw: NonMekUnitRuntimeState): NonMekUnitRu
                 }),
         }),
         pendingCombat: Object.freeze({
+            ...(state.pendingCombat.destroyed ? { destroyed: true as const } : {}),
             ...(state.pendingCombat.crewStuns ? { crewStuns: state.pendingCombat.crewStuns } : {}),
             ...(state.pendingCombat.lostCargo?.length ? { lostCargo: Object.freeze([...state.pendingCombat.lostCargo]) } : {}),
             ...freezePendingAutocannonHits(state.pendingCombat),
@@ -969,7 +972,8 @@ export function reduceNonMekSelectedWeaponFire(binding: NonMekRuntimeBinding, st
             continue;
         }
         const mode = query.componentMode(weaponId);
-        const shots = rapidFireAutocannonShotCount(weapon, mode);
+        const maximumRate = usesAerospaceFiringRates(binding.entity, state);
+        const shots = maximumRate ? aerospaceRapidFireShots(weapon) : rapidFireAutocannonShotCount(weapon, mode);
         const bombast = bombastLaserEquipmentProfile(weapon, binding.ruleset, mode);
         const attachments = binding.entity.getLinkingMounts(component.mount);
         const available = (mount: EntityMountedEquipment) =>
@@ -1536,6 +1540,11 @@ function reduceNonMekUnitState(
             break;
         }
         case 'set-destroyed':
+            if (command.target === 'pending') {
+                if (!command.destroyed || state.explicitlyDestroyed || state.pendingCombat.destroyed) return null;
+                candidate = { ...state, pendingCombat: { ...state.pendingCombat, destroyed: true } };
+                break;
+            }
             if (!command.destroyed && hasDetonatedNonMekBoobyTrap(index, state)) {
                 throw new Error('A detonated Booby Trap cannot be reset');
             }
@@ -1848,18 +1857,27 @@ function reduceNonMekUnitState(
             if (loads.some(load => !bays.some(bay => bay.id === load.bay && ('unitId' in load ? bay.troops : bay.cargo)))) {
                 throw new Error('Load requires a dedicated internal bay');
             }
-            if (JSON.stringify(loads) === JSON.stringify(state.internalBayLoads ?? [])) return null;
+            const previous = state.internalBayLoads ?? [];
+            if (state.pendingCombat.lostCargo?.length || JSON.stringify(loads) === JSON.stringify(previous)) return null;
+            // Existing over-capacity manifests can be unloaded incrementally.
+            if (bays.some(bay => usedBayCapacity(bay, loads) > Math.max(bay.capacity, usedBayCapacity(bay, previous)))) return null;
             candidate = { ...state, internalBayLoads: loads.length ? loads : undefined };
             break;
         }
         case 'destroy-bay-cargo': {
             const lost = state.pendingCombat.lostCargo ?? [];
             const available = remainingInternalBayLoads(state.internalBayLoads, command.target === 'pending' ? lost : []);
-            const load = available.find(row => 'cargo' in row && row.bay === command.bay && row.cargo === command.cargo);
-            if (!load) return null;
-            candidate = command.target === 'pending'
-                ? { ...state, pendingCombat: { ...state.pendingCombat, lostCargo: Object.freeze([...lost, load]) } }
-                : { ...state, internalBayLoads: remainingInternalBayLoads(state.internalBayLoads, [load]) };
+            const losses = 'losses' in command ? command.losses
+                : available.filter(row => 'cargo' in row && row.bay === command.bay && row.cargo === command.cargo);
+            if (!losses.length) return null;
+            const combined = accumulateBayLosses(state.internalBayLoads ?? [], command.target === 'pending' ? lost : [], losses);
+            if (!combined) return null;
+            if (command.target === 'pending') {
+                candidate = { ...state, pendingCombat: { ...state.pendingCombat, lostCargo: Object.freeze(combined) } };
+            } else {
+                const remaining = remainingInternalBayLoads(state.internalBayLoads, combined);
+                candidate = { ...state, internalBayLoads: remaining.length ? remaining : undefined };
+            }
             break;
         }
         case 'stun-vehicle-crew': {
@@ -2500,9 +2518,11 @@ function commitPendingCombat(
         ...(infernoMissiles === undefined ? {} : { infernoMissiles: (next.turn.infernoMissiles ?? 0) + infernoMissiles }),
     });
     const narcPods = [...next.narcPods ?? [], ...state.pendingCombat.narcPods ?? []];
+    const cargo = remainingInternalBayLoads(next.internalBayLoads, state.pendingCombat.lostCargo);
     return { ...next, damageTracks, turn,
+        ...(state.pendingCombat.destroyed ? { explicitlyDestroyed: true } : {}),
         ...(state.pendingCombat.crewStuns ? { vehicleCrewStun: extendVehicleCrewStun(next, state.pendingCombat.crewStuns) } : {}),
-        ...(state.pendingCombat.lostCargo?.length ? { internalBayLoads: remainingInternalBayLoads(next.internalBayLoads, state.pendingCombat.lostCargo) } : {}),
+        ...(state.pendingCombat.lostCargo?.length ? { internalBayLoads: cargo.length ? cargo : undefined } : {}),
         ...(narcPods.length ? { narcPods } : {}), pendingCombat: emptyPendingCombat() };
 }
 
@@ -3266,7 +3286,7 @@ function requireDamageTarget(target: unknown): asserts target is 'committed' | '
 }
 
 function pendingCombatEmpty(value: NonMekPendingCombatState): boolean {
-    return !value.crewStuns && !value.lostCargo?.length && !value.narcPods?.length && value.locationInternalDamage.size === 0
+    return !value.destroyed && !value.crewStuns && !value.lostCargo?.length && !value.narcPods?.length && value.locationInternalDamage.size === 0
         && value.armorDamage.size === 0
         && value.componentStatus.size === 0
         && value.damageTrackHits.size === 0

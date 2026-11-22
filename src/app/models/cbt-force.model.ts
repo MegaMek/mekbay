@@ -83,7 +83,8 @@ type ScenarioRules,
 
 import { DialogsService } from '../services/dialogs.service';
 import { EquipmentInteractionRegistry } from '../services/equipment-interaction-registry.service';
-import { endTurnCalculatesHeat, heatAutomationPolicy, OptionsService, realPhasesEnabled } from '../services/options.service';
+import { CBTForceTurnPolicy } from './runtime/cbt-force-turn-policy';
+import { endTurnCalculatesHeat, heatAutomationPolicy, OptionsService } from '../services/options.service';
 import type { OptionalRules } from './options.model';
 import { ToastService } from '../services/toast.service';
 import type { UnitUuid } from '../services/unit-catalog/unit-catalog.types';
@@ -190,6 +191,7 @@ export class CBTForce extends Force<never> {
     /** Synchronous publication scope, restored when nested emissions return. */
     private publishingUnitCommand: Readonly<{ instanceId: string; command: CBTUnitCommand }> | undefined;
     private readonly unitCommandDispatcher: CBTForceUnitCommandDispatcher;
+    private readonly turnPolicy = new CBTForceTurnPolicy(() => this.injector.get(OptionsService, null, { optional: true }));
     private readonly adjustedBattleValues = computed(() => {
         this.memberRegistry.dependOnBattleValueInputs();
         return this.calculateAdjustedBattleValues(
@@ -1516,25 +1518,7 @@ export class CBTForce extends Force<never> {
         command: CBTUnitCommand,
         context?: UnitEditContext,
     ): Promise<CBTForceUnitCommandResult> {
-        return this.unitCommandDispatcher.dispatch(instanceId, this.withHeatMode(this.withPhaseSystem(command)), context);
-    }
-
-    /**
-     * A declaration, or a turn-state edit such as entering water, tells the rules whether the full phase system is on
-     * (see `MekPilotCheckRecordV2.immediate`).
-     */
-    private withPhaseSystem(command: CBTUnitCommand): CBTUnitCommand {
-        if (command.type !== 'declare-mek-movement' && command.type !== 'declare-mek-action'
-            && command.type !== 'replace-turn-state') return command;
-        const options = this.injector.get(OptionsService, null, { optional: true });
-        return options && realPhasesEnabled(options) ? { ...command, realPhases: true } : command;
-    }
-
-    /** Setting NEXT tells the rules whether it follows the calculated heat (`followCalculatedHeat`). */
-    private withHeatMode(command: CBTUnitCommand): CBTUnitCommand {
-        if (command.type !== 'set-pending-heat') return command;
-        const options = this.injector.get(OptionsService, null, { optional: true });
-        return options && endTurnCalculatesHeat(options) ? { ...command, follow: true } : command;
+        return this.unitCommandDispatcher.dispatch(instanceId, this.turnPolicy.prepare(command), context);
     }
 
     private dispatchUnitCommandCore(
@@ -1547,7 +1531,7 @@ export class CBTForce extends Force<never> {
             const ready = this.unitStore.cbtUnit(instanceId);
             const before = this.getUnitSnapshot(instanceId);
             if (!ready || !before) return Object.freeze({ accepted: true, changed: false, state: null });
-            if (!requested || !isUnitEditContextCurrent(requested, before.editContext)) {
+            if (!requested || !isUnitEditContextCurrent(requested, before.editContext) || !this.turnPolicy.allowsFiringMode(before, captured)) {
                 return Object.freeze({ accepted: false, changed: false, state: ready.snapshot() });
             }
             const beforeMode = captured.type === 'set-component-mode'
@@ -1779,7 +1763,8 @@ export class CBTForce extends Force<never> {
         return this.enqueueCBTMutation(() => {
             const current = this.getUnitSnapshot(capturedInstanceId);
             if (!current || !context || !isUnitEditContextCurrent(context, current.editContext)
-                || registryRevision !== this.queryInventoryControlTargetRegistry().revision) {
+                || registryRevision !== this.queryInventoryControlTargetRegistry().revision
+                || !this.turnPolicy.allowsTargetEdit(current, capturedCommand.edit)) {
                 return Object.freeze({ accepted: false, changed: false, state: current?.state ?? null });
             }
             const result = this.unitStore.dispatchAttackerTargeting(
@@ -1956,6 +1941,7 @@ export class CBTForce extends Force<never> {
                     this.reserveForceOwnerMutationIntent();
                     this.emitChangedFromReservedIntent(changedUnitIds);
                 },
+                command => this.turnPolicy.allowsFiringMode(current, command),
             );
         });
     }

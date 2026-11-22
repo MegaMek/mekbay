@@ -15,7 +15,7 @@ cbtUnitCheckPresentation,
 import { hasNonMekRuntime,type CBTUnitSnapshot } from '../models/cbt-unit-snapshot';
 import { activeCrewController,DEFAULT_PILOTING_SKILL } from '../models/crew-member.model';
 import { isDroneOperatingSystemEquipment } from '../models/drone-operating-system.model';
-import { parseBuildingLocation } from '../models/entity/types/building';
+import { buildingCfLosses } from '../models/runtime/building-cf';
 import type { BaseEntity } from '../models/entity/base-entity';
 import type { AeroEntity } from '../models/entity/entities/aero/aero-entity';
 import type { CrewPositionId, LocationId } from '../models/entity/entity-identifiers';
@@ -382,18 +382,10 @@ export class DirectNonMekAutomationService {
             }
             if (damage <= 0) break;
             if (snapshot.ruleset === 'total-warfare' && snapshot.entity.entityType === 'BuildingEntity') {
-                const struckHex = parseBuildingLocation(location.code)?.hex;
-                if (struckHex) {
-                    // TW p.166: floors share their hex's CF. A pre-existing sheet may have recorded a hit on just one floor.
-                    const floors = [...snapshot.index.locations.values()].filter(row => {
-                        const hex = parseBuildingLocation(row.code)?.hex;
-                        return hex?.q === struckHex.q && hex.r === struckHex.r;
-                    });
-                    const current = floors.map(floor => snapshot.query.remainingInternal(floor.id, perspective));
-                    const remaining = Math.max(0, Math.min(...current) - damage);
-                    for (const [i, floor] of floors.entries()) {
-                        const loss = current[i] - remaining;
-                        if (loss && !(await dispatch({ type: 'damage-internal', locationId: floor.id, amount: loss, target }, false)).accepted) return null;
+                const losses = buildingCfLosses(snapshot, location.code, damage, perspective);
+                if (losses) {
+                    for (const { locationId, amount } of losses) {
+                        if (!(await dispatch({ type: 'damage-internal', locationId, amount, target }, false)).accepted) return null;
                     }
                     break;
                 }

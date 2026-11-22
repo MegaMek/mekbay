@@ -1,6 +1,7 @@
 // Copyright (C) 2026 The MegaMek Team
 // SPDX-License-Identifier: GPL-3.0-or-later
 
+import { isShelteringBuilding } from '../models/unit-cover.model';
 import { isInfantryBuildingType, type InfantryBuildingType } from '../models/rules/infantry-building-damage';
 
 import { Injectable, Injector, inject } from '@angular/core';
@@ -39,6 +40,8 @@ export interface TargetDistanceEvent {
 
 /** One hit-location roll and the damage it carries; the defender reads the roll on its own table. */
 export interface AttackHitGroup {
+    /** CF absorbed by this group, including zero when the building can intercept a covered leg. */
+    readonly buildingDamage?: number;
     /** Assigned locally by the recipient after reading its surviving troopers. */
     readonly trooperLocation?: string;
     /** Locally chosen hex/floor of a linked building. */
@@ -51,12 +54,25 @@ export interface AttackHitGroup {
     readonly aux: number;
 }
 
+export interface MissileDefenseOutcome {
+    readonly hits: number;
+    readonly damage: readonly number[];
+    readonly heat: number;
+    readonly absorbed?: readonly number[];
+}
+
 export interface AttackWeaponReport {
+    readonly strayBuildingDamage?: number;
+    readonly shelteringBuilding?: import('../models/unit-cover.model').ShelteringBuilding;
+    readonly automaticBuildingHit?: true;
+    /** A protected occupant's hit charged directly to the building hex's CF. */
+    readonly cfHit?: true;
     readonly infantryClass?: InfantryHitClass;
     readonly infantryBuilding?: InfantryBuildingType;
     readonly collateralBuilding?: InfantryBuildingType;
     readonly infantryInOpen?: boolean;
     readonly infantryBurstDice?: number;
+    readonly infantryDice?: readonly number[];
     readonly name: string;
     /** Weapon damage types, for armors that resist them. */
     readonly types: readonly WeaponType[];
@@ -95,7 +111,11 @@ export interface AttackWeaponReport {
     /** Inferno missiles: each group is one missile whose effect the struck unit decides. */
     readonly inferno?: true;
     readonly narcPod?: true;
-    readonly ams?: Readonly<{ die: number; hits: number; damage: readonly number[]; heat: number }>;
+    readonly ams?: MissileDefenseOutcome & Readonly<{
+        die: number;
+        laser?: MissileDefenseOutcome;
+        aerospace?: Readonly<{ av: number; groupSize: number; absorption: number }>;
+    }>;
     /** Outside heat the weapon's hit applies to the struck unit. */
     readonly heat?: number;
     /** Each successful Battle Armor flamer carries this much outside heat to its own location. */
@@ -212,10 +232,14 @@ export function parseGameEvent(value: unknown): GameEvent | null {
 function parseWeaponReport(value: unknown): AttackWeaponReport | null {
     if (value === null || typeof value !== 'object' || Array.isArray(value)) return null;
     const {
-        name, types, partialCover, targetNumber, toHit, cluster, table, physical, arc, inferno, heat, aim, infantryClass, infantryInOpen, infantryBurstDice,
+        name, types, partialCover, targetNumber, toHit, cluster, table, physical, arc, inferno, heat, aim, infantryClass, infantryInOpen, infantryBurstDice, infantryDice,
         critical, rifle, capitalScale, ammo, rackSize, swarmRelease, swarmStrike, ams, narcPod, mekPhysical, projectileDamage, heatPerGroup, groups,
     } = value as Record<string, unknown>;
-    const { infantryBuilding, collateralBuilding } = value as Record<string, unknown>;
+    const { infantryBuilding, collateralBuilding, shelteringBuilding, automaticBuildingHit, cfHit, strayBuildingDamage } = value as Record<string, unknown>;
+    if (strayBuildingDamage !== undefined && (!isInteger(strayBuildingDamage, 1, MAX_DAMAGE) || cfHit || physical || inferno || narcPod)) return null;
+    if (cfHit !== undefined && (cfHit !== true || shelteringBuilding !== undefined || automaticBuildingHit !== true)) return null;
+    if (shelteringBuilding !== undefined && !isShelteringBuilding(shelteringBuilding)) return null;
+    if (automaticBuildingHit !== undefined && (automaticBuildingHit !== true || targetNumber !== 2)) return null;
     if ((infantryBuilding !== undefined && !isInfantryBuildingType(infantryBuilding))
         || (collateralBuilding !== undefined && !isInfantryBuildingType(collateralBuilding))
         || (infantryBuilding && collateralBuilding)) return null;
@@ -224,6 +248,8 @@ function parseWeaponReport(value: unknown): AttackWeaponReport | null {
         || !types.every(type => WEAPON_TYPES.includes(type as WeaponType))
         || (infantryClass !== undefined && !INFANTRY_HIT_CLASSES.includes(infantryClass as InfantryHitClass))
         || (infantryInOpen !== undefined && typeof infantryInOpen !== 'boolean')
+        || (infantryDice !== undefined && (!Array.isArray(infantryDice) || infantryDice.length > MAX_DAMAGE * 4 + 16
+            || !infantryDice.every(die => isInteger(die, 1, 6))))
         || (infantryBurstDice !== undefined && (infantryClass !== 'infantry' || !isInteger(infantryBurstDice, 1, 16)))
         || (partialCover !== undefined && partialCover !== true)
         || (narcPod !== undefined && (narcPod !== true || inferno !== undefined || physical !== undefined))
@@ -248,10 +274,18 @@ function parseWeaponReport(value: unknown): AttackWeaponReport | null {
     }
     let intercepted: AttackWeaponReport['ams'];
     if (ams !== undefined) {
-        const { die, hits, damage, heat: remainingHeat } = (ams ?? {}) as Record<string, unknown>;
-        if (!isInteger(die, 1, 6) || !isInteger(hits, 0, MAX_DAMAGE) || !isInteger(remainingHeat, 0, MAX_DAMAGE)
-            || !Array.isArray(damage) || damage.length > groups.length || !damage.every(value => isInteger(value, 0, MAX_DAMAGE))) return null;
-        intercepted = Object.freeze({ die, hits, damage: Object.freeze([...damage]), heat: remainingHeat });
+        const { die, laser, aerospace } = (ams ?? {}) as Record<string, unknown>;
+        const standard = parseDefenseOutcome(ams, groups.length);
+        const laserResult = laser === undefined ? undefined : parseDefenseOutcome(laser, groups.length);
+        if (!isInteger(die, 1, 6) || !standard || laserResult === null) return null;
+        let aero: NonNullable<AttackWeaponReport['ams']>['aerospace'];
+        if (aerospace !== undefined) {
+            const { av, groupSize, absorption } = (aerospace ?? {}) as Record<string, unknown>;
+            if (!isInteger(av, 1, MAX_DAMAGE) || !isInteger(groupSize, 1, MAX_DAMAGE)
+                || !isInteger(absorption, 0, MAX_DAMAGE) || Math.ceil(av / groupSize) !== groups.length) return null;
+            aero = { av, groupSize, absorption };
+        }
+        intercepted = Object.freeze({ die, ...standard, ...(laserResult ? { laser: laserResult } : {}), ...(aero ? { aerospace: aero } : {}) });
     }
     // An aimed shot is one weapon hit read on the standard table.
     let parsedAim: AimedShotRoll | undefined;
@@ -281,22 +315,39 @@ function parseWeaponReport(value: unknown): AttackWeaponReport | null {
             ...(Array.isArray(additionalDice) ? { additionalDice: Object.freeze([...additionalDice]) } : {}) });
     }
     const parsedGroups = groups.map(group => {
-        const { damage, location, aux, floating } = (group ?? {}) as Record<string, unknown>;
+        const { damage, location, aux, floating, buildingDamage, buildingLocation } = (group ?? {}) as Record<string, unknown>;
         // A heat-causing weapon's hit that only heats rolls its location with no damage.
-        return isInteger(damage, 0, MAX_DAMAGE) && isDice(location, diceCount) && isInteger(aux, 1, 6)
+        return (buildingDamage === undefined || isInteger(buildingDamage, 0, MAX_DAMAGE))
+            && (buildingLocation === undefined || isId(buildingLocation))
+            && isInteger(damage, 0, MAX_DAMAGE) && isDice(location, diceCount) && isInteger(aux, 1, 6)
             && (floating === undefined || (table === undefined && isTwoDice(floating)))
-            ? Object.freeze({ damage, location: location as HitLocationDice, aux, ...(floating ? { floating } : {}) })
+            ? Object.freeze({ damage, location: location as HitLocationDice, aux, ...(floating ? { floating } : {}),
+                ...(typeof buildingDamage === 'number' ? { buildingDamage } : {}),
+                ...(typeof buildingLocation === 'string' ? { buildingLocation } : {}) })
             : null;
     });
-    if (parsedGroups.some(group => group === null || (narcPod && group.damage !== 0))) return null;
-    if (intercepted && (intercepted.heat > (typeof heat === 'number' ? heat : 0)
-        || (parsedCluster && intercepted.hits > parsedCluster.hits)
-        || intercepted.damage.some((damage, i) => damage > parsedGroups[i]!.damage))) return null;
+    if (parsedGroups.some(group => group === null || (narcPod && group.damage !== 0)
+        || (cfHit && (!group.buildingLocation || group.buildingDamage !== undefined)))) return null;
+    if (intercepted && [intercepted, intercepted.laser].some(outcome => outcome && (outcome.heat > (typeof heat === 'number' ? heat : 0)
+        || (parsedCluster && outcome.hits > parsedCluster.hits)
+        || outcome.damage.some((damage, i) => damage > parsedGroups[i]!.damage
+            || (outcome.absorbed?.[i] ?? 0) > (parsedGroups[i]!.buildingDamage ?? 0))))) return null;
+    const aero = intercepted?.aerospace;
+    if (aero && parsedGroups.some((entry, i) => {
+        const base = Math.min(aero.groupSize, aero.av - i * aero.groupSize);
+        const absorbed = Math.min(aero.absorption, base);
+        return entry!.damage !== base - absorbed || (entry!.buildingDamage ?? 0) !== absorbed;
+    })) return null;
     return Object.freeze({
         ...(infantryClass === undefined ? {} : { infantryClass: infantryClass as InfantryHitClass }),
         ...(infantryBuilding ? { infantryBuilding } : {}),
         ...(collateralBuilding ? { collateralBuilding } : {}),
+        ...(shelteringBuilding ? { shelteringBuilding } : {}),
+        ...(typeof strayBuildingDamage === 'number' ? { strayBuildingDamage } : {}),
+        ...(automaticBuildingHit ? { automaticBuildingHit: true as const } : {}),
+        ...(cfHit ? { cfHit: true as const } : {}),
         ...(typeof infantryInOpen === 'boolean' ? { infantryInOpen } : {}),
+        ...(Array.isArray(infantryDice) ? { infantryDice: Object.freeze([...infantryDice]) } : {}),
         ...(typeof infantryBurstDice === 'number' ? { infantryBurstDice } : {}),
         name, types: Object.freeze([...types] as WeaponType[]), ...(partialCover ? { partialCover: true as const } : {}),
         targetNumber, toHit,
@@ -324,6 +375,15 @@ function parseWeaponReport(value: unknown): AttackWeaponReport | null {
         ...(parsedAim === undefined ? {} : { aim: parsedAim }),
         groups: Object.freeze(parsedGroups as AttackHitGroup[]),
     });
+}
+
+function parseDefenseOutcome(value: unknown, groupCount: number): MissileDefenseOutcome | null {
+    const { hits, damage, heat, absorbed } = (value ?? {}) as Record<string, unknown>;
+    if (!isInteger(hits, 0, MAX_DAMAGE) || !isInteger(heat, 0, MAX_DAMAGE)
+        || !Array.isArray(damage) || damage.length > groupCount || !damage.every(n => isInteger(n, 0, MAX_DAMAGE))
+        || (absorbed !== undefined && (!Array.isArray(absorbed) || absorbed.length !== damage.length
+            || !absorbed.every(n => isInteger(n, 0, MAX_DAMAGE))))) return null;
+    return { hits, damage: Object.freeze([...damage]), heat, ...(Array.isArray(absorbed) ? { absorbed: Object.freeze([...absorbed]) } : {}) };
 }
 
 function isId(value: unknown): value is string {

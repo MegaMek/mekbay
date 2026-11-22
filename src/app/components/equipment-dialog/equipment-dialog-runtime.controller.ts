@@ -466,13 +466,15 @@ export class EquipmentDialogRuntimeController {
 
     public async resetSelections(): Promise<void> {
         if (this.busy()) return;
-        await this.dispatchComponentSelections(
-            this.weapons()
-                .filter(row => row.weapon?.selection !== undefined)
-                .flatMap(row => attackMembers(row).map(member => member.componentId)),
-            null,
-        );
+        if (this.attacks?.allowsAttackDeclaration?.(this.member, 'weapons') !== false) {
+            await this.dispatchComponentSelections(
+                this.weapons().filter(row => row.weapon?.selection !== undefined)
+                    .flatMap(row => attackMembers(row).map(member => member.componentId)),
+                null,
+            );
+        }
         for (const row of this.snapshot().physicalAttacks.filter(attack => attack.selection !== undefined)) {
+            if (this.attacks?.allowsAttackDeclaration?.(this.member, isAntiMekAttack(row.kind) ? 'weapons' : 'physical') === false) continue;
             await this.dispatchTargeting({
                 kind: 'set-action-selection',
                 target: row.target,

@@ -36,6 +36,11 @@ const STEP_ROWS: readonly Omit<TurnStep, 'index'>[] = [
 ];
 
 export const TURN_STEPS: readonly TurnStep[] = Object.freeze(STEP_ROWS.map((row, index) => Object.freeze({ ...row, index })));
+/** Completing a declaration locks that unit's selections until the next turn. */
+export function attackDeclarationOpen(step: number, phase: 'weapons' | 'physical'): boolean {
+    return step <= TURN_STEPS.findIndex(row => row.phase === phase && row.kind === 'declaration');
+}
+
 export const TURN_PHASE_LABELS: Readonly<Record<TurnPhaseKey, string>> = Object.freeze({
     movement: 'Movement', weapons: 'Weapons', physical: 'Physicals', heat: 'Heat', end: 'End',
 });

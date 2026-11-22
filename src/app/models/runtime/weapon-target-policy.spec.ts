@@ -68,6 +68,13 @@ describe('weapon target policy', () => {
         }
     });
 
+    it('checks interior lines of sight between noninfantry units in a multihex building', () => {
+        const target = { unitType: 'mek-biped' as const, calculator: { buildingCover: 'building-2' as const },
+            local: { distance: 2, calculator: { insideTargetBuilding: true as const, targetLevelDifference: 2 } } };
+        expect(weaponTargetDisabledReason(weapon([]), 'total-warfare', target)).toContain('line of sight');
+        expect(weaponTargetDisabledReason(weapon([]), 'total-warfare', { ...target, local: { ...target.local, distance: 1 } })).toBeNull();
+    });
+
     it('restricts Thunder ammunition to terrain regardless of a manual TN override', () => {
         const launcher = weapon(['F_INDIRECT_FIRE'], 'LRM', ammo(['M_THUNDER']));
         expect(weaponTargetDisabledReason(launcher, 'core-2026', {

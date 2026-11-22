@@ -28,7 +28,7 @@ crewStateDefinitions,
 unitConditionControls,
 } from '../../../models/unit-status-presentation';
 import { DialogsService } from '../../../services/dialogs.service';
-import { internalBayAccepts, internalCargoBays, type InternalBayLoad } from '../../../models/runtime/internal-bay-loads';
+import { internalBayAccepts, internalCargoBays, internalPassengerLoad, usedBayCapacity, type InternalBayLoad } from '../../../models/runtime/internal-bay-loads';
 import { isAeroEntity } from '../../../models/entity/utils/entity-type-guards';
 import { workingBayDoors } from '../../../models/rules/system-damage-rules';
 import { LoggerService } from '../../../services/logger.service';
@@ -299,7 +299,12 @@ export class PageViewerNonMekRuntimeService {
             await this.dialogs.choose('Internal bay', 'This bay has no working doors.', [{label: 'Close', value: true}], true);
             return;
         }
+        if (snap.state.pendingCombat.lostCargo?.length) {
+            await this.dialogs.choose('Internal bay', 'Resolve pending cargo damage before changing the manifest.', [{ label: 'Close', value: true }], true);
+            return;
+        }
         const loads = [...snap.state.internalBayLoads ?? []];
+        const space = Math.max(0, bay.capacity - usedBayCapacity(bay, loads));
         const inUse = new Set(member.force.getCBTMembers().flatMap(m => {
             const other = member.force.getUnitSnapshot(m.id);
             return other && hasNonMekRuntime(other) ? (other.state.internalBayLoads ?? []).flatMap(row => 'unitId' in row ? [row.unitId] : []) : [];
@@ -309,8 +314,8 @@ export class PageViewerNonMekRuntimeService {
         const options = [
             ...loads.flatMap((row, index) => row.bay === bay.id ? [{ value: 'remove:' + index,
                 label: 'Unload ' + ('unitId' in row ? memberName(row.unitId) : row.cargo) }] : []),
-            ...(bay.cargo ? [{ value: 'cargo', label: 'Load cargo' }] : []),
-            ...others.filter(m => bay.troops && !inUse.has(m.id) && !member.force.getUnitSnapshot(m.id)?.query.destroyed())
+            ...(bay.cargo && space > 0 ? [{ value: 'cargo', label: 'Load cargo' }] : []),
+            ...others.filter(m => bay.troops && usedBayCapacity(bay, [internalPassengerLoad(member.entity, bay.id, m.entity, m.id)]) <= space && !inUse.has(m.id) && !member.force.getUnitSnapshot(m.id)?.query.destroyed())
                 .map(m => ({ value: 'unit:' + m.id, label: 'Embark ' + m.entity.displayName() })),
             { value: '', label: 'Cancel' },
         ];
@@ -323,12 +328,16 @@ export class PageViewerNonMekRuntimeService {
             if (!cargo) return;
             const tons = Number(await this.dialogs.prompt('Tons carried', 'Load ' + cargo, '1'));
             if (!(tons > 0 && Number.isFinite(tons))) return;
+            if (tons > space) {
+                await this.dialogs.choose('Load cargo', 'Only ' + space + ' tons of space remain in this bay.', [{ label: 'Close', value: true }], true);
+                return;
+            }
             const same = loads.find(row => row.bay === bay.id && 'cargo' in row && row.cargo === cargo);
             updated = same ? loads.map(row => row === same ? { ...row, tons: row.tons + tons } : row) : [...loads, { bay: bay.id, cargo, tons }];
         } else {
             const unit = others.find(m => m.id === picked.slice(5));
             if (!unit) return;
-            updated = [...loads, { bay: bay.id, unitId: unit.id, tons: unit.entity.tonnage() }];
+            updated = [...loads, internalPassengerLoad(member.entity, bay.id, unit.entity, unit.id)];
         }
         const fresh = member.force.getUnitSnapshot(member.id);
         if (fresh?.query.stateRevision === snap.query.stateRevision) {

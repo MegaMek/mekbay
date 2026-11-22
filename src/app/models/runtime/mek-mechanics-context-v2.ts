@@ -741,9 +741,8 @@ export function raiseMekJumpChecksContextV2(
 ): MekMovementPsrStateV2 | Extract<MekMovementPsrProjectionResultV2, { readonly kind: 'unsupported' }> {
     const resolved = movementRuntimeFacts(context, entity, input);
     if (resolved.kind === 'unsupported') return resolved;
-    return enteredWater && state.movement?.mode !== 'jump'
-        ? raiseWaterEntryCheck(resolved.profile, resolved.facts, state, producingRevision, immediate)
-        : raiseMekJumpChecksV2(resolved.facts, state, producingRevision, immediate, swarmerMagneticClaws);
+    const afterEntry = raiseWaterEntryCheck(resolved.profile, resolved.facts, state, producingRevision, immediate, enteredWater);
+    return raiseMekJumpChecksV2(resolved.facts, afterEntry, producingRevision, immediate, swarmerMagneticClaws);
 }
 
 export function appendMekPhysicalAttackChecksContextV2(

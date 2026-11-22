@@ -14,6 +14,19 @@ export interface UnitWaterState {
     submerged: boolean;
 }
 
+/** The force, building sheet and floor occupied by a target. */
+export interface ShelteringBuilding {
+    readonly forceId: string;
+    readonly unitId: string;
+    readonly location: string;
+}
+
+export function isShelteringBuilding(value: unknown): value is ShelteringBuilding {
+    if (!value || typeof value !== 'object') return false;
+    const ref = value as Partial<ShelteringBuilding>;
+    return [ref.forceId, ref.unitId, ref.location].every(key => typeof key === 'string' && key.length > 0 && key.length <= 128);
+}
+
 export type UnitBuildingCoverEffect = 'none' | 'partial' | 'heavy';
 
 export interface UnitBuildingCoverState {

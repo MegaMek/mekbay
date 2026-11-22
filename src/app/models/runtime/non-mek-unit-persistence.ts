@@ -177,6 +177,7 @@ export interface SerializedNonMekUnit {
     readonly equipmentRowOrder?: EquipmentRowOrderState;
     readonly pendingCombat?: Readonly<{
         readonly narcPods?: readonly LocationId[];
+        readonly destroyed?: true;
         readonly lostCargo?: readonly InternalBayLoad[];
         readonly crewStuns?: number;
         readonly internalDamage?: readonly Readonly<{
@@ -693,7 +694,7 @@ function validateSerializedNonMekTurn(value: unknown): void {
 
 function serializePendingCombat(state: NonMekUnitRuntimeState): SerializedNonMekUnit['pendingCombat'] {
     const pending = state.pendingCombat;
-    if (!pending.crewStuns && !pending.lostCargo?.length && !pending.narcPods?.length && pending.locationInternalDamage.size === 0
+    if (!pending.destroyed && !pending.crewStuns && !pending.lostCargo?.length && !pending.narcPods?.length && pending.locationInternalDamage.size === 0
         && pending.armorDamage.size === 0
         && pending.componentStatus.size === 0
         && pending.damageTrackHits.size === 0
@@ -717,6 +718,7 @@ function serializePendingCombat(state: NonMekUnitRuntimeState): SerializedNonMek
             hitTimestamps: Object.freeze([...damageTrack.hitTimestamps]),
         }));
     return Object.freeze({
+        ...(pending.destroyed ? { destroyed: true as const } : {}),
         ...(pending.crewStuns ? { crewStuns: pending.crewStuns } : {}),
         ...(pending.lostCargo?.length ? { lostCargo: pending.lostCargo } : {}),
         ...(pending.narcPods?.length ? { narcPods: pending.narcPods } : {}),
@@ -757,6 +759,7 @@ function restorePendingCombat(
             autocannonHits: new Set(saved.pendingCombat.autocannonHits.map(asComponentId)
                 .filter(componentId => installed(componentId) && survivesAutocannonHit(componentId))),
         }),
+        ...(saved.pendingCombat?.destroyed === true ? { destroyed: true as const } : {}),
         ...(saved.pendingCombat?.crewStuns !== undefined ? { crewStuns: requireInteger(saved.pendingCombat.crewStuns, 'crewStuns') } : {}),
         ...(saved.pendingCombat?.lostCargo?.length ? { lostCargo: readInternalBayLoads(saved.pendingCombat.lostCargo) } : {}),
         ...(saved.pendingCombat?.narcPods?.length ? { narcPods: saved.pendingCombat.narcPods.map(asLocationId) } : {}),

@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 
 import type { CBTRuleset } from '../cbt-ruleset.model';
-import type { TnTargetNumberCalculatorState, TnTargetUnitType } from '../target-number-calculator.model';
+import { resolveTnTargetHeight, type TnTargetNumberCalculatorState, type TnTargetUnitType } from '../target-number-calculator.model';
 import type { IntrinsicWeaponKind } from '../entity/types/weapon';
 import type { MekPhysicalAttackCheckTriggerKindV2 } from '../runtime/mek-movement-psr-v2';
 import { legAttackTarget, SWARM_VEHICLE_MODIFIER, swarmTarget } from './anti-mek-attack-rules';
@@ -38,8 +38,9 @@ export function physicalAttackTakesMovement(kind: PhysicalAttackKind | null | un
  * A thrash automatically succeeds, so it rolls no to-hit (TW p. 151); so does the damage of a unit already swarming
  * (TW p. 223) and its choice to end the swarm.
  */
-export function physicalAttackAlwaysHits(kind: PhysicalAttackKind | null | undefined): boolean {
-    return kind === 'thrash' || kind === 'swarm-damage' || kind === 'end-swarm';
+export function physicalAttackAlwaysHits(kind: PhysicalAttackKind | null | undefined, ruleset?: CBTRuleset, unitType?: TnTargetUnitType): boolean {
+    return kind === 'thrash' || kind === 'swarm-damage' || kind === 'end-swarm'
+        || (!!kind && ruleset === 'total-warfare' && unitType === 'building');
 }
 
 /**
@@ -174,7 +175,7 @@ export function physicalTargetIssue(
         distance: number;
         tnCalculator?: Pick<TnTargetNumberCalculatorState,
             'targetHexCover' | 'waterDepth' | 'buildingCover' | 'isAirborne' | 'swarmed' | 'swarming'
-            | 'prone' | 'targetLevelDifference' | 'largeTarget' | 'vtol' | 'buildingCf' | 'insideTargetBuilding' | 'infantryBuildingType'>;
+            | 'prone' | 'targetLevelDifference' | 'targetHeight' | 'largeTarget' | 'vtol' | 'buildingCf' | 'insideTargetBuilding' | 'infantryBuildingType'>;
     }>,
     ruleset: CBTRuleset = 'core-2026',
     hitTable: HitTable = 'standard',
@@ -189,8 +190,10 @@ export function physicalTargetIssue(
         const mek = target.unitType?.startsWith('mek-') ?? true;
         if (target.distance === 0 && (mek || kind === 'charge' || kind === 'push')) return 'out-of-range';
         const level = target.tnCalculator?.targetLevelDifference ?? 0;
+        if (kind === 'push' && (!mek || target.tnCalculator?.prone)) return 'invalid';
         if (ruleset === 'total-warfare' && target.tnCalculator?.buildingCover && kind !== 'charge'
-            && (attacker?.insideBuilding === false || target.tnCalculator.buildingCf || level !== 0)) return 'invalid';
+            && (level !== 0 || (!target.tnCalculator.insideTargetBuilding
+                && (attacker?.insideBuilding === false || target.tnCalculator.buildingCf)))) return 'invalid';
         if (target.unitType === 'vtol-wige' && target.tnCalculator?.vtol && target.tnCalculator.isAirborne) {
             if (kind === 'death-from-above') return attacker?.jumpMp !== undefined && attacker.jumpMp < level ? 'out-of-range' : null;
             const canReach = (height: number) => height === 0 ? kind !== 'punch'
@@ -198,7 +201,10 @@ export function physicalTargetIssue(
                     : height === 3 && (kind === 'club' || kind === 'weapon');
             return canReach(level) || target.tnCalculator.largeTarget && canReach(level + 1) ? null : 'out-of-range';
         }
-        if (kind === 'death-from-above') return null;
+        if (kind === 'death-from-above') {
+            const height = resolveTnTargetHeight({ ...target.tnCalculator, unitType: target.unitType ?? 'mek-biped' });
+            return attacker?.jumpMp !== undefined && attacker.jumpMp < level + height ? 'out-of-range' : null;
+        }
         if (!mek) {
             if (target.unitType === 'vehicle' || target.unitType === 'protoMek' || infantryTarget(target.unitType)
                 || target.unitType === 'vtol-wige' && !target.tnCalculator?.isAirborne) {
@@ -297,13 +303,16 @@ export function physicalSelfDamage(
     ruleset: CBTRuleset,
     kind: PhysicalAttackKind,
     hit: boolean,
-    facts: Readonly<{ attackerTons: number; targetTons: number; attackDamage: number; attackerSubmerged: boolean }>,
+    facts: Readonly<{ attackerTons: number; targetTons: number; attackDamage: number; attackerSubmerged: boolean; buildingChargeCf?: number }>,
 ): Readonly<{ damage: number; table: HitTable; groupSize: number }> | null {
     if (kind === 'brush-off' && !hit) {
         return Object.freeze({ damage: facts.attackDamage, table: 'punch', groupSize: Math.max(1, facts.attackDamage) });
     }
     if (!hit) return null;
     if (kind === 'charge') {
+        if (ruleset === 'total-warfare' && facts.buildingChargeCf !== undefined) {
+            return Object.freeze({ damage: Math.ceil(facts.buildingChargeCf / 10), table: 'standard', groupSize: 5 });
+        }
         const damage = Math.ceil(facts.targetTons / 10);
         return Object.freeze({
             damage: facts.attackerSubmerged ? underwaterPhysicalDamage(ruleset, damage) : damage,

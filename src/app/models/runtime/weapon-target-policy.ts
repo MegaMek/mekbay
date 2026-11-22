@@ -109,9 +109,11 @@ export function weaponTargetDisabledReason(
     const rules = gameRulesFor(ruleset);
     const merged: TnTargetNumberCalculatorState = { ...target.calculator, ...target.local?.calculator };
     const facts = Object.keys(merged).length === 0 ? undefined : merged;
-    if (ruleset === 'total-warfare' && facts?.buildingCover && (target.unitType === 'infantry' || target.unitType === 'battle-armor')) {
-        if (!facts.insideTargetBuilding) return 'Target the building hex to damage infantry inside';
-        if (interiorBuildingDistance(target.local?.distance ?? 1, facts.targetLevelDifference) > 3) return 'Building hexes or levels block line of sight';
+    if (ruleset === 'total-warfare' && facts?.buildingCover) {
+        if (!facts.insideTargetBuilding && (target.unitType === 'infantry' || target.unitType === 'battle-armor'))
+            return 'Target the building hex to damage infantry inside';
+        if (facts.insideTargetBuilding && interiorBuildingDistance(target.local?.distance ?? 1, facts.targetLevelDifference) > 3)
+            return 'Building hexes or levels block line of sight';
     }
     if (subject.maximumRange !== undefined && (target.local?.distance ?? 1) > subject.maximumRange) {
         return 'Destroyed ProtoMek head prevents long-range fire';

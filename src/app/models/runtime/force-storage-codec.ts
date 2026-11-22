@@ -1798,6 +1798,7 @@ function packMovement(value: SerializedMekMovementPsrStateV2): unknown {
         [CBT_MOVEMENT_FIELD.standAttempts]: value.standAttempts,
         [CBT_MOVEMENT_FIELD.carefulStand]: value.carefulStand ? 1 : undefined,
         [CBT_MOVEMENT_FIELD.damageThisPhase]: value.damageThisPhase,
+        [CBT_MOVEMENT_FIELD.undeclaredWaterEntries]: value.undeclaredWaterEntries?.slice(),
         [CBT_MOVEMENT_FIELD.checks]: value.checks?.map(check => tuple(
             check.checkId,
             compactObject({
@@ -1854,6 +1855,8 @@ function unpackMovement(value: unknown, path: string): SerializedMekMovementPsrS
                 movement[CBT_MOVEMENT_FIELD.carefulStand],
                 `${path}.${CBT_MOVEMENT_FIELD.carefulStand}`,
             ),
+        undeclaredWaterEntries: movement[CBT_MOVEMENT_FIELD.undeclaredWaterEntries] === undefined ? undefined
+            : unpackIntegerArray(movement[CBT_MOVEMENT_FIELD.undeclaredWaterEntries], path),
         damageThisPhase: optionalInteger(
             movement[CBT_MOVEMENT_FIELD.damageThisPhase],
             `${path}.${CBT_MOVEMENT_FIELD.damageThisPhase}`,
@@ -2221,6 +2224,7 @@ function packNonMekPending(value: SerializedNonMekUnit['pendingCombat']): unknow
         ),
         [CBT_NON_MEK_PENDING_COMBAT_FIELD.narcPods]: value.narcPods?.slice(),
         [CBT_NON_MEK_PENDING_COMBAT_FIELD.crewStuns]: value.crewStuns,
+        [CBT_NON_MEK_PENDING_COMBAT_FIELD.destroyed]: value.destroyed,
         [CBT_NON_MEK_PENDING_COMBAT_FIELD.lostCargo]: value.lostCargo?.map(load => ({ ...load })),
         [CBT_NON_MEK_PENDING_COMBAT_FIELD.autocannonHits]: value.autocannonHits?.slice(),
         [CBT_NON_MEK_PENDING_COMBAT_FIELD.outsideHeat]: value.outsideHeat,
@@ -2273,6 +2277,7 @@ function unpackNonMekPending(value: unknown, path: string): NonNullable<Serializ
             ),
         }),
         ...(pending[CBT_NON_MEK_PENDING_COMBAT_FIELD.crewStuns] === undefined ? {} : { crewStuns: integer(pending[CBT_NON_MEK_PENDING_COMBAT_FIELD.crewStuns], path) }),
+        ...(pending[CBT_NON_MEK_PENDING_COMBAT_FIELD.destroyed] === true ? { destroyed: true as const } : {}),
         ...(pending[CBT_NON_MEK_PENDING_COMBAT_FIELD.lostCargo] === undefined ? {} : { lostCargo: readInternalBayLoads(pending[CBT_NON_MEK_PENDING_COMBAT_FIELD.lostCargo]) }),
         ...(pending[CBT_NON_MEK_PENDING_COMBAT_FIELD.narcPods] === undefined ? {} : { narcPods:
             array(pending[CBT_NON_MEK_PENDING_COMBAT_FIELD.narcPods], path).map(id => asLocationId(text(id, path))) }),

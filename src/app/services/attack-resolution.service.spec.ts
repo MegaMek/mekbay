@@ -1,6 +1,8 @@
 // Copyright (C) 2026 The MegaMek Team
 // SPDX-License-Identifier: GPL-3.0-or-later
 
+import { StaticEmplacementEntity } from '../models/entity/entities/misc/static-emplacement-entity';
+import { shelterDamage, shelterHitReport } from '../models/runtime/attack-hit-location';
 import { TestBed } from '@angular/core/testing';
 import { EMPTY, of, Subject } from 'rxjs';
 import type { AttackResolutionDialogData } from '../components/attack-resolution-dialog/attack-resolution-dialog.component';
@@ -14,10 +16,12 @@ import { projectNonMekEquipmentPanel } from '../models/runtime/non-mek-equipment
 import { componentIdForMount } from '../models/runtime/unit-runtime-index';
 import { asUnitUuid } from './unit-catalog/unit-catalog.types';
 import { resolveWeaponAttack } from '../models/rules/weapon-attack-resolution';
+import type { CBTUnitCommand } from '../models/runtime/unit-command';
 import { TestAeroSpaceFighterEntity, TestDropShipEntity } from '../models/entity/testing/test-entities';
 import { asEncounterTargetId } from '../models/runtime/encounter-runtime';
 import { projectMekEquipmentPanel, type EquipmentPanelSnapshot } from '../models/runtime/equipment-panel';
-import { createDirectMekRuntimeFixture } from '../models/runtime/testing/direct-mek-runtime-fixture';
+import { createDirectMachineGunArrayRuntimeFixture, createDirectMekRuntimeFixture } from '../models/runtime/testing/direct-mek-runtime-fixture';
+import { MGA_UNLINKING_MODE } from '../models/runtime/component-machine-gun-array';
 import { AttackResolutionService } from './attack-resolution.service';
 import { DialogsService } from './dialogs.service';
 import { ForceWorkspaceStateService } from './force-workspace-state.service';
@@ -56,6 +60,38 @@ describe('AttackResolutionService hit locations', () => {
         expect(service.allowsAttackDeclaration(member, 'weapons')).toBeFalse();
         expect(await service.rollAttacks(member, {} as EquipmentPanelSnapshot, null)).toBe('dismissed');
         expect(dialog).not.toHaveBeenCalled();
+    });
+
+    it('shows and spends maximum Ultra and Rotary bursts for an airborne fighter', () => {
+        for (const [ammoType, bursts] of [['AC_ULTRA', 2], ['AC_ROTARY', 6]] as const) {
+            const modes = ammoType === 'AC_ULTRA' ? ['Single', 'Ultra'] : ['1', '2', '3', '4', '5', '6'];
+            const gun = new WeaponEquipment({ id: 'rapid', name: 'Rapid-fire AC', type: 'weapon', modes,
+                flags: ['F_AC', 'F_BALLISTIC', 'F_DIRECT_FIRE'], weapon: { heat: 1, damage: 5, ammoType, rackSize: 5 } });
+            const ammo = new AmmoEquipment({ id: 'rounds', name: 'AC ammo', type: 'ammo',
+                ammo: { type: ammoType, rackSize: 5, shots: 20, damagePerShot: 5 } });
+            const entity = new TestAeroSpaceFighterEntity(createTestEquipmentRegistry({ rapid: gun, rounds: ammo }));
+            const uuid = asUnitUuid('019f6767-0dcb-7bb8-992f-aef08202f5e1');
+            entity.uuid.set(uuid);
+            entity.structuralIntegrity.set(10);
+            const weaponId = componentIdForMount(addTestEquipment(entity, gun, { location: 'Nose' }));
+            const bin = componentIdForMount(addTestEquipment(entity, ammo, { location: 'Nose', shotsCount: 20 }));
+            const unit = createNonMekUnit(entity, { instanceId: 'rapid', uuid, deployment: { id: 'default' },
+                scenario: { id: 'megamek', ruleset: 'total-warfare' }, initialStateProfileId: 'pristine' });
+            unit.dispatch({ type: 'set-airborne', airborne: true });
+            const registry = { revision: 0, targets: [] };
+            for (const edit of [
+                { kind: 'set-component-selection', componentId: weaponId, selection: { kind: 'selected' } },
+                { kind: 'set-component-ammo', componentId: weaponId, ammo: { munitionKey: ammo.id, preferredSourceId: bin } },
+            ] as const) unit.dispatchAttackerTargeting({ type: 'edit-attacker-targeting', edit }, registry, false);
+            const panel = projectNonMekEquipmentPanel(entity, unit.getIndex(), 'total-warfare', unit.snapshot(), unit.query(), registry, {});
+            const row = panel.components.find(component => component.componentId === weaponId)!;
+            expect(row.weapon?.firingHeat).toBe(bursts);
+            expect(row.modes).toEqual([]);
+            expect(row.mode).toBe(modes.at(-1));
+            expect(unit.dispatchSelectedWeaponFire({ type: 'fire-selected-weapons' }, registry, false, false).changed).toBeTrue();
+            expect(unit.query().remainingAmmo(bin)).toBe(20 - bursts);
+            expect(unit.snapshot().turn.weaponsHeat).toBe(bursts);
+        }
     });
 
     it('fires a fighter LRM at fixed AV and delivers one combined DropShip laser bay from its operating members', () => {
@@ -97,6 +133,120 @@ describe('AttackResolutionService hit locations', () => {
         }
     });
 
+    it('debits only the linked hex for occupied-building protection and discards or commits CF with its phase', async () => {
+        const entity = new StaticEmplacementEntity(createTestEquipmentRegistry({}));
+        const uuid = asUnitUuid('019f6767-0dcb-7bb8-992f-aef08202f5f2');
+        entity.uuid.set(uuid);
+        entity.height.set(2);
+        entity.buildingType.set(2);
+        entity.constructionFactor.set(38);
+        entity.coordinates.set([{ q: 0, r: 0 }, { q: 1, r: 0 }]);
+        const unit = createNonMekUnit(entity, { instanceId: 'building', uuid,
+            scenario: { id: 'megamek', ruleset: 'total-warfare' }, deployment: { id: 'default' }, initialStateProfileId: 'pristine' });
+        const building = { id: unit.instanceId, entity, force: {
+            getUnitSnapshot: () => ({ entity, index: unit.getIndex(), state: unit.snapshot(), query: unit.query() }),
+            dispatchUnitCommand: async (_: string, command: CBTUnitCommand) => unit.dispatch(command),
+        } } as unknown as CBTForceMember;
+        const cells = [...unit.getIndex().locations.values()];
+        const left = cells.filter(cell => cell.code.endsWith('0.0,0.0,0.0'));
+        const adjacent = cells.filter(cell => !left.includes(cell));
+        expect(left.length).toBe(2);
+        const hit = shelterHitReport('AC/10', 4, left[0].code);
+        const apply = () => TestBed.inject(AttackResolutionService)['applyBuildingCf'](building, hit, 'pending');
+        expect(await apply()).toBeTrue();
+        expect(left.map(cell => unit.query().remainingInternal(cell.id, 'committed'))).toEqual([38, 38]);
+        expect(left.map(cell => unit.query().remainingInternal(cell.id, 'preview'))).toEqual([34, 34]);
+        unit.dispatch({ type: 'cancel-pending' });
+        expect(left.map(cell => unit.query().remainingInternal(cell.id, 'preview'))).toEqual([38, 38]);
+        expect(await apply()).toBeTrue();
+        unit.dispatch({ type: 'end-phase' });
+        expect(left.map(cell => unit.query().remainingInternal(cell.id, 'committed'))).toEqual([34, 34]);
+        expect(adjacent.every(cell => unit.query().remainingInternal(cell.id) === 38)).toBeTrue();
+    });
+
+    it('resolves manual TW building charges and DFAs without a defending pilot and distinguishes shelter from interior hits', () => {
+        const fixture = createDirectMekRuntimeFixture('total-warfare');
+        const targetId = asEncounterTargetId('unit-target');
+        const member = { id: 'attacker', entity: fixture.entity, force: {
+            getUnitSnapshot: () => ({ state: fixture.instance.snapshot(), query: fixture.instance.query() }),
+            getWeaponAttackContext: () => ({ pilotingSkill: 5 }),
+        } } as unknown as CBTForceMember;
+        let linked = false;
+        TestBed.overrideProvider(InventoryControlOpforService, { useValue: {
+            resolveOpforTarget: () => linked ? { forceId: 'opfor', member } : null,
+        } });
+        const service = TestBed.inject(AttackResolutionService);
+        const base = projectMekEquipmentPanel(fixture.entity, fixture.index, 'total-warfare', fixture.instance.query(), { revision: 0, targets: [] }, {});
+        const resolve = (kind: 'charge' | 'death-from-above' | 'kick', unitType: 'building' | 'mek-biped', inside = false) => {
+            const physical = { ...base.physicalAttacks[0], kind, ruleset: 'total-warfare' as const, jumpMp: 8,
+                reach: undefined, insideBuilding: inside, selectable: true, available: true, hitTable: 'standard' as const,
+                hitModifiers: kind === 'kick' ? [0] as const : ['versus'] as const,
+                effect: { kind: 'damage' as const, damage: 10, baseDamage: 10, maximumDamage: 10, weakened: false, boosted: false },
+                selection: { kind: 'target' as const, targetId } };
+            const target = { targetId, unitType, name: 'Target', letter: 'A', color: '', readOnly: false,
+                ...(unitType === 'building' ? {} : { calculator: { buildingCover: 'building-1' as const,
+                    buildingCf: 38, ...(inside ? { insideTargetBuilding: true as const } : {}) } }) };
+            return service['attackTargets'](member, { ...base, components: [], physicalAttacks: [physical], targets: [target] }, {
+                gunnery: 4, pilotingSkill: 5, movementMode: null, allowExtremeRange: false, missingMovementModifier: false,
+                attackModifierBreakdown: [], c3Available: false, c3DegradationSource: 'none',
+            })[0];
+        };
+        for (const kind of ['charge', 'death-from-above'] as const) {
+            const target = resolve(kind, 'building');
+            expect(target.profiles[0]).toEqual(jasmine.objectContaining({ physical: kind, automaticBuildingHit: true, targetNumber: 2 }));
+            expect(target.buildingChargeHexes).toEqual(kind === 'charge' ? [] : undefined);
+        }
+        linked = true;
+        const charge = resolve('charge', 'mek-biped').profiles[0];
+        expect(charge.partialCover).toBeTrue();
+        const hit = resolveWeaponAttack(charge, [6, 6], null);
+        expect(hit.groups).toEqual([1, 1]);
+        expect(hit.absorbed).toEqual([4, 4]);
+        expect(shelterDamage(null, 'front', { name: 'Charge', types: [], physical: 'charge', targetNumber: 2, toHit: [6, 6], partialCover: true,
+            groups: [{ damage: 1, buildingDamage: 4, location: [3, 3], aux: 1 }, { damage: 1, buildingDamage: 4, location: [3, 4], aux: 1 }],
+        }, 'total-warfare', 'mek-biped')).toBe(8);
+        expect(shelterDamage(null, 'front', { name: 'Charge', types: [], physical: 'charge', targetNumber: 2, toHit: [6, 6], partialCover: true,
+            groups: [{ damage: 1, buildingDamage: 4, location: [2, 3], aux: 1 }, { damage: 1, buildingDamage: 4, location: [3, 4], aux: 1 }],
+        }, 'total-warfare', 'mek-biped')).toBe(9);
+        for (const kind of ['charge', 'kick'] as const) {
+            const interior = resolve(kind, 'mek-biped', true).profiles[0];
+            expect(interior.partialCover).toBeFalse();
+            expect(interior.buildingAbsorption).toBe(4);
+        }
+    });
+
+    it('absorbs the BattleMaster’s two-point machine-gun hit on the Locust inside a CF 60 building (BMM p. 72)', () => {
+        const fixture = createDirectMachineGunArrayRuntimeFixture('total-warfare');
+        const ref = { forceId: 'owner', unitId: 'building', location: 'Level 2 0.0,0.0,0.0' };
+        TestBed.overrideProvider(InventoryControlOpforService, { useValue: { resolveOpforTarget: () => null,
+            buildingFloors: () => [{ ref, cf: 60 }] } });
+        const targetId = asEncounterTargetId('locust');
+        const registry = { revision: 1, targets: [{ id: targetId, letter: 'A', name: 'Locust', color: '#abc',
+            unitType: 'mek-biped', tnCalculator: { buildingCover: 'building-1' } }] } as const;
+        fixture.instance.dispatch({ type: 'set-component-mode', componentId: fixture.equipmentComponent('Test MGA').id, mode: MGA_UNLINKING_MODE });
+        fixture.instance.dispatch({ type: 'end-phase' });
+        const gun = fixture.equipmentComponent('Test Machine Gun');
+        for (const edit of [{ kind: 'set-target-facts', targetId, facts: { distance: 1,
+            calculator: { targetLevelDifference: 1, insideTargetBuilding: true, shelteringBuilding: ref, buildingCf: 10 } } },
+            { kind: 'set-component-selection', componentId: gun.id, selection: { kind: 'target', targetId } }] as const) {
+            expect(fixture.instance.dispatchAttackerTargeting({ type: 'edit-attacker-targeting', edit }, registry, false).accepted).toBeTrue();
+        }
+        const member = { id: 'battlemaster', entity: fixture.entity, force: { getUnitSnapshot: () => null } } as unknown as CBTForceMember;
+        const panel = projectMekEquipmentPanel(fixture.entity, fixture.index, 'total-warfare', fixture.instance.query(), registry, {});
+        const [target] = TestBed.inject(AttackResolutionService)['attackTargets'](member, panel, {
+            gunnery: 4, pilotingSkill: 5, movementMode: 'run', allowExtremeRange: false, missingMovementModifier: false,
+            attackModifierBreakdown: [], c3Available: false, c3DegradationSource: 'none',
+        });
+        const [profile] = target.profiles;
+        expect(profile.shelteringBuilding).toEqual(ref);
+        expect(profile.buildingAbsorption).toBe(6);
+        expect(profile.adjacentShelter).toBeUndefined();
+        expect(profile.partialCover).toBeFalse();
+        const outcome = resolveWeaponAttack(profile, [6, 6], null);
+        expect(outcome.groups).toEqual([0]);
+        expect(outcome.absorbed).toEqual([2]);
+    });
+
     it('reads the defender-selected building hex and level from a local report', () => {
         const level = 'Level 0 0.0,0.0,0.0';
         const member = { entity: { entityType: 'BuildingEntity' }, nonMekRecordSheetSnapshot: () => ({
@@ -105,6 +255,29 @@ describe('AttackResolutionService hit locations', () => {
         const group = { location: [4, 4] as const, aux: 1, buildingLocation: level };
         expect(weaponHitLocation(member, 'front', {}, group)).toEqual(jasmine.objectContaining({ locationId: 'struck' }));
         expect(weaponHitLocation(member, 'front', {}, { ...group, buildingLocation: 'missing' })).toBeNull();
+    });
+
+    it('sends the absorbed four points to the building owner and applies the remaining six to the Mek', async () => {
+        const send = jasmine.createSpy('send').and.resolveTo(true);
+        TestBed.overrideProvider(GameEventsService, { useValue: { received: EMPTY, send } });
+        TestBed.overrideProvider(ForceWorkspaceStateService, { useValue: { loadedForces: () => [] } });
+        const applied = jasmine.createSpy('applyWeaponHits').and.resolveTo(true);
+        const fixture = createDirectMekRuntimeFixture('total-warfare');
+        const member = { kind: 'cbt', id: 'occupant', entity: fixture.entity, force: {
+            getUnitSnapshot: () => ({ entity: fixture.entity, index: fixture.index, state: fixture.instance.snapshot(),
+                query: fixture.instance.query(), ruleset: 'total-warfare' }), applyWeaponHits: applied,
+        } } as unknown as CBTForceMember;
+        const shelter = { forceId: 'building-owner', unitId: 'tower', location: 'floor-one' };
+        await TestBed.inject(AttackResolutionService)['applyAttack'](member, {
+            kind: 'attack', id: 'attack', fromForce: 'sender', fromUnit: 'gunner', attacker: 'Gunner',
+            toUnit: member.id, turn: 1, arc: 'front', weapons: [{ name: 'AC/10', types: [], targetNumber: 5,
+                toHit: [4, 5], partialCover: true, shelteringBuilding: shelter,
+                groups: [{ location: [3, 4], aux: 1, damage: 6, buildingDamage: 4 }] }],
+        }, 'pending');
+        expect(send).toHaveBeenCalledOnceWith(shelter.forceId, jasmine.objectContaining({
+            toUnit: shelter.unitId, weapons: [shelterHitReport('AC/10', 4, shelter.location)] }));
+        expect(applied).toHaveBeenCalledOnceWith(member.id, { family: 'mek',
+            groups: [jasmine.objectContaining({ location: 'CT', damage: 6 })] }, 'pending');
     });
 
     it('applies each Battle Armor flamer’s heat and damage together at its struck Mek location', async () => {
@@ -176,6 +349,54 @@ describe('AttackResolutionService hit locations', () => {
 });
 
 describe('incoming floating criticals', () => {
+    it('spends two bearing AMS on confirmation before revealing AV; ignoring the damage cannot refund them', async () => {
+        const gun = new WeaponEquipment({ id: 'ams', name: 'AMS', type: 'weapon', flags: ['F_AMS', 'F_BALLISTIC'],
+            weapon: { heat: 1, rackSize: 2, ammoType: 'AMS' } });
+        const ammo = new AmmoEquipment({ id: 'bin', name: 'AMS Ammo', type: 'ammo', ammo: { type: 'AMS', rackSize: 2, shots: 12 } });
+        const entity = new TestAeroSpaceFighterEntity(createTestEquipmentRegistry({ ams: gun, bin: ammo }));
+        const uuid = asUnitUuid('019f6767-0dcb-7bb8-992f-aef08202f5e1');
+        entity.uuid.set(uuid);
+        entity.structuralIntegrity.set(10);
+        const ids = [1, 2].map(() => componentIdForMount(addTestEquipment(entity, gun, { location: 'Nose' })));
+        const bin = componentIdForMount(addTestEquipment(entity, ammo, { location: 'Aft', shotsCount: 12 }));
+        const unit = createNonMekUnit(entity, { instanceId: 'target', uuid, deployment: { id: 'default' },
+            scenario: { id: 'megamek', ruleset: 'total-warfare' }, initialStateProfileId: 'pristine' });
+        const force = Object.assign(Object.create(CBTForce.prototype), {
+            instanceId: () => 'force', readOnly: () => false, getCBTMembers: () => [member],
+            getUnitSnapshot: () => ({ entity, index: unit.getIndex(), state: unit.snapshot(), query: unit.query(), ruleset: 'total-warfare' }),
+            dispatchUnitCommand: (_id: string, cmd: CBTUnitCommand) => Promise.resolve(unit.dispatch(cmd)),
+            runAsOneUndoStep: (apply: () => Promise<boolean>) => apply(),
+        });
+        const member = new CBTForceMember('target', force, entity);
+        const shown = jasmine.createSpy('createDialog').and.callFake((_component, { data }) => {
+            if (data.choosingDefenses) {
+                expect(unit.query().remainingAmmo(bin)).toBe(12);
+                return { closed: of({ defenses: ids.map(componentId => ({ weapon: 0, componentId })) }) };
+            }
+            expect(unit.query().remainingAmmo(bin)).toBe(10);
+            expect(data.event.weapons[0].groups.map((g: { damage: number }) => g.damage)).toEqual([2]);
+            expect(data.defenseDice.get(0)).toEqual([3, 4]);
+            return { closed: of(false) };
+        });
+        TestBed.configureTestingModule({ providers: [
+            { provide: OptionsService, useValue: { options: () => ({ CBTOptionalRules: {} }) } },
+            { provide: GameEventsService, useValue: { received: EMPTY } }, { provide: DialogsService, useValue: { createDialog: shown } },
+            { provide: InventoryControlOpforService, useValue: {} }, { provide: ForceWorkspaceCommandsService, useValue: { selectUnit: () => {} } },
+            { provide: ForceWorkspaceStateService, useValue: { loadedForces: () => [{ force }] } }, { provide: UnitNameService, useValue: { name: () => 'Target' } },
+            { provide: ToastService, useValue: { showToast: () => {} } },
+        ] });
+        spyOn(Math, 'random').and.returnValue(0.55);
+        await TestBed.inject(AttackResolutionService)['receive']('force', { kind: 'attack', id: 'multi-ams', fromForce: 'other',
+            fromUnit: 'attacker', attacker: 'Fighter', toUnit: 'target', turn: 0, arc: 'front', weapons: [{
+                name: 'LRM 15', types: ['M'], targetNumber: 4, toHit: [3, 3],
+                groups: [5, 4].map(damage => ({ location: [3, 3], aux: 1, damage })),
+                ams: { die: 3, damage: [5, 1], hits: 1, heat: 0, aerospace: { av: 9, groupSize: 5, absorption: 0 } },
+            }] }, null);
+        expect(shown).toHaveBeenCalledTimes(2);
+        expect(unit.query().remainingAmmo(bin)).toBe(10);
+        expect(unit.snapshot().turn.weaponsHeat).toBe(2);
+    });
+
     for (const floatingCriticals of [true, false]) {
         it(`previews and applies the sender's reroll only when the defender plays floating criticals (${floatingCriticals})`, async () => {
             const received = new Subject<ReceivedGameEvent>();

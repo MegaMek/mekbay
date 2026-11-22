@@ -10,16 +10,97 @@ import type { CBTUnitService } from '../services/cbt-unit.service';
 import { asUnitUuid, makeUnitFileName } from '../services/unit-catalog/unit-catalog.types';
 import { CORE_2026_RULESET } from './cbt-ruleset.model';
 import { asComponentId } from './entity/entity-identifiers';
-import { TestTankEntity } from './entity/testing/test-entities';
+import { TestInfantryEntity, TestTankEntity } from './entity/testing/test-entities';
 import { createTestEquipmentRegistry } from './entity/testing/test-equipment-registry';
 import { EntityMountedEquipment } from './entity/types';
 import { MiscEquipment } from './equipment.model';
 import { createNonMekUnit, restoreNonMekUnit } from './runtime/cbt-non-mek-unit';
 import { CBT_HISTORY_FIELD, CBT_HISTORY_TURN_FIELD } from './runtime/force-storage-vocabulary';
 import type { SerializedNonMekUnit } from './runtime/non-mek-unit-persistence';
-import { asForceId } from './runtime/persistence-v2';
+import { asForceId, emptyRuntimeHistory } from './runtime/persistence-v2';
 import { RUNTIME_HISTORY_MESSAGE } from './runtime/runtime-history';
 import { asSourceHashCanary } from './source-hash-canary';
+import { prepareCBTForcePersistenceV2 } from './runtime/force-persistence-boundary';
+
+describe('legacy passenger accommodation', () => {
+    const carrierId = 'unit:carrier';
+    const passengerId = 'unit:platoon';
+    const scenario = { id: 'megamek', ruleset: 'total-warfare' } as const;
+    const load = { bay: 'hold', unitId: passengerId, tons: 2 };
+    const cargo = { bay: 'hold', cargo: 'supplies', tons: 1 };
+
+    function fixture() {
+        const carrier = new TestTankEntity();
+        carrier.uuid.set(asUnitUuid('019f6767-0dcb-7bb8-992f-aef08202f5e4'));
+        carrier.setTonnage(20);
+        carrier.transporters.set([{ id: 'hold', kind: 'bay', doors: 1, capacity: 3, bayNumber: 1,
+            configuration: { type: 'cargo' }, omni: false }]);
+        const infantry = new TestInfantryEntity();
+        infantry.uuid.set(asUnitUuid('019f6767-0dcb-7bb8-992f-aef08202f5e5'));
+        infantry.chassis.set('Foot Platoon');
+        infantry.model.set('(LRM)');
+        infantry.squadSize.set(5);
+        infantry.squadCount.set(4);
+        const designs = new Map<string, TestTankEntity | TestInfantryEntity>([[carrierId, carrier], [passengerId, infantry]]);
+        const create = (instanceId: string) => {
+            const entity = designs.get(instanceId)!;
+            return createNonMekUnit(entity, { instanceId, uuid: entity.uuid()!, deployment: { id: 'default' },
+                scenario, initialStateProfileId: 'pristine' });
+        };
+        const envelope = (ids: readonly string[]): SerializedCBTForceV2 => ({
+            forceId: asForceId('force:passengers'), forceRevision: 0, history: emptyRuntimeHistory(), encounter: { networks: [] },
+            roster: { groups: [{ groupId: 'group:carriers', name: 'Cargo', order: 0,
+                members: ids.map((instanceId, order) => ({ instanceId, order })) }] },
+            units: ids.map(instanceId => {
+                const saved = create(instanceId).serialize();
+                return { instanceId, stateRevision: saved.stateRevision,
+                    unit: instanceId === carrierId ? { ...saved, internalBayLoads: [load] } : saved };
+            }),
+        });
+        const cbtUnits = { restore: async (saved: SerializedNonMekUnit) => ({
+            unit: restoreNonMekUnit(saved, designs.get(saved.instanceId)!, saved.entity, scenario), warnings: [],
+        }) } as unknown as CBTUnitService;
+        return { create, envelope, cbtUnits };
+    }
+
+    for (const ids of [[carrierId, passengerId], [passengerId, carrierId]]) {
+        it('restores saved design tons and occupied spaces when loading ' + ids[0] + ' first', async () => {
+            const { envelope, cbtUnits } = fixture();
+            const store = new CBTUnitStore();
+            const restored = await store.restore(envelope(ids), cbtUnits, scenario);
+            expect(restored.warnings).toEqual([]);
+            store.install(restored);
+            const carrier = store.nonMekUnit(carrierId)!;
+            expect(carrier.snapshot().internalBayLoads).toEqual([{ ...load, spaces: 3 }]);
+            expect((restored.envelope.units.find(entry => entry.instanceId === carrierId)!.unit as SerializedNonMekUnit)
+                .internalBayLoads).toEqual([{ ...load, spaces: 3 }]);
+            expect(carrier.revision()).toBe(0);
+            expect(store.dispatchUnitCommand(carrierId, { type: 'set-internal-bay-loads', loads: [load, cargo] }, false).changed).toBeFalse();
+        });
+    }
+
+    it('retains an orphan for unloading and restores its occupancy if the passenger joins later', async () => {
+        const { create, envelope, cbtUnits } = fixture();
+        const store = new CBTUnitStore();
+        const restored = await store.restore(envelope([carrierId]), cbtUnits, scenario);
+        store.install(restored);
+        const carrier = store.nonMekUnit(carrierId)!;
+        expect(carrier.snapshot().internalBayLoads).toEqual([load]);
+        const removed = store.dispatchUnitCommand(carrierId, { type: 'set-internal-bay-loads', loads: [] }, false);
+        expect(removed.changed).toBeTrue();
+
+        store.install(await store.restore(envelope([carrierId]), cbtUnits, scenario));
+        store.add(envelope([carrierId, passengerId]), create(passengerId), scenario);
+        const linked = store.nonMekUnit(carrierId)!;
+        expect(linked.snapshot().internalBayLoads).toEqual([{ ...load, spaces: 3 }]);
+        expect(linked.revision()).toBeGreaterThan(0);
+        const saved = await prepareCBTForcePersistenceV2({ previous: store.envelope()!, liveUnits: store.liveUnits() });
+        if (saved.kind !== 'writable') throw new Error('Expected the hydrated manifest to be writable');
+        const entry = saved.envelope.units.find(row => row.instanceId === carrierId)!;
+        expect((entry.unit as SerializedNonMekUnit).internalBayLoads).toEqual([{ ...load, spaces: 3 }]);
+        expect(store.dispatchUnitCommand(carrierId, { type: 'set-internal-bay-loads', loads: [load, cargo] }, false).changed).toBeFalse();
+    });
+});
 
 describe('a unit whose source changed at the unit store', () => {
     it('loses only its own C3 endpoints and the history naming its equipment', async () => {

@@ -1,6 +1,8 @@
 // Copyright (C) 2026 The MegaMek Team
 // SPDX-License-Identifier: GPL-3.0-or-later
 
+import { isShelteringBuilding } from '../unit-cover.model';
+
 import { isInfantryBuildingType } from '../rules/infantry-building-damage';
 
 import { isPlainRecord } from '../../utils/json-value.util';
@@ -49,6 +51,8 @@ export interface AttackerLocalCalculatorInputs {
     readonly indirectFire?: true;
     readonly angelEcm?: true;
     readonly buildingCf?: number;
+    readonly levelsBelowRoof?: number;
+    readonly shelteringBuilding?: import('../unit-cover.model').ShelteringBuilding;
     readonly infantryBuildingType?: import('../rules/infantry-building-damage').InfantryBuildingType;
     readonly insideTargetBuilding?: true;
     readonly secondaryTarget?: true;
@@ -910,7 +914,7 @@ function canonicalCalculator(
 ): AttackerLocalCalculatorInputs | undefined {
     if (!isPlainRecord(calculator)
         || !hasExactKeys(calculator, [
-            'interveningWoods', 'partialCover', 'attackDirection', 'targetLevelDifference', 'indirectFire', 'angelEcm', 'buildingCf', 'infantryBuildingType', 'insideTargetBuilding',
+            'interveningWoods', 'partialCover', 'attackDirection', 'targetLevelDifference', 'indirectFire', 'angelEcm', 'buildingCf', 'levelsBelowRoof', 'shelteringBuilding', 'infantryBuildingType', 'insideTargetBuilding',
             'secondaryTarget', 'secondaryTargetSideBack', 'spotterMoveMode',
             'spotterDeclaredAttacks', 'customModifier',
         ])) throw new Error('Invalid local target calculator');
@@ -938,6 +942,12 @@ function canonicalCalculator(
     }
     if (calculator.infantryBuildingType !== undefined && !isInfantryBuildingType(calculator.infantryBuildingType)) {
         throw new Error('Invalid infantry building type');
+    }
+    if (calculator.levelsBelowRoof !== undefined && (!Number.isSafeInteger(calculator.levelsBelowRoof) || calculator.levelsBelowRoof < 1)) {
+        throw new Error('Invalid number of levels below roof');
+    }
+    if (calculator.shelteringBuilding !== undefined && !isShelteringBuilding(calculator.shelteringBuilding)) {
+        throw new Error('Invalid sheltering building');
     }
     if (calculator.buildingCf !== undefined && (!Number.isSafeInteger(calculator.buildingCf) || calculator.buildingCf <= 0)) {
         throw new Error('Invalid phase-start building CF');
@@ -974,6 +984,8 @@ function canonicalCalculator(
         ...(calculator.indirectFire === true ? { indirectFire: true as const } : {}),
         ...(calculator.angelEcm ? { angelEcm: true as const } : {}),
         ...(calculator.buildingCf ? { buildingCf: calculator.buildingCf } : {}),
+        ...(calculator.levelsBelowRoof ? { levelsBelowRoof: calculator.levelsBelowRoof } : {}),
+        ...(calculator.shelteringBuilding ? { shelteringBuilding: Object.freeze({ ...calculator.shelteringBuilding }) } : {}),
         ...(calculator.infantryBuildingType ? { infantryBuildingType: calculator.infantryBuildingType } : {}),
         ...(calculator.insideTargetBuilding ? { insideTargetBuilding: true as const } : {}),
         ...(calculator.secondaryTarget === true ? { secondaryTarget: true as const } : {}),

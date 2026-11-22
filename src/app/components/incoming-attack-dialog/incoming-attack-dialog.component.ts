@@ -7,13 +7,14 @@ import { DIALOG_DATA, DialogRef } from '@angular/cdk/dialog';
 import { ChangeDetectionStrategy, Component, computed, inject, signal } from '@angular/core';
 
 import type { ComponentId } from '../../models/entity/entity-identifiers';
-import { interceptedReport, missileDefenseSystems } from '../../models/runtime/anti-missile-defense';
+import { type DefenseAssignment, availableMissileDefenses } from '../../models/runtime/anti-missile-defense';
 import type { CBTForceMember } from '../../models/force-member.model';
 import { toHitSucceeds } from '../../models/rules/weapon-attack-resolution';
 import { attackDamageSource } from '../../models/rules/armor-damage-rules';
 import { infernoEffect, infernoEffectText } from '../../models/rules/inferno-rules';
 import {
     attackDamagePreview,
+    shelterDamage,
     infernoMissilesThisTurn,
     readAttackThermalEffects,
     weaponHitLocation,
@@ -41,6 +42,8 @@ export interface IncomingAttackDialogData {
     readonly fromDisplayName: string | null;
     /** Accepted damage waits for the end of the phase. */
     readonly pending: boolean;
+    readonly choosingDefenses?: true;
+    readonly defenseDice?: ReadonlyMap<number, readonly number[]>;
 }
 
 /** Shows an opponent's resolved attack on one of this player's units; closes true to accept the damage. */
@@ -55,38 +58,35 @@ export class IncomingAttackDialogComponent {
     private readonly dialogRef = inject<DialogRef<IncomingAttackChoice>>(DialogRef);
     protected readonly data = inject<IncomingAttackDialogData>(DIALOG_DATA);
     protected readonly arcLabel = ATTACK_ARC_LABELS[this.data.event.arc];
-    protected readonly defenses = signal<ReadonlyMap<number, ComponentId>>(new Map());
+    protected readonly defenses = signal<readonly DefenseAssignment[]>([]);
     protected readonly buildingLocations = this.data.member.entity.entityType === 'BuildingEntity'
         ? this.data.member.nonMekRecordSheetSnapshot()?.locations.map(row => row.code) ?? [] : [];
-    protected readonly buildingLocation = signal(this.buildingLocations.length === 1 ? this.buildingLocations[0] : '');
-    private readonly reportedWeapons = computed(() => this.data.event.weapons.map((weapon, index) => {
-        const resolved = this.defenses().has(index) ? interceptedReport(weapon) : weapon;
+    protected readonly creditedFloor = (() => {
+        const weapons = this.data.event.weapons;
+        if (!weapons.every(w => w.cfHit) && !weapons.some(w => w.physical === 'charge' && w.automaticBuildingHit)) return undefined;
+        const groups = weapons.flatMap(weapon => weapon.groups);
+        const location = groups[0]?.buildingLocation;
+        return location && this.buildingLocations.includes(location) && groups.every(group => group.buildingLocation === location)
+            ? location : undefined;
+    })();
+    protected readonly buildingLocation = signal(this.creditedFloor ?? (this.buildingLocations.length === 1 ? this.buildingLocations[0] : ''));
+    private readonly reportedWeapons = computed(() => this.data.event.weapons.map(resolved => {
         return this.buildingLocation() ? { ...resolved, groups: resolved.groups.map(group => ({ ...group, buildingLocation: this.buildingLocation() })) } : resolved;
     }));
-    protected defenseChoices(index: number) {
-        if (!this.data.event.weapons[index].ams) return [];
-        const { member, event } = this.data;
-        const unit = member.force.getUnitSnapshot(member.id);
-        if (!unit) return [];
-        const reservedAmmo = new Map<ComponentId, number>();
-        const assigned = new Map<ComponentId, number>();
-        const available = () => missileDefenseSystems(unit.entity, unit.index, unit.state, unit.query, unit.ruleset, event.arc, reservedAmmo);
-        for (const [weapon, id] of this.defenses()) {
-            if (weapon === index) continue;
-            const system = available().find(candidate => candidate.id === id);
-            if (!system) continue;
-            assigned.set(id, (assigned.get(id) ?? 0) + 1);
-            if (system.bin) reservedAmmo.set(system.bin, (reservedAmmo.get(system.bin) ?? 0) + 1);
-        }
-        return available().filter(system => (assigned.get(system.id) ?? 0) < system.remaining);
+    protected defenseChoices(weapon: number) {
+        return availableMissileDefenses(this.data.member, this.data.event, weapon, []);
     }
-    protected assignDefense(index: number, id: string): void {
-        const assigned = new Map(this.defenses());
-        const system = this.defenseChoices(index).find(option => option.id === id);
-        if (system) assigned.set(index, system.id);
-        else assigned.delete(index);
-        this.defenses.set(assigned);
+    protected selected(weapon: number, id: ComponentId): boolean {
+        return this.defenses().some(a => a.weapon === weapon && a.componentId === id);
     }
+    protected canAssign(weapon: number, id: ComponentId): boolean {
+        return this.selected(weapon, id) || availableMissileDefenses(this.data.member, this.data.event, weapon, this.defenses()).some(s => s.id === id);
+    }
+    protected toggle(weapon: number, componentId: ComponentId): void {
+        if (this.selected(weapon, componentId)) this.defenses.update(rows => rows.filter(a => a.weapon !== weapon || a.componentId !== componentId));
+        else if (this.canAssign(weapon, componentId)) this.defenses.update(rows => [...rows, { weapon, componentId }]);
+    }
+    protected commitDefenses(): void { this.dialogRef.close({ defenses: this.defenses() }); }
 
     /** With critical automation off, critical and motive effects are rolled on the sheet. */
     protected readonly manualCriticals = inject(OptionsService).cbtAutomationMode('criticalHitChanceCheck') === 'no';
@@ -97,10 +97,12 @@ export class IncomingAttackDialogComponent {
         const deal = ruleset ? attackDamagePreview(this.data.member, ruleset) : null;
         return this.reportedWeapons().map((weapon, index) => {
             const source = attackDamageSource(weapon);
-            const preview = deal && !weapon.inferno && !weapon.swarmStrike
+            const preview = deal && !weapon.cfHit && !weapon.inferno && !weapon.swarmStrike
                 ? (location: AttackHitLocation | null, damage: number) => deal(location, damage, source) : undefined;
             return {
                 name: weapon.name,
+                ...(weapon.automaticBuildingHit ? { automaticHit: true as const, rollForEffects: true as const } : {}),
+                buildingDamage: ruleset ? shelterDamage(this.data.member, this.data.event.arc, weapon, ruleset) : 0,
                 targetNumber: weapon.targetNumber,
                 // Infantry shaken off, or struck by a hit on the unit it swarms, takes its damage without a to-hit roll.
                 ...(physicalAttackAlwaysHits(weapon.physical)
@@ -112,7 +114,7 @@ export class IncomingAttackDialogComponent {
                 inferno: weapon.inferno === true,
                 narcPod: weapon.narcPod,
                 collateral: buildingCollateral(weapon, weapon.groups.reduce((sum, group) => sum + group.damage, 0)),
-                amsDie: this.defenses().has(index) ? weapon.ams?.die : undefined,
+                amsDice: this.data.defenseDice?.get(index),
                 ...(weapon.aim ? { aim: attackReportAim(weapon.aim) } : {}),
                 groups: weapon.groups.map(group => attackReportGroup(this.data.member, this.data.event.arc, weapon, group, preview)),
             };
@@ -149,13 +151,13 @@ export class IncomingAttackDialogComponent {
         return missiles.length === 0 ? null : infernoEffectText(infernoEffect(this.data.member.entity, missiles, earlier));
     });
     /** Infantry and battle armor allocate damage by trooper: the player applies it on the sheet. */
+    protected readonly absorbedCf = computed(() => this.weapons().reduce((sum, weapon) => sum + (weapon.buildingDamage ?? 0), 0));
     protected readonly applicable = computed(() =>
         this.weapons().every(weapon => weapon.inferno || weapon.groups.every(group => group.label !== null)));
 
     protected accept(): void {
-        const defenses = [...this.defenses()].map(([weapon, componentId]) => ({ weapon, componentId }));
         const buildingLocation = this.buildingLocation();
-        this.dialogRef.close(defenses.length || buildingLocation ? { defenses, ...(buildingLocation ? { buildingLocation } : {}) } : true);
+        this.dialogRef.close(buildingLocation ? { defenses: [], buildingLocation } : true);
     }
 
     protected ignore(): void {

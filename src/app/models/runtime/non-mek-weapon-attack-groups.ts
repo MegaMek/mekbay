@@ -1,6 +1,7 @@
 // Copyright (C) 2026 The MegaMek Team
 // SPDX-License-Identifier: GPL-3.0-or-later
 
+import { isAeroEntity } from '../entity/utils/entity-type-guards';
 import type { BaseEntity } from '../entity/base-entity';
 import { asComponentId, type ComponentId } from '../entity/entity-identifiers';
 import type { EntityMountedWeapon, EquipmentBay } from '../entity/types';
@@ -11,6 +12,10 @@ import { isOnlyAirborne } from './non-mek-airborne-state';
 import type { NonMekRuntimeIndex } from './non-mek-runtime-index';
 
 export type NonMekWeaponAttackMode = 'individual-weapons' | 'weapon-bays';
+
+export function usesAerospaceFiringRates(entity: BaseEntity, state: NonMekWeaponAttackState): boolean {
+    return isAeroEntity(entity) && (state.turn.airborne === true || nonMekWeaponAttackMode(entity, state) === 'weapon-bays');
+}
 
 export interface NonMekWeaponAttackGroup {
     readonly kind: 'individual-weapon' | 'weapon-bay';

@@ -655,7 +655,8 @@ export class NonMekCriticalAutomationService {
             case 'cargo': {
                 const si = [...snapshot.index.locations.values()].find(row => row.code === 'SI');
                 if (!si) return none();
-                const loadout = snapshot.state.internalBayLoads ?? [];
+                const loadout = remainingInternalBayLoads(snapshot.state.internalBayLoads,
+                    target === 'pending' ? snapshot.state.pendingCombat.lostCargo : []);
                 const loss = aeroCargoLoss(loadout, group.damage, snapshot.query.remainingInternal(si.id, perspective), rollD6());
                 if (!loss.tons && !loss.unitIds.length) return none(['No cargo of the rolled type was lost']);
                 return { description, effects: [loss.tons ? `${loss.tons} tons of cargo destroyed`
@@ -664,7 +665,7 @@ export class NonMekCriticalAutomationService {
                         for (const id of loss.unitIds) {
                             const unit = force.getUnitSnapshot(id);
                             if (!unit || unit.query.destroyed()) continue;
-                            let command: CBTUnitCommand = { type: 'set-destroyed', destroyed: true };
+                            let command: CBTUnitCommand = { type: 'set-destroyed', destroyed: true, target };
                             if (hasMekRuntime(unit)) {
                                 const ct = [...unit.index.locations.values()].find(row => row.code === 'CT');
                                 if (!ct) return false;
@@ -673,7 +674,7 @@ export class NonMekCriticalAutomationService {
                             }
                             if (!(await force.dispatchUnitCommand(id, command)).accepted) return false;
                         }
-                        return dispatchAll(dispatch, [{ type: 'set-internal-bay-loads', loads: loss.remaining }]);
+                        return dispatchAll(dispatch, [{ type: 'destroy-bay-cargo', losses: loss.losses, target }]);
                     } };
             }
         }
@@ -952,18 +953,16 @@ export function aeroCargoLoss(loadout: readonly InternalBayLoad[], damage: numbe
     const total = eligible.reduce((sum, load) => sum + (cargo ? load.tons : 1), 0);
     let owed = Math.min(total, Math.ceil(total * percent / 100));
     const tons = cargo ? owed : 0;
-    const remaining = [...loadout];
+    const losses: InternalBayLoad[] = [];
     const unitIds: string[] = [];
     while (owed > 0 && eligible.length) {
         const load = eligible.splice(Math.floor(Math.random() * eligible.length), 1)[0]!;
-        const index = remaining.indexOf(load);
         const lost = Math.min(owed, cargo ? load.tons : 1);
         if ('unitId' in load) unitIds.push(load.unitId);
-        if (cargo && lost < load.tons) remaining[index] = { ...load, tons: load.tons - lost };
-        else remaining.splice(index, 1);
+        losses.push('unitId' in load ? load : { ...load, tons: lost });
         owed -= lost;
     }
-    return { remaining, tons, unitIds };
+    return { losses, tons, unitIds };
 }
 
 function trackHits(snapshot: CBTNonMekUnitSnapshot, trackId: ReturnType<typeof systemDamageId>, perspective: RuntimeStatePerspective): number {

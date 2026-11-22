@@ -402,6 +402,11 @@ describe('readAttackHitLocation', () => {
         expect(readAttackHitLocation(member('core-2026'), 'rear', [2], 1, false, 'punch')).toEqual(jasmine.objectContaining({
             location: 'RT', rear: true, label: 'Right Torso (rear)',
         }));
+        for (const die of [1, 2, 3, 4, 5, 6]) {
+            expect(readAttackHitLocation(member('core-2026'), 'front', [die], 1, true, 'kick'))
+                .toEqual({ kind: 'miss', label: 'Cover' });
+            expect(readAttackHitLocation(member('core-2026'), 'front', [die], 1, false, 'kick')?.kind).toBe('mek');
+        }
         expect(readAttackHitLocation(member('total-warfare'), 'right', [1], 1, false, 'kick')).toEqual(jasmine.objectContaining({
             location: 'RL', rear: false,
         }));

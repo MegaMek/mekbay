@@ -106,7 +106,8 @@ type NonMekAmmoSourceLoads,
 type NonMekUnitQueryPort,
 type NonMekUnitRuntimeState,
 } from './non-mek-unit-instance';
-import { nonMekWeaponAttackGroups } from './non-mek-weapon-attack-groups';
+import { aerospaceRapidFireShots } from './component-rapid-fire-autocannon';
+import { nonMekWeaponAttackGroups, usesAerospaceFiringRates } from './non-mek-weapon-attack-groups';
 import { weaponTargetDisabledReasons } from './weapon-target-policy';
 
 interface NonMekAmmoSourceCandidate {
@@ -415,7 +416,9 @@ function projectComponent(
     const status = query.componentStatus(componentId, 'committed');
     const previewStatus = query.componentStatus(componentId, 'preview');
     const modeDefinition = nonMekComponentModes(entity, mount, ruleset);
-    const mode = effectiveNonMekComponentMode(entity, index, state, ruleset, componentId);
+    const aerospaceShots = equipment instanceof WeaponEquipment && usesAerospaceFiringRates(entity, state)
+        ? aerospaceRapidFireShots(equipment) : 1;
+    const mode = aerospaceShots > 1 ? modeDefinition.modes.at(-1) : effectiveNonMekComponentMode(entity, index, state, ruleset, componentId);
     const heatOrDamageWeapon = nonMekHeatOrDamageWeapon(entity, equipment);
     const locations = mount.getOccupiedLocations().map(code => {
         const location = [...index.locations.values()].find(candidate => candidate.code === code);
@@ -552,7 +555,7 @@ function projectComponent(
         ? laserInsulatorAdjustedHeat(
             (bombast?.heat ?? equipment.heat) + (pulsed ? RISC_LASER_PULSE_HEAT_BONUS : 0),
             insulationWeakened === false,
-        ) + (entity.unitType() === 'Aero' ? prototypeMaximumHeat : 0)
+        ) * aerospaceShots + (entity.unitType() === 'Aero' ? prototypeMaximumHeat : 0)
         : 0;
     const weapon = equipment instanceof WeaponEquipment && !mount.isPhysicalWeapon()
         ? Object.freeze({
@@ -614,7 +617,7 @@ function projectComponent(
         status,
         previewStatus,
         ...(previewStatus !== 'destroyed' && componentAutocannonHit(state, componentId, 'preview') ? { autocannonHit: true as const } : {}),
-        modes: mode === 'Jettisoned' ? [mode] : modeDefinition.modes,
+        modes: aerospaceShots > 1 ? [] : mode === 'Jettisoned' ? [mode] : modeDefinition.modes,
         ...(modeDefinition.defaultMode === undefined ? {} : { defaultMode: modeDefinition.defaultMode }),
         ...(mode === undefined ? {} : { mode }),
         jammed: componentState?.jammed === true,

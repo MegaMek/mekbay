@@ -49,6 +49,18 @@ describe('parseGameEvent', () => {
         expect(parseGameEvent(report([2], 1))).toBeNull();
     });
 
+    it('validates aerospace missile AV and the CF absorbed after interception against the original groups', () => {
+        const report = (av: number, absorbed: number[]) => ({ ...attack(), weapons: [{
+            name: 'LRM 15', types: ['M'], targetNumber: 7, toHit: [4, 4],
+            groups: [3, 2].map(damage => ({ damage, buildingDamage: 2, location: [3, 4], aux: 1 })),
+            ams: { die: 3, hits: 1, heat: 0, damage: [3, 0], absorbed,
+                aerospace: { av, groupSize: 5, absorption: 2 } },
+        }] });
+        expect(parseGameEvent(report(9, [2, 1]))).not.toBeNull();
+        expect(parseGameEvent(report(10, [2, 1]))).toBeNull();
+        expect(parseGameEvent(report(9, [2, 3]))).toBeNull();
+    });
+
     it('rejects attack reports with impossible dice, damage or unbounded rows', () => {
         const badDie = attack();
         badDie.weapons[0].toHit = [7, 1];

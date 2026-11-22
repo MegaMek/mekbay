@@ -6,7 +6,7 @@ import { type AmmoEquipment, type WeaponDamage, WeaponEquipment } from '../equip
 import type { ArtemisKind } from '../artemis-equipment.model';
 import type { TnRangeBracket } from '../target-number-calculator.model';
 import { isHagEquipment } from '../hag-mode.model';
-import { rapidFireAutocannonJamRoll, rapidFireAutocannonShotCount } from '../runtime/component-rapid-fire-autocannon';
+import { aerospaceRapidFireShots, rapidFireAutocannonJamRoll, rapidFireAutocannonShotCount } from '../runtime/component-rapid-fire-autocannon';
 import type { ComponentId } from '../entity/entity-identifiers';
 import { isFusilladeLauncher } from '../entity/utils/weapon-damage-kernel';
 import type { WeaponType } from '../weapon-types.model';
@@ -68,6 +68,12 @@ export interface WeaponAttackProfile {
     readonly lockRequired?: true;
     readonly narcPod?: true;
     readonly buildingAbsorption?: number;
+    /** Stray rounds from an adjacent attacker that hit the occupied hex. */
+    readonly adjacentShelter?: 'cluster-misses' | 'all-misses';
+    /** A leg hit intercepted by this building credits its remaining damage to the hex. */
+    readonly buildingCover?: true;
+    readonly shelteringBuilding?: import('../unit-cover.model').ShelteringBuilding;
+    readonly automaticBuildingHit?: true;
     readonly infantryBuilding?: import('./infantry-building-damage').InfantryBuildingType;
     readonly collateralBuilding?: import('./infantry-building-damage').InfantryBuildingType;
     readonly missileDefense?: CBTRuleset;
@@ -115,6 +121,7 @@ export interface AerospaceHit {
     readonly grouping: 'single' | 'cluster' | 'ultra';
     readonly scale: number;
     readonly heatWeapons: readonly Readonly<{ value: number; heat: AttackHeatWeapon }>[];
+    readonly jamChecks?: readonly Readonly<{ id: ComponentId; threshold: number }>[];
 }
 
 export function aerospaceHeatDice(profile: WeaponAttackProfile): number {
@@ -174,6 +181,7 @@ export interface PhysicalAttackFacts {
 
 /** What the attacker knows about one fired weapon and its target. */
 export interface WeaponAttackFacts {
+    readonly aerospaceFiringRate?: boolean;
     readonly targetConventionalInfantry?: boolean;
     readonly adjacentBuilding?: boolean;
     readonly componentId: ComponentId;
@@ -209,6 +217,8 @@ export interface WeaponAttackFacts {
 }
 
 export interface WeaponAttackOutcome {
+    /** CF absorbed per location group before any leg hit is redirected to building cover. */
+    readonly absorbed?: readonly number[];
     readonly hit: boolean;
     readonly capacitorBurnout?: true;
     /** The rapid-fire weapon jammed; its shots still fire. */
@@ -280,17 +290,18 @@ export function weaponAttackProfile(facts: WeaponAttackFacts, rules: CBTGameRule
             jamRoll,
             table: 'standard' as const,
             name: facts.name,
-            targetNumber: facts.targetNumber,
+            targetNumber: facts.adjacentBuilding ? 2 : facts.targetNumber,
+            ...(facts.adjacentBuilding ? { automaticBuildingHit: true as const } : {}),
             types: Object.freeze([...facts.types]),
             partialCover: facts.partialCover,
             damagePerHit,
             projectiles: Math.max(1, projectiles) * (facts.firingSuits ?? 1),
             ...(facts.firingSuits && missile ? { clusterColumns: battleArmorMissileColumns(projectiles * facts.firingSuits) } : {}),
             ...(facts.firingSuits && facts.heatWeapon?.weapon.kind === 'flamer' ? { squadFlamers: true as const } : {}),
-            allHit: fullCluster || (lockRequired && !facts.angelEcm),
+            allHit: facts.adjacentBuilding === true || fullCluster || (lockRequired && !facts.angelEcm),
             ...(lockRequired ? { lockRequired: true as const } : {}),
             ...(equipment.ammoType === 'SRM_STREAK' || equipment.ammoType === 'LRM_STREAK' ? { streak: true as const } : {}),
-            ...((facts.types.includes('M') || equipment.getWeaponTypes().includes('M')) && !(facts.aerospace && equipment.capital)
+            ...((facts.types.includes('M') || equipment.getWeaponTypes().includes('M')) && !(facts.aerospace && (equipment.capital || equipment.subCapital))
                 ? { missileDefense: rules.id } : {}),
             ...(facts.buildingCf && rules.id === 'total-warfare' ? { buildingAbsorption: Math.ceil(facts.buildingCf / 10) } : {}),
             groupSize: Math.max(damagePerHit, groupSize),
@@ -304,7 +315,10 @@ export function weaponAttackProfile(facts: WeaponAttackFacts, rules: CBTGameRule
         });
     if (facts.aerospace && !equipment.hasFlag('F_NARC')) {
         if (!facts.aerospace.attackValue && !facts.aerospace.heatWeapons.length) return null;
-        return { ...profile(facts.aerospace.attackValue, 1, 1), aerospace: facts.aerospace };
+        const jam = facts.aerospace.jamChecks === undefined
+            ? rapidFireAutocannonJamRoll(equipment, rules.id, aerospaceRapidFireShots(equipment))
+            : Math.max(0, ...facts.aerospace.jamChecks.map(check => check.threshold)) || null;
+        return { ...profile(facts.aerospace.attackValue, 1, 1, jam), aerospace: facts.aerospace };
     }
     // Each inferno missile that hits is its own group: one hit-location roll, no damage. Core p. 192 skips the roll, but
     // partial cover and heat-dissipating armor can depend on it (Xotl, Core Rulebook forum ruling, 19 Oct 2026).
@@ -330,7 +344,7 @@ export function weaponAttackProfile(facts: WeaponAttackFacts, rules: CBTGameRule
         if (equipment.ammoType === 'AC_LBX' && ammo?.hasMunitionType('M_CLUSTER')) {
             return profile(1, equipment.rackSize, 1);
         }
-        const shots = rapidFireAutocannonShotCount(equipment, mode);
+        const shots = facts.aerospaceFiringRate ? aerospaceRapidFireShots(equipment) : rapidFireAutocannonShotCount(equipment, mode);
         return profile(perHit, shots, perHit, rapidFireAutocannonJamRoll(equipment, rules.id, shots));
     };
     // An aimed shot meets no cover: its leg results are rerolled instead.
@@ -482,6 +496,7 @@ export function resolveWeaponAttack(
     heatDice: readonly number[] = MAXIMUM_HEAT_DICE,
     amsDie?: number,
     additionalClusters: readonly TwoDice[] = [],
+    laserAms = false,
 ): WeaponAttackOutcome {
     const jammed = profile.jamRoll !== null && toHit[0] + toHit[1] <= profile.jamRoll;
     if (profile.capacitorBurnoutOnTwo && toHit[0] + toHit[1] === 2) {
@@ -490,12 +505,12 @@ export function resolveWeaponAttack(
     if (!toHitSucceeds(toHit, profile.targetNumber)) return Object.freeze({ hit: false, jammed, hits: 0, groups: [], heat: 0 });
     let hits = profile.projectiles;
     const defended = amsDie !== undefined && profile.missileDefense !== undefined;
+    let effectiveProfile = profile;
     if (defended && profile.aerospace) {
         const attackValue = Math.max(0, profile.aerospace.attackValue - amsDie);
-        const effect = attackEffect({ ...profile, aerospace: { ...profile.aerospace, attackValue } }, attackValue > 0 ? 1 : 0, heatDice);
-        return { hit: true, jammed, hits: attackValue > 0 ? 1 : 0, ...effect };
-    }
-    if (defended && profile.projectiles === 1) {
+        hits = attackValue > 0 ? 1 : 0;
+        effectiveProfile = { ...profile, aerospace: { ...profile.aerospace, attackValue } };
+    } else if (defended && profile.projectiles === 1) {
         hits = (profile.missileDefense === 'core-2026' ? amsDie >= 4 : amsDie <= 3) ? 0 : 1;
     } else if (defended && profile.streak && profile.allHit) {
         hits = (profile.clusterColumns ?? [profile.projectiles]).reduce((sum, column) => sum + clusterHits(7, column), 0);
@@ -506,14 +521,17 @@ export function resolveWeaponAttack(
             const dice = rolls[index];
             if (!dice) throw new RangeError(`${profile.name} needs a separate cluster roll for column ${column}`);
             const adjusted = dice[0] + dice[1] + clusterModifier - (defended ? 4 : 0);
-            return sum + (defended && profile.missileDefense === 'core-2026' && adjusted < 2 ? 0
+            return sum + (defended && (profile.missileDefense === 'core-2026' || laserAms) && adjusted < 2 ? 0
                 : clusterHits(Math.max(2, Math.min(12, adjusted)), column));
         }, 0);
     }
-    const effect = attackEffect(profile, hits, heatDice);
-    const groups = profile.buildingAbsorption === undefined || profile.inferno || profile.narcPod ? effect.groups
-        : effect.groups.map(group => Math.max(0, group - profile.buildingAbsorption!));
-    return Object.freeze({ hit: true, jammed, hits, groups, heat: effect.heat });
+    const effect = attackEffect(effectiveProfile, hits, heatDice);
+    if (profile.buildingAbsorption === undefined || profile.inferno || profile.narcPod) {
+        return Object.freeze({ hit: true, jammed, hits, groups: effect.groups, heat: effect.heat });
+    }
+    const absorbed = effect.groups.map(damage => Math.min(damage, profile.buildingAbsorption!));
+    const groups = effect.groups.map((damage, index) => damage - absorbed[index]);
+    return Object.freeze({ hit: true, jammed, hits, groups, absorbed, heat: effect.heat });
 }
 
 /** Splits total damage into location groups of at most `groupSize` points. */
