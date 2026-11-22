@@ -30,6 +30,23 @@ describe('weapon attack resolution', () => {
         expect([rifle.damagePerHit, rifle.rifle]).toEqual([9, true]);
     });
 
+    it('carries the size of an autocannon firing armor-piercing rounds for its armor-piercing check', () => {
+        const autocannon = new WeaponEquipment({
+            id: 'ISAC5', name: 'AC/5', type: 'weapon', flags: ['F_AC', 'F_BALLISTIC', 'F_DIRECT_FIRE'],
+            weapon: { damage: 5, rackSize: 5, ammoType: 'AC' },
+        });
+        const armorPiercing = new AmmoEquipment({
+            id: 'ISArmorPiercingAC5 Ammo', name: 'AC/5 Armor-Piercing Ammo', type: 'ammo',
+            ammo: { type: 'AC', rackSize: 5, shots: 10, damagePerShot: 5, munitionType: ['M_ARMOR_PIERCING'] },
+        });
+        const profile = (ammo: AmmoEquipment | null) => weaponAttackProfile({
+            componentId: weaponId, equipment: autocannon, mode: undefined, damage: { values: [5], maximum: 5 }, ammo,
+            types: ['DB'], name: 'AC/5', targetNumber: 6, partialCover: false,
+        }, CORE_2026_GAME_RULES)!;
+        expect([profile(armorPiercing).ammo, profile(armorPiercing).rackSize]).toEqual(['armor-piercing', 5]);
+        expect([profile(null).ammo, profile(null).rackSize]).toEqual([undefined, undefined]);
+    });
+
     it('rolls missiles on the Cluster Hits Table and groups them in five-point clusters', () => {
         const profile = weaponAttackProfile({ componentId: weaponId, equipment: lrm15, mode: undefined, damage: { values: [1], maximum: 15, unit: 'missile' }, ammo: lrmAmmo, types: [], name: 'LRM 15', targetNumber: 8, partialCover: false }, TW_GAME_RULES)!;
 

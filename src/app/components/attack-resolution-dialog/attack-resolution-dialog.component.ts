@@ -342,6 +342,7 @@ function deliveredWeapon(profile: WeaponAttackProfile, rolls: WeaponRolls): Atta
         ...(profile.critical ? { critical: true as const } : {}),
         ...(profile.rifle ? { rifle: true as const } : {}),
         ...(profile.ammo ? { ammo: profile.ammo } : {}),
+        ...(profile.rackSize === undefined ? {} : { rackSize: profile.rackSize }),
         // A brush off that hits knocks the swarming infantry off (TW p. 222).
         ...(profile.physical === 'brush-off' && outcome.hit ? { swarmRelease: true as const } : {}),
         ...((rolls.side ?? profile.arc) === undefined ? {} : { arc: rolls.side ?? profile.arc }),

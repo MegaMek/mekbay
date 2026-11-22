@@ -86,8 +86,8 @@ describe('NonMekCriticalAutomationService', () => {
         return { runtime, location, apply, hits, ammoId, acId };
     }
 
-    /** A 5-ton ProtoMech without armor, a torso laser filling die faces 1-2 of torso critical weapon rolls. */
-    function protoMek(autocannon = false) {
+    /** A 5-ton ProtoMech with `armor` on the left arm, a torso laser filling die faces 1-2 of torso critical weapon rolls. */
+    function protoMek(autocannon = false, armor = 0) {
         const laser = autocannon
             ? new WeaponEquipment({ id: 'Critical_Test_PAC', name: 'ProtoMech AC/2', type: 'weapon',
                 flags: ['F_AC', 'F_BALLISTIC', 'F_DIRECT_FIRE'], weapon: { ammoType: 'PAC', rackSize: 2, damage: '2', ranges: [4, 8, 12] } })
@@ -96,6 +96,7 @@ describe('NonMekCriticalAutomationService', () => {
         const entity = new TestProtoMekEntity(createTestEquipmentRegistry({ [laser.id]: laser }));
         entity.uuid.set(UUID);
         entity.setTonnage(5);
+        entity.setArmorValue('Left Arm', 'front', armor);
         const laserId = componentIdForMount(addTestEquipment(entity, laser, { location: 'Torso' }));
         const runtime = createNonMekUnit(entity, { instanceId: 'critical-protomek', uuid: UUID,
             scenario: { id: 'megamek', options: {} }, deployment: { id: 'default' }, initialStateProfileId: 'pristine' });
@@ -183,6 +184,34 @@ describe('NonMekCriticalAutomationService', () => {
             expect([unit.hits(systemDamageId('commander')), unit.hits(systemDamageId('sensors', 1))])
                 .withContext(`${armor} ${ruleset} ${damage}${source ? ' armor-piercing' : ''}`).toEqual([...expected]);
         }
+    });
+
+    it('rolls an armor-piercing vehicle critical for a hit that damages only armor, and none past the armor', async () => {
+        const armorPiercing = { kind: 'weapon', types: ['DB'], ammo: 'armor-piercing', rackSize: 5 } as const;
+        // 6 + 6 = 12 on the front column: TW -3 makes 9, the sensors; Core -2 makes 10, the commander (TW p.140, Core p.191).
+        for (const [ruleset, expected] of [['total-warfare', [0, 1]], ['core-2026', [1, 0]]] as const) {
+            const unit = tank(false, false, undefined, ruleset);
+            rolls(6, 6);
+            expect(await unit.apply([group(unit.location('Front'), 5, { source: armorPiercing })])).toBeTrue();
+            expect([unit.hits(systemDamageId('commander')), unit.hits(systemDamageId('sensors', 1))])
+                .withContext(ruleset).toEqual([...expected]);
+        }
+        // Damage past the armor rolls only the internal structure check: one 2D6, 3 + 4 moving down to the sensors.
+        const unit = tank(false, false, undefined, 'total-warfare');
+        rolls(3, 4);
+        expect(await unit.apply([group(unit.location('Front'), 11, { source: armorPiercing })])).toBeTrue();
+        expect(unit.hits(systemDamageId('sensors', 1))).toBe(1);
+        expect((Math.random as jasmine.Spy).calls.count()).toBe(2);
+    });
+
+    it('rolls a ProtoMech armor-piercing check on the Determining Critical Hits Table', async () => {
+        const unit = protoMek(false, 3);
+        // 5 + 5 = 10, less 2 for a Core AC/5: 8 crosses off one box of the arm.
+        rolls(5, 5);
+        expect(await unit.apply([group(unit.location('Left Arm'), 3,
+            { source: { kind: 'weapon', types: ['DB'], ammo: 'armor-piercing', rackSize: 5 } })])).toBeTrue();
+        expect(unit.hits(systemDamageId('left-arm', 1))).toBe(1);
+        expect(unit.hits(systemDamageId('left-arm', 2))).toBe(0);
     });
 
     for (const target of ['committed', 'pending'] as const) {

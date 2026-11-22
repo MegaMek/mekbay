@@ -24,15 +24,20 @@ export type ArmorSpecialAmmo = 'armor-piercing' | 'acid';
 export type DamageSource =
     | Readonly<{ kind: 'fall' }>
     | Readonly<{ kind: 'physical' }>
-    /** `rifle`: each hit loses 3 points where it strikes (`rifleHitDamage`). */
-    | Readonly<{ kind: 'weapon'; types: readonly WeaponType[]; rifle?: true; ammo?: ArmorSpecialAmmo }>;
+    /**
+     * `rifle`: each hit loses 3 points where it strikes (`rifleHitDamage`). `rackSize`: the autocannon firing
+     * armor-piercing rounds, whose size sets its armor-piercing check (`armorPiercingCheckModifiers`).
+     */
+    | Readonly<{ kind: 'weapon'; types: readonly WeaponType[]; rifle?: true; ammo?: ArmorSpecialAmmo; rackSize?: number }>;
 
 export const FALL_DAMAGE: DamageSource = Object.freeze({ kind: 'fall' });
 export const PHYSICAL_DAMAGE: DamageSource = Object.freeze({ kind: 'physical' });
 
 /** The source of an attack's hits: a physical attack, or its weapon's damage types and whether it is a rifle. */
 export function attackDamageSource(
-    attack: Readonly<{ physical?: unknown; types: readonly WeaponType[]; rifle?: true; ammo?: ArmorSpecialAmmo }>,
+    attack: Readonly<{
+        physical?: unknown; types: readonly WeaponType[]; rifle?: true; ammo?: ArmorSpecialAmmo; rackSize?: number;
+    }>,
 ): DamageSource {
     return attack.physical
         ? PHYSICAL_DAMAGE
@@ -41,6 +46,7 @@ export function attackDamageSource(
             types: attack.types,
             ...(attack.rifle ? { rifle: true as const } : {}),
             ...(attack.ammo ? { ammo: attack.ammo } : {}),
+            ...(attack.rackSize === undefined ? {} : { rackSize: attack.rackSize }),
         });
 }
 
@@ -133,6 +139,37 @@ export function armorPiercingIgnoresSpecialArmor(
     return ruleset === 'core-2026' && source.kind === 'weapon' && source.ammo === 'armor-piercing'
         && (armorType === 'ANTI_PENETRATIVE_ABLATION' || armorType === 'BALLISTIC_REINFORCED'
             || armorType === 'HARDENED');
+}
+
+/** Total Warfare ablation armor on a TAC or armor-piercing check while the struck location had armor (IO:AE p.80). */
+export const ABLATION_CRITICAL_MODIFIER = Object.freeze({ label: 'Ablation armor', value: -2 });
+
+/**
+ * The modifiers of the armor-piercing check an armor-piercing autocannon hit that damaged only armor makes, or null when
+ * it makes none. Core p.191: AC/2 -3, AC/5 -2, AC/10 and larger -1; ablation, ballistic-reinforced and hardened armor
+ * negate it. TW p.140: AC/2 -4, AC/5 -3, AC/10 -2, AC/20 -1, sizes between as MegaMek; hardened (TO:AUE p.93),
+ * ferro-lamellor (TO:AUE p.92) and reactive armor (TO:AUE p.94) negate it; laser-reflective armor adds +2 (TO:AUE
+ * p.93), impact-resistant +1 (IO:AE p.82) and ablation -2 (IO:AE p.80).
+ */
+export function armorPiercingCheckModifiers(
+    ruleset: CBTRuleset,
+    armorType: ArmorType | null,
+    source: DamageSource,
+): readonly Readonly<{ label: string; value: number }>[] | null {
+    if (source.kind !== 'weapon' || source.ammo !== 'armor-piercing' || source.rackSize === undefined) return null;
+    const size = source.rackSize;
+    if (ruleset === 'core-2026') {
+        return armorPiercingIgnoresSpecialArmor(ruleset, armorType, source)
+            ? null : [Object.freeze({ label: 'Armor-piercing ammo', value: size <= 2 ? -3 : size <= 5 ? -2 : -1 })];
+    }
+    if (armorType === 'HARDENED' || armorType === 'FERRO_LAMELLOR' || armorType === 'REACTIVE') return null;
+    const armor = armorType === 'REFLECTIVE' ? { label: 'Laser-reflective armor', value: 2 }
+        : armorType === 'IMPACT_RESISTANT' ? { label: 'Impact-resistant armor', value: 1 }
+            : armorType === 'ANTI_PENETRATIVE_ABLATION' ? ABLATION_CRITICAL_MODIFIER : null;
+    return [
+        Object.freeze({ label: 'Armor-piercing ammo', value: size <= 2 ? -4 : size <= 6 ? -3 : size <= 15 ? -2 : -1 }),
+        ...(armor ? [Object.freeze(armor)] : []),
+    ];
 }
 
 /** Armor marks one damage group removes from a location's armor, and what reaches the structure, for any unit. */

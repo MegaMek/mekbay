@@ -85,6 +85,18 @@ describe('parseGameEvent', () => {
             .toBeNull();
     });
 
+    it('keeps the size of an autocannon firing armor-piercing rounds, and nothing else as one', () => {
+        const autocannon = (extra: object) => ({ ...attack(), weapons: [{
+            name: 'AC/5', types: ['DB'], targetNumber: 7, toHit: [4, 4], ammo: 'armor-piercing',
+            groups: [{ damage: 5, location: [3, 4], aux: 2 }], ...extra,
+        }] });
+        expect(parseGameEvent(autocannon({ rackSize: 5 }))).toEqual(jasmine.objectContaining({
+            weapons: [jasmine.objectContaining({ ammo: 'armor-piercing', rackSize: 5 })],
+        }));
+        expect(parseGameEvent(autocannon({ rackSize: 5, ammo: 'acid' }))).toBeNull();
+        expect(parseGameEvent(autocannon({ rackSize: 2.5 }))).toBeNull();
+    });
+
     it('keeps a hit that struck the swarming infantry, with its battle armor trooper', () => {
         const report = (swarmStrike: unknown) => ({ ...attack(), weapons: [{
             name: 'Medium Laser (struck while swarming)', types: ['DE'], targetNumber: 7, toHit: [5, 5], swarmStrike,

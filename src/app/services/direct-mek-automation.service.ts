@@ -66,6 +66,8 @@ import type { MekUnitRuntimeState } from '../models/runtime/runtime-state';
 import type { MekHitArcV2,MekUnitQueryPort } from '../models/runtime/unit-instance';
 import { mekHitLocationTable } from '../utils/record-sheet-reference-table';
 import {
+    ABLATION_CRITICAL_MODIFIER,
+    armorPiercingCheckModifiers,
     armorPiercingIgnoresSpecialArmor,
     FALL_DAMAGE,
     resolveArmorDamage,
@@ -171,8 +173,8 @@ interface DirectCriticalChanceContext {
     readonly floatingHitArc?: MekHitArcV2;
     /** Exact armor-facing decision captured when this hit reached structure. */
     readonly hardenedArmorApplies?: boolean;
-    /** Total Warfare through-armor check against a location/facing that still had ablation armor (IO:AE p.80). */
-    readonly ablationArmorApplies?: boolean;
+    /** Modifiers the check's cause adds: ablation armor on a TAC, or an armor-piercing check's own. */
+    readonly causeModifiers?: readonly Readonly<{ label: string; value: number }>[];
     /** Internal-explosion protection carried into the resulting critical sequence. */
     readonly explosionProtection?: MekInstalledExplosionProtection;
     /** A hit that consumed this location's last structure pip. */
@@ -1017,9 +1019,7 @@ export class DirectMekAutomationService {
         if (snapshot.ruleset === 'core-2026' && context.explosionProtection === 'case-ii') {
             modifiers.push(Object.freeze({ label: 'CASE II internal explosion', value: -1 }));
         }
-        if (context.ablationArmorApplies) {
-            modifiers.push(Object.freeze({ label: 'Ablation armor', value: -2 }));
-        }
+        modifiers.push(...context.causeModifiers ?? []);
         const dice = roll2D6();
         const modifier = modifiers.reduce((total, row) =>
             total + (!row.optional || row.enabled ? row.value : 0), 0);
@@ -2145,6 +2145,13 @@ export class DirectMekAutomationService {
         if (group.source.kind === 'weapon' && group.source.rifle) {
             damage = rifleHitDamage(initial.ruleset, damage, { entity: initial.entity, location: sourceCode, armor: initialArmor });
         }
+        // An armor-piercing hit that damages only armor makes an armor-piercing check there; under TW not where
+        // damage transferred to (TW p.140), under Core not after a location this hit destroyed (Core p.191, errata).
+        let armorPiercingCheck: Readonly<{
+            locationId: LocationId;
+            modifiers: readonly Readonly<{ label: string; value: number }>[];
+        }> | null = null;
+        let structureDamaged = false;
         const visited = new Set<string>();
         while (code && (damage > 0 || sharedCompositePip) && !visited.has(code)) {
             visited.add(code);
@@ -2181,6 +2188,9 @@ export class DirectMekAutomationService {
                 applied ||= result.accepted;
                 groupDamaged ||= result.accepted;
                 if (result.accepted) {
+                    const modifiers = snapshot.ruleset === 'core-2026' || code === sourceCode
+                        ? armorPiercingCheckModifiers(snapshot.ruleset, location.armor.type, group.source) : null;
+                    armorPiercingCheck = modifiers && { locationId: location.id, modifiers };
                     await this.resolveBreachOrFlood(force, instanceId, { faceId: face.id, target }, dispatch);
                 }
             }
@@ -2207,6 +2217,7 @@ export class DirectMekAutomationService {
                 }, false);
                 applied ||= result.accepted;
                 groupDamaged ||= result.accepted;
+                structureDamaged ||= result.accepted;
                 if (result.accepted) {
                     await this.resolveCriticalChance(
                         force,
@@ -2243,12 +2254,24 @@ export class DirectMekAutomationService {
                     {
                         floatingHitArc: hitArc,
                         hardenedArmorApplies: specialArmorProtects && initialArmorType === 'HARDENED',
-                        ablationArmorApplies: ablationArmor,
+                        causeModifiers: ablationArmor ? [ABLATION_CRITICAL_MODIFIER] : [],
                     },
                     dispatch,
                     interactive,
                 );
             }
+        }
+        // Core p.191 stacks it with a TAC; TW p.140 and Core make only the standard check once structure is damaged.
+        if (armorPiercingCheck && !structureDamaged) {
+            await this.resolveCriticalChance(
+                force,
+                instanceId,
+                armorPiercingCheck.locationId,
+                target,
+                { causeModifiers: armorPiercingCheck.modifiers },
+                dispatch,
+                interactive,
+            );
         }
         return applied && sourceCode === 'HD' ? mekHeadHitPilotHits(initial.entity) : 0;
     }

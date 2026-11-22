@@ -313,33 +313,74 @@ describe('DirectMekAutomationService', () => {
         expect(await attack('core-2026', true)).toEqual([2, 2]);
     });
 
-    it('applies ablation and hardened armor to the through-armor critical by ruleset and armor-piercing ammo', async () => {
-        const armorPiercing = { kind: 'weapon' as const, types: ['DB' as const], ammo: 'armor-piercing' as const };
-        spyOn(Math, 'random').and.returnValue(0);
-        const chances = async (
-            ruleset: 'core-2026' | 'total-warfare',
-            armor: 'ANTI_PENETRATIVE_ABLATION' | 'HARDENED',
-            source: DamageSource,
-        ) => {
+    describe('through-armor and armor-piercing critical checks', () => {
+        const armorPiercing = (rackSize: number) =>
+            ({ kind: 'weapon' as const, types: ['DB' as const], ammo: 'armor-piercing' as const, rackSize });
+        const hit = (location: string, damage: number, source: DamageSource, throughArmorCritical = false) =>
+            ({ location, rear: false, damage, arc: 'front' as const, throughArmorCritical, source });
+        const armored = (ruleset: 'core-2026' | 'total-warfare', armor: 'ANTI_PENETRATIVE_ABLATION' | 'HARDENED') => {
             const fixture = createDirectArmorRuntimeFixture(ruleset, armor);
-            const harness = createHarnessForFixture(fixture, ruleset, fixture.instance.instanceId);
+            return createHarnessForFixture(fixture, ruleset, fixture.instance.instanceId);
+        };
+        /** The breakdown of every critical hit chance the hits roll, in order. */
+        const chances = async (harness: ReturnType<typeof createHarnessForFixture>, hits: readonly ReturnType<typeof hit>[]) => {
             resolveAutomation.calls.reset();
-            expect(await service.applyWeaponHits(harness.force, harness.instanceId, [
-                { location: 'LT', rear: false, damage: 2, arc: 'front', throughArmorCritical: true, source },
-            ], 'pending', harness.dispatch)).toBeTrue();
+            expect(await service.applyWeaponHits(harness.force, harness.instanceId, hits, 'pending', harness.dispatch))
+                .toBeTrue();
             return resolveAutomation.calls.allArgs()
                 .filter(args => args[0] === 'criticalHitChanceCheck')
                 .map(args => (args[1] as readonly { readonly breakdown: readonly { label: string; value: number }[] }[])
                     .flatMap(event => event.breakdown.map(row => `${row.label} ${row.value}`)));
         };
-        // Total Warfare: ablation gives the check -2 (IO:AE p.80); hardened keeps its -2 against armor-piercing
-        // rounds (TO:AUE p.93). Core: ablation blocks the check, and armor-piercing rounds strip both (Core pp.91, 191).
-        expect(await chances('total-warfare', 'ANTI_PENETRATIVE_ABLATION', laser)).toEqual([['Ablation armor -2']]);
-        expect(await chances('total-warfare', 'HARDENED', armorPiercing))
-            .toEqual([['Hardened armor in damaged facing -2']]);
-        expect(await chances('core-2026', 'ANTI_PENETRATIVE_ABLATION', laser)).toEqual([]);
-        expect(await chances('core-2026', 'ANTI_PENETRATIVE_ABLATION', armorPiercing)).toEqual([[]]);
-        expect(await chances('core-2026', 'HARDENED', armorPiercing)).toEqual([[]]);
+
+        beforeEach(() => spyOn(Math, 'random').and.returnValue(0));
+
+        it('applies ablation and hardened armor to the through-armor critical by ruleset and armor-piercing ammo', async () => {
+            const tac = (source: DamageSource) => [hit('LT', 2, source, true)];
+            // Total Warfare: ablation gives the check -2 (IO:AE p.80); hardened keeps its -2 against armor-piercing
+            // rounds (TO:AUE p.93). Core: ablation blocks the check, and armor-piercing rounds strip both (Core pp.91,
+            // 191). Neither armor lets the rounds make their own armor-piercing check.
+            expect(await chances(armored('total-warfare', 'ANTI_PENETRATIVE_ABLATION'), tac(laser)))
+                .toEqual([['Ablation armor -2']]);
+            expect(await chances(armored('total-warfare', 'HARDENED'), tac(armorPiercing(5))))
+                .toEqual([['Hardened armor in damaged facing -2']]);
+            expect(await chances(armored('core-2026', 'ANTI_PENETRATIVE_ABLATION'), tac(laser))).toEqual([]);
+            expect(await chances(armored('core-2026', 'ANTI_PENETRATIVE_ABLATION'), tac(armorPiercing(5)))).toEqual([[]]);
+            expect(await chances(armored('core-2026', 'HARDENED'), tac(armorPiercing(5)))).toEqual([[]]);
+        });
+
+        it('makes an armor-piercing check for a hit that damages only armor, beside a TAC', async () => {
+            // The left torso has 5 armor: an AC/5 hit strips it (Core p.191, TW p.140); an AC/10 hit reaches the
+            // structure and makes only the standard check.
+            expect(await chances(createHarness('total-warfare'), [hit('LT', 5, armorPiercing(5))]))
+                .toEqual([['Armor-piercing ammo -3']]);
+            expect(await chances(createHarness('core-2026'), [hit('LT', 5, armorPiercing(5))]))
+                .toEqual([['Armor-piercing ammo -2']]);
+            expect(await chances(createHarness('total-warfare'), [hit('LT', 10, armorPiercing(10))])).toEqual([[]]);
+            expect(await chances(createHarness('core-2026'), [hit('LT', 5, armorPiercing(5), true)]))
+                .toEqual([[], ['Armor-piercing ammo -2']]);
+            // Total Warfare ablation gives it -2 (IO:AE p.80); hardened armor, or Core ablation, negates it.
+            expect(await chances(armored('total-warfare', 'ANTI_PENETRATIVE_ABLATION'), [hit('LT', 2, armorPiercing(5))]))
+                .toEqual([['Armor-piercing ammo -3', 'Ablation armor -2']]);
+            expect(await chances(armored('total-warfare', 'HARDENED'), [hit('LT', 2, armorPiercing(5))])).toEqual([]);
+            expect(await chances(armored('core-2026', 'ANTI_PENETRATIVE_ABLATION'), [hit('LT', 2, armorPiercing(5))]))
+                .toEqual([]);
+        });
+
+        it('checks transferred armor-piercing damage under Core only past a location destroyed before', async () => {
+            for (const ruleset of ['total-warfare', 'core-2026'] as const) {
+                const harness = createHarness(ruleset);
+                const query = () => harness.fixture.instance.query();
+                const arm = [...harness.fixture.index.locations.values()].find(row => row.code === 'LA')!;
+                const front = arm.armorFaceIds.find(faceId => harness.fixture.index.armorFaces.get(faceId)!.face === 'front')!;
+                await chances(harness, [hit('LA', query().remainingArmor(front, 'preview')
+                    + query().remainingInternal(arm.id, 'preview'), laser)]);
+                // TW p.140: transferred damage triggers no new check; Core errata v0.2: only past a location the same
+                // attack destroyed.
+                expect(await chances(harness, [hit('LA', 3, armorPiercing(5))])).withContext(ruleset)
+                    .toEqual(ruleset === 'core-2026' ? [['Armor-piercing ammo -2']] : []);
+            }
+        });
     });
 
     describe('weapon head hits and consciousness', () => {

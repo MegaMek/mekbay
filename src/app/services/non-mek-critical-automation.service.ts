@@ -23,7 +23,11 @@ import {
     protoMekCriticalReferences,
     protoMekTorsoCriticalResults,
 } from '../models/rules/protomek-critical-rules';
-import { armorPiercingIgnoresSpecialArmor } from '../models/rules/armor-damage-rules';
+import {
+    ABLATION_CRITICAL_MODIFIER,
+    armorPiercingCheckModifiers,
+    armorPiercingIgnoresSpecialArmor,
+} from '../models/rules/armor-damage-rules';
 import { gameRulesFor } from '../models/rules/game-rules';
 import { weaponSurvivesFirstAutocannonHit } from '../models/rules/mek-system-damage-rules';
 import { componentAutocannonHit } from '../models/runtime/component-state-change';
@@ -186,10 +190,16 @@ export class NonMekCriticalAutomationService {
             }));
         }
         if (isProtoMekEntity(entity)) {
-            // TW p.185: every location whose internal structure is damaged rolls on the Determining Critical Hits Table.
-            return [...new Set(outcome.structureDamaged)].map(locationId => ({
+            // TW p.185: every location whose internal structure is damaged rolls on the Determining Critical Hits Table,
+            // as the struck location does for an armor-piercing hit on its armor (Core p.191, TW p.140).
+            const armorPiercing = armorPiercingCheckModifier(snapshot, group, outcome);
+            return [
+                ...[...new Set(outcome.structureDamaged)].map(locationId => ({ locationId, modifier: 0 })),
+                ...(armorPiercing === null ? [] : [{ locationId: group.locationId, modifier: armorPiercing }]),
+            ].map(({ locationId, modifier }) => ({
                 event: 'Critical Hit',
-                plan: (current: CBTNonMekUnitSnapshot) => this.planProtoMekCritical(force, current, locationId, target),
+                plan: (current: CBTNonMekUnitSnapshot) =>
+                    this.planProtoMekCritical(force, current, locationId, target, modifier),
             }));
         }
         return [];
@@ -209,9 +219,7 @@ export class NonMekCriticalAutomationService {
         const dice = roll2D6();
         const total = twoD6Total(dice) + modifier;
         const effect = vehicleCriticalEffect(total, vehicleCriticalColumn(location.code), facts);
-        const roll = `${twoD6Total(dice)}${modifier === 0 ? '' : ` ${modifier > 0 ? '+' : '−'} ${Math.abs(modifier)}`}`
-            + (modifier === 0 ? '' : ` = ${total}`);
-        const description = `${location.code} (${reason}) · roll ${roll}: ${effect ? VEHICLE_CRITICAL_LABELS[effect] : 'no critical hit'}`;
+        const description = `${location.code} (${reason}) · roll ${modifiedRoll(dice, modifier)}: ${effect ? VEHICLE_CRITICAL_LABELS[effect] : 'no critical hit'}`;
         if (!effect) return Object.freeze({ description, effects: Object.freeze([]), apply: async () => true });
         const vehicle = this.vehicleEffect(snapshot, location, effect, facts, target);
         return Object.freeze({ description, effects: vehicle.effects, apply: vehicle.apply });
@@ -402,6 +410,7 @@ export class NonMekCriticalAutomationService {
         snapshot: CBTNonMekUnitSnapshot,
         locationId: LocationId,
         target: Target,
+        modifier = 0,
     ): PlannedCritical | null {
         const entity = snapshot.entity;
         const location = snapshot.index.locations.get(locationId);
@@ -420,10 +429,10 @@ export class NonMekCriticalAutomationService {
         let description = `${location.code} destroyed: every critical box is crossed off`;
         if (!locationDestroyed) {
             const dice = roll2D6();
-            const chance = resolveMekCriticalChance(twoD6Total(dice), false);
+            const chance = resolveMekCriticalChance(twoD6Total(dice) + modifier, false);
             const count = chance.kind === 'critical-hits' ? chance.count : 0;
             to = Math.min(boxes, filled + count);
-            description = `${location.code} · roll ${twoD6Total(dice)}: `
+            description = `${location.code} · roll ${modifiedRoll(dice, modifier)}: `
                 + (count === 0 ? 'no critical hit' : `${count} critical hit${count === 1 ? '' : 's'}`);
             if (count === 0) return Object.freeze({ description, effects: Object.freeze([]), apply: async () => true });
         }
@@ -685,12 +694,43 @@ function vehicleCriticalChecks(
     const hardened = specialArmorProtects && struckArmorType === 'HARDENED' ? -2 : 0;
     const ablation = specialArmorProtects && struckArmorType === 'ANTI_PENETRATIVE_ABLATION';
     if (group.effects.includes('critical') && !(ablation && snapshot.ruleset === 'core-2026')) {
-        checks.push({ locationId: group.locationId, modifier: hardened + (ablation ? -2 : 0), reason: 'hit location' });
+        checks.push({ locationId: group.locationId, modifier: hardened + (ablation ? ABLATION_CRITICAL_MODIFIER.value : 0),
+            reason: 'hit location' });
+    }
+    // An armor-piercing hit rolls on the struck location's column, +2 on a support vehicle with BAR under 10 (TW p.140,
+    // p.206); under Core with Core's armor-piercing modifiers (Core p.191).
+    const armorPiercing = armorPiercingCheckModifier(snapshot, group, outcome);
+    if (struck && armorPiercing !== null) {
+        const bar = entity.isSupportVehicle() ? supportVehicleBarRating(entity, struck.code) : -1;
+        checks.push({ locationId: struck.id, modifier: armorPiercing + (bar >= 0 && bar < 10 ? 2 : 0),
+            reason: 'armor-piercing' });
     }
     for (const locationId of outcome.structureDamaged) {
         checks.push({ locationId, modifier: hardened, reason: 'internal structure' });
     }
     return checks;
+}
+
+/**
+ * The armor-piercing check's total modifier when an armor-piercing hit damaged only the struck location's armor, or null
+ * (`armorPiercingCheckModifiers`; Core p.191, TW p.140). Vehicles and ProtoMeks roll it; aerospace units take none.
+ */
+function armorPiercingCheckModifier(
+    snapshot: CBTNonMekUnitSnapshot,
+    group: NonMekDamageGroup,
+    outcome: NonMekDamageGroupOutcome,
+): number | null {
+    const struck = snapshot.index.locations.get(group.locationId);
+    if (!struck || group.damage <= 0 || outcome.struckArmor === 0 || outcome.structureDamaged.length > 0) return null;
+    const modifiers = armorPiercingCheckModifiers(snapshot.ruleset,
+        snapshot.entity.armorAt(struck.code)?.type ?? null, group.source);
+    return modifiers && modifiers.reduce((total, row) => total + row.value, 0);
+}
+
+/** A 2D6 roll with its modifier, as the critical reviews show it. */
+function modifiedRoll(dice: ReturnType<typeof roll2D6>, modifier: number): string {
+    return `${twoD6Total(dice)}${modifier === 0 ? '' : ` ${modifier > 0 ? '+' : '−'} ${Math.abs(modifier)}`}`
+        + (modifier === 0 ? '' : ` = ${twoD6Total(dice) + modifier}`);
 }
 
 function vehicleCriticalFacts(

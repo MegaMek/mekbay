@@ -58,6 +58,8 @@ export interface AttackWeaponReport {
     readonly rifle?: true;
     /** Armor-piercing autocannon rounds or acid missiles, which special armor treats apart. */
     readonly ammo?: ArmorSpecialAmmo;
+    /** The size of the autocannon firing armor-piercing rounds, which sets its armor-piercing check. */
+    readonly rackSize?: number;
     /**
      * The swarming infantry struck comes off the unit it swarms: a brush off that hits, or the infantry shaken off by
      * a jump, a fall or erratic manoeuvres.
@@ -187,7 +189,7 @@ function parseWeaponReport(value: unknown): AttackWeaponReport | null {
     if (value === null || typeof value !== 'object' || Array.isArray(value)) return null;
     const {
         name, types, partialCover, targetNumber, toHit, cluster, table, physical, arc, inferno, heat, aim,
-        critical, rifle, ammo, swarmRelease, swarmStrike, groups,
+        critical, rifle, ammo, rackSize, swarmRelease, swarmStrike, groups,
     } = value as Record<string, unknown>;
     if (!isId(name) || !isInteger(targetNumber, -100, 100) || !isTwoDice(toHit)
         || !Array.isArray(types) || types.length > WEAPON_TYPES.length
@@ -199,6 +201,7 @@ function parseWeaponReport(value: unknown): AttackWeaponReport | null {
         || (critical !== undefined && critical !== true)
         || (rifle !== undefined && (rifle !== true || physical !== undefined))
         || (ammo !== undefined && ammo !== 'armor-piercing' && ammo !== 'acid')
+        || (rackSize !== undefined && (ammo !== 'armor-piercing' || !isInteger(rackSize, 1, MAX_DAMAGE)))
         || (swarmRelease !== undefined && swarmRelease !== true)
         || (swarmStrike !== undefined && !isSwarmStrike(swarmStrike))
         || (physical !== undefined && !PHYSICAL_ATTACK_KINDS.includes(physical as PhysicalAttackKind))
@@ -246,6 +249,7 @@ function parseWeaponReport(value: unknown): AttackWeaponReport | null {
         ...(critical ? { critical: true as const } : {}),
         ...(rifle ? { rifle: true as const } : {}),
         ...(ammo === undefined ? {} : { ammo: ammo as ArmorSpecialAmmo }),
+        ...(rackSize === undefined ? {} : { rackSize: rackSize as number }),
         ...(swarmRelease ? { swarmRelease: true as const } : {}),
         ...(swarmStrike === undefined ? {} : {
             swarmStrike: Object.freeze((swarmStrike as { trooper?: number }).trooper === undefined

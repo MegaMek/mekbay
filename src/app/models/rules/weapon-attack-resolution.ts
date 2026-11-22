@@ -76,6 +76,8 @@ export interface WeaponAttackProfile {
     readonly rifle?: true;
     /** Armor-piercing autocannon rounds or acid missiles, which special armor treats apart (`resolveArmorDamage`). */
     readonly ammo?: ArmorSpecialAmmo;
+    /** The size of the autocannon firing armor-piercing rounds (`armorPiercingCheckModifiers`). */
+    readonly rackSize?: number;
     /** A hit also rolls on the Determining Critical Hits Table: a leg attack, battle armor's swarm damage. */
     readonly critical?: true;
     /**
@@ -221,6 +223,7 @@ export function weaponAttackProfile(facts: WeaponAttackFacts, rules: CBTGameRule
             groupSize: Math.max(damagePerHit, groupSize),
             ...(equipment.ammoType === 'RIFLE' ? { rifle: true as const } : {}),
             ...(specialAmmo === null ? {} : { ammo: specialAmmo }),
+            ...(specialAmmo === 'armor-piercing' ? { rackSize: equipment.rackSize } : {}),
             ...(facts.insulated ? { insulated: true as const } : {}),
             ...(isFusilladeLauncher(equipment) && facts.hostileEcm !== true
                 ? { clusterModifier: FUSILLADE_ARTEMIS_CLUSTER_MODIFIER } : {}),

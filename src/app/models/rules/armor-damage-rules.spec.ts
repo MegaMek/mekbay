@@ -2,9 +2,11 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 
 import type { CBTRuleset } from '../cbt-ruleset.model';
+import type { ArmorType } from '../entity/types';
 import { TestBattleArmorEntity, TestSupportTankEntity, TestTankEntity } from '../entity/testing/test-entities';
 import type { WeaponType } from '../weapon-types.model';
 import {
+    armorPiercingCheckModifiers,
     armorPiercingIgnoresSpecialArmor,
     FALL_DAMAGE,
     PHYSICAL_DAMAGE,
@@ -54,6 +56,22 @@ describe('resolveArmorDamage', () => {
         expect(armorPiercingIgnoresSpecialArmor('core-2026', 'ANTI_PENETRATIVE_ABLATION', ap)).toBeTrue();
         expect(armorPiercingIgnoresSpecialArmor('core-2026', 'REACTIVE', ap)).toBeFalse();
         expect(armorPiercingIgnoresSpecialArmor('total-warfare', 'HARDENED', ap)).toBeFalse();
+    });
+
+    it('reads the armor-piercing check modifiers by ruleset, autocannon size and armor', () => {
+        const total = (ruleset: CBTRuleset, armor: ArmorType, rackSize: number) => armorPiercingCheckModifiers(ruleset, armor,
+            { kind: 'weapon', types: ['DB'], ammo: 'armor-piercing', rackSize })?.reduce((sum, row) => sum + row.value, 0) ?? null;
+        // Core p.191, the AC/15 as MegaMek; TW p.140, the sizes between as MegaMek.
+        expect([2, 4, 5, 10, 15, 20].map(size => total('core-2026', 'STANDARD', size))).toEqual([-3, -2, -2, -1, -1, -1]);
+        expect([2, 4, 5, 6, 8, 10, 15, 20].map(size => total('total-warfare', 'STANDARD', size)))
+            .toEqual([-4, -3, -3, -3, -2, -2, -2, -1]);
+        // Core: ablation, ballistic-reinforced and hardened armor negate it. TW: hardened, ferro-lamellor and reactive
+        // negate it; ablation -2, laser-reflective +2, impact-resistant +1 (IO:AE pp.80, 82; TO:AUE pp.92-94).
+        const armors: readonly ArmorType[] = ['ANTI_PENETRATIVE_ABLATION', 'BALLISTIC_REINFORCED', 'HARDENED',
+            'FERRO_LAMELLOR', 'REACTIVE', 'REFLECTIVE', 'IMPACT_RESISTANT'];
+        expect(armors.map(armor => total('core-2026', armor, 5))).toEqual([null, null, null, -2, -2, -2, -2]);
+        expect(armors.map(armor => total('total-warfare', armor, 5))).toEqual([-5, -3, null, null, null, -1, -2]);
+        expect(armorPiercingCheckModifiers('total-warfare', 'STANDARD', weapon('DB'))).toBeNull();
     });
 
     it('halves damage to heat-dissipating armor only for heat-causing weapons under Core', () => {
