@@ -460,6 +460,20 @@ describe('construction equipment warehouse', () => {
     }
   });
 
+  it('shows individual capital damage in the warehouse and inspector before a bay rounds its total', () => {
+    for (const [name, rating] of [
+      ['Naval Laser 35', 3.5], ['Naval Laser 45', 4.5], ['Naval Laser 55', 5.5],
+      ['Sub-Capital Missile Launcher (Stingray)', 3.5],
+    ] as const) {
+      const equipment = new WeaponEquipment({
+        id: name, name, type: 'weapon',
+        weapon: { capital: true, damage: Math.floor(rating), av: [rating, rating] },
+      });
+      expect(editor.equipmentDamage(equipment)).withContext(name).toBe(String(rating));
+    }
+    expect(editor.equipmentDamage(sortGamma)).toBe('5/3/2');
+  });
+
   it('narrows the warehouse by tech base and value ranges, and drops a range left at its full extent', () => {
     editor.query.set('Warehouse sort');
     editor.equipmentFiltersOpen.set(true);

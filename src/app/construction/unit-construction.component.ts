@@ -1842,7 +1842,7 @@ export class UnitConstructionComponent {
       }
       case 'damage':
         return eq instanceof WeaponEquipment
-          ? Math.max(0, ...resolveWeaponDamage(eq, this.registry).values) || null
+          ? Math.max(0, ...this.warehouseWeaponDamage(eq).values) || null
           : null;
       case 'range':
         return eq instanceof WeaponEquipment
@@ -1878,8 +1878,15 @@ export class UnitConstructionComponent {
     const mass = constructionEquipmentCandidate(entity, eq, this.selectedLocation()).getTonnage(entity);
     return mass === undefined ? 'Var.' : eq.hasFixedTonnage() ? mass : Number(mass.toFixed(3));
   }
+  private warehouseWeaponDamage(eq: WeaponEquipment) {
+    // MegaMek exports whole-number damage even for 5.5-C naval lasers. Their raw AV retains the fraction.
+    const shortAV = eq.weapon.av[0];
+    const damageOverride = eq.capital && Math.trunc(shortAV) === eq.damage ? shortAV : undefined;
+    return resolveWeaponDamage(eq, this.registry, { damageOverride });
+  }
+
   equipmentDamage(eq: Equipment): string {
-    return eq instanceof WeaponEquipment ? formatWeaponDamage(resolveWeaponDamage(eq, this.registry)) || '—' : '—';
+    return eq instanceof WeaponEquipment ? formatWeaponDamage(this.warehouseWeaponDamage(eq)) || '—' : '—';
   }
   equipmentRange(eq: Equipment): string {
     if (!(eq instanceof WeaponEquipment)) return '—';

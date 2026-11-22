@@ -704,7 +704,8 @@ function isFixedLocationSpreadEquipment(equipment: Equipment): boolean {
 
 function activeAeroValues(equipment: WeaponEquipment): number[] {
   const count = ({ short: 1, medium: 2, long: 3, extreme: 4 })[equipment.maxRangeBracket];
-  return equipment.weapon.av.slice(0, count).map(Math.round);
+  const values = equipment.weapon.av.slice(0, count);
+  return equipment.capital ? values : values.map(Math.round);
 }
 
 function formatDecimal(value: number): string {

@@ -12,6 +12,7 @@ import {
   TestProtoMekEntity as ProtoMekEntity,
   TestSupportTankEntity as SupportTankEntity,
   TestTankEntity as TankEntity,
+  TestWarShipEntity as WarShipEntity,
 } from '../models/entity/testing/test-entities';
 import { createTestEquipmentRegistry } from '../models/entity/testing/test-equipment-registry';
 import { EntityMountedEquipment } from '../models/entity/types/equipment';
@@ -186,6 +187,21 @@ describe('buildUnitComponentMetadata', () => {
       .toEqual(jasmine.objectContaining({ l: 'NOS', p: 0, r: 'Medium', m: '-', d: '8/6', md: '8.0' }));
   });
 
+
+  it('shows the unrounded damage of each naval laser inside a WarShip bay', () => {
+    const entity = new WarShipEntity();
+    const nl55 = new WeaponEquipment({
+      id: 'Naval Laser 55', name: 'Naval Laser 55', type: 'weapon',
+      weapon: { atClass: 'CAPITAL_LASER', capital: true, damage: 5, av: [5.5, 5.5, 5.5, 5.5],
+        maxRangeBracket: 'extreme' },
+    });
+    const mounts = Array.from({ length: 3 }, () => mount(nl55, 'Nose'));
+    entity.setEquipment(mounts);
+    entity.addEquipmentBay('weapon-bay', { mounts });
+
+    const bay = buildUnitComponentMetadata(entity).find(component => component.id === 'Capital Laser Bay');
+    expect(bay?.bay).toEqual([jasmine.objectContaining({ id: nl55.id, q: 3, d: '5.5', md: '5.5' })]);
+  });
 
   it('preserves the Special damage label for a special one-shot weapon', () => {
     const ammo = new AmmoEquipment({
