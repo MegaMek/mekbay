@@ -185,7 +185,7 @@ describe('CBTUnitService restore warnings', () => {
         const service = TestBed.inject(CBTUnitService);
         const scenario: ScenarioRules = { id: 'megamek', ruleset: 'core-2026' };
         const created = await service.create({ uuid: tank.uuid(), instanceId: 'unit:ac-reset', deployment: { id: 'default' }, scenario });
-        expect(created.dispatch({ type: 'set-autocannon-hit', componentId: asComponentId('m1'), hit: true, target: 'pending' })
+        expect(created.dispatch({ type: 'hit-components', componentIds: [asComponentId('m1')], target: 'pending' })
             .changed).toBeTrue();
         const saved = created.serialize();
         expect((await service.restore(saved, scenario)).unit.serialize()).toEqual(saved);

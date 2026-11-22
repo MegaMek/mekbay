@@ -24,7 +24,7 @@ import { isMekEntity } from '../../../models/entity/utils/entity-type-guards';
 import { intrinsicActionBaseDamageText } from '../../../models/entity/utils/mek-intrinsic-actions';
 import { resolveShieldProfile } from '../../../models/entity/utils/physical-weapon';
 import type { CBTRuleset } from '../../../models/cbt-ruleset.model';
-import { mekCriticalDamageThreshold } from '../../../models/rules/mek-system-damage-rules';
+import { equipmentCriticalHitThreshold } from '../../../models/rules/equipment-critical-hit-rules';
 import { mekSystemDamageDisplayCapacities } from '../../../models/rules/mek-system-damage-rules';
 import { recordSheetHeatEffects } from '../../../models/runtime/heat-effect-presentation';
 import { formatEquipmentLocationCodes } from '../../equipment-location-display.util';
@@ -1771,7 +1771,7 @@ async function drawCanonicalMekCriticalContents(
             }
             const extraHit = slot?.type === 'equipment' && slot.mounts.some(mount =>
                 mount.placedCriticalSlotCount === 1 && mount.equipment
-                && mekCriticalDamageThreshold(ruleset, mount.equipment.flags) === 2);
+                && equipmentCriticalHitThreshold(ruleset, 'mek', mount.equipment) === 2);
             const textX = slot?.armored ? font(7) : 0;
             const label = addText(slotGroup, '', textX, y(locationLayout.step), {
                 size: font(7),

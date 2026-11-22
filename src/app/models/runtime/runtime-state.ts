@@ -138,7 +138,7 @@ export interface ComponentRuntimeState {
     readonly shieldDamage?: MekShieldDamageRuntimeState;
     /** Damage absorbed by this 10-point Modular Armor panel. */
     readonly modularArmorDamage?: number;
-    /** A non-Mek autocannon's survived first critical hit (`autocannonSurvivesFirstHit`); Meks count slot hits. */
+    /** A non-Mek autocannon's survived first critical hit; Meks count slot hits. */
     readonly autocannonHit?: true;
 }
 

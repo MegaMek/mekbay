@@ -1,7 +1,7 @@
 // Copyright (C) 2026 The MegaMek Team
 // SPDX-License-Identifier: GPL-3.0-or-later
 
-import { withAmmoConfiguration,withAmmoShotsSpent,withComponentAutocannonHit,withComponentJammed,withComponentMode,withComponentStatuses,withPendingComponentStatuses } from './component-state-change';
+import { componentAutocannonHit,withAmmoConfiguration,withAmmoShotsSpent,withComponentAutocannonHit,withComponentJammed,withComponentMode,withComponentStatuses,withPendingComponentStatuses } from './component-state-change';
 import { hotLoadedAmmoForWeapon } from './mek-ammo';
 import { ammoExplosionDamagePerShot } from './mek-critical-hit-v2';
 import { prototypeCaseFails } from '../case-equipment.model';
@@ -23,7 +23,7 @@ import type { BaseEntity } from '../entity/base-entity';
 import type { ArmorFaceId,ComponentId,CrewPositionId,LocationId,SystemDamageTrackId } from '../entity/entity-identifiers';
 import type { EntityStateView } from '../entity/entity-state-view';
 import { ImmutableIndex, ImmutableSet } from '../entity/immutable-collections';
-import { weaponSurvivesFirstAutocannonHit } from '../rules/mek-system-damage-rules';
+import { canRecordAutocannonHit, criticalHitsDestroyEquipment } from '../rules/equipment-critical-hit-rules';
 import {
     MAX_HEAT_VALUE,
     HEAT_DISSIPATION_DEFICIT_ID,
@@ -717,12 +717,27 @@ export function vehicleInternalExplosionDamage(
     return { internalDamage: Math.min(remainingInternal, result.internalDamage), armorDamage: result.armorDamage };
 }
 
+/** A non-slot mount records a surviving hit directly on the component. */
+export function nonMekHitDestroysComponent(index: NonMekRuntimeIndex, state: NonMekUnitRuntimeState,
+    ruleset: CBTRuleset, componentId: ComponentId, perspective: RuntimeStatePerspective, incomingHits = 1): boolean {
+    const equipment = index.components.get(componentId)?.mount.equipment;
+    const previousHits = Number(componentAutocannonHit(state, componentId, perspective));
+    return criticalHitsDestroyEquipment(ruleset, 'non-mek', equipment, previousHits + incomingHits);
+}
+
+export function canDestroyComponents(command: CBTUnitCommand): command is
+    | Extract<CBTUnitCommand, { type: 'hit-components' }>
+    | (Extract<CBTUnitCommand, { type: 'set-component-status' | 'set-component-statuses' }> & { status: 'destroyed' }) {
+    return command.type === 'hit-components'
+        || ((command.type === 'set-component-status' || command.type === 'set-component-statuses')
+            && command.status === 'destroyed');
+}
+
 /** Resolve each hot-loaded launcher's CASE-P roll once when the command is issued. Pending damage keeps that outcome. */
-export function vehicleHotLoadBlasts(entity: BaseEntity, index: NonMekRuntimeIndex, getQuery: () => CBTUnitQueryPort,
+export function vehicleHotLoadBlasts({ entity, index, ruleset }: Pick<NonMekRuntimeBinding, 'entity' | 'index' | 'ruleset'>,
+    state: NonMekUnitRuntimeState, getQuery: () => CBTUnitQueryPort,
     command: CBTUnitCommand, rollPrototypeCase?: () => number) {
-    if (!isVehicleEntity(entity)
-        || (command.type !== 'set-component-status' && command.type !== 'set-component-statuses')
-        || command.status !== 'destroyed' || command.applyExplosion === false) return [];
+    if (!isVehicleEntity(entity) || !canDestroyComponents(command) || command.applyExplosion === false) return [];
     const query = getQuery();
     if (!query.boundRules().hotLoadedAmmo) return [];
     const ids = command.type === 'set-component-status' ? [command.componentId] : command.componentIds;
@@ -730,6 +745,7 @@ export function vehicleHotLoadBlasts(entity: BaseEntity, index: NonMekRuntimeInd
     return ids.flatMap(id => {
         const mount = index.components.get(id)?.mount;
         if (!mount || query.componentStatus(id, perspective) === 'destroyed') return [];
+        if (command.type === 'hit-components' && !nonMekHitDestroysComponent(index, state, ruleset, id, perspective)) return [];
         const ammo = hotLoadedAmmoForWeapon(index, query, id, perspective);
         if (ammo.length === 0) return [];
         const location = [...index.locations.values()].find(location => location.code === mount.location);
@@ -741,7 +757,7 @@ export function vehicleHotLoadBlasts(entity: BaseEntity, index: NonMekRuntimeInd
 }
 
 export function reduceNonMekRuntime(binding: NonMekRuntimeBinding, state: NonMekUnitRuntimeState,
-    command: CBTUnitCommand, hotLoadBlasts = vehicleHotLoadBlasts(binding.entity, binding.index,
+    command: CBTUnitCommand, hotLoadBlasts = vehicleHotLoadBlasts(binding, state,
         () => queryNonMekRuntime(binding, state), command)): NonMekUnitCommandResult {
     if (command.type === 'configure-ammo-source' && command.hotLoaded && !binding.rules.hotLoadedAmmo) {
         return Object.freeze({ accepted: true, changed: false, state });
@@ -749,7 +765,7 @@ export function reduceNonMekRuntime(binding: NonMekRuntimeBinding, state: NonMek
     try {
         let next = reduceNonMekUnitState(state, binding.index, binding.entity, binding.ruleset,
             command, binding.crewAssignment);
-        if (next && hotLoadBlasts.length > 0 && (command.type === 'set-component-status' || command.type === 'set-component-statuses')) {
+        if (next && hotLoadBlasts.length > 0 && canDestroyComponents(command)) {
             const perspective = command.target === 'pending' ? 'preview' : 'committed';
             for (const { location, damage, protection } of hotLoadBlasts) {
                 const blast = vehicleInternalExplosionDamage(binding.ruleset, queryNonMekRuntime(binding, next),
@@ -1560,24 +1576,34 @@ function reduceNonMekUnitState(
             );
             if (candidate === state) return null;
             break;
-        case 'set-component-status': {
-            if (!index.components.has(command.componentId)) throw new Error('Unknown component');
-            candidate = (command.target === 'pending'
-                ? withPendingComponentStatuses(state, [command.componentId], command.status)
-                : withComponentStatuses(state, [command.componentId], command.status)) ?? state;
-            break;
-        }
-        case 'set-component-statuses': {
-            if (!Array.isArray(command.componentIds)
-                || command.componentIds.length === 0
-                || command.componentIds.length > MAX_ATTACKER_TARGETING_COMPONENTS
-                || new Set(command.componentIds).size !== command.componentIds.length
-                || command.componentIds.some(componentId => !index.components.has(componentId))) {
+        case 'set-component-status':
+        case 'set-component-statuses':
+        case 'hit-components': {
+            let componentIds = command.type === 'set-component-status' ? [command.componentId] : command.componentIds;
+            if (!Array.isArray(componentIds) || componentIds.length === 0
+                || componentIds.length > MAX_ATTACKER_TARGETING_COMPONENTS
+                || new Set(componentIds).size !== componentIds.length
+                || componentIds.some(id => !index.components.has(id))) {
                 throw new Error('Invalid components');
             }
+            if (command.type === 'hit-components') {
+                const perspective = command.target === 'pending' ? 'preview' : 'committed';
+                const statuses = projectNonMekRuntime(entity, index, state, ruleset).componentStatuses()[perspective];
+                const destroyed: ComponentId[] = [];
+                for (const id of componentIds) {
+                    if (statuses.get(id) === 'destroyed') continue;
+                    if (nonMekHitDestroysComponent(index, state, ruleset, id, perspective)) {
+                        destroyed.push(id);
+                    } else {
+                        candidate = withComponentAutocannonHit(candidate, id, true, command.target) ?? candidate;
+                    }
+                }
+                componentIds = destroyed;
+            }
+            const status = command.type === 'hit-components' ? 'destroyed' : command.status;
             candidate = (command.target === 'pending'
-                ? withPendingComponentStatuses(state, command.componentIds, command.status)
-                : withComponentStatuses(state, command.componentIds, command.status)) ?? state;
+                ? withPendingComponentStatuses(candidate, componentIds, status)
+                : withComponentStatuses(candidate, componentIds, status)) ?? candidate;
             break;
         }
         case 'set-component-jammed': {
@@ -1588,22 +1614,9 @@ function reduceNonMekUnitState(
             candidate = withComponentJammed(state, command.componentId, command.jammed) ?? state;
             break;
         }
-        case 'set-autocannon-hit': {
+        case 'repair-autocannon-hit': {
             requireDamageTarget(command.target);
-            if (command.hit
-                && !weaponSurvivesFirstAutocannonHit(index.components.get(command.componentId)?.mount.equipment, ruleset)) {
-                return null;
-            }
-            if (command.target === 'committed') {
-                candidate = withComponentAutocannonHit(state, command.componentId, command.hit) ?? state;
-            } else if ((state.pendingCombat.autocannonHits?.has(command.componentId) ?? false) !== command.hit) {
-                const hits = new Set(state.pendingCombat.autocannonHits ?? []);
-                if (command.hit) hits.add(command.componentId);
-                else hits.delete(command.componentId);
-                candidate = { ...state, pendingCombat: Object.freeze({
-                    ...state.pendingCombat, autocannonHits: new ImmutableSet(hits),
-                }) };
-            }
+            candidate = withComponentAutocannonHit(state, command.componentId, false, command.target) ?? state;
             break;
         }
         case 'set-component-mode': {
@@ -2324,7 +2337,7 @@ function commitPendingCombat(
     }
     for (const componentId of state.pendingCombat.autocannonHits ?? []) {
         if (!index.components.has(componentId)) continue;
-        next = withComponentAutocannonHit(next, componentId, true) ?? next;
+        next = withComponentAutocannonHit(next, componentId, true, 'committed') ?? next;
     }
     const damageTracks = new Map(next.damageTracks);
     for (const [damageTrackId, pending] of state.pendingCombat.damageTrackHits) {
@@ -2836,7 +2849,7 @@ function validateState(
             throw new Error(`Runtime has invalid component jam state ${componentId}`);
         }
         if (component.autocannonHit !== undefined && (component.autocannonHit !== true
-            || !weaponSurvivesFirstAutocannonHit(definition.mount.equipment, ruleset))) {
+            || !canRecordAutocannonHit(definition.mount.equipment, ruleset))) {
             throw new Error(`Runtime has invalid autocannon hit ${componentId}`);
         }
         if (component.escalatingFailure !== undefined) {
@@ -2987,7 +3000,7 @@ function validateState(
         boundedDelta(delta, armorDamage(state, face.locationId, faceId), face.maximumPoints);
     }
     for (const componentId of state.pendingCombat.autocannonHits ?? []) {
-        if (!weaponSurvivesFirstAutocannonHit(index.components.get(componentId)?.mount.equipment, ruleset)) {
+        if (!canRecordAutocannonHit(index.components.get(componentId)?.mount.equipment, ruleset)) {
             throw new Error(`Pending combat has invalid autocannon hit ${componentId}`);
         }
     }

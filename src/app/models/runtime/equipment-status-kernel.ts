@@ -3,15 +3,13 @@
 
 import { isCBTRuleset,type CBTRuleset } from '../cbt-ruleset.model';
 import { ImmutableIndex,ImmutableSet } from '../entity/immutable-collections';
-import { mekCriticalDamageThreshold } from '../rules/mek-system-damage-rules';
-import type { EquipmentFlag } from '../equipment-flags.type';
+import { criticalHitsDestroyEquipment, type CriticalHitEquipment } from '../rules/equipment-critical-hit-rules';
 import { combineEquipmentStatuses,type EquipmentStatus } from '../equipment-status.model';
 
 export type EquipmentStatusUnitFamily = 'mek' | 'vehicle' | 'other';
 
-export interface RuntimeStatusComponentDefinition {
+export interface RuntimeStatusComponentDefinition extends CriticalHitEquipment {
     readonly id: string;
-    readonly flags: ReadonlySet<EquipmentFlag>;
     readonly locationIds: readonly string[];
     readonly criticalSlotIds: readonly string[];
 }
@@ -42,6 +40,8 @@ export class RuntimeEquipmentStatusTopology implements RuntimeEquipmentStatusTop
         this.components = new ImmutableIndex([...topology.components].map(([id, component]) => [id,
             Object.freeze({
                 id: component.id,
+                type: component.type,
+                capital: component.capital,
                 flags: new ImmutableSet(component.flags),
                 locationIds: Object.freeze([...component.locationIds]),
                 criticalSlotIds: Object.freeze([...component.criticalSlotIds]),
@@ -122,7 +122,7 @@ export class RuntimeEquipmentStatusKernel {
 
         const contributions = new Array<EquipmentStatus>(definition.locationIds.length + 3);
         contributions[0] = this.componentState(componentId);
-        contributions[1] = this.mountedCriticalContribution(definition.criticalSlotIds, definition.flags);
+        contributions[1] = this.mountedCriticalContribution(definition);
         contributions[2] = this.familyContribution(definition);
         for (let index = 0; index < definition.locationIds.length; index++) {
             contributions[index + 3] = this.locationState(definition.locationIds[index]!);
@@ -137,7 +137,7 @@ export class RuntimeEquipmentStatusKernel {
         return resolution([
             this.componentState(componentId),
             this.locationState(locationId),
-            this.mountedCriticalContribution(definition.criticalSlotIds, definition.flags, locationId),
+            this.mountedCriticalContribution(definition, locationId),
             this.familyContribution(definition),
         ]);
     }
@@ -164,18 +164,17 @@ export class RuntimeEquipmentStatusKernel {
     }
 
     private mountedCriticalContribution(
-        criticalSlotIds: readonly string[],
-        componentFlags: ReadonlySet<EquipmentFlag>,
+        component: RuntimeStatusComponentDefinition,
         locationId?: string,
     ): EquipmentStatus {
-        if (this.options.family !== 'mek' || criticalSlotIds.length === 0) return 'available';
+        if (this.options.family !== 'mek' || component.criticalSlotIds.length === 0) return 'available';
         let hits = 0;
-        for (const id of criticalSlotIds) {
+        for (const id of component.criticalSlotIds) {
             if (locationId !== undefined && this.topology.criticalSlots.get(id)?.locationId !== locationId) continue;
             const slot = this.committed.criticalSlots.get(id);
             hits += Math.max(0, (slot?.hits ?? 0) - (slot?.armored ? 1 : 0));
         }
-        return hits >= mekCriticalDamageThreshold(this.options.rules, componentFlags)
+        return criticalHitsDestroyEquipment(this.options.rules, 'mek', component, hits)
             ? 'destroyed'
             : 'available';
     }

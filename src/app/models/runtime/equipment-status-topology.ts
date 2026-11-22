@@ -4,6 +4,7 @@
 import type { ComponentId,CriticalSlotId,LocationId } from '../entity/entity-identifiers';
 import { ImmutableSet } from '../entity/immutable-collections';
 import type { EquipmentFlag } from '../equipment-flags.type';
+import { WeaponEquipment } from '../equipment.model';
 import type { CBTUnitRuntimeIndex } from './cbt-unit-runtime';
 import { RuntimeEquipmentStatusTopology,type RuntimeStatusComponentDefinition,type RuntimeStatusCriticalDefinition } from './equipment-status-kernel';
 
@@ -36,9 +37,12 @@ export function buildEquipmentStatusTopology(index: EquipmentStatusIndex): Runti
                 const locationId = locationIdsByCode.get(code);
                 return locationId === undefined ? [] : [locationId];
             }) ?? [];
+        const equipment = component.mount?.equipment;
         components.set(id, {
             id,
-            flags: component.mount?.equipment?.flags ?? EMPTY_FLAGS,
+            type: equipment?.type,
+            flags: equipment?.flags ?? EMPTY_FLAGS,
+            capital: equipment instanceof WeaponEquipment && equipment.capital,
             locationIds,
             criticalSlotIds: slotsByComponent.get(id) ?? [],
         });

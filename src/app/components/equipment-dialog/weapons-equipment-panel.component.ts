@@ -384,6 +384,7 @@ export class WeaponsEquipmentPanelComponent {
             heatWeakened: row.heatWeakened === true,
             modifiers: [
                 ...(row.modifiers ?? []),
+                ...(row.autocannonHit ? [{ name: 'AC hit', status: 'warning' as const }] : []),
                 ...(row.jammed ? [{ name: 'Jammed', status: 'disabled' as const }] : []),
                 ...(weapon?.firedThisTurn ? [{ name: 'Fired', status: 'fired' as const }] : []),
             ],
@@ -610,13 +611,13 @@ export class WeaponsEquipmentPanelComponent {
     }
 
     rowHasControls(row: EquipmentPanelRow): boolean {
-        return this.handlerChoices(row).length > 0 || this.canMarkDestroyed(row) || this.canRepair(row);
+        return this.handlerChoices(row).length > 0 || this.canMarkHit(row) || this.canRepair(row);
     }
 
     /** A lone HIT/REPAIR control is shown directly rather than behind the compact controls toggle. */
     rowHasOnlyStatusAction(row: EquipmentPanelRow): boolean {
         return !this.showAmmoControls(row) && this.handlerChoices(row).length === 0
-            && (this.canMarkDestroyed(row) || this.canRepair(row));
+            && (this.canMarkHit(row) || this.canRepair(row));
     }
 
     rowHasActions(row: EquipmentPanelRow): boolean {
@@ -1315,15 +1316,15 @@ export class WeaponsEquipmentPanelComponent {
             || (choice.label === INVENTORY_MODE_CHOICE_LABEL && choice.displayType === 'dropdown');
     }
 
-    canMarkDestroyed(row: EquipmentPanelRow): boolean {
+    canMarkHit(row: EquipmentPanelRow): boolean {
         return !this.readOnly()
             && !this.runtime().supportsMekTurnTools()
             && row.component !== undefined
             && row.component.previewStatus !== 'destroyed';
     }
 
-    markDestroyed(row: EquipmentPanelRow): void {
-        if (!this.canMarkDestroyed(row)) return;
+    markHit(row: EquipmentPanelRow): void {
+        if (!this.canMarkHit(row)) return;
         if (row.component) void this.runtime().changeStatus(row.component);
     }
 

@@ -2,9 +2,10 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 
 import type { ComponentId } from '../entity/entity-identifiers';
-import { ImmutableIndex } from '../entity/immutable-collections';
+import { ImmutableIndex, ImmutableSet } from '../entity/immutable-collections';
 import type { EquipmentStatus } from '../equipment-status.model';
 import type { CBTUnitRuntimeState, RuntimeStatePerspective } from './cbt-unit-runtime';
+import type { NonMekUnitRuntimeState } from './non-mek-unit-instance';
 import type { AmmoRuntimeState,ComponentRuntimeState } from './runtime-state';
 
 export interface ComponentStateChangeResult {
@@ -59,8 +60,7 @@ export function withComponentJammed<State extends CBTUnitRuntimeState>(
 
 /** A non-Mek autocannon's noted first hit: committed, or in the preview also the phase's pending one. */
 export function componentAutocannonHit(
-    state: Pick<CBTUnitRuntimeState, 'components'>
-        & Readonly<{ pendingCombat: Readonly<{ autocannonHits?: ReadonlySet<ComponentId> }> }>,
+    state: Pick<NonMekUnitRuntimeState, 'components' | 'pendingCombat'>,
     componentId: ComponentId,
     perspective: RuntimeStatePerspective,
 ): boolean {
@@ -69,9 +69,16 @@ export function componentAutocannonHit(
 }
 
 /** The survived first autocannon hit is sparse `true`; callers validate the weapon and ruleset. */
-export function withComponentAutocannonHit<State extends CBTUnitRuntimeState>(
-    state: State, componentId: ComponentId, hit: boolean,
-): State | null {
+export function withComponentAutocannonHit(
+    state: NonMekUnitRuntimeState, componentId: ComponentId, hit: boolean, target: 'committed' | 'pending',
+): NonMekUnitRuntimeState | null {
+    if (target === 'pending') {
+        if ((state.pendingCombat.autocannonHits?.has(componentId) ?? false) === hit) return null;
+        const hits = new Set(state.pendingCombat.autocannonHits);
+        if (hit) hits.add(componentId);
+        else hits.delete(componentId);
+        return { ...state, pendingCombat: Object.freeze({ ...state.pendingCombat, autocannonHits: new ImmutableSet(hits) }) };
+    }
     const current = state.components.get(componentId) ?? {};
     if ((current.autocannonHit ?? false) === hit) return null;
     const components = new Map(state.components);

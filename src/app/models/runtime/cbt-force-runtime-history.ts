@@ -460,6 +460,15 @@ export function unitCommandHistory(
             return unitHistory(RUNTIME_HISTORY_MESSAGE.REPAIR_CRITICAL, instanceId, criticalHistoryTarget(unit, command.slotId), command.hits, command.target);
         case 'set-component-status':
             return unitHistory(RUNTIME_HISTORY_MESSAGE.COMPONENT_STATUS, instanceId, componentHistoryTarget(command.componentId), command.status, command.target);
+        case 'set-component-statuses':
+            return command.componentIds.map(id => unitHistory(RUNTIME_HISTORY_MESSAGE.COMPONENT_STATUS,
+                instanceId, componentHistoryTarget(id), command.status, command.target));
+        case 'hit-components': {
+            const perspective = command.target === 'pending' ? 'preview' : 'committed';
+            return command.componentIds.filter(id => beforeSnapshot.query.componentStatus(id, perspective) !== 'destroyed')
+                .map(id => unitHistory(RUNTIME_HISTORY_MESSAGE.COMPONENT_STATUS, instanceId, componentHistoryTarget(id),
+                    afterSnapshot.query.componentStatus(id, perspective) === 'destroyed' ? 'destroyed' : 'hit', command.target));
+        }
         case 'set-component-mode':
             return componentModeHistory(instanceId, command.componentId, modeChange?.before, modeChange?.after);
         case 'apply-mek-blow-off':

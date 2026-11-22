@@ -33,7 +33,7 @@ import { aeroExplosionStructuralIntegrityDamage, type AeroCriticalType } from '.
 import { projectAeroRuntimeRules } from '../models/rules/aero-runtime-rules';
 import { projectAeroHeatAutomationChecks } from '../models/runtime/aero-heat-automation-rules';
 import { heatAmmoExplosionCandidates, rollD6, twoD6Total, type HeatAmmoExplosionCandidate } from '../models/runtime/mek-automation-rules';
-import { vehicleHotLoadBlasts } from '../models/runtime/non-mek-unit-instance';
+import { canDestroyComponents, vehicleHotLoadBlasts } from '../models/runtime/non-mek-unit-instance';
 import type { CBTRuntimeLocation } from '../models/runtime/cbt-unit-runtime';
 import type { NonMekRuntimeIndex } from '../models/runtime/non-mek-runtime-index';
 import { projectNonMekEndTurnHeat,type NonMekControlRecoveryCause,type NonMekControlRecoveryWorkflow,type NonMekUnitRuntimeState } from '../models/runtime/non-mek-unit-instance';
@@ -371,11 +371,10 @@ export class DirectNonMekAutomationService {
         instanceId: string,
         command: CBTUnitCommand,
     ): Promise<PreparedDirectNonMekAutomationCommand> {
-        if ((command.type === 'set-component-status' || command.type === 'set-component-statuses')
-            && command.status === 'destroyed' && command.applyExplosion === undefined) {
+        if (canDestroyComponents(command) && command.applyExplosion === undefined) {
             const snapshot = this.nonMekSnapshot(force, instanceId);
             if (snapshot && isVehicleEntity(snapshot.entity)) {
-                const blasts = vehicleHotLoadBlasts(snapshot.entity, snapshot.index, () => snapshot.query, command);
+                const blasts = vehicleHotLoadBlasts(snapshot, snapshot.state, () => snapshot.query, command);
                 const damage = blasts.reduce((sum, blast) => sum + blast.damage, 0);
                 const effects = blasts.map(blast => `${blast.name} (${blast.location.code}): ${blast.damage} base explosion damage`);
                 if (damage > 0) {

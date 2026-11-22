@@ -33,8 +33,6 @@ import {
     swarmCriticalModifier,
 } from '../models/rules/armor-damage-rules';
 import { gameRulesFor } from '../models/rules/game-rules';
-import { weaponSurvivesFirstAutocannonHit } from '../models/rules/mek-system-damage-rules';
-import { componentAutocannonHit } from '../models/runtime/component-state-change';
 import { systemDamageId, type SystemDamageKind } from '../models/rules/system-damage-rules';
 import {
     vehicleCriticalColumn,
@@ -48,7 +46,7 @@ import {
 } from '../models/rules/vehicle-critical-rules';
 import type { CBTRuntimeLocation, RuntimeStatePerspective } from '../models/runtime/cbt-unit-runtime';
 import { rollD6, roll2D6, twoD6Total } from '../models/runtime/mek-automation-rules';
-import { vehicleExplosionProtection, vehicleInternalExplosionDamage } from '../models/runtime/non-mek-unit-instance';
+import { nonMekHitDestroysComponent, vehicleExplosionProtection, vehicleInternalExplosionDamage } from '../models/runtime/non-mek-unit-instance';
 import {
     ammoExplosionDamagePerShot,
     ammoRackSize,
@@ -824,19 +822,12 @@ function weaponCriticalHit(
     target: Target,
     alreadyStruck = false,
 ): Readonly<{ destroyed: boolean; effect: string; command: CBTUnitCommand }> {
-    const equipment = snapshot.index.components.get(weapon.componentId)?.mount.equipment;
-    const recorded = alreadyStruck || componentAutocannonHit(snapshot.state, weapon.componentId, perspectiveOf(target));
-    if (weaponSurvivesFirstAutocannonHit(equipment, snapshot.ruleset) && !recorded) {
-        return Object.freeze({
-            destroyed: false,
-            effect: `${weapon.name} takes its first autocannon hit and keeps working`,
-            command: { type: 'set-autocannon-hit' as const, componentId: weapon.componentId, hit: true, target },
-        });
-    }
+    const destroyed = nonMekHitDestroysComponent(snapshot.index, snapshot.state, snapshot.ruleset,
+        weapon.componentId, perspectiveOf(target), alreadyStruck ? 2 : 1);
     return Object.freeze({
-        destroyed: true,
-        effect: `${weapon.name} is destroyed`,
-        command: { type: 'set-component-status' as const, componentId: weapon.componentId, status: 'destroyed' as const, target },
+        destroyed,
+        effect: destroyed ? `${weapon.name} is destroyed` : `${weapon.name} takes its first autocannon hit and keeps working`,
+        command: { type: 'hit-components' as const, componentIds: [weapon.componentId], target },
     });
 }
 

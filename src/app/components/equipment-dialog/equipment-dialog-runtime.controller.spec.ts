@@ -357,9 +357,8 @@ describe('EquipmentDialogRuntimeController', () => {
 
         await controller.changeStatus(component);
         expect(dispatch).toHaveBeenCalledWith('tank-1', jasmine.objectContaining({
-            type: 'set-component-status',
-            componentId: component.componentId,
-            status: 'destroyed',
+            type: 'hit-components',
+            componentIds: [component.componentId],
             target: 'pending',
         }), undefined);
 
@@ -705,9 +704,8 @@ describe('EquipmentDialogRuntimeController', () => {
             },
         }));
         expect(dispatchUnit).toHaveBeenCalledOnceWith('dropship-1', jasmine.objectContaining({
-            type: 'set-component-statuses',
+            type: 'hit-components',
             componentIds: [firstId, secondId],
-            status: 'destroyed',
             target: 'committed',
         }), undefined);
         controller.dispose();

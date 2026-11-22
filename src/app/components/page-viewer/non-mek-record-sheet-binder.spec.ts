@@ -1147,7 +1147,7 @@ describe('bindNonMekRecordSheet', () => {
             .map(row => [row.getAttribute('data-mekbay-component-ids'), row.querySelector(':scope > .autocannonHitDot') !== null]);
 
         expect(rows()).toEqual([[ids.join(' '), false]]);
-        expect(unit.dispatch({ type: 'set-autocannon-hit', componentId: ids[0]!, hit: true, target: 'committed' }).changed).toBeTrue();
+        expect(unit.dispatch({ type: 'hit-components', componentIds: [ids[0]!], target: 'committed' }).changed).toBeTrue();
         binding.render(recordSheet(), inventory(panel()));
         expect(rows()).toEqual(jasmine.arrayWithExactContents([[ids[0], true], [ids[1], false]]));
         binding.destroy();

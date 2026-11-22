@@ -204,7 +204,7 @@ describe('hot-loaded ammo', () => {
             const random = jasmine.isSpy(Math.random) ? Math.random as jasmine.Spy : spyOn(Math, 'random');
             random.calls.reset();
             random.and.returnValue((die - 0.5) / 6);
-            const hit = { type: 'set-component-status', componentId: launcher, status: 'destroyed', target: 'pending' } as const;
+            const hit = { type: 'hit-components', componentIds: [launcher], target: 'pending' } as const;
             const front = [...unit.getIndex().locations.values()].find(location => location.code === 'Front')!;
             expect(unit.dispatch(hit).changed).toBeTrue();
             expect(unit.query().remainingInternal(front.id, 'preview')).toBe(internal);

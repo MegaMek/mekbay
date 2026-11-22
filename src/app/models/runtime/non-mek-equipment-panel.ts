@@ -65,6 +65,7 @@ type VehicleRuntimeRulesProjection,
 } from '../rules/vehicle-runtime-rules';
 import { isUnitWaterDepth } from '../unit-cover.model';
 import { attackerActionSelection } from './attacker-targeting-state';
+import { componentAutocannonHit } from './component-state-change';
 import { mobileHpgBlocksWeaponAttacks } from './component-mobile-hpg';
 import { halvedUnderwater } from './mek-physical-attack-v2';
 import type { TargetRegistrySnapshot } from './encounter-runtime';
@@ -599,6 +600,7 @@ function projectComponent(
         locations: Object.freeze(locations),
         status,
         previewStatus,
+        ...(previewStatus !== 'destroyed' && componentAutocannonHit(state, componentId, 'preview') ? { autocannonHit: true as const } : {}),
         modes: modeDefinition.modes,
         ...(modeDefinition.defaultMode === undefined ? {} : { defaultMode: modeDefinition.defaultMode }),
         ...(mode === undefined ? {} : { mode }),
@@ -734,6 +736,7 @@ function projectWeaponBayComponent(
         locations: Object.freeze([...locations.values()]),
         status: aggregateStatus(members.map(member => member.status)),
         previewStatus: aggregateStatus(members.map(member => member.previewStatus)),
+        ...(members.some(member => member.autocannonHit) ? { autocannonHit: true as const } : {}),
         modes: Object.freeze([]),
         ...(representative.mode === undefined ? {} : { mode: representative.mode }),
         jammed: members.every(member => member.jammed),

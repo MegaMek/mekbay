@@ -263,7 +263,7 @@ export class AttackResolutionService {
                 locationId: slot.locationId,
                 results: diceForSlotIndex(mek.index.locations.get(slot.locationId)!.code, slot.slotIndex),
                 target,
-            } : { type: 'set-component-status', componentId, status: 'destroyed', target });
+            } : { type: 'hit-components', componentIds: [componentId], target });
         }
         if (resolution.insulatorFailed.length > 0) {
             const lasers = resolution.insulatorFailed.length;

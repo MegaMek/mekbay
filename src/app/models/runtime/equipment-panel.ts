@@ -287,6 +287,8 @@ export interface EquipmentPanelComponent {
     readonly locations: readonly EquipmentPanelLocation[];
     readonly status: EquipmentStatus;
     readonly previewStatus: EquipmentStatus;
+    /** A surviving autocannon on this row has taken its first critical hit in the damage preview. */
+    readonly autocannonHit?: true;
     /** Exact entity/rules modes; authored SVG mode labels are never authoritative. */
     readonly modes: readonly string[];
     readonly defaultMode?: string;

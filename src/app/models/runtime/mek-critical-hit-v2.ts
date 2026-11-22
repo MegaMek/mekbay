@@ -36,7 +36,7 @@ import {
     mekCriticalSlotDirectHitThreshold,
     mekCriticalSlotMaximumHits,
 } from './mek-critical-slot-rules';
-import { mekCriticalDamageThreshold } from '../rules/mek-system-damage-rules';
+import { criticalHitsDestroyEquipment } from '../rules/equipment-critical-hit-rules';
 import {
     componentLocationIds,
     equipmentForComponent,
@@ -507,8 +507,8 @@ export function mekExplosionProtection(
         const componentId = componentIdForMount(mount);
         if (runtime.componentStatus(componentId, criticalPerspective(target)) !== 'available') return false;
         return !mount.equipment || !directHitSlot?.componentIds.includes(componentId)
-            || componentCriticalHits(index, runtime, componentId, target) + 1
-                < mekCriticalDamageThreshold(ruleset, mount.equipment.flags);
+            || !criticalHitsDestroyEquipment(ruleset, 'mek', mount.equipment,
+                componentCriticalHits(index, runtime, componentId, target) + 1);
     });
     return kind === null ? 'none' : kind === 'case-ii' ? 'case-ii' : kind === 'prototype' ? 'case-p' : 'case';
 }

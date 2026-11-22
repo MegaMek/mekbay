@@ -857,9 +857,9 @@ describe('force storage codec', () => {
             instanceId: 'unit:codec-ac-hit', uuid, deployment: { id: 'default' },
             scenario: { id: 'megamek', ruleset: 'core-2026' }, initialStateProfileId: 'pristine-non-mek',
         });
-        expect(ready.dispatch({ type: 'set-autocannon-hit', componentId: committedId, hit: true, target: 'committed' }).changed)
+        expect(ready.dispatch({ type: 'hit-components', componentIds: [committedId], target: 'committed' }).changed)
             .toBeTrue();
-        expect(ready.dispatch({ type: 'set-autocannon-hit', componentId: pendingId, hit: true, target: 'pending' }).changed)
+        expect(ready.dispatch({ type: 'hit-components', componentIds: [pendingId], target: 'pending' }).changed)
             .toBeTrue();
 
         const unit = ready.serialize();
@@ -883,8 +883,9 @@ describe('force storage codec', () => {
             instanceId: 'unit:codec-ac-hit-tw', uuid, deployment: { id: 'default' },
             scenario: { id: 'megamek', ruleset: 'total-warfare' }, initialStateProfileId: 'pristine-non-mek',
         });
-        expect(tw.dispatch({ type: 'set-autocannon-hit', componentId: committedId, hit: true, target: 'committed' }).changed)
-            .toBeFalse();
+        expect(tw.dispatch({ type: 'hit-components', componentIds: [committedId], target: 'committed' }).changed).toBeTrue();
+        expect(tw.query().componentStatus(committedId)).toBe('destroyed');
+        expect(componentAutocannonHit(tw.snapshot(), committedId, 'committed')).toBeFalse();
     });
 
     it('round-trips non-Mek damage and ordered damage-track timestamps', () => {

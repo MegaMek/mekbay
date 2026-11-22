@@ -529,7 +529,7 @@ describe('WeaponsEquipmentPanelComponent', () => {
             component: { ...mekRow.component!, previewStatus: 'destroyed' } as EquipmentPanelComponent,
         };
 
-        expect(mekView.component.canMarkDestroyed(mekRow)).toBeFalse();
+        expect(mekView.component.canMarkHit(mekRow)).toBeFalse();
         expect(mekView.component.canRepair(destroyedMekRow)).toBeFalse();
         expect((Array.from(mekView.fixture.nativeElement.querySelectorAll('.controls-cell button')) as HTMLElement[])
             .some(button => button.textContent?.trim() === 'HIT')).toBeFalse();
@@ -548,10 +548,11 @@ describe('WeaponsEquipmentPanelComponent', () => {
             component: { ...nonMekRow.component!, previewStatus: 'destroyed' } as EquipmentPanelComponent,
         };
 
-        expect(nonMekView.component.canMarkDestroyed(nonMekRow)).toBeTrue();
+        expect(nonMekView.component.canMarkHit(nonMekRow)).toBeTrue();
         expect(nonMekView.component.canRepair(destroyedNonMekRow)).toBeTrue();
-        expect((Array.from(nonMekView.fixture.nativeElement.querySelectorAll('.controls-cell button')) as HTMLElement[])
-            .some(button => button.textContent?.trim() === 'HIT')).toBeTrue();
+        const buttons = Array.from(nonMekView.fixture.nativeElement.querySelectorAll('.controls-cell button')) as HTMLButtonElement[];
+        buttons.find(button => button.textContent?.trim() === 'HIT')!.click();
+        expect(harness.changeStatus).toHaveBeenCalledOnceWith(nonMekRow.component);
     });
 
     it('fires only through the retained runtime command', async () => {

@@ -40,7 +40,7 @@ import { componentEscalatingFailureProfile } from './component-escalating-failur
 import { rapidFireAutocannonSupportsJamming } from './component-rapid-fire-autocannon';
 import { entityAmmoLoadout } from './mek-ammo';
 import { gameRulesFor } from '../rules/game-rules';
-import { weaponSurvivesFirstAutocannonHit } from '../rules/mek-system-damage-rules';
+import { canRecordAutocannonHit } from '../rules/equipment-critical-hit-rules';
 import { HEAT_TURN_STEP } from '../rules/turn-sequence';
 import { isEndTurnCheckpoint,type EndTurnCheckpoint } from './end-turn-checkpoint';
 import { freezeEquipmentRowOrder,type EquipmentRowOrderState } from './equipment-row-order';
@@ -387,7 +387,7 @@ export function restoreNonMekRuntime(
             ...(entry.status === undefined ? {} : { statusOverride: entry.status }),
             ...(mode === undefined ? {} : { mode }),
             ...(entry.jammed === true && rapidFireAutocannonSupportsJamming(equipment, ruleset) ? { jammed: true } : {}),
-            ...(entry.autocannonHit === true && weaponSurvivesFirstAutocannonHit(equipment, ruleset)
+            ...(entry.autocannonHit === true && canRecordAutocannonHit(equipment, ruleset)
                 ? { autocannonHit: true } : {}),
             ...(entry.escalatingFailure === undefined || entry.escalatingFailure.sequence > failureSteps
                 ? {}
@@ -475,7 +475,7 @@ export function restoreNonMekRuntime(
             if (index.components.has(componentId)) return true;
             skipped++;
             return false;
-        }, componentId => weaponSurvivesFirstAutocannonHit(index.components.get(componentId)?.mount.equipment, ruleset)),
+        }, componentId => canRecordAutocannonHit(index.components.get(componentId)?.mount.equipment, ruleset)),
     });
     return Object.freeze({
         skipped,

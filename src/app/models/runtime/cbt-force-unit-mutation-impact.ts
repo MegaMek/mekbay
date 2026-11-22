@@ -13,6 +13,7 @@ export function commandMayChangeOperationalC3(command: CBTUnitCommand): boolean 
         case 'set-system-critical-level':
         case 'set-component-status':
         case 'set-component-statuses':
+        case 'hit-components':
         case 'set-destroyed':
         case 'set-internal-damage':
         case 'damage-track':
@@ -54,6 +55,7 @@ export function commandMayChangeBaseBattleValue(command: CBTUnitCommand): boolea
         case 'set-system-critical-level':
         case 'set-component-status':
         case 'set-component-statuses':
+        case 'hit-components':
         case 'damage-track':
         case 'repair-damage-track':
         case 'set-system-damage-level':
@@ -92,7 +94,7 @@ export function commandMayChangeBaseBattleValue(command: CBTUnitCommand): boolea
         case 'set-stealth-state':
         case 'toggle-gauss-power':
         case 'set-component-jammed':
-        case 'set-autocannon-hit':
+        case 'repair-autocannon-hit':
         case 'set-ppc-capacitor-charge':
         case 'set-bombast-laser-charge':
         case 'edit-c3-emergency-master':

@@ -255,7 +255,10 @@ function createFixture(
         if (component.t === 'E') flags.add('F_ENERGY');
         if (component.t === 'B') flags.add('F_BALLISTIC');
         if (/autocannon|(?:^|[^a-z])ac(?:[^a-z]|$)/iu.test(`${component.id} ${component.n ?? ''}`)) flags.add('F_AC');
-        components.set(componentId, { id: componentId, flags, locationIds: normalizedLocations, criticalSlotIds });
+        const weapon = ['A', 'B', 'E', 'M', 'O'].includes(component.t ?? '');
+        components.set(componentId, {
+            id: componentId, type: weapon ? 'weapon' : undefined, flags, locationIds: normalizedLocations, criticalSlotIds,
+        });
         criticalSlotIds.forEach((criticalId, criticalIndex) => {
             criticalSlots.set(criticalId, {
                 id: criticalId,

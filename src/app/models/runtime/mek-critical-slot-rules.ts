@@ -4,7 +4,7 @@
 import type { CBTRuleset } from '../cbt-ruleset.model';
 import type { ComponentId, CriticalSlotId } from '../entity/entity-identifiers';
 import type { MekRuntimeIndex, MekIndexedCriticalSlot } from './mek-runtime-index';
-import { mekCriticalDamageThreshold } from '../rules/mek-system-damage-rules';
+import { equipmentCriticalHitThreshold } from '../rules/equipment-critical-hit-rules';
 
 /** First mark is component armor; the following mark is the first component hit. */
 export function mekCriticalSlotDirectHitThreshold(slot: MekIndexedCriticalSlot): number {
@@ -30,7 +30,7 @@ export function mekCriticalSlotMaximumHits(
         if (installedSlots.length !== 1) return maximum;
         return Math.max(
             maximum,
-            mekCriticalDamageThreshold(ruleset, component.mount.equipment?.flags ?? new Set()),
+            equipmentCriticalHitThreshold(ruleset, 'mek', component.mount.equipment),
         );
     }, 1);
     return componentHits + (slot.armored ? 1 : 0);

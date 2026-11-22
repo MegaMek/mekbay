@@ -148,7 +148,7 @@ export class CBTUnit<F extends CBTUnitFamily = CBTUnitFamily> {
         const runtime = this.#runtime;
         const result = runtime.kind === 'mek' ? reduceMekRuntime(runtime.binding, runtime.state, command)
             : reduceNonMekRuntime(runtime.binding, runtime.state, command,
-                vehicleHotLoadBlasts(runtime.binding.entity, runtime.binding.index, () => this.query(), command,
+                vehicleHotLoadBlasts(runtime.binding, runtime.state, () => this.query(), command,
                     runtime.binding.ruleset === 'core-2026' ? rollD6 : undefined));
         return this.installResult(result);
     }

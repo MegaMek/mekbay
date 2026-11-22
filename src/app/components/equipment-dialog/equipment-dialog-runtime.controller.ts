@@ -351,23 +351,12 @@ export class EquipmentDialogRuntimeController {
     }
 
     public async changeStatus(row: EquipmentPanelComponent): Promise<void> {
-        const status = row.previewStatus === 'destroyed' ? 'available' : 'destroyed';
+        if (this.supportsMekTurnTools()) return;
         const target = this.options.options().trackPhaseAndTurn ? 'pending' : 'committed';
-        if (isCBTMekForceMember(this.member) || row.attack === undefined) {
-            await this.dispatchUnit({
-                type: 'set-component-status',
-                componentId: row.componentId,
-                status,
-                target,
-            });
-        } else {
-            await this.dispatchUnit({
-                type: 'set-component-statuses',
-                componentIds: row.attack.members.map(member => member.componentId),
-                status,
-                target,
-            });
-        }
+        const componentIds = row.attack?.members.map(member => member.componentId) ?? [row.componentId];
+        await this.dispatchUnit(row.previewStatus === 'destroyed'
+            ? { type: 'set-component-statuses', componentIds, status: 'available', target }
+            : { type: 'hit-components', componentIds, target });
     }
 
     public async changeMode(row: EquipmentPanelComponent, mode: string): Promise<void> {

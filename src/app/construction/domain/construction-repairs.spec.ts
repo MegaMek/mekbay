@@ -292,9 +292,9 @@ describe('construction repair campaign quotes', () => {
         const unit = createNonMekUnit(entity, { uuid: entity.uuid(), instanceId: 'unit:repair-ac', deployment: { id: 'repair-test' },
             scenario: { id: 'megamek', ruleset: 'core-2026' }, initialStateProfileId: 'pristine' });
         const [committed, pendingHit] = [...unit.getIndex().components.values()].map(component => component.id);
-        expect(unit.dispatch({ type: 'set-autocannon-hit', componentId: committed!, hit: true, target: 'committed' }).changed)
+        expect(unit.dispatch({ type: 'hit-components', componentIds: [committed!], target: 'committed' }).changed)
             .toBeTrue();
-        expect(unit.dispatch({ type: 'set-autocannon-hit', componentId: pendingHit!, hit: true, target: 'pending' }).changed)
+        expect(unit.dispatch({ type: 'hit-components', componentIds: [pendingHit!], target: 'pending' }).changed)
             .toBeTrue();
         // Core p.183: the gun still works, but its noted hit is damage the next critical turns into its loss
         expect(constructionHasRepairDamage(snapshot(unit))).toBeTrue();

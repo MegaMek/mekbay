@@ -106,8 +106,7 @@ describe('DirectNonMekAutomationService', () => {
             index: runtime.getIndex(), uuid: UUID, ruleset: runtime.ruleset(), crewAssignment: runtime.getCrewAssignment(),
             editContext: { owner: runtime, state: runtime.snapshot() }, state: runtime.snapshot(), query: runtime.query(),
         }) } as unknown as CBTForce;
-        const command = { type: 'set-component-status', componentId: weaponId,
-            status: 'destroyed', target: 'pending' } as const;
+        const command = { type: 'hit-components', componentIds: [weaponId], target: 'pending' } as const;
 
         const accepted = await service.prepareCommand(force, runtime.instanceId, command);
         expect(accepted.command).toEqual({ ...command, applyExplosion: true });
@@ -119,7 +118,7 @@ describe('DirectNonMekAutomationService', () => {
         const declined = await service.prepareCommand(force, runtime.instanceId, command);
         runtime.dispatch(declined.command);
         expect(runtime.query().remainingInternal(locationId, 'preview')).toBe(20);
-        runtime.dispatch({ ...command, status: 'available' });
+        runtime.dispatch({ type: 'set-component-status', componentId: weaponId, status: 'available', target: 'pending' });
         runtime.dispatch(accepted.command);
         expect(runtime.query().remainingInternal(locationId, 'preview')).toBe(10);
         expect(runtime.query().remainingAmmo(ammoId)).toBe(12);

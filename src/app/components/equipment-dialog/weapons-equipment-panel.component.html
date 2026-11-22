@@ -134,8 +134,8 @@
                                         <span class="equipment-name">{{ row.display.name }}</span>
                                         @if (tactical() && rowHasActions(row)) {
                                             @if (rowHasOnlyStatusAction(row)) {
-                                                @if (canMarkDestroyed(row)) {
-                                                    <button type="button" class="bt-button tiny secondary-controls-toggle" [attr.aria-label]="'Mark ' + row.display.name + ' hit'" (click)="markDestroyed(row)">HIT</button>
+                                                @if (canMarkHit(row)) {
+                                                    <button type="button" class="bt-button tiny secondary-controls-toggle" [attr.aria-label]="'Mark ' + row.display.name + ' hit'" (click)="markHit(row)">HIT</button>
                                                 } @else {
                                                     <button type="button" class="bt-button tiny secondary-controls-toggle" [attr.aria-label]="'Repair ' + row.display.name" (click)="repair(row)">REPAIR</button>
                                                 }
@@ -293,8 +293,8 @@
                                                     }
                                                 }
                                             }
-                                            @if (canMarkDestroyed(row)) {
-                                                <button class="bt-button tiny" type="button" (click)="markDestroyed(row)">HIT</button>
+                                            @if (canMarkHit(row)) {
+                                                <button class="bt-button tiny" type="button" (click)="markHit(row)">HIT</button>
                                             } @else if (canRepair(row)) {
                                                 <button class="bt-button tiny" type="button" (click)="repair(row)">REPAIR</button>
                                             }

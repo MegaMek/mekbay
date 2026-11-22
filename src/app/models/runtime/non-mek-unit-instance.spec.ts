@@ -53,6 +53,7 @@ serializeNonMekUnit,
 } from './non-mek-unit-persistence';
 import { type InstanceBaselineRef } from './runtime-state';
 import { componentIdForMount } from './unit-runtime-index';
+import { createDirectMekRuntimeFixture } from './testing/direct-mek-runtime-fixture';
 import { TARGET_TAG_INFANTRY_REASON } from './weapon-target-policy';
 import type { TnTargetUnitType } from '../target-number-calculator.model';
 
@@ -1976,6 +1977,26 @@ describe('NonMekUnitInstance', () => {
         expect(restored.query().attackerTargetingState().targets.size).toBe(0);
     });
 
+    for (const ruleset of [CORE_2026_RULESET, TOTAL_WARFARE_RULESET]) {
+        it(`applies the same critical-hit threshold to the same AC on a Mek and a tank under ${ruleset}`, () => {
+            const mek = createDirectMekRuntimeFixture(ruleset);
+            const mekGun = mek.equipmentComponent('Test AC');
+            const slot = [...mek.index.slots.values()].find(slot => slot.componentIds.includes(mekGun.id))!;
+            const entity = new TestTankEntity(mek.equipment);
+            entity.uuid.set(UUID);
+            const tankGun = componentIdForMount(addTestEquipment(entity, mekGun.mount.equipment!, { location: 'Front' }));
+            const tank = createNonMekRuntimeForTest('unit:ac-parity', { ...baseline(), ruleset }, entity, ruleset);
+
+            const expected = ruleset === CORE_2026_RULESET ? ['available', 'destroyed'] as const : ['destroyed'] as const;
+            for (const status of expected) {
+                expect(mek.instance.dispatch({ type: 'hit-critical', slotId: slot.id, hits: 1, target: 'committed' }).changed).toBeTrue();
+                expect(tank.dispatch({ type: 'hit-components', componentIds: [tankGun], target: 'committed' }).changed).toBeTrue();
+                expect([mek.instance.query().componentStatus(mekGun.id), tank.query().componentStatus(tankGun)])
+                    .toEqual([status, status]);
+            }
+        });
+    }
+
     it('projects a noted Core autocannon first hit onto the record sheet row, committed and pending', () => {
         const ac = new WeaponEquipment({
             id: 'TestSheetAC5', name: 'Test AC/5', type: 'weapon',
@@ -1987,9 +2008,9 @@ describe('NonMekUnitInstance', () => {
         const committedId = componentIdForMount(addTestEquipment(entity, ac, { location: entity.locationOrder[0] }));
         const pendingId = componentIdForMount(addTestEquipment(entity, ac, { location: entity.locationOrder[0] }));
         const runtime = createNonMekRuntimeForTest('unit:tank-ac-sheet', baseline(), entity, CORE_2026_RULESET);
-        expect(runtime.dispatch({ type: 'set-autocannon-hit', componentId: committedId, hit: true, target: 'committed' }).changed)
+        expect(runtime.dispatch({ type: 'hit-components', componentIds: [committedId], target: 'committed' }).changed)
             .toBeTrue();
-        expect(runtime.dispatch({ type: 'set-autocannon-hit', componentId: pendingId, hit: true, target: 'pending' }).changed)
+        expect(runtime.dispatch({ type: 'hit-components', componentIds: [pendingId], target: 'pending' }).changed)
             .toBeTrue();
 
         const sheet = projectNonMekRecordSheet(entity, runtime.getIndex(), runtime.snapshot(), CORE_2026_RULESET,
@@ -2000,6 +2021,18 @@ describe('NonMekUnitInstance', () => {
             autocannonHit: true, previewAutocannonHit: true, status: 'available',
         }));
         expect(row(pendingId)).toEqual(jasmine.objectContaining({ autocannonHit: false, previewAutocannonHit: true }));
+        const panel = () => projectNonMekEquipmentPanel(entity, runtime.getIndex(), CORE_2026_RULESET, runtime.snapshot(),
+            runtime.query(), { revision: 0, targets: [] }, {}).components;
+        expect(panel().map(gun => [gun.autocannonHit, gun.weapon?.selectable])).toEqual([[true, true], [true, true]]);
+
+        expect(runtime.dispatch({ type: 'cancel-pending' }).changed).toBeTrue();
+        const both = { type: 'hit-components', componentIds: [committedId, pendingId], target: 'pending' } as const;
+        expect(runtime.dispatch(both).changed).toBeTrue();
+        expect(panel().map(gun => [gun.previewStatus, !!gun.autocannonHit])).toEqual([['destroyed', false], ['available', true]]);
+        expect(runtime.dispatch({ type: 'end-phase' }).changed).toBeTrue();
+        expect(panel().map(gun => gun.weapon?.selectable)).toEqual([false, true]);
+        expect(runtime.dispatch(both).changed).toBeTrue();
+        expect(panel().map(gun => gun.previewStatus)).toEqual(['destroyed', 'destroyed']);
     });
 
     it('fires a non-Mek weapon from underwater once the unit is set in water, as its other rules read it', () => {

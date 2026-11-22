@@ -75,7 +75,7 @@ export function constructionPendingRepairQuote(
         } else if (command.type === 'repair-shield'
             || command.type === 'set-component-status' && command.status === 'available'
             || command.type === 'set-component-jammed' && !command.jammed
-            || command.type === 'set-autocannon-hit' && !command.hit
+            || command.type === 'repair-autocannon-hit'
             || command.type === 'edit-escalating-failure' && command.edit.kind === 'set-status' && command.edit.status === 'available') {
             componentIds.add(command.componentId);
         }
@@ -288,10 +288,10 @@ export function constructionComponentRepairCommands(source: CBTUnitSnapshot, com
         if (source.state.components.get(componentId)?.jammed) commands.push({ type: 'set-component-jammed', componentId, jammed: false });
         if (hasNonMekRuntime(source)) {
             if (componentAutocannonHit(source.state, componentId, 'committed')) {
-                commands.push({ type: 'set-autocannon-hit', componentId, hit: false, target: 'committed' });
+                commands.push({ type: 'repair-autocannon-hit', componentId, target: 'committed' });
             }
             if (source.state.pendingCombat.autocannonHits?.has(componentId)) {
-                commands.push({ type: 'set-autocannon-hit', componentId, hit: false, target: 'pending' });
+                commands.push({ type: 'repair-autocannon-hit', componentId, target: 'pending' });
             }
         }
         if (source.state.components.get(componentId)?.escalatingFailure) commands.push({ type: 'edit-escalating-failure', componentId, edit: { kind: 'set-status', status: 'available' } });

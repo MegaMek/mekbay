@@ -13,6 +13,7 @@ function topology(flags: readonly EquipmentFlag[] = ['F_AC']): RuntimeEquipmentS
         components: new Map([
             ['weapon', {
                 id: 'weapon',
+                type: 'weapon',
                 flags: new Set<EquipmentFlag>(flags),
                 locationIds: ['LT', 'RT'],
                 criticalSlotIds: ['LT:3', 'RT:4'],
@@ -69,7 +70,7 @@ describe('RuntimeEquipmentStatusKernel', () => {
     it('counts repeat hits in one Core autocannon slot after component armor', () => {
         const oneSlot = new RuntimeEquipmentStatusTopology({
             components: new Map([['weapon', {
-                id: 'weapon', flags: new Set(['F_AC']), locationIds: ['LT'], criticalSlotIds: ['LT:3'],
+                id: 'weapon', type: 'weapon', flags: new Set(['F_AC']), locationIds: ['LT'], criticalSlotIds: ['LT:3'],
             }]]),
             criticalSlots: new Map([['LT:3', {
                 id: 'LT:3', componentIds: ['weapon'], locationId: 'LT',
@@ -148,7 +149,7 @@ describe('RuntimeEquipmentStatusKernel', () => {
         const componentIds = ['weapon'];
         const locationIds = ['LT'];
         const criticalSlotIds = ['LT:3'];
-        const components = new Map([['weapon', { id: 'weapon', flags, locationIds, criticalSlotIds }]]);
+        const components = new Map([['weapon', { id: 'weapon', type: 'weapon' as const, flags, locationIds, criticalSlotIds }]]);
         const criticalSlots = new Map([['LT:3', { id: 'LT:3', componentIds, locationId: 'LT' }]]);
         const compiled = new RuntimeEquipmentStatusTopology({ components, criticalSlots });
         flags.clear();

@@ -162,10 +162,9 @@ export type CBTUnitCommand =
         readonly jammed: boolean;
     }
     | {
-        /** Notes, or a repair clears, a non-Mek autocannon's survived first critical hit (Core pp.92, 183). */
-        readonly type: 'set-autocannon-hit';
+        /** Clears the noted first hit on a non-Mek autocannon. */
+        readonly type: 'repair-autocannon-hit';
         readonly componentId: ComponentId;
-        readonly hit: boolean;
         readonly target: 'committed' | 'pending';
     }
     | {
@@ -418,6 +417,8 @@ export type CBTUnitCommand =
     | { readonly type: 'repair-damage-track'; readonly damageTrackId: SystemDamageTrackId; readonly amount: number; readonly target: 'committed' | 'pending' }
     | { readonly type: 'set-system-damage-level'; readonly system: SystemDamageKind; readonly level: number; readonly target: 'committed' | 'pending'; readonly timestamp: number }
     | { readonly type: 'set-component-statuses'; readonly componentIds: readonly ComponentId[]; readonly status: EquipmentStatus; readonly target: 'committed' | 'pending'; readonly applyExplosion?: boolean }
+    /** Applies one critical hit to each listed non-Mek mount. */
+    | { readonly type: 'hit-components'; readonly componentIds: readonly ComponentId[]; readonly target: 'committed' | 'pending'; readonly applyExplosion?: boolean }
     | { readonly type: 'set-airborne'; readonly airborne: boolean | null }
     /** Converts a LAM or QuadVee to one of its modes. */
     | { readonly type: 'set-mek-conversion-mode'; readonly mode: MekConversionMode }
