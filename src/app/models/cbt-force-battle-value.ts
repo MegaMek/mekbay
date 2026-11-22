@@ -198,7 +198,9 @@ function tagBattleValueInventory(unit: CBTUnit): ReadyTagBattleValueInventory {
     const tagPods = bombs.reduce((total, bomb) => total + (isTagPodBomb(bomb.ammo.internalName) ? bomb.carried : 0), 0);
     return Object.freeze({
         operationalTagCount: tagMounts.length + tagPods,
-        onlyRearTag: tagPods === 0 && tagMounts.length > 0 && tagMounts.every(mount => mount.rearMounted),
+        // Rear-mounted as the BV calculators read it: a 'Mech's rear mount, a vehicle's Rear, an aerospace unit's Aft
+        onlyRearTag: tagPods === 0 && tagMounts.length > 0
+            && tagMounts.every(mount => mount.rearMounted || mount.location === 'Rear' || mount.location === 'Aft'),
         launchers: Object.freeze(operationalMounts.flatMap(mount =>
             mount.equipment instanceof WeaponEquipment ? [mount.equipment] : [])),
         ammunition: Object.freeze(ammunition),

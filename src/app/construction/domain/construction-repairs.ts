@@ -7,6 +7,7 @@ import type { ArmorFaceId, ComponentId, LocationId } from '../../models/entity/e
 import { isVehicleEntity } from '../../models/entity/utils/entity-type-guards';
 import { AmmoEquipment, WeaponEquipment } from '../../models/equipment.model';
 import type { ConstructionRuntimeCommand } from '../../models/runtime/construction-runtime';
+import { componentAutocannonHit } from '../../models/runtime/component-state-change';
 import { entityAmmoLoadout, mekAmmoLoadout } from '../../models/runtime/mek-ammo';
 import type { CBTUnitCommand } from '../../models/runtime/unit-command';
 
@@ -74,6 +75,7 @@ export function constructionPendingRepairQuote(
         } else if (command.type === 'repair-shield'
             || command.type === 'set-component-status' && command.status === 'available'
             || command.type === 'set-component-jammed' && !command.jammed
+            || command.type === 'set-autocannon-hit' && !command.hit
             || command.type === 'edit-escalating-failure' && command.edit.kind === 'set-status' && command.edit.status === 'available') {
             componentIds.add(command.componentId);
         }
@@ -148,6 +150,7 @@ function componentDamage(source: CBTUnitSnapshot, id: ComponentId): number {
     const state = source.state.components.get(id);
     const pending = hasMekRuntime(source) ? source.state.pendingCombat : undefined;
     return componentHits(source, id) + Number(state?.jammed ?? false) + Number(state?.escalatingFailure?.active ?? false)
+        + Number(hasNonMekRuntime(source) && componentAutocannonHit(source.state, id, 'preview'))
         + Math.max(0, (state?.shieldDamage?.absorptionDamage ?? 0) + (pending?.shieldDamage.get(id)?.absorptionDamage ?? 0))
         + Math.max(0, (state?.shieldDamage?.capacityDamage ?? 0) + (pending?.shieldDamage.get(id)?.capacityDamage ?? 0))
         + modularArmorDamage(source, id);
@@ -283,6 +286,14 @@ export function constructionComponentRepairCommands(source: CBTUnitSnapshot, com
         commands.push({ type: 'set-component-status', componentId, status: 'available', target: 'committed' },
             { type: 'set-component-status', componentId, status: 'available', target: 'pending' });
         if (source.state.components.get(componentId)?.jammed) commands.push({ type: 'set-component-jammed', componentId, jammed: false });
+        if (hasNonMekRuntime(source)) {
+            if (componentAutocannonHit(source.state, componentId, 'committed')) {
+                commands.push({ type: 'set-autocannon-hit', componentId, hit: false, target: 'committed' });
+            }
+            if (source.state.pendingCombat.autocannonHits?.has(componentId)) {
+                commands.push({ type: 'set-autocannon-hit', componentId, hit: false, target: 'pending' });
+            }
+        }
         if (source.state.components.get(componentId)?.escalatingFailure) commands.push({ type: 'edit-escalating-failure', componentId, edit: { kind: 'set-status', status: 'available' } });
     }
     return commands;

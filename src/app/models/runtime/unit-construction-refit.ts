@@ -132,6 +132,10 @@ export async function prepareConstructionRefit(
                     ? [componentIds.get(id)!] : []),
             } },
             pendingCombat: { ...old.pendingCombat, ...shared.pendingCombat,
+                ...(old.pendingCombat.autocannonHits === undefined ? {} : {
+                    autocannonHits: new Set([...old.pendingCombat.autocannonHits].flatMap(id =>
+                        componentIds.has(id) ? [componentIds.get(id)!] : [])),
+                }),
                 damageTrackHits: new Map([...old.pendingCombat.damageTrackHits].flatMap(([id, value]) => {
                     const definition = index.damageTracks.get(id);
                     if (!definition) return [];

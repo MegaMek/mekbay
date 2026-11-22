@@ -267,7 +267,6 @@ describe('PageViewerMekInteractionService', () => {
         }));
         expect(commands[1]).toEqual(jasmine.objectContaining({
             type: 'damage-internal', locationId: 'loc-ct', amount: 2, target: 'pending',
-            hardenedArmorApplies: false,
             armorDamagedBySameHit: true,
         }));
         expect(commands[1].hitArc).toBeUndefined();

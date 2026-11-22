@@ -281,7 +281,7 @@ export function createDirectShieldRuntimeFixture(
     size: 'small' | 'medium' | 'large' = 'medium',
     instanceId = `unit:direct-${size}-shield-fixture`,
     options: Pick<DirectFixtureOptions,
-        'baseWalkMp' | 'configuration' | 'dualShields' | 'includeModularArmor' | 'includeChainDrape'> = {},
+        'baseWalkMp' | 'configuration' | 'dualShields' | 'includeModularArmor' | 'includeChainDrape' | 'gyroType'> = {},
 ): DirectMekRuntimeFixture {
     return createFixture(ruleset, instanceId, { ...options, shieldSize: size });
 }

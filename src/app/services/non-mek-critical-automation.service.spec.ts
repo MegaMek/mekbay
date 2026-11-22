@@ -60,8 +60,10 @@ describe('NonMekCriticalAutomationService', () => {
     function tank(withAmmo = false, withAutocannon = false, armorType?: ArmorType, ruleset: CBTRuleset = 'core-2026') {
         const ammo = new AmmoEquipment({ id: 'Ammo_AC_5_Critical_Test', name: 'AC/5 Ammo', type: 'ammo',
             stats: { explosive: true }, ammo: { type: 'AC', rackSize: 5, shots: 20, damagePerShot: 1 } });
+        // Catalogued explosive with an explosion damage, as the shipped AC/5 is, though no autocannon explodes
         const autocannon = new WeaponEquipment({ id: 'Critical_Test_AC5', name: 'AC/5', type: 'weapon',
-            flags: ['F_AC', 'F_BALLISTIC', 'F_DIRECT_FIRE'], weapon: { ammoType: 'AC', rackSize: 5, damage: '5', ranges: [3, 6, 12] } });
+            flags: ['F_AC', 'F_BALLISTIC', 'F_DIRECT_FIRE'], stats: { explosive: true, criticalSlots: 4 },
+            weapon: { ammoType: 'AC', rackSize: 5, damage: '5', ranges: [3, 6, 12], explosionDamage: 5 } });
         const entity = new TestTankEntity(createTestEquipmentRegistry({ [ammo.id]: ammo, [autocannon.id]: autocannon }));
         entity.uuid.set(UUID);
         entity.setTonnage(20);
@@ -112,12 +114,16 @@ describe('NonMekCriticalAutomationService', () => {
         return { runtime, location, apply, hits, pilot, laserId };
     }
 
-    /** A fighter with 20 points of nose armor (Damage Threshold 2) and SI 10. */
-    function fighter() {
-        const entity = new TestAeroSpaceFighterEntity();
+    /** A fighter with 20 points of nose armor (Damage Threshold 2) and SI 10, and a nose Gauss rifle if asked. */
+    function fighter(withGauss = false) {
+        const gauss = new WeaponEquipment({ id: 'Critical_Test_Gauss', name: 'Gauss Rifle', type: 'weapon',
+            flags: ['F_BALLISTIC', 'F_DIRECT_FIRE'], stats: { explosive: true, criticalSlots: 7 },
+            weapon: { ammoType: 'GAUSS', rackSize: 15, damage: '15', ranges: [7, 15, 22], explosionDamage: 20 } });
+        const entity = new TestAeroSpaceFighterEntity(createTestEquipmentRegistry({ [gauss.id]: gauss }));
         entity.uuid.set(UUID);
         entity.structuralIntegrity.set(10);
         entity.setArmorValue('Nose', 'front', 20);
+        const gaussId = withGauss ? componentIdForMount(addTestEquipment(entity, gauss, { location: 'Nose' })) : null;
         const runtime = createNonMekUnit(entity, { instanceId: 'critical-fighter', uuid: UUID,
             scenario: { id: 'megamek', options: {} }, deployment: { id: 'default' }, initialStateProfileId: 'pristine' });
         const force = { getUnitSnapshot: () => ({ instanceId: runtime.instanceId, entity,
@@ -128,7 +134,7 @@ describe('NonMekCriticalAutomationService', () => {
         const apply = (groups: readonly NonMekDamageGroup[]) => service.applyWeaponHits(force, runtime.instanceId, groups,
             'committed', async (command: CBTUnitCommand) => runtime.dispatch(command));
         const hits = (id: ReturnType<typeof systemDamageId>) => runtime.snapshot().damageTracks.get(id)?.hits ?? 0;
-        return { entity, location, apply, hits };
+        return { entity, runtime, location, apply, hits, gaussId };
     }
 
     function rolls(...dice: number[]): void {
@@ -164,17 +170,26 @@ describe('NonMekCriticalAutomationService', () => {
     });
 
     it('applies ablation and hardened armor to vehicle critical checks by ruleset and armor-piercing ammo', async () => {
-        // 5 + 5 = 10 hits the commander; 8 moves down past the stabilizer to the sensors. Total Warfare: ablation
-        // gives the hit-location check -2 (IO:AE p.80), hardened every check -2 even against armor-piercing rounds
-        // (TO:AUE p.93). Core: ablation blocks it, and armor-piercing rounds strip both armors (Core pp.91, 191).
+        // 5 + 5 = 10 hits the commander; 8 moves down past the stabilizer to the sensors. A hit-location 2 is a
+        // through-armor check; an 8 or 12 is another critical. Total Warfare: ablation gives the 2 -2 (IO:AE p.80),
+        // hardened every hit-location check -2 even against armor-piercing rounds, never the check for structure damage
+        // (TO:AUE p.93). Core: ablation blocks the 2,
+        // hardened gives -2 to the 2 only (Core p.91, errata v0.2), and armor-piercing rounds strip both (Core p.191).
         const ap = { kind: 'weapon', types: ['DB'], ammo: 'armor-piercing' } as const;
+        const tac = ['critical', 'through-armor'] as const;
         const cases = [
-            ['ANTI_PENETRATIVE_ABLATION', 'total-warfare', 2, ['critical'], undefined, [0, 1]],
-            ['HARDENED', 'total-warfare', 2, ['critical'], ap, [0, 1]],
-            ['HARDENED', 'total-warfare', 21, [], undefined, [0, 1]],
-            ['HARDENED', 'core-2026', 2, ['critical'], ap, [1, 0]],
-            ['ANTI_PENETRATIVE_ABLATION', 'core-2026', 2, ['critical'], undefined, [0, 0]],
-            ['ANTI_PENETRATIVE_ABLATION', 'core-2026', 2, ['critical'], ap, [1, 0]],
+            ['ANTI_PENETRATIVE_ABLATION', 'total-warfare', 2, tac, undefined, [0, 1]],
+            ['ANTI_PENETRATIVE_ABLATION', 'total-warfare', 2, ['critical'], undefined, [1, 0]],
+            ['HARDENED', 'total-warfare', 2, tac, ap, [0, 1]],
+            ['HARDENED', 'total-warfare', 2, ['critical'], undefined, [0, 1]],
+            ['HARDENED', 'total-warfare', 21, [], undefined, [1, 0]],
+            ['HARDENED', 'core-2026', 2, tac, undefined, [0, 1]],
+            ['HARDENED', 'core-2026', 2, ['critical'], undefined, [1, 0]],
+            ['HARDENED', 'core-2026', 21, [], undefined, [1, 0]],
+            ['HARDENED', 'core-2026', 2, tac, ap, [1, 0]],
+            ['ANTI_PENETRATIVE_ABLATION', 'core-2026', 2, tac, undefined, [0, 0]],
+            ['ANTI_PENETRATIVE_ABLATION', 'core-2026', 2, ['critical'], undefined, [1, 0]],
+            ['ANTI_PENETRATIVE_ABLATION', 'core-2026', 2, tac, ap, [1, 0]],
         ] as const;
         for (const [armor, ruleset, damage, effects, source, expected] of cases) {
             const unit = tank(false, false, armor, ruleset);
@@ -232,6 +247,9 @@ describe('NonMekCriticalAutomationService', () => {
                 group(batchRear, 2, { effects: ['critical'] }),
             ], target)).toBeTrue();
             expect(batch.runtime.query().componentStatus(batch.acId!, perspective)).toBe('destroyed');
+            // A standard autocannon is not explosive (Core p.183, "Type: DB, S"): the destroyed gun deals no damage
+            expect(batch.runtime.query().remainingInternal(batchRear, perspective))
+                .toBe(batch.runtime.getIndex().locations.get(batchRear)!.internalPoints);
         });
     }
 
@@ -287,6 +305,18 @@ describe('NonMekCriticalAutomationService', () => {
         rolls(4, 4, 1, 6, 6);
         expect(await unit.apply([group(unit.location('Torso'), 1)])).toBeTrue();
         expect(unit.runtime.query().componentStatus(unit.laserId)).toBe('destroyed');
+    });
+
+    it('applies an exploding aerospace weapon as an ammunition explosion of its location', async () => {
+        const unit = fighter(true);
+        // 4 + 4 = 8 destroys the only weapon, which explodes: Core 2 per slot is 14, a tenth of it to the SI (TW pp.161,
+        // 240), and the pilot takes 1 hit (TW p.41), then rolls consciousness
+        rolls(4, 4, 1, 6, 6);
+        expect(await unit.apply([group(unit.location('Nose'), 5, { aeroCritical: 'weapon' })])).toBeTrue();
+        expect(unit.runtime.query().componentStatus(unit.gaussId!)).toBe('destroyed');
+        const si = [...unit.runtime.getIndex().locations.values()].find(location => location.code === 'SI')!;
+        expect(unit.runtime.query().remainingInternal(si.id)).toBe(si.internalPoints - 1);
+        expect(unit.runtime.query().crewState(unit.runtime.getCrewAssignment().positions[0]!.positionId).wounds).toBe(1);
     });
 
     it('reads the critical an aerospace hit-location roll threatens', () => {

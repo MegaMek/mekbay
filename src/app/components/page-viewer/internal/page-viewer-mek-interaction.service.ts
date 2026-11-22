@@ -316,16 +316,6 @@ export class PageViewerMekInteractionService {
                     ? location.modularArmor.previewRemaining
                     : location.modularArmor.committedRemaining
                 : 0);
-        const directSnapshot = member.force.getUnitSnapshot(member.id);
-        const criticalProfile = directSnapshot && hasMekRuntime(directSnapshot)
-            ? directSnapshot.query.mekCriticalChance(
-                interaction.locationId,
-                pending ? 'pending' : 'committed',
-            )
-            : undefined;
-        const hardenedArmorApplies = criticalProfile?.modifiers.some(modifier =>
-            modifier.label === 'Hardened armor in damaged facing') === true
-            && (pending ? face.previewRemaining : face.committedRemaining) > 0;
         const armorDamage = Math.min(delta, armorRemaining);
         let context = interaction.context;
         if (armorDamage > 0) {
@@ -345,7 +335,6 @@ export class PageViewerMekInteractionService {
                 locationId: interaction.locationId,
                 amount: internalDamage,
                 target: pending ? 'pending' : 'committed',
-                hardenedArmorApplies,
                 armorDamagedBySameHit: armorDamage > 0,
             }, context);
             if (!accepted) return;

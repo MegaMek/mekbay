@@ -836,9 +836,10 @@ function effectiveWeaponTargetModifier(
     }
     const adjustments: EffectiveTargetModifier[] = [];
     if (guidance.semiGuided) {
+        // Firing indirectly ignores the target hex's terrain instead of reducing it (Core p.193)
         const adjustment = ([
             ['movement', 'target-movement'],
-            ['terrain', 'terrain'],
+            ...(calculator.indirectFire ? [] : [['terrain', 'terrain'] as const]),
         ] as const).reduce((total, [source, group]) => {
             const value = effective
                 .filter(modifier => modifier.ignored !== true && modifier.adjustmentGroup === group)

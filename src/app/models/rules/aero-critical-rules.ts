@@ -1,6 +1,7 @@
 // Copyright (C) 2026 The MegaMek Team
 // SPDX-License-Identifier: GPL-3.0-or-later
 
+import type { CaseEquipmentKind } from '../case-equipment.model';
 import type { BaseEntity } from '../entity/base-entity';
 import type { NonMekHitArc } from '../runtime/non-mek-hit-location';
 
@@ -29,6 +30,15 @@ export const AERO_CRITICAL_LABELS: Readonly<Record<AeroCriticalType, string>> = 
     fcs: 'FCS', gear: 'Gear', fuel: 'Fuel', engine: 'Engine', crew: 'Crew', bomb: 'Bomb', 'life-support': 'Life Support',
     thruster: 'Thruster', door: 'Door', cargo: 'Cargo', 'docking-collar': 'Docking Collar', 'kf-boom': 'K-F Boom',
 };
+
+/**
+ * The structural integrity a fighter or small craft loses to an internal explosion: its damage / 10, / 20 with CASE
+ * (round down, minimum 1), 1 with CASE II (TW p.161; TO:AUE p.111: "CASE II reduces ammunition explosion effects
+ * against such units ... to 1 point against the unit's SI").
+ */
+export function aeroExplosionStructuralIntegrityDamage(rawDamage: number, protection: CaseEquipmentKind | null): number {
+    return protection === 'case-ii' ? 1 : Math.max(1, Math.floor(rawDamage / (protection !== null ? 20 : 10)));
+}
 
 /** A possible critical takes effect on 8 or more (TW p.238, standard-scale armor). */
 export const AERO_CRITICAL_TARGET = 8;

@@ -35,7 +35,7 @@ type InfantryStrengthDisplay,
 import { AERO_DEFAULT_BOMB_KEY, drawAeroBombKey } from '../../utils/sheets/layouts/aero-record-sheet-components';
 import { renderHandheldWeaponAmmoPips } from '../../utils/sheets/layouts/handheld-weapon-record-sheet-layout';
 import { formatMovementWithMaximum, formatRecordSheetTonnage, formatTechBase, formatWholeNumber, recordSheetAmmoProfiles, setAttributes, svgElement } from '../../utils/sheets/record-sheet-svg-rendering';
-import { writeSvgTextLines } from '../../utils/svg-text.util';
+import { measureSvgTextCanvas, writeSvgTextLines } from '../../utils/svg-text.util';
 import {
 attributeValue,
 bindRecordSheetEquipmentOpeners,
@@ -801,33 +801,32 @@ function renderTurnTrack(
 
 /**
  * A red dot right after the weapon's name notes an autocannon's first critical hit (Core pp.92, 183). It is its own
- * circle at the measured end of the last name line, so no text metrics differ between browsers.
+ * circle after the last line of the row's own name (not a mode or bay line below it), placed from the line's x/y and its
+ * canvas-measured width, so it needs no layout and no text metrics differ between browsers or in a detached print.
  */
 function renderAutocannonHitDot(
     row: SVGElement,
     components: readonly Pick<NonMekRecordSheetSnapshot['components'][number], 'autocannonHit' | 'previewAutocannonHit'>[],
 ): void {
-    row.querySelectorAll('.autocannonHitDot').forEach(dot => dot.remove());
+    row.querySelectorAll(':scope > .autocannonHitDot').forEach(dot => dot.remove());
     if (!components.some(component => component.previewAutocannonHit)) return;
-    const names = row.querySelectorAll<SVGTextElement>('text.name');
+    const names = row.querySelectorAll<SVGTextElement>(':scope > text.name');
     const name = names[names.length - 1];
-    if (!name?.parentNode) return;
-    let box: DOMRect;
-    try {
-        box = name.getBBox();
-    } catch {
-        return;
-    }
-    if (box.width === 0 && box.height === 0) return;
-    const fontSize = Number.parseFloat(name.getAttribute('font-size') ?? '') || box.height;
+    if (!name) return;
+    const spans = name.querySelectorAll<SVGTSpanElement>('tspan');
+    const line: SVGTextContentElement = spans[spans.length - 1] ?? name;
+    const x = Number.parseFloat(line.getAttribute('x') ?? name.getAttribute('x') ?? '');
+    const y = Number.parseFloat(line.getAttribute('y') ?? name.getAttribute('y') ?? '');
+    if (!Number.isFinite(x) || !Number.isFinite(y)) return;
+    const fontSize = Number.parseFloat(line.getAttribute('font-size') ?? name.getAttribute('font-size') ?? '') || 8;
     const dot = svgElement('circle');
     setAttributes(dot, {
         class: `autocannonHitDot${components.some(component => component.autocannonHit) ? '' : ' pending'}`,
-        cx: box.x + box.width + fontSize * 0.45,
-        cy: box.y + box.height / 2,
+        cx: x + measureSvgTextCanvas(name, line.textContent ?? '') + fontSize * 0.45,
+        cy: y - fontSize * 0.35,
         r: fontSize * 0.22,
     });
-    name.parentNode.insertBefore(dot, name.nextSibling);
+    name.after(dot);
 }
 
 function renderInventoryComponentStatus(
@@ -912,7 +911,8 @@ function inventoryStateKey(
                 projectRecordSheetWeaponSelection(weapon === undefined ? [] : [weapon], source),
                 weapon,
                 source,
-                [component?.previewStatus, panelRow?.mode, weapon?.weapon.minimumRange],
+                [component?.previewStatus, panelRow?.mode, weapon?.weapon.minimumRange,
+                    component?.autocannonHit, component?.previewAutocannonHit],
             );
             keys.set(componentId, key);
         }

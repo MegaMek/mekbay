@@ -263,6 +263,8 @@ export abstract class CBTGameRules {
     abstract readonly narcIndirectFireIgnoresAllTerrain: boolean;
     abstract readonly indirectFireUsesSpotterPartialCover: boolean;
     abstract readonly semiGuidedIgnoresCover: boolean;
+    /** Indirect semi-guided fire ignores the target's partial cover with the rest of its hex's terrain. */
+    abstract readonly semiGuidedIndirectIgnoresPartialCover: boolean;
     /** An energy weapon fired underwater uses the next range bracket, and its last bracket cannot be used. */
     abstract readonly energyWeaponsShiftRangeUnderwater: boolean;
     abstract readonly semiGuidedIgnoresIndirectFireModifier: boolean;
@@ -516,6 +518,8 @@ export class GameRules extends CBTGameRules {
     readonly narcIndirectFireIgnoresAllTerrain = false;
     readonly indirectFireUsesSpotterPartialCover = false;
     readonly semiGuidedIgnoresCover = true;
+    /** Core p.193, errata v0.2: "Ignore any terrain modifiers applied by the hex the target occupies, except for partial cover" */
+    readonly semiGuidedIndirectIgnoresPartialCover = false;
     /** Core p.127, Underwater Ranges */
     readonly energyWeaponsShiftRangeUnderwater = true;
     readonly semiGuidedIgnoresIndirectFireModifier = false;
@@ -660,6 +664,8 @@ export class TWGameRules extends CBTGameRules {
     readonly narcIndirectFireIgnoresAllTerrain = true;
     readonly indirectFireUsesSpotterPartialCover = true;
     readonly semiGuidedIgnoresCover = false;
+    /** TW p.142: firing indirectly, also ignore terrain modifiers */
+    readonly semiGuidedIndirectIgnoresPartialCover = true;
     readonly energyWeaponsShiftRangeUnderwater = false;
     readonly semiGuidedIgnoresIndirectFireModifier = true;
     readonly physicalLocationRows = TW_PHYSICAL_LOCATION_ROWS;

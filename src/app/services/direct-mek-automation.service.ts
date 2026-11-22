@@ -19,7 +19,7 @@ import { structureConstructionKind } from '../models/construction-equipment.mode
 import { activeCrewController } from '../models/crew-member.model';
 import type { MekEntity } from '../models/entity/entities/mek/mek-entity';
 import type { ComponentId,CrewPositionId,LocationId } from '../models/entity/entity-identifiers';
-import { getMekLocationLabel,getTopologyFor,MEK_TORSO_LOCATIONS } from '../models/entity/types';
+import { getMekLocationLabel,getTopologyFor,MEK_TORSO_LOCATIONS,type ArmorType } from '../models/entity/types';
 import { modularArmorAt } from '../models/runtime/attack-hit-location';
 import { gameRulesFor } from '../models/rules/game-rules';
 import {
@@ -171,9 +171,12 @@ export interface DirectMekAutomationReviewOptions {
 interface DirectCriticalChanceContext {
     /** Used only by table-C/through-armor chances; ordinary penetration never floats. */
     readonly floatingHitArc?: MekHitArcV2;
-    /** Exact armor-facing decision captured when this hit reached structure. */
-    readonly hardenedArmorApplies?: boolean;
-    /** Modifiers the check's cause adds: ablation armor on a TAC, or an armor-piercing check's own. */
+    /**
+     * A TAC: the hit's source and arc, and the armor its struck facing had at the hit, for ablation and hardened armor
+     * (Core p.91, IO:AE p.80, TO:AUE p.93). A floating critical reads the facing it moves to (Core p.95).
+     */
+    readonly throughArmor?: Readonly<{ source: DamageSource; rear: boolean; armor: number; armorType: ArmorType | null }>;
+    /** Modifiers the check's cause adds: an armor-piercing check's own. */
     readonly causeModifiers?: readonly Readonly<{ label: string; value: number }>[];
     /** Internal-explosion protection carried into the resulting critical sequence. */
     readonly explosionProtection?: MekInstalledExplosionProtection;
@@ -265,6 +268,20 @@ interface PreparedMekPhaseBoundary {
  * Coordinates user-selected automations around the direct Entity + runtime owner.
  * Rules remain pure or reducer-owned; this service only rolls, reviews, and emits typed commands.
  */
+/** The armor a hit on `code` meets: the rear facing of a torso struck from behind, else the front. */
+function struckFacingArmor(
+    snapshot: MekSnapshot,
+    code: string,
+    rear: boolean,
+    perspective: 'committed' | 'preview',
+): Readonly<{ armor: number; armorType: ArmorType | null }> {
+    const location = [...snapshot.index.locations.values()].find(row => row.code === code);
+    const face = location?.armorFaceIds
+        .map(faceId => snapshot.index.armorFaces.get(faceId))
+        .find(candidate => candidate?.face === (rear && MEK_TORSO_LOCATIONS.has(code) ? 'rear' : 'front'));
+    return { armor: face ? snapshot.query.remainingArmor(face.id, perspective) : 0, armorType: location?.armor.type ?? null };
+}
+
 @Injectable({ providedIn: 'root' })
 export class DirectMekAutomationService {
     private readonly automation = inject(CBTAutomationService);
@@ -567,7 +584,6 @@ export class DirectMekAutomationService {
                 command.locationId,
                 command.target,
                 {
-                    hardenedArmorApplies: command.hardenedArmorApplies,
                     locationDestroyed: after?.query.remainingInternal(
                         command.locationId,
                         perspective,
@@ -998,28 +1014,45 @@ export class DirectMekAutomationService {
         if (!snapshot) return;
         let locationId = sourceLocationId;
         let floatingDescription: string | undefined;
+        let throughArmor = context.throughArmor;
         if (this.options.options().CBTOptionalRules.floatingCriticals && context.floatingHitArc) {
             const floating = this.rollHitLocation(snapshot, context.floatingHitArc);
             const location = [...snapshot.index.locations.values()].find(row => row.code === floating.location);
             if (location) {
                 locationId = location.id;
                 floatingDescription = `Floating critical moved to ${floating.locationLabel}.`;
+                if (throughArmor) {
+                    throughArmor = { ...throughArmor, ...struckFacingArmor(snapshot, location.code, throughArmor.rear,
+                        target === 'pending' ? 'preview' : 'committed') };
+                }
             }
+        }
+        // Hardened armor's -2 is for a TAC check only, not the check for structure damage (Core p.91, errata v0.2;
+        // TO:AUE p.93)
+        let hardenedArmorApplies = false;
+        const causeModifiers = [...context.causeModifiers ?? []];
+        if (throughArmor) {
+            // Core armor-piercing rounds strip both armors' protection (Core p.191)
+            const protects = throughArmor.armor > 0
+                && !armorPiercingIgnoresSpecialArmor(snapshot.ruleset, throughArmor.armorType, throughArmor.source);
+            if (protects && throughArmor.armorType === 'ANTI_PENETRATIVE_ABLATION') {
+                // Core ignores the TAC check (Core p.91); Total Warfare gives it -2 (IO:AE p.80)
+                if (snapshot.ruleset === 'core-2026') return;
+                causeModifiers.push(ABLATION_CRITICAL_MODIFIER);
+            }
+            hardenedArmorApplies = protects && throughArmor.armorType === 'HARDENED';
         }
         const profile = snapshot.query.mekCriticalChance(locationId, target);
         if (context.locationDestroyed
             && explosiveCriticalRolls(snapshot, locationId, target).length === 0) return;
         const modifiers: MekCriticalChanceModifier[] = profile.modifiers.flatMap(row => {
             if (row.label !== 'Hardened armor in damaged facing') return [row];
-            if (context.hardenedArmorApplies === false) return [];
-            return context.hardenedArmorApplies === true
-                ? [Object.freeze({ label: row.label, value: row.value })]
-                : [row];
+            return hardenedArmorApplies ? [Object.freeze({ label: row.label, value: row.value })] : [];
         });
         if (snapshot.ruleset === 'core-2026' && context.explosionProtection === 'case-ii') {
             modifiers.push(Object.freeze({ label: 'CASE II internal explosion', value: -1 }));
         }
-        modifiers.push(...context.causeModifiers ?? []);
+        modifiers.push(...causeModifiers);
         const dice = roll2D6();
         const modifier = modifiers.reduce((total, row) =>
             total + (!row.optional || row.enabled ? row.value : 0), 0);
@@ -2134,13 +2167,7 @@ export class DirectMekAutomationService {
         const initial = this.snapshot(force, instanceId);
         if (!initial) return 0;
         const topology = getTopologyFor([...initial.index.locations.values()].map(location => location.code));
-        const initialLocation = [...initial.index.locations.values()].find(row => row.code === sourceCode);
-        const initialRear = rearArc && MEK_TORSO_LOCATIONS.has(sourceCode);
-        const initialFace = initialLocation?.armorFaceIds
-            .map(faceId => initial.index.armorFaces.get(faceId))
-            .find(candidate => candidate?.face === (initialRear ? 'rear' : 'front'));
-        const initialArmor = initialFace ? initial.query.remainingArmor(initialFace.id, perspective) : 0;
-        const initialArmorType = initialLocation?.armor.type ?? null;
+        const { armor: initialArmor, armorType: initialArmorType } = struckFacingArmor(initial, sourceCode, rearArc, perspective);
         // A rifle hit loses 3 points against the armor where it strikes (`rifleHitDamage`).
         if (group.source.kind === 'weapon' && group.source.rifle) {
             damage = rifleHitDamage(initial.ruleset, damage, { entity: initial.entity, location: sourceCode, armor: initialArmor });
@@ -2170,8 +2197,6 @@ export class DirectMekAutomationService {
                 damage -= modularDamage;
             }
             const remainingArmor = snapshot.query.remainingArmor(face.id, perspective);
-            const hardenedArmorApplies = location.armor.type === 'HARDENED' && remainingArmor > 0
-                && !armorPiercingIgnoresSpecialArmor(snapshot.ruleset, location.armor.type, group.source);
             const armor = resolveArmorDamage(
                 snapshot.ruleset,
                 damage,
@@ -2212,7 +2237,6 @@ export class DirectMekAutomationService {
                     locationId: location.id,
                     amount: internalDamage,
                     target,
-                    hardenedArmorApplies,
                     armorDamagedBySameHit: armorPips > 0,
                 }, false);
                 applied ||= result.accepted;
@@ -2224,7 +2248,7 @@ export class DirectMekAutomationService {
                         instanceId,
                         location.id,
                         target,
-                        { hardenedArmorApplies },
+                        {},
                         dispatch,
                         interactive,
                     );
@@ -2236,13 +2260,7 @@ export class DirectMekAutomationService {
                 && this.canShareCompositePip(force, instanceId, nextCode, rearArc, perspective);
             code = nextCode;
         }
-        // Ablation armor blocks the TAC under Core (Core p.91) but only gives -2 under Total Warfare (IO:AE p.80);
-        // Core armor-piercing rounds strip both special armors' protection (Core p.191).
-        const specialArmorProtects = initialArmor > 0
-            && !armorPiercingIgnoresSpecialArmor(initial.ruleset, initialArmorType, group.source);
-        const ablationArmor = specialArmorProtects && initialArmorType === 'ANTI_PENETRATIVE_ABLATION';
-        const blockedAblativeCritical = ablationArmor && initial.ruleset === 'core-2026';
-        if (throughArmorCritical && groupDamaged && !blockedAblativeCritical) {
+        if (throughArmorCritical && groupDamaged) {
             const latest = this.snapshot(force, instanceId);
             const location = latest && [...latest.index.locations.values()].find(row => row.code === sourceCode);
             if (location) {
@@ -2253,8 +2271,7 @@ export class DirectMekAutomationService {
                     target,
                     {
                         floatingHitArc: hitArc,
-                        hardenedArmorApplies: specialArmorProtects && initialArmorType === 'HARDENED',
-                        causeModifiers: ablationArmor ? [ABLATION_CRITICAL_MODIFIER] : [],
+                        throughArmor: { source: group.source, rear: rearArc, armor: initialArmor, armorType: initialArmorType },
                     },
                     dispatch,
                     interactive,

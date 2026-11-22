@@ -188,14 +188,21 @@ export function resolveArmorDamage(
     const weaponTypes = source.kind === 'weapon' ? source.types : [];
     const ammo = source.kind === 'weapon' ? source.ammo : undefined;
     const standardVsArmorPiercing = armorPiercingIgnoresSpecialArmor(ruleset, armorType, source);
-    if (standardVsArmorPiercing && armorType === 'HARDENED') {
-        // "each single point of damage removes one full armor pip": two hardened marks per point (Core p.191)
+    if (ammo === 'armor-piercing' && armorType === 'HARDENED') {
+        // Armor-piercing rounds deal "standard damage dealt to standard armor" (Core p.191; TO:AUE p.93): each point
+        // removes a full pip, two hardened marks
         return Object.freeze({
             armorDamage: Math.min(armor, 2 * incoming),
             remainingDamage: Math.max(0, incoming - Math.ceil(armor / 2)),
         });
     }
-    // Core: acid missiles' damage "is not reduced by special armor rules" (p.192)
+    // Core: an acid missile deals 3 instead of 2 to ballistic-reinforced, ferro-lamellor, laser-reflective or reactive
+    // armor with 3 or more points left, and its damage "is not reduced by special armor rules" (p.192)
+    if (ruleset === 'core-2026' && ammo === 'acid' && armor >= 3 && armorType !== null
+        && ['BALLISTIC_REINFORCED', 'FERRO_LAMELLOR', 'REFLECTIVE', 'REACTIVE'].includes(armorType)) {
+        const acidDamage = Math.ceil(incoming * 3 / 2);
+        return Object.freeze({ armorDamage: Math.min(armor, acidDamage), remainingDamage: Math.max(0, acidDamage - armor) });
+    }
     const unreduced = standardVsArmorPiercing || (ruleset === 'core-2026' && ammo === 'acid');
     if (!unreduced
         && ((ruleset === 'core-2026' && armorType === 'HEAT_DISSIPATING' && weaponTypes.includes('H'))

@@ -1177,8 +1177,9 @@ export function synthesizeCommittedMekDamagePilotChecksV2(
     const tracked = canonical.movement?.mode === 'tracked';
     const falls = !cannotFall(facts);
     const seeds: MekPilotCheckSeedV2[] = [];
+    const exemptHipSlot = coreQuadFirstHipHitSlot(profile, facts, validated);
     for (const mutation of falls ? validated : []) {
-        seeds.push(...damageMutationSeeds(profile, facts, mutation)
+        seeds.push(...damageMutationSeeds(profile, facts, mutation, exemptHipSlot)
             .filter(item => !tracked || !TRACKED_EXEMPT_CHECKS.has(item.source.triggerKind)));
     }
     if (falls && !tracked) seeds.push(...gyroDamageMutationSeeds(profile, facts, validated));
@@ -1328,17 +1329,18 @@ export function reconcileMekPilotChecksV2(
 
 /**
  * Drops the pending checks `profile`'s rules raise no roll for, such as a Total Warfare foot actuator
- * check under Core. The test reads only the trigger's own recorded facts, never later state, so it
- * keeps every check the same rules raised: restoring under the rules a unit was saved under changes
- * nothing. Rolled checks keep their evidence.
+ * check under Core. The test reads the trigger's own recorded facts; a movement roll stays only as one
+ * of the rolls these rules raise for its recorded move on the unit as restored, so restoring under the
+ * rules a unit was saved under changes nothing. Rolled checks keep their evidence.
  */
 export function dropMekPilotChecksUnraisedByRulesV2(
     profile: MekMechanicsProfile,
+    facts: MekMovementPsrRuntimeFactsV2,
     state: MekMovementPsrStateV2,
 ): MekMovementPsrStateV2 {
     const canonical = canonicalizeMekMovementPsrStateV2(state);
     const checks = canonical.checks.filter(check => check.status !== 'pending'
-        || pilotCheckRaisedByRules(profile, check));
+        || pilotCheckRaisedByRules(profile, facts, check));
     return checks.length === canonical.checks.length
         ? canonical
         : freezeState({ ...canonical, checks });
@@ -2019,14 +2021,10 @@ function permanentPsr(
         ));
     }
     // A Core quad's first hip hit has no standard effects, its +1 included (Core p.238)
-    let quadHipIgnored = !(quadruped && profile.rulesFlavor === 'core-2026');
+    const exemptHip = coreQuadFirstHipLeg(profile, facts, legs);
     for (const leg of legs) {
         if (leg.destroyed) continue;
-        let hipHits = leg.hipHits;
-        if (!quadHipIgnored && hipHits > 0) {
-            quadHipIgnored = true;
-            hipHits -= 1;
-        }
+        const hipHits = leg.hipHits - (leg.locationId === exemptHip ? 1 : 0);
         if (hipHits > 0) modifiers.push(psrModifier(
             hipHits * (profile.rulesFlavor === 'total-warfare' ? 2 : 1),
             'Hip Destroyed',
@@ -2141,6 +2139,47 @@ function legDamage(
             footHits,
         });
     }));
+}
+
+/**
+ * A Core quad's first hip hit, which has none of a hip hit's effects (Core p.238): the intact leg whose hip was hit on
+ * the earliest turn, the sheet's leg order between hits of one turn.
+ */
+function coreQuadFirstHipLeg(
+    profile: MekMechanicsProfile,
+    facts: MekMovementPsrRuntimeFactsV2,
+    legs: readonly LegDamageSummaryV2[],
+): LocationId | null {
+    if (profile.rulesFlavor !== 'core-2026' || (profile.form !== 'quad' && profile.form !== 'quadvee')) return null;
+    let first: Readonly<{ locationId: LocationId; turn: number }> | null = null;
+    for (const leg of legs) {
+        if (leg.destroyed || leg.hipHits === 0) continue;
+        const turn = Math.min(...profile.limbs.find(limb => limb.locationId === leg.locationId)!.actuators
+            .filter(actuator => actuator.kind === 'hip')
+            .flatMap(actuator => actuator.criticalSlotIds)
+            .filter(slotId => facts.criticalSlotUnavailable(slotId))
+            .map(slotId => facts.criticalSlotDestroyedTurn(slotId) ?? 0));
+        if (first === null || turn < first.turn) first = { locationId: leg.locationId, turn };
+    }
+    return first?.locationId ?? null;
+}
+
+/** The hip a committed batch hits as a Core quad's first hip hit, which forces no roll (Core p.238); in batch order. */
+function coreQuadFirstHipHitSlot(
+    profile: MekMechanicsProfile,
+    facts: MekMovementPsrRuntimeFactsV2,
+    mutations: readonly MekCommittedDamageMutationV2[],
+): CriticalSlotId | null {
+    if (profile.rulesFlavor !== 'core-2026' || (profile.form !== 'quad' && profile.form !== 'quadvee')) return null;
+    const legs = legDamage(profile, facts).filter(leg => !leg.destroyed);
+    const hipSlots = new Set(profile.limbs
+        .filter(limb => legs.some(leg => leg.locationId === limb.locationId))
+        .flatMap(limb => limb.actuators.filter(actuator => actuator.kind === 'hip'))
+        .flatMap(actuator => actuator.criticalSlotIds));
+    const newHits = mutations.flatMap(mutation => mutation.kind === 'critical' && !mutation.beforeUnavailable
+        && mutation.afterUnavailable && hipSlots.has(mutation.slotId) ? [mutation.slotId] : []);
+    const earlier = legs.reduce((sum, leg) => sum + leg.hipHits, 0) - newHits.length;
+    return earlier === 0 ? newHits[0] ?? null : null;
 }
 
 function commonWarnings(
@@ -2587,13 +2626,9 @@ function movementCheckSeeds(
         } else if (destroyed.length === 2) {
             coreSeeds.push(legSeed(destroyed[0]!.locationId, 'damaged hip'));
         }
-        let quadHipIgnored = !quadruped;
+        const exemptHip = coreQuadFirstHipLeg(profile, facts, legs);
         for (const leg of legs.filter(candidate => !candidate.destroyed)) {
-            let kinds = relevantKinds;
-            if (!quadHipIgnored && damagedActuatorSlots(leg, ['hip']).length > 0) {
-                quadHipIgnored = true;
-                kinds = relevantKinds.filter(kind => kind !== 'hip');
-            }
+            const kinds = leg.locationId === exemptHip ? relevantKinds.filter(kind => kind !== 'hip') : relevantKinds;
             const slots = damagedActuatorSlots(leg, kinds);
             if (slots.length > 0) coreSeeds.push(actuatorSeed(leg, slots));
         }
@@ -2676,7 +2711,11 @@ function legActuatorHitRaisesCheck(profile: MekMechanicsProfile, kind: MekActuat
     return kind === 'upper-leg' || kind === 'lower-leg' || (kind === 'foot' && profile.rulesFlavor === 'total-warfare');
 }
 
-function pilotCheckRaisedByRules(profile: MekMechanicsProfile, check: MekPilotCheckRecordV2): boolean {
+function pilotCheckRaisedByRules(
+    profile: MekMechanicsProfile,
+    facts: MekMovementPsrRuntimeFactsV2,
+    check: MekPilotCheckRecordV2,
+): boolean {
     const source = check.source;
     switch (source.triggerKind) {
         case 'primitive-prototype-jump':
@@ -2692,15 +2731,14 @@ function pilotCheckRaisedByRules(profile: MekMechanicsProfile, check: MekPilotCh
         case 'move-damaged-gyro':
         case 'move-damaged-leg':
         case 'move-damaged-actuator': {
+            // One of the rolls these rules raise for the move: one for the first damage found under Total Warfare
+            // (TW p.60), one per gyro, damaged leg and destroyed leg under Core, a quad in biped terms (Core pp.111, 238)
             const declaration = exactWitnessMovementDeclaration(
                 (JSON.parse(source.witness) as Record<string, unknown>)['declaration'],
             );
-            if (!movementModeRaisesDamageChecks(profile, declaration)) return false;
-            if (source.triggerKind === 'move-damaged-gyro') {
-                return damagedGyroMovementRaisesCheck(profile, declaration.mode);
-            }
-            return source.triggerKind !== 'move-damaged-leg'
-                || destroyedLegMovementRaisesCheck(profile, declaration.mode);
+            const locations = JSON.stringify(source.locationIds);
+            return movementCheckSeeds(profile, facts, declaration).some(fresh => fresh.source.triggerKind === source.triggerKind
+                && JSON.stringify(fresh.source.locationIds) === locations);
         }
         default:
             return !isMekPhysicalAttackCheckTriggerKindV2(source.triggerKind)
@@ -2749,12 +2787,9 @@ function ownPilotCheckModifier(
             const careful = (JSON.parse(source.witness) as Record<string, unknown>)['carefulStand'] === true;
             return projected.standing.standingModifier + (careful ? -2 : 0);
         }
-        case 'move-damaged-gyro': {
-            if (!coreHeavyDutyGyro(profile)) return 0;
-            // Jumping with heavy-duty gyro hits is +2 in place of the hits' own modifiers (Core p.111 note 13).
-            const hits = profile.gyro.criticalSlotIds.filter(slotId => facts.criticalSlotUnavailable(slotId)).length;
-            return 2 - gyroPsrModifier(profile, hits);
-        }
+        case 'move-damaged-gyro':
+        case 'move-damaged-actuator':
+            return heavyDutyGyroJumpAdjustment(profile, facts, source);
         case 'shake-off-jump':
             return SHAKE_OFF_JUMP_MODIFIER
                 + (source.witness === SHAKE_OFF_JUMP_CLAWS_WITNESS ? MAGNETIC_CLAW_SHAKE_OFF_MODIFIER : 0);
@@ -2763,16 +2798,31 @@ function ownPilotCheckModifier(
             // destroyed leg's preexisting +5 (TW p.60).
             const witness = JSON.parse(source.witness) as Record<string, unknown>;
             const declaration = exactWitnessMovementDeclaration(witness['declaration']);
-            return profile.rulesFlavor === 'total-warfare'
+            return heavyDutyGyroJumpAdjustment(profile, facts, source) + (profile.rulesFlavor === 'total-warfare'
                 && declaration.mode === 'jump'
                 && witness['quadruped'] === true
                 && legDamage(profile, facts).filter(leg => leg.destroyed).length === 1
                 ? 5
-                : 0;
+                : 0);
         }
         default:
             return eventModifier(profile, check);
     }
+}
+
+/**
+ * Jumping with heavy-duty gyro hits is +2 in place of the hits' own modifiers (Core p.111 note 13, p.204), on every roll
+ * the jump forces, since they all share one target (Core p.110).
+ */
+function heavyDutyGyroJumpAdjustment(
+    profile: MekMechanicsProfile,
+    facts: MekMovementPsrRuntimeFactsV2,
+    source: MekPilotCheckRecordV2['source'],
+): number {
+    if (!coreHeavyDutyGyro(profile)) return 0;
+    const declaration = exactWitnessMovementDeclaration((JSON.parse(source.witness) as Record<string, unknown>)['declaration']);
+    const hits = profile.gyro.criticalSlotIds.filter(slotId => facts.criticalSlotUnavailable(slotId)).length;
+    return declaration.mode === 'jump' && hits > 0 ? 2 - gyroPsrModifier(profile, hits) : 0;
 }
 
 /**
@@ -2869,19 +2919,14 @@ function damageMutationSeeds(
     profile: MekMechanicsProfile,
     facts: MekMovementPsrRuntimeFactsV2,
     mutation: MekCommittedDamageMutationV2,
+    exemptHipSlot: CriticalSlotId | null,
 ): readonly MekPilotCheckSeedV2[] {
     if (mutation.kind === 'critical') {
         if (mutation.beforeUnavailable || !mutation.afterUnavailable) return Object.freeze([]);
         const actuator = profile.limbs.flatMap(limb => limb.actuators.map(group => ({ limb, group })))
             .find(entry => entry.group.criticalSlotIds.includes(mutation.slotId));
         if (actuator?.group.kind === 'hip') {
-            // A Core quad's first hip hit forces no roll (Core p.238)
-            const quadruped = profile.form === 'quad' || profile.form === 'quadvee';
-            if (profile.rulesFlavor === 'core-2026' && quadruped
-                && legDamage(profile, facts).filter(leg => !leg.destroyed)
-                    .reduce((sum, leg) => sum + leg.hipHits, 0) <= 1) {
-                return Object.freeze([]);
-            }
+            if (mutation.slotId === exemptHipSlot) return Object.freeze([]);
             return Object.freeze([seed({
                 sourceKind: 'damage', triggerKind: 'hip-hit',
                 witness: canonicalWitness(mutation), criticalSlotIds: [mutation.slotId],

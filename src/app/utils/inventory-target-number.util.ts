@@ -202,9 +202,10 @@ export function inventoryTargetRangeSelection(input: Pick<InventoryTargetNumberI
 
     if (underwaterEnergy) {
         // Core p.127: "always uses a range bracket one higher than its actual bracket ... in all rules aspects";
-        // attacks at the weapon's long range (medium, without a long bracket) "cannot be made". Minimum range is
-        // unchanged.
-        const blocked = outOfRange || range === normalMaximum.range;
+        // attacks at the weapon's long range (medium, without a long bracket) "cannot be made", a C3 network's shorter
+        // bracket included, since C3 leaves maximum range unchanged (p.198). Minimum range is unchanged.
+        const actualRange = thresholds.find(threshold => target.distance <= threshold.value)?.range;
+        const blocked = outOfRange || actualRange === normalMaximum.range;
         return {
             range: blocked ? range : nextInventoryRangeBracket(range),
             maximumRange,

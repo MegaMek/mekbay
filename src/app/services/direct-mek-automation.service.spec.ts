@@ -50,8 +50,10 @@ describe('DirectMekAutomationService', () => {
     let choose: jasmine.Spy;
     let service: DirectMekAutomationService;
     let automationModes: Record<string, 'yes' | 'no' | 'ask'>;
+    let floatingCriticals: boolean;
 
     beforeEach(() => {
+        floatingCriticals = false;
         shakeOff = jasmine.createSpy('shakeOff').and.returnValue(true);
         removalModifier = jasmine.createSpy('removalModifier').and.returnValue(0);
         choose = jasmine.createSpy('choose');
@@ -85,7 +87,7 @@ describe('DirectMekAutomationService', () => {
                 {
                     provide: OptionsService,
                     useValue: {
-                        options: () => ({ CBTOptionalRules: { floatingCriticals: false } }),
+                        options: () => ({ CBTOptionalRules: { floatingCriticals } }),
                         cbtAutomationMode: (key: string) => automationModes[key] ?? 'ask',
                     },
                 },
@@ -364,6 +366,28 @@ describe('DirectMekAutomationService', () => {
                 .toEqual([['Armor-piercing ammo -3', 'Ablation armor -2']]);
             expect(await chances(armored('total-warfare', 'HARDENED'), [hit('LT', 2, armorPiercing(5))])).toEqual([]);
             expect(await chances(armored('core-2026', 'ANTI_PENETRATIVE_ABLATION'), [hit('LT', 2, armorPiercing(5))]))
+                .toEqual([]);
+        });
+
+        it('gives hardened armor its -2 on a TAC only, not the structure check', async () => {
+            // Core p.91, errata v0.2; TO:AUE p.93 ("penetrating critical hit checks"). A 12-point hit goes through the
+            // left torso's 5 hardened pips.
+            for (const ruleset of ['core-2026', 'total-warfare'] as const) {
+                expect(await chances(armored(ruleset, 'HARDENED'), [hit('LT', 12, laser)])).withContext(ruleset)
+                    .toEqual([[]]);
+                expect(await chances(armored(ruleset, 'HARDENED'), [hit('LT', 2, laser, true)])).withContext(ruleset)
+                    .toEqual([['Hardened armor in damaged facing -2']]);
+            }
+        });
+
+        it('reads a floating TAC against the armor of the location the shot lands on (Core p.95)', async () => {
+            // Every die is a 1: the reroll lands on the center torso, whose ablation armor is stripped first
+            floatingCriticals = true;
+            const floated = armored('core-2026', 'ANTI_PENETRATIVE_ABLATION');
+            expect(await chances(floated, [hit('CT', 5, laser)])).toEqual([]);
+            expect(await chances(floated, [hit('LT', 2, laser, true)])).toEqual([[]]);
+            floatingCriticals = false;
+            expect(await chances(armored('core-2026', 'ANTI_PENETRATIVE_ABLATION'), [hit('LT', 2, laser, true)]))
                 .toEqual([]);
         });
 

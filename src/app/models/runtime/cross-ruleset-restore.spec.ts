@@ -24,6 +24,7 @@ createDirectDualShieldRuntimeFixture,
 createDirectEscalatingFailureRuntimeFixture,
 createDirectFlamerRuntimeFixture,
 createDirectMekRuntimeFixture,
+createDirectQuadRuntimeFixture,
 createDirectShieldRuntimeFixture,
 emptyCBTEncounterSnapshot,
 type DirectMekRuntimeFixture,
@@ -147,6 +148,35 @@ describe('restoring saved units under the other ruleset', () => {
             const core = await restoreMek(fixture, fixture.instance, 'core-2026');
             expect(core.unit.query().componentEscalatingFailure(blueShield.id)?.sequence ?? 0).toBeLessThanOrEqual(10);
             expect(core.warnings.map(warning => warning.code)).toEqual(['STATE_SKIPPED']);
+        });
+
+        it('keeps only the movement rolls the restoring rules raise for the move (TW p.60; Core pp.111, 238)', async () => {
+            const hitHip = (fixture: DirectMekRuntimeFixture, code: string) => fixture.instance.dispatch({
+                type: 'hit-critical',
+                slotId: [...fixture.index.slots.values()].find(slot => fixture.index.locations.get(slot.locationId)?.code === code
+                    && slot.componentIds.some(componentId => {
+                        const component = fixture.index.components.get(componentId);
+                        return component?.kind === 'system' && component.systemType === 'Hip';
+                    }))!.id,
+                hits: 1,
+                target: 'committed',
+            }).accepted;
+            const run = { type: 'declare-mek-movement', declaration: { mode: 'run', distance: 1, boosterComponentIds: [] } } as const;
+            const movementChecks = (unit: CBTMekUnit) => pendingChecks(unit).filter(check => check.source.sourceKind === 'movement');
+
+            // A Core biped running on two damaged hips rolls for each; Total Warfare rolls once
+            const core = createDirectMekRuntimeFixture('core-2026', 'unit:core-run-hips');
+            expect(hitHip(core, 'LL') && hitHip(core, 'RL')).toBeTrue();
+            expect(core.instance.dispatch(run).accepted).toBeTrue();
+            expect(movementChecks(core.instance).length).toBe(2);
+            expect(movementChecks((await restoreMek(core, core.instance, 'total-warfare')).unit).length).toBe(1);
+
+            // A Total Warfare quad running on its first hip hit rolls; Core gives that hip no effect
+            const tw = createDirectQuadRuntimeFixture('total-warfare', 'unit:tw-quad-run-hip');
+            expect(hitHip(tw, 'FLL')).toBeTrue();
+            expect(tw.instance.dispatch(run).accepted).toBeTrue();
+            expect(movementChecks(tw.instance).length).toBe(1);
+            expect(movementChecks((await restoreMek(tw, tw.instance, 'core-2026')).unit).length).toBe(0);
         });
 
         it('rederives the standard gyro PSR modifier and leaves no pending gyro PSR at the TW target (TW p.60 +3; Core p.111 +2)', async () => {

@@ -158,6 +158,41 @@ describe('CBTUnitService restore warnings', () => {
         }
     });
 
+    it('drops a pending autocannon hit once the source has changed, so it never moves to another gun', async () => {
+        const autocannon = new WeaponEquipment({ id: 'TestSourceAC5', name: 'AC/5', type: 'weapon',
+            flags: ['F_AC', 'F_BALLISTIC', 'F_DIRECT_FIRE'], weapon: { ammoType: 'AC', rackSize: 5, damage: 5, ranges: [3, 6, 12, 18] } });
+        const tank = new TestTankEntity(createTestEquipmentRegistry({ [autocannon.id]: autocannon }));
+        tank.uuid.set(asUnitUuid('019f6767-0dcb-7bb8-992f-aef08202f5e4'));
+        tank.setTonnage(20);
+        tank.setEquipment([new EntityMountedEquipment({
+            mountId: 'm1', equipmentId: autocannon.id, equipment: autocannon, allocation: { kind: 'location', location: 'Front' },
+            rearMounted: false, turretMounted: false, omniPodMounted: false, armored: false,
+        })]);
+        let source = '<name>\nVedette\n</name>\n';
+        const entities = jasmine.createSpyObj<NativeEntityService>('NativeEntityService', ['load']);
+        entities.load.and.callFake(async () => ({
+            entity: tank,
+            source: {
+                uuid: tank.uuid(), format: 'blk', sourceHash: asSourceHash('AAAAAAAAAAAAAAAAAAAAAAAAAAA'),
+                file: makeUnitFileName(tank.uuid(), 'blk'), bytes: new TextEncoder().encode(source).buffer,
+            },
+        }));
+        TestBed.resetTestingModule();
+        TestBed.configureTestingModule({ providers: [
+            provideZonelessChangeDetection(), CBTUnitService, { provide: NativeEntityService, useValue: entities },
+            { provide: OptionsService, useValue: { options: () => ({ displayUnitNameFormat: 'innerSphereClan' }) } },
+        ] });
+        const service = TestBed.inject(CBTUnitService);
+        const scenario: ScenarioRules = { id: 'megamek', ruleset: 'core-2026' };
+        const created = await service.create({ uuid: tank.uuid(), instanceId: 'unit:ac-reset', deployment: { id: 'default' }, scenario });
+        expect(created.dispatch({ type: 'set-autocannon-hit', componentId: asComponentId('m1'), hit: true, target: 'pending' })
+            .changed).toBeTrue();
+        const saved = created.serialize();
+        expect((await service.restore(saved, scenario)).unit.serialize()).toEqual(saved);
+        source += '<armor>\n30\n</armor>\n';
+        expect((await service.restore(saved, scenario)).unit.serialize().pendingCombat).toBeUndefined();
+    });
+
     it('returns the common source warning alongside Mek codec warnings', async () => {
         const fixture = createDirectMekRuntimeFixture();
         let currentHash = asSourceHash('AAAAAAAAAAAAAAAAAAAAAAAAAAA');

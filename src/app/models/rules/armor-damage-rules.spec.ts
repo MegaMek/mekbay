@@ -47,12 +47,17 @@ describe('resolveArmorDamage', () => {
         // Core p. 191: ballistic-reinforced armor gives no reduction against armor-piercing rounds; TW still halves.
         expect(resolveArmorDamage('core-2026', 5, 10, 'BALLISTIC_REINFORCED', ap).armorDamage).toBe(5);
         expect(resolveArmorDamage('total-warfare', 5, 10, 'BALLISTIC_REINFORCED', ap).armorDamage).toBe(2);
-        // Core p. 192: acid damage "is not reduced by special armor rules".
-        expect(resolveArmorDamage('core-2026', 6, 10, 'REACTIVE', acid).armorDamage).toBe(6);
-        expect(resolveArmorDamage('core-2026', 6, 10, 'BALLISTIC_REINFORCED', acid).armorDamage).toBe(6);
-        // Core p. 191: against armor-piercing rounds each point removes a full hardened pip (two marks).
-        expect(resolveArmorDamage('core-2026', 5, 6, 'HARDENED', ap)).toEqual({ armorDamage: 6, remainingDamage: 2 });
-        expect(resolveArmorDamage('total-warfare', 5, 6, 'HARDENED', ap)).toEqual({ armorDamage: 5, remainingDamage: 0 });
+        // Core p. 192: an acid missile deals 3, unreduced, to these armors with 3 or more points left, else its 2.
+        expect(resolveArmorDamage('core-2026', 2, 10, 'REACTIVE', acid)).toEqual({ armorDamage: 3, remainingDamage: 0 });
+        expect(resolveArmorDamage('core-2026', 2, 10, 'BALLISTIC_REINFORCED', acid).armorDamage).toBe(3);
+        expect(resolveArmorDamage('core-2026', 2, 2, 'REACTIVE', acid)).toEqual({ armorDamage: 2, remainingDamage: 0 });
+        expect(resolveArmorDamage('core-2026', 2, 10, 'STANDARD', acid).armorDamage).toBe(2);
+        // Armor-piercing rounds deal standard damage to standard armor: each point removes a full hardened pip, two
+        // marks (Core p. 191; TO:AUE p. 93).
+        for (const ruleset of ['core-2026', 'total-warfare'] as const) {
+            expect(resolveArmorDamage(ruleset, 5, 6, 'HARDENED', ap)).withContext(ruleset)
+                .toEqual({ armorDamage: 6, remainingDamage: 2 });
+        }
         expect(armorPiercingIgnoresSpecialArmor('core-2026', 'ANTI_PENETRATIVE_ABLATION', ap)).toBeTrue();
         expect(armorPiercingIgnoresSpecialArmor('core-2026', 'REACTIVE', ap)).toBeFalse();
         expect(armorPiercingIgnoresSpecialArmor('total-warfare', 'HARDENED', ap)).toBeFalse();

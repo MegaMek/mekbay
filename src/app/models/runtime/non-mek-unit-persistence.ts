@@ -475,7 +475,7 @@ export function restoreNonMekRuntime(
             if (index.components.has(componentId)) return true;
             skipped++;
             return false;
-        }),
+        }, componentId => weaponSurvivesFirstAutocannonHit(index.components.get(componentId)?.mount.equipment, ruleset)),
     });
     return Object.freeze({
         skipped,
@@ -704,7 +704,11 @@ function serializePendingCombat(state: NonMekUnitRuntimeState): SerializedNonMek
     });
 }
 
-function restorePendingCombat(saved: SerializedNonMekUnit, installed: (componentId: ComponentId) => boolean): NonMekUnitRuntimeState['pendingCombat'] {
+function restorePendingCombat(
+    saved: SerializedNonMekUnit,
+    installed: (componentId: ComponentId) => boolean,
+    survivesAutocannonHit: (componentId: ComponentId) => boolean,
+): NonMekUnitRuntimeState['pendingCombat'] {
     return Object.freeze({
         locationInternalDamage: new Map((saved.pendingCombat?.internalDamage ?? []).map(entry => [
             asLocationId(entry.locationId), entry.damage,
@@ -723,7 +727,7 @@ function restorePendingCombat(saved: SerializedNonMekUnit, installed: (component
         ])),
         ...(saved.pendingCombat?.autocannonHits === undefined ? {} : {
             autocannonHits: new Set(saved.pendingCombat.autocannonHits.map(asComponentId)
-                .filter(componentId => installed(componentId))),
+                .filter(componentId => installed(componentId) && survivesAutocannonHit(componentId))),
         }),
         ...(saved.pendingCombat?.outsideHeat === undefined ? {} : { outsideHeat: saved.pendingCombat.outsideHeat }),
         ...(saved.pendingCombat?.infernoMissiles === undefined ? {} : {

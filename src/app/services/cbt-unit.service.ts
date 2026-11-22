@@ -159,7 +159,7 @@ function withoutEquipmentState<T extends SerializedCBTUnitV2 | SerializedNonMekU
     if (isSerializedNonMekUnit(saved)) {
         const { componentState: _components, ammoState: _ammo, equipmentRowOrder: _order,
             pendingCombat, turn, ...rest } = saved;
-        const { componentStatus: _status, ...locationPending } = pendingCombat ?? {};
+        const { componentStatus: _status, autocannonHits: _autocannonHits, ...locationPending } = pendingCombat ?? {};
         return {
             ...rest,
             ...(Object.keys(locationPending).length === 0 ? {} : { pendingCombat: locationPending }),

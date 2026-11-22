@@ -45,6 +45,7 @@ projectNonMekDefenseModifierBreakdown,
 projectNonMekEndTurnHeat,
 projectNonMekEscalatingFailureInteractions,
 projectNonMekMovementCapabilities,
+nonMekWeaponTargetSubject,
 } from './non-mek-unit-instance';
 import {
 inspectSerializedNonMekUnit,
@@ -1986,9 +1987,9 @@ describe('NonMekUnitInstance', () => {
         const committedId = componentIdForMount(addTestEquipment(entity, ac, { location: entity.locationOrder[0] }));
         const pendingId = componentIdForMount(addTestEquipment(entity, ac, { location: entity.locationOrder[0] }));
         const runtime = createNonMekRuntimeForTest('unit:tank-ac-sheet', baseline(), entity, CORE_2026_RULESET);
-        expect(runtime.dispatch({ type: 'record-autocannon-hit', componentId: committedId, target: 'committed' }).changed)
+        expect(runtime.dispatch({ type: 'set-autocannon-hit', componentId: committedId, hit: true, target: 'committed' }).changed)
             .toBeTrue();
-        expect(runtime.dispatch({ type: 'record-autocannon-hit', componentId: pendingId, target: 'pending' }).changed)
+        expect(runtime.dispatch({ type: 'set-autocannon-hit', componentId: pendingId, hit: true, target: 'pending' }).changed)
             .toBeTrue();
 
         const sheet = projectNonMekRecordSheet(entity, runtime.getIndex(), runtime.snapshot(), CORE_2026_RULESET,
@@ -1999,6 +2000,20 @@ describe('NonMekUnitInstance', () => {
             autocannonHit: true, previewAutocannonHit: true, status: 'available',
         }));
         expect(row(pendingId)).toEqual(jasmine.objectContaining({ autocannonHit: false, previewAutocannonHit: true }));
+    });
+
+    it('fires a non-Mek weapon from underwater once the unit is set in water, as its other rules read it', () => {
+        const laser = new WeaponEquipment({ id: 'TestUnderwaterLaser', name: 'Test Laser', type: 'weapon',
+            flags: ['F_ENERGY', 'F_LASER', 'F_DIRECT_FIRE'], weapon: { damage: 5, heat: 3, ranges: [3, 6, 9, 12] } });
+        const entity = new TestTankEntity(createTestEquipmentRegistry({ [laser.id]: laser }));
+        entity.uuid.set(UUID);
+        const laserId = componentIdForMount(addTestEquipment(entity, laser, { location: entity.locationOrder[0] }));
+        const runtime = createNonMekRuntimeForTest('unit:tank-underwater', baseline(), entity, CORE_2026_RULESET);
+        const underwater = () => nonMekWeaponTargetSubject(entity, runtime.getIndex(), CORE_2026_RULESET, runtime.snapshot(), [],
+            laserId)?.underwater;
+        expect(underwater()).toBeFalse();
+        expect(runtime.dispatch({ type: 'set-cover', cover: 'underwater-depth-2' }).changed).toBeTrue();
+        expect(underwater()).toBeTrue();
     });
 
     it('jams a non-Mek Ultra AC only where the ruleset lets it jam and keeps the jam across save', () => {

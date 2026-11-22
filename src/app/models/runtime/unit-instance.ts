@@ -243,10 +243,15 @@ export function createMekRuntimeBinding(
 export function dropMekPilotChecksUnraisedByRules(
     binding: MekRuntimeBinding,
     state: MekUnitRuntimeState,
+    crewAssignment: CrewAssignment,
 ): MekUnitRuntimeState {
+    const input = createMovementRuntimeInput(binding.source, state, binding.source.statusTopology, crewAssignment,
+        binding.mechanicsContext);
+    if (!input) return state;
     const movementPsr = dropMekPilotChecksUnraisedByRulesContextV2(
         binding.mechanicsContext,
         requireCanonicalMek(binding.source),
+        input,
         state.movementPsr,
     );
     return movementPsr === state.movementPsr ? state : freezeRuntimeState({ ...state, movementPsr });
@@ -1091,10 +1096,8 @@ function reduce(
         case 'damage-internal': {
             if (!isStateMutationTarget(command.target)) return unchanged(state);
             if (!positiveInteger(command.amount)) return unchanged(state);
-            if ((command.hardenedArmorApplies !== undefined
-                    && typeof command.hardenedArmorApplies !== 'boolean')
-                || (command.armorDamagedBySameHit !== undefined
-                    && typeof command.armorDamagedBySameHit !== 'boolean')) {
+            if (command.armorDamagedBySameHit !== undefined
+                && typeof command.armorDamagedBySameHit !== 'boolean') {
                 return unchanged(state);
             }
             const location = unit.index.locations.get(command.locationId);

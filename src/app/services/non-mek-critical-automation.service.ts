@@ -16,6 +16,7 @@ import { AmmoEquipment, WeaponEquipment } from '../models/equipment.model';
 import {
     AERO_CRITICAL_LABELS,
     AERO_CRITICAL_TARGET,
+    aeroExplosionStructuralIntegrityDamage,
     type AeroCriticalType,
 } from '../models/rules/aero-critical-rules';
 import {
@@ -44,7 +45,12 @@ import {
 } from '../models/rules/vehicle-critical-rules';
 import type { CBTRuntimeLocation, RuntimeStatePerspective } from '../models/runtime/cbt-unit-runtime';
 import { rollD6, roll2D6, twoD6Total } from '../models/runtime/mek-automation-rules';
-import { ammoExplosionDamagePerShot, ammoRackSize, resolveMekCriticalChance } from '../models/runtime/mek-critical-hit-v2';
+import {
+    ammoExplosionDamagePerShot,
+    ammoRackSize,
+    explosiveWeapon,
+    resolveMekCriticalChance,
+} from '../models/runtime/mek-critical-hit-v2';
 import type { CBTUnitCommand } from '../models/runtime/unit-command';
 import { componentIdForMount } from '../models/runtime/unit-runtime-index';
 import { CBTAutomationToastService } from './cbt-automation-toast.service';
@@ -546,14 +552,25 @@ export class NonMekCriticalAutomationService {
                 const chosen = chooseDestroyedWeapon(locationWeapons(snapshot, location, perspective));
                 if (!chosen) return none(['No weapon in this location: no effect']);
                 const hit = weaponCriticalHit(snapshot, chosen.weapon, target);
+                // A destroyed weapon that can explode is an ammunition explosion where it is mounted (TW p.240): it
+                // costs structural integrity (TW p.161) and 1 pilot hit (TW p.41)
+                const si = hit.destroyed && chosen.weapon.explosionDamage > 0
+                    ? [...snapshot.index.locations.values()].find(candidate => candidate.code === 'SI')
+                    : undefined;
+                const siDamage = si === undefined ? 0 : Math.min(
+                    aeroExplosionStructuralIntegrityDamage(chosen.weapon.explosionDamage, snapshot.entity.ammoCaseProtection(
+                        location.code, mount => snapshot.query.componentStatus(asComponentId(mount.mountId), perspective) === 'available')),
+                    snapshot.query.remainingInternal(si.id, perspective));
                 return Object.freeze({
                     description,
                     effects: Object.freeze([
                         `1D6 ${chosen.choice}: the ${chosen.choice <= 3 ? 'defender' : 'attacker'} chooses — ${hit.effect}`,
-                        ...(hit.destroyed && chosen.weapon.explosionDamage > 0
-                            ? ['It explodes: resolve as an ammunition explosion'] : []),
+                        ...(si === undefined ? [] : [`It explodes: ${siDamage} structural integrity damage, 1 pilot hit`]),
                     ]),
-                    apply: (dispatch: CBTForceUnitCommandDispatch) => dispatchAll(dispatch, [hit.command]),
+                    apply: async (dispatch: CBTForceUnitCommandDispatch) => await dispatchAll(dispatch, [
+                        hit.command,
+                        ...(si && siDamage > 0 ? [{ type: 'damage-internal', locationId: si.id, amount: siDamage, target } as const] : []),
+                    ]) && (si === undefined || await this.applyPilotHits(force, snapshot.instanceId, 1, dispatch)),
                 });
             }
             case 'bomb': {
@@ -685,17 +702,24 @@ function vehicleCriticalChecks(
             checks.push({ locationId: struck.id, modifier: armoredChassis ? -1 : 0, reason: 'penetrating' });
         }
     }
-    // Special armor on the struck face while it had armor: hardened gives -2 on every check (Core p.91, TO:AUE p.93);
-    // ablation blocks the through-armor check under Core (Core pp.91, 201) and gives it -2 under Total Warfare
-    // (IO:AE p.80). Core armor-piercing rounds strip both (Core p.191).
+    // Special armor on the struck face while it had armor. Hardened: -2 on the hit location's critical checks under
+    // Total Warfare, not the check for structure damage (TO:AUE p.93), on the through-armor check of a 2 only under
+    // Core (Core p.91, errata v0.2). Ablation, on that check only:
+    // Core ignores it (Core pp.91, 201), Total Warfare gives it -2 (IO:AE p.80). Core armor-piercing rounds strip
+    // both (Core p.191).
+    const core = snapshot.ruleset === 'core-2026';
+    const throughArmor = group.effects.includes('through-armor');
     const struckArmorType = struck === undefined ? null : entity.armorAt(struck.code)?.type ?? null;
     const specialArmorProtects = outcome.struckArmor > 0
         && !armorPiercingIgnoresSpecialArmor(snapshot.ruleset, struckArmorType, group.source);
     const hardened = specialArmorProtects && struckArmorType === 'HARDENED' ? -2 : 0;
-    const ablation = specialArmorProtects && struckArmorType === 'ANTI_PENETRATIVE_ABLATION';
-    if (group.effects.includes('critical') && !(ablation && snapshot.ruleset === 'core-2026')) {
-        checks.push({ locationId: group.locationId, modifier: hardened + (ablation ? ABLATION_CRITICAL_MODIFIER.value : 0),
-            reason: 'hit location' });
+    const ablation = specialArmorProtects && throughArmor && struckArmorType === 'ANTI_PENETRATIVE_ABLATION';
+    if (group.effects.includes('critical') && !(ablation && core)) {
+        checks.push({
+            locationId: group.locationId,
+            modifier: (core && !throughArmor ? 0 : hardened) + (ablation ? ABLATION_CRITICAL_MODIFIER.value : 0),
+            reason: 'hit location',
+        });
     }
     // An armor-piercing hit rolls on the struck location's column, +2 on a support vehicle with BAR under 10 (TW p.140,
     // p.206); under Core with Core's armor-piercing modifiers (Core p.191).
@@ -706,7 +730,7 @@ function vehicleCriticalChecks(
             reason: 'armor-piercing' });
     }
     for (const locationId of outcome.structureDamaged) {
-        checks.push({ locationId, modifier: hardened, reason: 'internal structure' });
+        checks.push({ locationId, modifier: 0, reason: 'internal structure' });
     }
     return checks;
 }
@@ -776,7 +800,7 @@ function weaponCriticalHit(
         return Object.freeze({
             destroyed: false,
             effect: `${weapon.name} takes its first autocannon hit and keeps working`,
-            command: { type: 'record-autocannon-hit' as const, componentId: weapon.componentId, target },
+            command: { type: 'set-autocannon-hit' as const, componentId: weapon.componentId, hit: true, target },
         });
     }
     return Object.freeze({
@@ -796,8 +820,8 @@ function locationWeapons(snapshot: CBTNonMekUnitSnapshot, location: CBTRuntimeLo
             name: equipment.name,
             status: snapshot.query.componentStatus(component.id, perspective),
             bv: typeof equipment.bv === 'number' ? equipment.bv : 0,
-            // An explosive weapon deals its ruleset's damage: Core 2 per slot it takes, on any unit (Core p.96)
-            explosionDamage: equipment.weapon.explosionDamage > 0
+            // An explosive (X) weapon deals its ruleset's damage: Core 2 per slot it takes, on any unit (Core pp.96, 183)
+            explosionDamage: explosiveWeapon(equipment)
                 ? rules.getExplosiveWeaponDamage(equipment, typeof equipment.critSlots === 'number' ? equipment.critSlots : 0)
                 : 0,
         })];

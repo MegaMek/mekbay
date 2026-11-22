@@ -162,6 +162,11 @@ describe('inventory target number rules profiles', () => {
         expect(inventoryTargetRangeSelection(underwater(12))).toEqual(jasmine.objectContaining({ range: 'long', outOfRange: false }));
         expect(inventoryTargetRangeSelection(underwater(16))).toEqual(jasmine.objectContaining({ outOfRange: true }));
         expect(inventoryTargetRangeSelection(underwater(22))).toEqual(jasmine.objectContaining({ outOfRange: true }));
+        // A C3 network's shorter bracket leaves the long-range shot barred: C3 never extends maximum range (Core p.198)
+        expect(inventoryTargetRangeSelection({
+            ...c3LaserInput(16, 5, true),
+            targetNumberFacts: { ...targetNumberFacts('er-large-laser'), underwaterEnergy: true },
+        })).toEqual(jasmine.objectContaining({ outOfRange: true }));
     });
 
     it('allows ground Extreme attacks through the exact Extreme boundary when enabled', () => {

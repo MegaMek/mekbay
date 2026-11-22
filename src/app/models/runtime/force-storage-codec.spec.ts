@@ -15,6 +15,7 @@ type SerializedCBTForceV2,
 type SerializedCBTUnitV2,
 } from './persistence-v2';
 import { componentIdForMount } from './unit-runtime-index';
+import { componentAutocannonHit } from './component-state-change';
 
 import { TestAeroSpaceFighterEntity,TestInfantryEntity,TestTankEntity } from '../entity/testing/test-entities';
 import { addTestEquipment, addTestEquipmentWithFlags } from '../entity/testing/test-mounted-equipment';
@@ -852,9 +853,9 @@ describe('force storage codec', () => {
             instanceId: 'unit:codec-ac-hit', uuid, deployment: { id: 'default' },
             scenario: { id: 'megamek', ruleset: 'core-2026' }, initialStateProfileId: 'pristine-non-mek',
         });
-        expect(ready.dispatch({ type: 'record-autocannon-hit', componentId: committedId, target: 'committed' }).changed)
+        expect(ready.dispatch({ type: 'set-autocannon-hit', componentId: committedId, hit: true, target: 'committed' }).changed)
             .toBeTrue();
-        expect(ready.dispatch({ type: 'record-autocannon-hit', componentId: pendingId, target: 'pending' }).changed)
+        expect(ready.dispatch({ type: 'set-autocannon-hit', componentId: pendingId, hit: true, target: 'pending' }).changed)
             .toBeTrue();
 
         const unit = ready.serialize();
@@ -866,6 +867,10 @@ describe('force storage codec', () => {
         const restored = restoreNonMekUnit(decoded, entity, uuid, { id: 'megamek', ruleset: 'core-2026' });
         expect(restored.serialize().componentState).toEqual(unit.componentState);
         expect(restored.serialize().pendingCombat).toEqual(unit.pendingCombat);
+        // Restored under Total Warfare, which has no surviving first hit, both notes drop and nothing throws
+        const underTw = restoreNonMekUnit(decoded, entity, uuid, { id: 'megamek', ruleset: 'total-warfare' });
+        expect([committedId, pendingId].map(id => componentAutocannonHit(underTw.snapshot(), id, 'preview')))
+            .toEqual([false, false]);
         // The phase's pending damage, the noted hit included, commits at the end of the phase
         expect(restored.dispatch({ type: 'end-phase' }).accepted).toBeTrue();
         expect(restored.snapshot().components.get(pendingId)?.autocannonHit).toBeTrue();
@@ -874,7 +879,7 @@ describe('force storage codec', () => {
             instanceId: 'unit:codec-ac-hit-tw', uuid, deployment: { id: 'default' },
             scenario: { id: 'megamek', ruleset: 'total-warfare' }, initialStateProfileId: 'pristine-non-mek',
         });
-        expect(tw.dispatch({ type: 'record-autocannon-hit', componentId: committedId, target: 'committed' }).changed)
+        expect(tw.dispatch({ type: 'set-autocannon-hit', componentId: committedId, hit: true, target: 'committed' }).changed)
             .toBeFalse();
     });
 

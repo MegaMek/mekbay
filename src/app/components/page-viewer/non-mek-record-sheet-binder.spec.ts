@@ -35,6 +35,7 @@ import { drawAeroExternalStores, drawAeroHeatDataPanel, drawAeroVelocityPanel, A
 import { drawHeatScale } from '../../utils/sheets/record-sheet-svg-rendering';
 import { optimizeGeneratedSvg } from '../../utils/sheets/record-sheet-svg-rendering';
 import { RecordSheetSvgGenerator } from '../../utils/sheets/record-sheet-svg-generator';
+import { measureSvgTextCanvas } from '../../utils/svg-text.util';
 import {
 bindNonMekRecordSheet,
 } from './non-mek-record-sheet-binder';
@@ -1088,35 +1089,68 @@ describe('bindNonMekRecordSheet', () => {
         binding.destroy();
     });
 
-    it('puts a red dot after the weapon name for a noted autocannon first hit', () => {
-        const svg = inventorySheet();
-        // The dot sits at the measured end of the name, which needs a laid-out SVG
-        document.body.appendChild(svg);
-        try {
-            const recordSheet = (hit: boolean) => Object.freeze({
-                ...snapshot(3),
-                components: Object.freeze([Object.freeze({
-                    componentId: asComponentId('weapon-1'),
-                    equipmentId: 'weapon',
-                    label: 'AC/5',
-                    sheetLocations: Object.freeze(['FR']),
-                    status: 'available' as const,
-                    previewStatus: 'available' as const,
-                    autocannonHit: hit,
-                    previewAutocannonHit: hit,
-                })]),
-            });
-            const binding = bindNonMekRecordSheet(svg, recordSheet(true), () => undefined);
-            const dot = svg.querySelector('.autocannonHitDot');
-            expect(dot?.previousElementSibling?.classList.contains('name')).toBeTrue();
-            const name = svg.querySelector<SVGTextElement>('text.name')!.getBBox();
-            expect(Number(dot!.getAttribute('cx'))).toBeGreaterThan(name.x + name.width);
-            binding.render(recordSheet(false));
-            expect(svg.querySelector('.autocannonHitDot')).toBeNull();
-            binding.destroy();
-        } finally {
-            svg.remove();
-        }
+    it('puts a red dot after the last line of the weapon name, not after a mode line, on a detached sheet', () => {
+        // A printed sheet is never laid out, so the dot is placed from the line's x/y and its measured width
+        const host = document.createElement('div');
+        host.innerHTML = `<svg xmlns="http://www.w3.org/2000/svg">
+            <g class="inventoryEntry" id="generated-vehicle-inventory-row@0" data-mekbay-component-ids="weapon-1">
+                <rect class="inventoryEntryButton mainButton"></rect>
+                <text class="name" x="10" y="20" font-size="8"><tspan x="10" y="20" font-size="8">Light</tspan> <tspan x="10" y="30" font-size="8">AC/5</tspan></text>
+                <text class="location">FR</text>
+                <rect class="hitMod-rect" display="none"></rect><text class="hitMod-text" display="none"></text>
+                <rect class="targetTn-rect" display="none"></rect><text class="targetTn-text" display="none"></text>
+                <g class="alternativeMode"><text class="name" x="14" y="40" font-size="8">Rapid fire</text></g>
+            </g>
+        </svg>`;
+        const svg = host.querySelector('svg') as SVGSVGElement;
+        const recordSheet = (hit: boolean) => Object.freeze({
+            ...snapshot(3),
+            components: Object.freeze([Object.freeze({
+                componentId: asComponentId('weapon-1'),
+                equipmentId: 'weapon',
+                label: 'Light AC/5',
+                sheetLocations: Object.freeze(['FR']),
+                status: 'available' as const,
+                previewStatus: 'available' as const,
+                autocannonHit: hit,
+                previewAutocannonHit: hit,
+            })]),
+        });
+        const binding = bindNonMekRecordSheet(svg, recordSheet(true), () => undefined);
+        const name = svg.querySelector<SVGTextElement>('.inventoryEntry > text.name')!;
+        const dot = svg.querySelector('.autocannonHitDot');
+        expect(dot?.previousElementSibling).toBe(name);
+        expect(Number(dot!.getAttribute('cx'))).toBeCloseTo(10 + measureSvgTextCanvas(name, 'AC/5') + 8 * 0.45, 5);
+        expect(Number(dot!.getAttribute('cy'))).toBeCloseTo(30 - 8 * 0.35, 5);
+        binding.render(recordSheet(false));
+        expect(svg.querySelector('.autocannonHitDot')).toBeNull();
+        binding.destroy();
+    });
+
+    it('splits grouped autocannons by their noted first hit and dots only the gun that took it', async () => {
+        const autocannon = new WeaponEquipment({ id: 'ISAC5', name: 'AC/5', type: 'weapon',
+            flags: ['F_AC', 'F_BALLISTIC', 'F_DIRECT_FIRE'], weapon: { ammoType: 'AC', rackSize: 5, damage: 5, ranges: [3, 6, 12, 18] } });
+        const entity = new TestTankEntity(createTestEquipmentRegistry({ [autocannon.id]: autocannon }));
+        const uuid = asUnitUuid('019f6767-0dcb-7bb8-992f-aef08202f5e5');
+        entity.uuid.set(uuid);
+        entity.setTonnage(50);
+        const ids = [0, 1].map(() => componentIdForMount(addTestEquipment(entity, autocannon, { location: entity.locationOrder[0] })));
+        const unit = createNonMekUnit(entity, { instanceId: 'grouped-autocannons', uuid,
+            scenario: { id: 'megamek', ruleset: 'core-2026', options: {} }, deployment: { id: 'default' }, initialStateProfileId: 'pristine' });
+        const recordSheet = () => ({ ...projectNonMekRecordSheet(entity, unit.getIndex(), unit.snapshot(), unit.ruleset(), unit.query(),
+            0, 0), editContext: { owner: unit, state: unit.snapshot() } });
+        const panel = () => projectNonMekEquipmentPanel(entity, unit.getIndex(), unit.ruleset(), unit.snapshot(), unit.query(), emptyCBTEncounterSnapshot(), {});
+        const svg = await RecordSheetSvgGenerator.generate(entity, { ruleset: 'core-2026', groupWeapons: true });
+        const binding = bindNonMekRecordSheet(svg, recordSheet(), () => undefined, undefined, inventory(panel()));
+        const rows = () => [...svg.querySelectorAll<SVGElement>('.inventoryEntry[id]')]
+            .filter(row => row.querySelector(':scope > .name')?.textContent === 'AC/5')
+            .map(row => [row.getAttribute('data-mekbay-component-ids'), row.querySelector(':scope > .autocannonHitDot') !== null]);
+
+        expect(rows()).toEqual([[ids.join(' '), false]]);
+        expect(unit.dispatch({ type: 'set-autocannon-hit', componentId: ids[0]!, hit: true, target: 'committed' }).changed).toBeTrue();
+        binding.render(recordSheet(), inventory(panel()));
+        expect(rows()).toEqual(jasmine.arrayWithExactContents([[ids[0], true], [ids[1], false]]));
+        binding.destroy();
     });
 
     it('binds generated non-Mek weapon rows to stable component IDs', () => {

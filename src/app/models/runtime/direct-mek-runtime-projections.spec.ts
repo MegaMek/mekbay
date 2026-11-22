@@ -2205,6 +2205,63 @@ describe('direct Mek entity/runtime projections', () => {
         }
     });
 
+    it('takes a Core quad first hip hit by when it was hit, in one batch or across turns (Core p.238)', () => {
+        type Fixture = ReturnType<typeof createDirectQuadRuntimeFixture>;
+        const hitHip = (fixture: Fixture, code: string, target: 'committed' | 'pending' = 'committed') => fixture.instance.dispatch({
+            type: 'hit-critical',
+            slotId: [...fixture.index.slots.values()].find(slot => fixture.index.locations.get(slot.locationId)?.code === code
+                && slot.componentIds.some(componentId => {
+                    const component = fixture.index.components.get(componentId);
+                    return component?.kind === 'system' && component.systemType === 'Hip';
+                }))!.id,
+            hits: 1,
+            target,
+        }).accepted;
+
+        // Two hips committed together roll once, as one after the other does
+        const batch = createDirectQuadRuntimeFixture('core-2026', 'unit:core-quad-hip-batch');
+        expect(hitHip(batch, 'FLL', 'pending') && hitHip(batch, 'RRL', 'pending')).toBeTrue();
+        expect(batch.instance.dispatch({ type: 'commit-pending' }).accepted).toBeTrue();
+        expect(batch.instance.query().mekPilotChecks().filter(check => check.source.triggerKind === 'hip-hit').length).toBe(1);
+
+        // The rear-right hip hit a turn earlier is the one without effect: the run rolls for the front-left hip
+        const order = createDirectQuadRuntimeFixture('core-2026', 'unit:core-quad-hip-order');
+        expect(hitHip(order, 'RRL')).toBeTrue();
+        order.instance.dispatch({ type: 'end-turn', policy: 'automatic' });
+        expect(hitHip(order, 'FLL')).toBeTrue();
+        expect(order.instance.dispatch({ type: 'dismiss-mek-pilot-checks' }).accepted).toBeTrue();
+        expect(order.instance.dispatch({
+            type: 'declare-mek-movement',
+            declaration: { mode: 'run', distance: 1, boosterComponentIds: [] },
+        }).accepted).toBeTrue();
+        const frontLeft = [...order.index.locations.values()].find(location => location.code === 'FLL')!.id;
+        expect(order.instance.query().mekPilotChecks().filter(check => check.source.sourceKind === 'movement')
+            .map(check => check.source.locationIds)).toEqual([[frontLeft]]);
+    });
+
+    it('gives every roll of a Core jump with heavy-duty gyro hits one target (Core pp.110, 111)', () => {
+        const fixture = createDirectShieldRuntimeFixture('core-2026', 'small', 'unit:core-hd-gyro-jump',
+            { gyroType: 'Heavy Duty' });
+        const slotOf = (systemType: string, code?: string) => [...fixture.index.slots.values()].find(slot =>
+            (code === undefined || fixture.index.locations.get(slot.locationId)?.code === code)
+            && slot.componentIds.some(componentId => {
+                const component = fixture.index.components.get(componentId);
+                return component?.kind === 'system' && component.systemType === systemType;
+            }))!.id;
+        for (const slotId of [slotOf('Gyro'), slotOf('Foot Actuator', 'LL')]) {
+            expect(fixture.instance.dispatch({ type: 'hit-critical', slotId, hits: 1, target: 'committed' }).accepted)
+                .toBeTrue();
+        }
+        expect(fixture.instance.dispatch({
+            type: 'declare-mek-movement',
+            declaration: { mode: 'jump', distance: 1, boosterComponentIds: [] },
+        }).accepted).toBeTrue();
+        const targets = fixture.instance.query().mekPilotChecks()
+            .filter(check => check.source.sourceKind === 'movement').map(check => check.targetNumber);
+        expect(targets.length).toBe(2);
+        expect(new Set(targets).size).toBe(1);
+    });
+
     it('applies submerged heat-sink cooling from the shared Mek water state', () => {
         const fixture = createDirectMekRuntimeFixture();
         const initialTurn = fixture.instance.query().turnState();

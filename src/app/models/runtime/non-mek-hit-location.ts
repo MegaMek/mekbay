@@ -13,8 +13,11 @@ import type { MekHitArc } from '../../utils/record-sheet-reference-table';
 
 export type NonMekHitArc = MekHitArc | 'front-left' | 'front-right' | 'rear-left' | 'rear-right';
 
-/** Vehicle table markers: a critical hit check, or a motive system (VTOL: rotor) hit. */
-export type NonMekHitEffect = 'critical' | 'motive';
+/**
+ * Vehicle table markers: a critical hit check, which a roll of 2 makes a through-armor one (Core p.91), or a motive
+ * system (VTOL: rotor) hit.
+ */
+export type NonMekHitEffect = 'critical' | 'through-armor' | 'motive';
 
 export interface NonMekHitLocation {
     readonly locationCode: string;
@@ -56,6 +59,7 @@ export function resolveNonMekHitLocation(
             if (roll === 5) code = side ? 'Front' : arc === 'rear' ? 'Left' : 'Right';
             if (roll === 9) code = side ? 'Rear' : arc === 'rear' ? 'Right' : 'Left';
             if (roll === 2 || roll === 12 || (roll === 8 && side)) effects.push('critical');
+            if (roll === 2) effects.push('through-armor');
             if (code === 'Rotor') effects.push('motive');
         } else {
             if (nonMekHitArcs(entity).length === 6) {
@@ -72,6 +76,7 @@ export function resolveNonMekHitLocation(
             const sixArcs = nonMekHitArcs(entity).length === 6;
             const quarter = arc !== 'front' && arc !== 'rear';
             if (roll === 2 || roll === 12 || (roll === 8 && (sixArcs ? quarter : side))) effects.push('critical');
+            if (roll === 2) effects.push('through-armor');
             if ([3, 4, 9].includes(roll) || (roll === 5 && (!sixArcs || !quarter))) effects.push('motive');
             if (roll >= 10 && entity.hasTurret()) {
                 code = entity.hasDualTurret()

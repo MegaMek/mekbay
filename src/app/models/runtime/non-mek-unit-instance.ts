@@ -51,7 +51,7 @@ import { isCumulativeSystemDamage,type SystemDamageKind } from '../rules/system-
 import { projectVehicleRuntimeRules,type VehicleRuntimeRulesProjection } from '../rules/vehicle-runtime-rules';
 import { getDefaultAttackerMovementModifier,getTargetMovementBracketForDistance,getTargetUnitTypeModifier,TN_AIRBORNE_MOVE_TYPE_MODIFIER,TN_IMMOBILE,TN_SKIDDING_MODIFIER } from '../target-number-calculator.model';
 import { conditionsCarriedIntoNextTurn,isUnitConditionKey,type UnitConditionKey } from '../unit-condition.model';
-import { isUnitCover,type UnitCover } from '../unit-cover.model';
+import { isUnitCover,isUnitWaterDepth,type UnitCover } from '../unit-cover.model';
 import { createPristineAttackerTargetingState,freezeAttackerTargetingState,MAX_ATTACKER_TARGETING_COMPONENTS,reconcileAttackerTargetingState,reduceAttackerTargetingCommand,type AttackerAmmoSelection,type AttackerTargetingValidationContext } from './attacker-targeting-state';
 import { projectComponentLocationStatuses,type ComponentStatusProjection } from './component-status-projection';
 import type { TargetRegistrySnapshot } from './encounter-runtime';
@@ -1019,8 +1019,8 @@ export function nonMekAmmoSourceLoads(
 /**
  * Target-policy inputs for one non-Mek weapon, shared by the equipment panel
  * and the reducers. The selected munition applies, else the first compatible
- * source's current load. Non-Mek runtime keeps no attacker water layer, so no
- * non-Mek weapon fires from underwater.
+ * source's current load. A non-Mek in water of any depth is submerged (one level
+ * tall), so its weapons fire from underwater.
  */
 export function nonMekWeaponTargetSubject(
     entity: BaseEntity,
@@ -1047,7 +1047,7 @@ export function nonMekWeaponTargetSubject(
             break;
         }
     }
-    return Object.freeze({ weapon, selectedAmmo, underwater: false });
+    return Object.freeze({ weapon, selectedAmmo, underwater: isUnitWaterDepth(state.turn.cover) });
 }
 
 function nonMekWeaponTargetSubjects(
@@ -1543,17 +1543,20 @@ function reduceNonMekUnitState(
             candidate = withComponentJammed(state, command.componentId, command.jammed) ?? state;
             break;
         }
-        case 'record-autocannon-hit': {
+        case 'set-autocannon-hit': {
             requireDamageTarget(command.target);
-            if (!weaponSurvivesFirstAutocannonHit(index.components.get(command.componentId)?.mount.equipment, ruleset)) {
+            if (command.hit
+                && !weaponSurvivesFirstAutocannonHit(index.components.get(command.componentId)?.mount.equipment, ruleset)) {
                 return null;
             }
             if (command.target === 'committed') {
-                candidate = withComponentAutocannonHit(state, command.componentId, true) ?? state;
-            } else if (!state.pendingCombat.autocannonHits?.has(command.componentId)) {
+                candidate = withComponentAutocannonHit(state, command.componentId, command.hit) ?? state;
+            } else if ((state.pendingCombat.autocannonHits?.has(command.componentId) ?? false) !== command.hit) {
+                const hits = new Set(state.pendingCombat.autocannonHits ?? []);
+                if (command.hit) hits.add(command.componentId);
+                else hits.delete(command.componentId);
                 candidate = { ...state, pendingCombat: Object.freeze({
-                    ...state.pendingCombat,
-                    autocannonHits: new ImmutableSet([...(state.pendingCombat.autocannonHits ?? []), command.componentId]),
+                    ...state.pendingCombat, autocannonHits: new ImmutableSet(hits),
                 }) };
             }
             break;

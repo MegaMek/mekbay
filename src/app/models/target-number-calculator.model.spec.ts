@@ -267,18 +267,22 @@ describe('target number calculator rules profiles', () => {
             partialCover: true,
         });
 
+        // Core indirect semi-guided fire ignores the target hex's terrain "except for partial cover" (Core p.193,
+        // errata v0.2); Total Warfare ignores it with the rest (TW p.142)
         expect(waterCover).toContain(jasmine.objectContaining({
             label: 'Partial Cover (water)',
             partialCoverSource: 'water',
             adjustmentGroup: 'terrain',
-            ignoredBySemiGuidedGuidance: true,
+            ignoredBySemiGuidedGuidance: false,
         }));
         expect(manualCover).toContain(jasmine.objectContaining({
             label: 'Partial Cover',
             partialCoverSource: 'manual',
             adjustmentGroup: 'partial-cover',
-            ignoredBySemiGuidedGuidance: true,
+            ignoredBySemiGuidedGuidance: false,
         }));
+        expect(calculateTargetTnModifierBreakdown({ unitType: 'mek-biped', waterDepth: 'underwater-depth-1' },
+            TW_GAME_RULES)).toContain(jasmine.objectContaining({ partialCoverSource: 'water', ignoredBySemiGuidedGuidance: true }));
     });
 
     it('identifies target-hex cover levels independently of their display labels', () => {
@@ -315,7 +319,7 @@ describe('target number calculator rules profiles', () => {
         expect(partialBuildingCover).toContain(jasmine.objectContaining({
             label: 'Partial Cover (building)',
             adjustmentGroup: 'terrain',
-            ignoredBySemiGuidedGuidance: true,
+            ignoredBySemiGuidedGuidance: false,
         }));
     });
 

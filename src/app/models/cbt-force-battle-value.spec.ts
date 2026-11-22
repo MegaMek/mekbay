@@ -111,6 +111,12 @@ describe('CBT force battle value authority', () => {
       expect(tagSurcharge(tank)).toBe(150);
       expect(tagSurcharge(suit)).toBe(150);
     });
+
+    it('halves the surcharge for a unit whose only TAG is in its Rear location (Core errata v0.2)', () => {
+      const tank = new TestTankEntity(registry);
+      mount(tank, lightTag, 'Rear');
+      expect(tagSurcharge(tank)).toBe(25);
+    });
   });
 
   it('counts carried TAG pods as TAG and carried homing Arrow IV bombs per TAG', () => {

@@ -929,9 +929,13 @@ function weaponExplodes(
     componentId: ComponentId,
     equipment: WeaponEquipment,
 ): boolean {
-    if (isPpcEquipment(equipment) || isBombastLaserEquipment(equipment)) return false;
     if (isGaussEquipment(equipment) && isGaussPoweredDown(runtime.componentGaussPower(componentId))) return false;
-    return equipment.getWeaponTypes().includes('X');
+    return explosiveWeapon(equipment);
+}
+
+/** A weapon whose critical hit is a component explosion: an explosive (X) type (Core pp.96, 183), not a PPC or Bombast. */
+export function explosiveWeapon(equipment: WeaponEquipment): boolean {
+    return !isPpcEquipment(equipment) && !isBombastLaserEquipment(equipment) && equipment.getWeaponTypes().includes('X');
 }
 
 function mekMiscEquipmentExplodes(equipment: MiscEquipment): boolean {

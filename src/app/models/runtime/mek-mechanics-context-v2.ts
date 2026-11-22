@@ -523,12 +523,13 @@ export function dismissMekPilotChecksContextV2(
 export function dropMekPilotChecksUnraisedByRulesContextV2(
     context: MekMechanicsContextV2,
     entity: MekEntity,
+    input: MekMovementRuntimeContextInputV2,
     state: MekMovementPsrStateV2,
 ): MekMovementPsrStateV2 {
-    const binding = requireBinding(context);
-    return entityMismatchCapability(binding, entity) || binding.kind === 'unsupported'
+    const resolved = movementRuntimeFacts(context, entity, input);
+    return resolved.kind === 'unsupported'
         ? state
-        : dropMekPilotChecksUnraisedByRulesV2(binding.profile, state);
+        : dropMekPilotChecksUnraisedByRulesV2(resolved.profile, resolved.facts, state);
 }
 
 /** Projects committed-damage movement for BV without exposing the profile. */

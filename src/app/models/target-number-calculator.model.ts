@@ -508,7 +508,7 @@ export function calculateTargetTnModifierBreakdown(
         partialCoverSource,
         adjustmentGroup: partialCoverSource === 'manual' ? 'partial-cover' : 'terrain',
         ...(gameRules.narcIndirectFireIgnoresAllTerrain && { ignoredByNarcGuidance: true }),
-        ignoredBySemiGuidedGuidance: true,
+        ignoredBySemiGuidedGuidance: gameRules.semiGuidedIndirectIgnoresPartialCover,
     });
     add('secondary-target', 'Secondary Target', input.secondaryTarget ? TN_SECONDARY_TARGET_MODIFIER : 0);
     add('secondary-target-side-back', 'Secondary Target (side/back)', gameRules.supportsSecondaryTargetSideBack && !input.secondaryTarget && input.secondaryTargetSideBack

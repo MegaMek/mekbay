@@ -264,7 +264,8 @@ export async function restoreMekUnit(
         await bindMekHeatRuntimeContext(entity, runtimeIndex, initialized.baselineRef.ruleset, options.scenario),
         bindMekMechanicsContext(entity, runtimeIndex, initialized.baselineRef.ruleset, options.scenario),
     );
-    const state = dropMekPilotChecksUnraisedByRules(prepared.binding, prepared.state);
+    const state = dropMekPilotChecksUnraisedByRules(prepared.binding, prepared.state,
+        initialized.deployment.crewAssignment);
     const deployment: SerializedDeploymentConfigurationV2 = Object.freeze({
         values: initialized.deployment,
     });

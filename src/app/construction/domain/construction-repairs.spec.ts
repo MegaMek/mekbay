@@ -280,6 +280,29 @@ describe('construction repair campaign quotes', () => {
         }
     });
 
+    it('counts and clears a noted Core autocannon hit, committed or pending, with the component repair commands', async () => {
+        const autocannon = new WeaponEquipment({ id: 'AC_5_Repair_Test', name: 'AC/5', type: 'weapon',
+            flags: ['F_AC', 'F_BALLISTIC', 'F_DIRECT_FIRE'],
+            weapon: { ammoType: 'AC', rackSize: 5, damage: 5, heat: 1, ranges: [3, 6, 12, 18] } });
+        const entity = new TestTankEntity(createTestEquipmentRegistry({ [autocannon.id]: autocannon }));
+        for (let index = 0; index < 2; index++) {
+            entity.addEquipment({ equipment: autocannon, equipmentId: autocannon.id, allocation: { kind: 'location', location: 'Front' },
+                rearMounted: false, turretMounted: false, omniPodMounted: false, armored: false });
+        }
+        const unit = createNonMekUnit(entity, { uuid: entity.uuid(), instanceId: 'unit:repair-ac', deployment: { id: 'repair-test' },
+            scenario: { id: 'megamek', ruleset: 'core-2026' }, initialStateProfileId: 'pristine' });
+        const [committed, pendingHit] = [...unit.getIndex().components.values()].map(component => component.id);
+        expect(unit.dispatch({ type: 'set-autocannon-hit', componentId: committed!, hit: true, target: 'committed' }).changed)
+            .toBeTrue();
+        expect(unit.dispatch({ type: 'set-autocannon-hit', componentId: pendingHit!, hit: true, target: 'pending' }).changed)
+            .toBeTrue();
+        // Core p.183: the gun still works, but its noted hit is damage the next critical turns into its loss
+        expect(constructionHasRepairDamage(snapshot(unit))).toBeTrue();
+        const repaired = await prepareConstructionRuntime(unit, [committed!, pendingHit!].flatMap(id =>
+            constructionComponentRepairCommands(snapshot(unit), id)), { id: 'megamek', ruleset: 'core-2026' });
+        expect(constructionHasRepairDamage(snapshot(repaired))).toBeFalse();
+    });
+
     it('clears a jammed non-Mek Rotary AC with the component repair commands', async () => {
         const rotary = new WeaponEquipment({ id: 'RAC_5_Repair_Test', name: 'Rotary AC/5', type: 'weapon',
             flags: ['F_AC', 'F_BALLISTIC', 'F_DIRECT_FIRE'],

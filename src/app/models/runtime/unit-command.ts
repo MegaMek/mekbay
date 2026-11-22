@@ -67,8 +67,6 @@ export type CBTUnitCommand =
         readonly locationId: LocationId;
         readonly amount: number;
         readonly target: 'committed' | 'pending';
-        /** Exact facing context captured before this hit crossed Hardened Armor. */
-        readonly hardenedArmorApplies?: boolean;
         /** This same hit already damaged armor and initiated its breach check. */
         readonly armorDamagedBySameHit?: boolean;
     }
@@ -163,9 +161,10 @@ export type CBTUnitCommand =
         readonly jammed: boolean;
     }
     | {
-        /** Notes a non-Mek autocannon's survived first critical hit (Core pp.92, 183). */
-        readonly type: 'record-autocannon-hit';
+        /** Notes, or a repair clears, a non-Mek autocannon's survived first critical hit (Core pp.92, 183). */
+        readonly type: 'set-autocannon-hit';
         readonly componentId: ComponentId;
+        readonly hit: boolean;
         readonly target: 'committed' | 'pending';
     }
     | {

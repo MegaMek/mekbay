@@ -29,7 +29,7 @@ import {
 } from '../models/rules/inferno-rules';
 import { infernoMissilesThisTurn, struckArmorFace } from '../models/runtime/attack-hit-location';
 import type { NonMekHitArc, NonMekHitEffect } from '../models/runtime/non-mek-hit-location';
-import type { AeroCriticalType } from '../models/rules/aero-critical-rules';
+import { aeroExplosionStructuralIntegrityDamage, type AeroCriticalType } from '../models/rules/aero-critical-rules';
 import type { WeaponEquipment } from '../models/equipment.model';
 import { projectAeroRuntimeRules } from '../models/rules/aero-runtime-rules';
 import { projectAeroHeatAutomationChecks } from '../models/runtime/aero-heat-automation-rules';
@@ -886,12 +886,7 @@ export class DirectNonMekAutomationService {
         const ammoMount = snapshot.index.components.get(ammo.componentId)?.mount;
         const protection = ammoMount === undefined ? null : snapshot.entity.ammoCaseProtection(ammoMount.location, mount =>
             snapshot!.query.componentStatus(asComponentId(mount.mountId), 'committed') === 'available');
-        const rawDamage = ammo.shots * ammo.damagePerShot;
-        // TW p.161: damage / 10 to SI, / 20 with CASE (round down, minimum 1). TO:AUE p.111: "For fighters, CASE II
-        // reduces ammunition explosion effects against such units ... to 1 point against the unit's SI."
-        const siDamage = protection === 'case-ii'
-            ? 1
-            : Math.max(1, Math.floor(rawDamage / (protection !== null ? 20 : 10)));
+        const siDamage = aeroExplosionStructuralIntegrityDamage(ammo.shots * ammo.damagePerShot, protection);
 
         const destroyed = await dispatch({
             type: 'set-component-status',
