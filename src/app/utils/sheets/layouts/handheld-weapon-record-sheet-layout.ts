@@ -20,7 +20,7 @@ import {
     type RecordSheetPageProfile,
 } from '../record-sheet-layout';
 import {
-    type Box, addText, appendBattleValue, compactClusterRacks, drawClusterHitsReference, drawGeneratedFooter,
+    type Box, addText, appendBattleValue, drawCompactPageClusterTable, drawGeneratedFooter,
     formatNumber, makeDistributedPips, recordSheetInventoryWeapons, scalePageBox, setAttributes, setCompactClusterRacks,
     setInventoryComponentIds, svgElement,
 } from '../record-sheet-svg-rendering';
@@ -78,18 +78,15 @@ export class HandheldWeaponRecordSheetLayout extends CompactRecordSheetLayout {
         page: SVGSVGElement,
         profile: RecordSheetPageProfile,
         blocks: readonly SVGSVGElement[],
+        nextY: number,
     ): void {
-        const racks = compactClusterRacks(blocks[0]);
-        if (blocks.length === 1 && racks.length > 0) {
-            const height = Number(blocks[0].getAttribute('height'));
-            drawClusterHitsReference(page, scalePageBox(profile, {
-                x: 18.9, y: profile.compactContentY + height + 8,
-                width: 576.149, height: 148.504,
-            }), racks);
-        }
+        const catalystY = profile.height - profile.margin - 20;
+        drawCompactPageClusterTable(page, blocks, scalePageBox(profile, {
+            x: 18.9, y: 18, width: 576.149, height: 148.504,
+        }), nextY, catalystY - profile.compactGap);
         drawGeneratedFooter(page, profile, {
             catalystX: profile.margin,
-            catalystY: profile.height - profile.margin - 20,
+            catalystY,
             catalystScale: 0.9,
             footerCenterX: (profile.margin + 60 + profile.width - profile.margin) / 2,
         });

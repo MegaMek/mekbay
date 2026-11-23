@@ -10,17 +10,19 @@ import type {
     RecordSheetPageFormat,
     RecordSheetPageProfile,
 } from '../record-sheet-layout';
-import { recordSheetPageProfile } from '../record-sheet-layout';
+import { COMPACT_FOOTER_SPACE, recordSheetPageProfile } from '../record-sheet-layout';
 import {
     type Box,
     appendSheetContent,
     compactPageTitle,
     createRoot,
+    drawCompactPageClusterTable,
     drawGeneratedFooter,
     drawPageChrome,
     formatNumber,
     readViewBox,
     renumberCompactBlock,
+    scalePageBox,
 } from '../record-sheet-svg-rendering';
 
 export type RecordSheetSvgFormat = RecordSheetPageFormat | 'compact' | 'auto';
@@ -94,7 +96,7 @@ export abstract class CompactRecordSheetLayout implements RecordSheetLayout {
         page: SVGSVGElement,
         profile: RecordSheetPageProfile,
         _blocks: readonly SVGSVGElement[],
-        _entity?: BaseEntity,
+        _nextY: number,
     ): void {
         drawGeneratedFooter(page, profile);
     }
@@ -161,8 +163,8 @@ export abstract class CompactRecordSheetLayout implements RecordSheetLayout {
         const page = createRoot(profile.width, profile.height, kind);
         page.setAttribute('data-mekbay-page-format', profile.format);
         this.drawPrintablePageChrome(page, profile, blocks, entity);
-        appendCompactBlocks(page, blocks, profile, this.printablePageContentY(profile), false);
-        this.drawCompactPageSupplement(page, profile, blocks, entity);
+        const nextY = appendCompactBlocks(page, blocks, profile, this.printablePageContentY(profile), false);
+        this.drawCompactPageSupplement(page, profile, blocks, nextY);
         page.setAttribute('data-mekbay-unit-count', String(blocks.length));
         return page;
     }
@@ -178,7 +180,10 @@ export function composeMixedCompactRecordSheetPage(
     drawPageChrome(page, compactPageTitle(blocks), profile, true, {
         titleLines: ['CLASSIC BATTLETECH', 'RECORD SHEET'],
     });
-    appendCompactBlocks(page, blocks, profile, profile.compactContentY, true);
+    const nextY = appendCompactBlocks(page, blocks, profile, profile.compactContentY, true);
+    drawCompactPageClusterTable(page, blocks, scalePageBox(profile, {
+        x: 18, y: 18, width: 576, height: 148.504,
+    }), nextY, profile.height - profile.margin - COMPACT_FOOTER_SPACE);
     drawGeneratedFooter(page, profile);
     page.setAttribute('data-mekbay-unit-count', String(blocks.length));
     return page;
@@ -190,7 +195,7 @@ function appendCompactBlocks(
     profile: RecordSheetPageProfile,
     startY: number,
     omitVehicleChrome: boolean,
-): void {
+): number {
     let y = startY;
     let previousY = y;
     let previousHeight = 0;
@@ -228,6 +233,7 @@ function appendCompactBlocks(
             : height + profile.compactGap;
         previousKind = kind;
     });
+    return y + previousHeight + profile.compactGap;
 }
 
 /** A composed page is one SVG document, so every copied block must have its own

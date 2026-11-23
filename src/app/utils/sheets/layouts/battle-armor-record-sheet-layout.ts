@@ -26,7 +26,7 @@ import {
 import { hasStealthFlag } from '../../../models/stealth-equipment.model';
 import { isJumpBoosterEquipment, isJumpJetEquipment, isUmuEquipment } from '../../../models/jump-equipment.model';
 import { appendRecordSheetAmmoProfile, measureRecordSheetAmmoProfile } from '../record-sheet-ammo-rendering';
-import type { RecordSheetPageProfile } from '../record-sheet-layout';
+import { COMPACT_FOOTER_SPACE, type RecordSheetPageProfile } from '../record-sheet-layout';
 import {
     crewSkillValueX,
     type Box,
@@ -36,9 +36,8 @@ import {
     addText,
     appendBattleValue,
     compactArmorDisplayName,
-    compactClusterRacks,
     drawCheckbox,
-    drawClusterHitsReference,
+    drawCompactPageClusterTable,
     drawElevationTracker,
     drawGeneratedFooter,
     formatMovementWithMaximum,
@@ -100,18 +99,12 @@ export class BattleArmorRecordSheetLayout extends CompactRecordSheetLayout {
         page: SVGSVGElement,
         profile: RecordSheetPageProfile,
         blocks: readonly SVGSVGElement[],
-        entity?: BaseEntity,
+        nextY: number,
     ): void {
         page.setAttribute('data-mekbay-reference-family', 'battle-armor');
-        if (blocks.length === 1) {
-            const recorded = compactClusterRacks(blocks[0]);
-            const racks = entity !== undefined && isBattleArmorEntity(entity)
-                ? battleArmorClusterRacks(entity)
-                : recorded.length > 0 ? recorded : [2, 3, 4, 5];
-            drawClusterHitsReference(page, scalePageBox(profile, {
-                x: 18.9, y: 221.486, width: 382.1, height: 180,
-            }), racks);
-        }
+        drawCompactPageClusterTable(page, blocks, scalePageBox(profile, {
+            x: 18.9, y: 221.486, width: 382.1, height: 180,
+        }), nextY, profile.height - profile.margin - COMPACT_FOOTER_SPACE);
         drawBattleArmorReferenceTables(page, profile);
         const catalyst = scalePageBox(profile, { x: 541.535, y: 698.166, width: 0, height: 0 });
         drawGeneratedFooter(page, profile, {

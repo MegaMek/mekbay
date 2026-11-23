@@ -237,6 +237,7 @@ describe('bulk record sheet pagination and printing', () => {
         for (const [Factory, capacity] of [[TestBattleArmorEntity, 5], [TestInfantryEntity, 4], [TestProtoMekEntity, 5], [TestTankEntity, 2]] as const) {
             it(`prints ${capacity} ${Factory.name} units together on ${format}`, async () => {
                 const entity = new Factory();
+                if (entity instanceof TestInfantryEntity) entity.squadSize.set(7);
                 const svg = await RecordSheetSvgGenerator.generate(entity, { ruleset: 'total-warfare', format: 'compact', pageFormat: format });
                 const profile = recordSheetLayoutProfile(entity, format);
                 // Isolate runtime binding while exercising the bulk print planner, compositor, and print overlay.

@@ -43,11 +43,10 @@ fitRecordSheetTextLine,
 valueXAfterCaptions,
 appendBattleValue,
 compactArmorDisplayName,
-compactClusterRacks,
 compactLocationLabel,
 decoratePaperdollPips,
 drawCheckbox,
-drawClusterHitsReference,
+drawCompactPageClusterTable,
 drawDamageLocationGrid,
 drawGeneratedFooter,
 formatNumber,
@@ -97,22 +96,16 @@ export class ProtoMekRecordSheetLayout extends CompactRecordSheetLayout {
         page: SVGSVGElement,
         profile: RecordSheetPageProfile,
         blocks: readonly SVGSVGElement[],
-        entity?: BaseEntity,
+        nextY: number,
     ): void {
         page.setAttribute('data-mekbay-reference-family', 'protomek');
-        if (blocks.length === 1) {
-            const racks = entity !== undefined && isProtoMekEntity(entity)
-                ? clusterTableForEntity(entity).clusterSizes
-                : compactClusterRacks(blocks[0]);
-            if (racks.length > 0) {
-                drawClusterHitsReference(page, scalePageBox(profile, {
-                    x: 18.9, y: 218.286, width: 576.15, height: 113.7,
-                }), racks, 'full-width');
-            }
-        }
+        const catalystY = profile.height - profile.margin - 24;
+        drawCompactPageClusterTable(page, blocks, scalePageBox(profile, {
+            x: 18.9, y: 218.286, width: 576.15, height: 113.7,
+        }), nextY, catalystY - profile.compactGap, 'full-width');
         drawGeneratedFooter(page, profile, {
             catalystX: profile.margin,
-            catalystY: profile.height - profile.margin - 24,
+            catalystY,
             catalystScale: 0.9,
             footerCenterX: (profile.margin + 60 + profile.width - profile.margin) / 2,
         });

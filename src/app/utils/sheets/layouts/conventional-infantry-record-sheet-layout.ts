@@ -29,12 +29,13 @@ import {
   addReferenceShade,
   addText,
   appendBattleValue,
-  drawClusterHitsReference,
+  drawCompactPageClusterTable,
   drawElevationTracker,
   drawGeneratedFooter,
   formatNumber,
   scaleCompactBox,
   scalePageBox,
+  setCompactClusterRacks,
   setInventoryComponentIds,
   svgElement,
 } from '../record-sheet-svg-rendering';
@@ -67,27 +68,14 @@ export class ConventionalInfantryRecordSheetLayout extends CompactRecordSheetLay
     page: SVGSVGElement,
     profile: RecordSheetPageProfile,
     blocks: readonly SVGSVGElement[],
-    entity?: BaseEntity,
+    nextY: number,
   ): void {
     page.setAttribute('data-mekbay-reference-family', 'infantry');
-    if (blocks.length === 1) {
-      const strength =
-        entity !== undefined && isInfantryEntity(entity)
-          ? infantryShootingStrength(entity)
-          : INFANTRY_STRENGTH_CELL_COUNT;
-      drawClusterHitsReference(
-        page,
-        scalePageBox(profile, {
-          x: 18.9,
-          y: 255.768,
-          width: 576.149,
-          height: 180,
-        }),
-        Array.from({ length: Math.max(0, strength - 1) }, (_, index) => index + 2),
-      );
-    }
-    if (blocks.length <= 3) drawInfantryReferenceTables(page, profile);
     const catalyst = scalePageBox(profile, { x: 533.966, y: 719.587, width: 0, height: 0 });
+    const limitY = blocks.length <= 3 ? drawInfantryReferenceTables(page, profile) : catalyst.y;
+    drawCompactPageClusterTable(page, blocks, scalePageBox(profile, {
+      x: 18.9, y: 255.768, width: 576.149, height: 180,
+    }), nextY, limitY - profile.compactGap);
     drawGeneratedFooter(page, profile, {
       catalystX: catalyst.x,
       catalystY: catalyst.y,
@@ -194,24 +182,9 @@ export class ConventionalInfantryRecordSheetLayout extends CompactRecordSheetLay
   }
 }
 
-function infantryShootingStrength(entity: InfantryEntity): number {
-  return Math.max(
-    1,
-    entity.damageLocations().find((location) => location.code === 'Infantry')?.internalPoints ??
-      entity.squadSize() * entity.squadCount(),
-  );
-}
-
-function drawInfantryReferenceTables(page: SVGSVGElement, profile: RecordSheetPageProfile): void {
-  drawInfantryBurstFireReference(
-    page,
-    scalePageBox(profile, {
-      x: 18.966,
-      y: 585,
-      width: 283,
-      height: 170,
-    }),
-  );
+function drawInfantryReferenceTables(page: SVGSVGElement, profile: RecordSheetPageProfile): number {
+  const burstFireBox = scalePageBox(profile, { x: 18.966, y: 585, width: 283, height: 170 });
+  drawInfantryBurstFireReference(page, burstFireBox);
   drawInfantryNonInfantryWeaponReference(
     page,
     scalePageBox(profile, {
@@ -221,6 +194,7 @@ function drawInfantryReferenceTables(page: SVGSVGElement, profile: RecordSheetPa
       height: 162.572,
     }),
   );
+  return burstFireBox.y;
 }
 
 function drawInfantryBurstFireReference(svg: SVGSVGElement, box: Box): void {
@@ -493,6 +467,7 @@ function drawCompactInfantryTrack(
 ): void {
   const { x, y, font } = scale;
   const combat = projectConventionalInfantryCombat(entity);
+  setCompactClusterRacks(svg, Array.from({ length: combat.maximumStrength - 1 }, (_, index) => index + 2));
   const columns = INFANTRY_STRENGTH_CELL_COUNT;
   const left = 116.6;
   const top = 25.139;

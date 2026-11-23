@@ -1456,12 +1456,26 @@ export function setCompactClusterRacks(block: SVGSVGElement, racks: readonly num
   block.setAttribute('data-mekbay-cluster-racks', racks.join(','));
 }
 
-/** The cluster racks a compact block recorded with `setCompactClusterRacks`. */
-export function compactClusterRacks(block: SVGSVGElement | undefined): readonly number[] {
-  return (block?.getAttribute('data-mekbay-cluster-racks') ?? '')
-    .split(',')
-    .map(Number)
-    .filter((value) => Number.isInteger(value) && value > 0);
+// Allow room for the title, column headings and all eleven roll rows at the sheet's small print size.
+const MIN_COMPACT_CLUSTER_TABLE_HEIGHT = 96;
+
+/** Fit one table in the free space after the last block, before the next reference panel or footer. */
+export function drawCompactPageClusterTable(
+  page: SVGSVGElement,
+  blocks: readonly SVGSVGElement[],
+  preferredBox: Box,
+  nextY: number,
+  limitY: number,
+  presentation: 'auto' | 'full-width' = 'auto',
+): void {
+  const racks = new Set(blocks.flatMap(block => (block.getAttribute('data-mekbay-cluster-racks') ?? '')
+    .split(',').map(Number).filter(size => size > 0)));
+  if (racks.size === 0) return;
+
+  const y = Math.max(nextY, preferredBox.y);
+  const height = Math.min(preferredBox.height, limitY - y);
+  if (height < MIN_COMPACT_CLUSTER_TABLE_HEIGHT) return;
+  drawClusterHitsReference(page, { ...preferredBox, y, height }, [...racks].sort((a, b) => a - b), presentation);
 }
 
 export function drawClusterHitsReference(
