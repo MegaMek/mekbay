@@ -985,13 +985,14 @@ function matchLegacyNonMekDamageTrack(
 
 /** V1 wire tokens are decoded here; neither rules nor current state interpret them. */
 function legacySystemDamageToken(track: SystemDamageDefinition): string {
-    const tokens: Readonly<Record<SystemDamageKind, string>> = {
+    if (track.system === 'heat-sink' || track.system === 'bay-door') return track.id;
+    const tokens: Readonly<Record<Exclude<SystemDamageKind, 'heat-sink' | 'bay-door'>, string>> = {
         commander: 'commander_hit', driver: 'driver_hit', pilot: 'pilot_hit', copilot: 'copilot_hit',
         engine: 'engine_hit', sensors: 'sensor_hit', avionics: 'avionics_hit', 'fire-control': 'fcs_hit',
         'combat-information': 'cic_hit', 'fuel-tank': 'fuel_tank_hit', 'docking-collar': 'docking_collar_hit',
         'kf-boom': 'kf_boom_hit', 'left-thruster': 'thruster_left_hit', 'right-thruster': 'thruster_right_hit',
         'landing-gear': 'landing_gear_hit', 'life-support': 'life_support_hit', motive: 'motive_system_hit',
-        'turret-lock': 'turret_locked', stabilizer: 'stabilizer_hit', 'flight-stabilizer': 'flight_stabilizer_hit',
+        'hull-breach': 'hull_breach', 'turret-jam': 'turret_jam', 'turret-jam-cleared': 'turret_jam_cleared', 'turret-lock': 'turret_locked', stabilizer: 'stabilizer_hit', 'flight-stabilizer': 'flight_stabilizer_hit',
         rotor: 'rotor', head: 'head_hit', torso: 'torso_hit', 'left-arm': 'la_hit', 'right-arm': 'ra_hit',
         legs: 'legs_hit', 'main-gun': 'gun_hit',
     };

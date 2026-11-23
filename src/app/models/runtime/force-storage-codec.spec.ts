@@ -64,6 +64,21 @@ describe('force storage codec', () => {
         expect(() => load(stored)).toThrowError(/converted Mek mode/u);
     });
 
+    it('restores water entered before a movement declaration through compact force storage', async () => {
+        const fixture = createDirectMekRuntimeFixture('total-warfare');
+        fixture.instance.dispatch({ type: 'replace-turn-state', turn: { ...fixture.instance.query().turnState(), cover: 'underwater-depth-2' } });
+        const unit = fixture.instance.serialize() as SerializedCBTUnitV2;
+        const saved = encodeForceForStorage(forceWithUnit(unit, 'force:water', 'Water'));
+        const decoded = decodeForceFromStorage(JSON.parse(JSON.stringify(saved))).cbt!.units[0]!.unit as SerializedCBTUnitV2;
+        expect(decoded.movementPsr.undeclaredWaterEntries).toEqual([2]);
+        const restored = await restoreMekUnit(decoded, fixture.entity, fixture.identity, {
+            profileId: DEFAULT_MEK_INITIAL_STATE_PROFILE_ID, deployment: decoded.deployment.values,
+            scenario: { id: 'megamek', ruleset: 'total-warfare' },
+        });
+        restored.dispatch({ type: 'declare-mek-movement', declaration: { mode: 'walk', distance: 1, boosterComponentIds: [] } });
+        expect(restored.query().mekPilotChecks().map(check => check.reason)).toEqual(['Entered water']);
+    });
+
     it('round-trips the takeoff depth and number of jets fired alongside a sparse booster field', () => {
         const unit = createDirectMekRuntimeFixture('total-warfare').instance.serialize() as SerializedCBTUnitV2;
         const movement = { mode: 'jump', distance: 2, boosterComponentIds: [], jumpJetsFired: 5, jumpFromDepth: 1 } as const;
@@ -886,6 +901,55 @@ describe('force storage codec', () => {
         expect(tw.dispatch({ type: 'hit-components', componentIds: [committedId], target: 'committed' }).changed).toBeTrue();
         expect(tw.query().componentStatus(committedId)).toBe('destroyed');
         expect(componentAutocannonHit(tw.snapshot(), committedId, 'committed')).toBeFalse();
+    });
+
+    it('retains pending vehicle stuns and cargo loss through unit and force saves, then discards or commits them', () => {
+        const entity = new TestTankEntity();
+        const uuid = asUnitUuid('019f6767-0dcb-7bb8-992f-aef08202f5e2');
+        entity.uuid.set(uuid);
+        entity.setTonnage(20);
+        entity.transporters.set([{ id: 'hold', kind: 'bay', doors: 1, capacity: 10, bayNumber: 1,
+            configuration: { type: 'cargo' }, omni: false }]);
+        const scenario = { id: 'megamek', ruleset: 'core-2026' } as const;
+        const ready = createNonMekUnit(entity, {
+            instanceId: 'unit:veh-critical', uuid, deployment: { id: 'default' },
+            scenario, initialStateProfileId: 'pristine-non-mek',
+        });
+        expect(ready.dispatch({ type: 'set-internal-bay-loads',
+            loads: [{ bay: 'hold', cargo: 'large', tons: 11 }] }).changed).toBeFalse();
+        expect(ready.dispatch({ type: 'set-destroyed', destroyed: true, target: 'pending' }).changed).toBeTrue();
+        expect(ready.query().destroyed()).toBeFalse();
+        const supplies = { bay: 'hold', cargo: 'supplies', tons: 3 };
+        const spares = { bay: 'hold', cargo: 'spares', tons: 2 };
+        expect(ready.dispatch({ type: 'set-internal-bay-loads', loads: [spares, supplies] }).changed).toBeTrue();
+        for (let i = 0; i < 2; i++) {
+            expect(ready.dispatch({ type: 'stun-vehicle-crew', target: 'pending' }).changed).toBeTrue();
+        }
+        const loss = { type: 'destroy-bay-cargo', bay: 'hold', cargo: 'spares', target: 'pending' } as const;
+        expect(ready.dispatch(loss).changed).toBeTrue();
+        expect(ready.dispatch(loss).changed).toBeFalse();
+        const saved = ready.serialize();
+        const record = encodeForceForStorage(forceWithUnit(saved, 'force:vehicle', 'Vehicle'));
+        const decoded = decodeForceFromStorage(JSON.parse(JSON.stringify(record))).cbt!.units[0]!.unit as SerializedNonMekUnit;
+        for (const wire of [saved, decoded]) {
+            expect(wire.pendingCombat).toEqual(jasmine.objectContaining({ crewStuns: 2, lostCargo: [spares] }));
+            const runtime = restoreNonMekUnit(wire, entity, uuid, scenario);
+            expect(runtime.snapshot().internalBayLoads).toEqual([spares, supplies]);
+            expect(runtime.snapshot().vehicleCrewStun).toBeUndefined();
+            expect(runtime.dispatch({ type: 'cancel-pending' }).changed).toBeTrue();
+            expect(runtime.serialize().pendingCombat).toBeUndefined();
+            expect(runtime.snapshot().internalBayLoads).toEqual([spares, supplies]);
+            expect(runtime.snapshot().vehicleCrewStun).toBeUndefined();
+            expect(runtime.query().destroyed()).toBeFalse();
+
+            const committed = restoreNonMekUnit(wire, entity, uuid, scenario);
+            const turn = committed.snapshot().turn.turnCounter;
+            expect(committed.dispatch({ type: 'end-phase' }).changed).toBeTrue();
+            expect(committed.snapshot().internalBayLoads).toEqual([supplies]);
+            expect(committed.query().destroyed()).toBeTrue();
+            expect(committed.snapshot().vehicleCrewStun).toEqual([turn + 1, turn + 2]);
+            expect(committed.serialize().pendingCombat).toBeUndefined();
+        }
     });
 
     it('round-trips non-Mek damage and ordered damage-track timestamps', () => {

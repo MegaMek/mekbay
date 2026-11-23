@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 // Author: Drake
 
+import { nonMekHitArcs } from '../../models/runtime/non-mek-hit-location';
 import { InventoryControlOpforService } from '../../services/inventory-control-opfor.service';
 import { ChangeDetectionStrategy, Component, input, output, inject } from '@angular/core';
 import { ColorPickerButtonComponent } from '../color-picker-button/color-picker-button.component';
@@ -134,7 +135,7 @@ export interface WeaponTargetCalculatorRequest {
                                         <label class="target-number-field direction-field">
                                             <span>Direction</span>
                                             <select class="bt-select direction-select" [disabled]="readOnly()" [attr.aria-label]="'Attack direction against ' + targetNames.targetName(target.id, target.name)" title="The side of the target the attack strikes: it picks the hit location table column" (change)="updateAttackDirection(target, $any($event.target).value)">
-                                                @for (direction of attackDirections; track direction.value) {
+                                                @for (direction of attackDirectionsFor(target); track direction.value) {
                                                     <option [value]="direction.value" [selected]="direction.value === attackDirection(target)">{{ direction.label }}</option>
                                                 }
                                             </select>
@@ -742,7 +743,20 @@ export class WeaponTargetsMenuComponent {
         { value: 'left', label: 'Left' },
         { value: 'right', label: 'Right' },
         { value: 'rear', label: 'Rear' },
+        { value: 'front-left', label: 'Front left' }, { value: 'front-right', label: 'Front right' },
+        { value: 'rear-left', label: 'Rear left' }, { value: 'rear-right', label: 'Rear right' },
+        { value: 'above', label: 'Above' }, { value: 'below', label: 'Below' },
     ];
+
+    attackDirectionsFor(target: TargetingTarget) {
+        const entity = this.targetNames.resolveOpforTarget(target.id)?.member.entity;
+        if (entity) {
+            const arcs = nonMekHitArcs(entity);
+            return this.attackDirections.filter(direction => arcs.includes(direction.value));
+        }
+        return this.attackDirections.filter(({ value }) => value.includes('-') ? target.unitType === 'vehicle'
+            : value === 'above' || value === 'below' ? target.unitType === 'aero' : true);
+    }
 
     attackDirection(target: TargetingTarget): TnAttackDirection {
         return target.tnCalculator?.attackDirection ?? 'front';
@@ -750,7 +764,7 @@ export class WeaponTargetsMenuComponent {
 
     /** The calculator replaces the attacker's facts as a whole, so the direction travels with the rest of them. */
     updateAttackDirection(target: TargetingTarget, value: string): void {
-        const direction = this.attackDirections.find(candidate => candidate.value === value)?.value;
+        const direction = this.attackDirectionsFor(target).find(candidate => candidate.value === value)?.value;
         if (this.readOnly() || !direction) return;
         this.updateRequest.emit({ targetId: target.id, patch: { tnCalculator: { ...target.tnCalculator, attackDirection: direction } } });
     }

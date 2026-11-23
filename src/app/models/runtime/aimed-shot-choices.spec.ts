@@ -115,7 +115,9 @@ describe('aimed shot target numbers', () => {
         ], 'rear').locations.map(location => [location.remaining, location.frontRemaining, location.targetNumber]))
             .toEqual([['(5)', '(5)', '-1'], ['✕', '✕', null], ['8', '20', '-1']]);
 
-        const punch = panel.physicalAttacks.find(attackRow => attackRow.selectable);
+        // The left arm's laser is declared above. The opposite arm can still punch.
+        const punch = panel.physicalAttacks.find(attackRow => attackRow.target.kind === 'intrinsic'
+            && attackRow.target.actionId === 'intrinsic:punch:RA' && attackRow.available);
         expect(punch).toBeDefined();
         const punchAt = (aimed: object) =>
             edit({ kind: 'set-action-selection', target: punch!.target, selection: { kind: 'target', targetId, ...aimed } });

@@ -5,6 +5,7 @@ import { TestBed } from '@angular/core/testing';
 
 import { asComponentId, asLocationId } from '../../models/entity/entity-identifiers';
 import { TestBipedMekEntity } from '../../models/entity/testing/test-entities';
+import { asEncounterTargetId } from '../../models/runtime/encounter-runtime';
 import type { CBTEquipmentInteraction } from '../../models/cbt-force.types';
 import type { EquipmentPanelComponent, MekPhysicalAttackRow } from '../../models/runtime/equipment-panel';
 import type { EquipmentDialogRuntimeController } from './equipment-dialog-runtime.controller';
@@ -442,6 +443,19 @@ describe('WeaponsEquipmentPanelComponent', () => {
         expect(fixture.componentInstance.ammoDropdownOptions(rangedRow)[0]).toEqual(jasmine.objectContaining({
             label: 'Laser Magazine (4/5)',
             trailingLabel: '(4/5)',
+        }));
+    });
+
+    it('shows Auto for a TW charge against a building without a defending pilot', () => {
+        const { runtime } = createRuntime();
+        const target = { id: asEncounterTargetId('building'), letter: 'A', name: 'Hangar', color: '', unitType: 'building' as const,
+            readOnly: false, distance: 1, tnModifier: -4 };
+        const controller = { ...runtime, snapshot: () => ({ ...runtime.snapshot(), ruleset: 'total-warfare',
+            physicalAttacks: runtime.snapshot().physicalAttacks.map(row => ({ ...row, kind: 'charge' })) }) } as unknown as EquipmentDialogRuntimeController;
+        const { component } = createComponent(controller);
+        const row = component.groups().flatMap(group => group.rows).find(row => row.physical?.label === 'Charge')!;
+        expect(component['createPhysicalTargetState'](row, target)).toEqual(jasmine.objectContaining({
+            hitText: 'Auto', targetNumberText: 'Auto', invalidTarget: false,
         }));
     });
 

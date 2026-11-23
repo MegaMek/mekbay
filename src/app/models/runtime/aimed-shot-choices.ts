@@ -3,7 +3,7 @@
 
 import type { CBTRuleset } from '../cbt-ruleset.model';
 import { getMekLimbLocations, getMekLocationLabel, MEK_TORSO_LOCATIONS, type MekConfig } from '../entity/types/mek';
-import type { MekHitArc } from '../../utils/record-sheet-reference-table';
+import type { TnAttackDirection } from '../target-number-calculator.model';
 import { aimedShotTargetFamily } from '../rules/aimed-shot-rules';
 import type { TnTargetUnitType } from '../target-number-calculator.model';
 import type { AimedShotLocation } from './attack-hit-location';
@@ -58,7 +58,7 @@ export function aimedShotChoices(
     attack: WeaponAttackContext,
     ruleset: CBTRuleset,
     locations: readonly AimedShotLocation[] | null,
-    arc: MekHitArc = 'front',
+    arc: TnAttackDirection = 'front',
 ): AimedShotChoices {
     const remaining = (armor: number, location: AimedShotLocation): string =>
         location.destroyed ? '✕' : armor > 0 ? String(armor) : `(${location.structure})`;

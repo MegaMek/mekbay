@@ -2,6 +2,8 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 
 import type { WeaponAttackContext } from './equipment-panel';
+import { createDirectMekRuntimeFixture } from './testing/direct-mek-runtime-fixture';
+import { createMekUnit, restoreMekUnit } from './cbt-mek-unit';
 import { asUnitUuid } from '../../services/unit-catalog/unit-catalog.types';
 import { CORE_2026_RULESET,TOTAL_WARFARE_RULESET } from '../cbt-ruleset.model';
 import { asComponentId } from '../entity/entity-identifiers';
@@ -100,6 +102,107 @@ describe('Entity equipment panel projection', () => {
             });
         });
     }
+
+    it('lets a Core Mek spend its laser AMS twice and generates heat for both interceptions', async () => {
+        const fixture = createDirectMekRuntimeFixture();
+        const laser = new WeaponEquipment({ id: 'test-lams', name: 'Laser AMS', type: 'weapon', flags: ['F_ENERGY', 'F_AMS'],
+            weapon: { heat: 7, damage: 3, ammoType: 'NA' } });
+        const id = asComponentId(addTestEquipment(fixture.entity, laser, { location: 'CT' }).mountId);
+        const options = { profileId: 'pristine', deployment: { id: 'default' }, scenario: { id: 'megamek', ruleset: CORE_2026_RULESET } };
+        const unit = await createMekUnit({ uuid: fixture.identity, instanceId: 'core-ams' }, fixture.entity, fixture.identity, options);
+        const engage = () => unit.dispatch({ type: 'engage-ams', componentId: id, arc: 'front' }).changed;
+        expect(engage()).toBeTrue();
+        expect(engage()).toBeTrue();
+        expect(engage()).toBeFalse();
+        expect(unit.snapshot().turn.weaponsHeat).toBe(14);
+        expect(unit.snapshot().turn.amsEngagements).toEqual([id, id]);
+        expect(unit.snapshot().turn.firedWeapons).toBeUndefined();
+        const restored = await restoreMekUnit(unit.serialize(), fixture.entity, fixture.identity, options);
+        expect(restored.dispatch({ type: 'engage-ams', componentId: id, arc: 'front' }).changed).toBeFalse();
+        unit.dispatch({ type: 'end-turn', policy: 'manual' });
+        expect(engage()).toBeTrue();
+    });
+
+    it('charges an in-arc AMS one shot and prevents another engagement until the next turn in Total Warfare', () => {
+        const system = new WeaponEquipment({ id: 'ams', name: 'AMS', type: 'weapon', flags: ['F_AMS', 'F_BALLISTIC'],
+            weapon: { heat: 1, rackSize: 2, ammoType: 'AMS' } });
+        const ammo = new AmmoEquipment({ id: 'bin', name: 'AMS Ammo', type: 'ammo', ammo: { type: 'AMS', rackSize: 2, shots: 12 } });
+        const entity = new TestTankEntity(createTestEquipmentRegistry({ ams: system, bin: ammo }));
+        entity.uuid.set(UUID);
+        entity.setTonnage(40);
+        const id = asComponentId(addTestEquipment(entity, system, { location: 'Front' }).mountId);
+        const bin = asComponentId(addTestEquipment(entity, ammo, { location: 'Rear', shotsCount: 12 }).mountId);
+        const unit = createNonMekRuntimeForTest('ams-tank', { ...baseline(), ruleset: TOTAL_WARFARE_RULESET }, entity, TOTAL_WARFARE_RULESET);
+        const engage = (arc: 'front' | 'rear') => unit.dispatch({ type: 'engage-ams', componentId: id, arc }).changed;
+        expect(engage('rear')).toBeFalse();
+        expect(engage('front')).toBeTrue();
+        expect(engage('front')).toBeFalse();
+        expect(unit.query().remainingAmmo(bin)).toBe(11);
+        const restored = restoreNonMekRuntimeForTest(unit.serialize(), entity, TOTAL_WARFARE_RULESET);
+        expect(restored.dispatch({ type: 'engage-ams', componentId: id, arc: 'front' }).changed).toBeFalse();
+        unit.dispatch({ type: 'end-turn', policy: 'manual' });
+        expect(engage('front')).toBeTrue();
+        expect(unit.query().remainingAmmo(bin)).toBe(10);
+    });
+
+    it('interlocks the main gun and arm weapons for either firing order and rejects long range after head loss', () => {
+        const gun = new WeaponEquipment({ id: 'gun', name: 'Laser', type: 'weapon', flags: ['F_ENERGY'],
+            weapon: { damage: 5, ammoType: 'NA', ranges: [5, 10, 15, 20] } });
+        for (const mainFirst of [true, false]) {
+            const entity = new TestProtoMekEntity(createTestEquipmentRegistry({ gun }));
+            entity.uuid.set(UUID);
+            entity.setTonnage(8);
+            const main = asComponentId(addTestEquipment(entity, gun, { location: 'Main Gun' }).mountId);
+            const arm = asComponentId(addTestEquipment(entity, gun, { location: 'Right Arm' }).mountId);
+            const unit = createNonMekRuntimeForTest('proto', { ...baseline(), ruleset: TOTAL_WARFARE_RULESET }, entity, TOTAL_WARFARE_RULESET);
+            const targetId = asEncounterTargetId('target');
+            const targets = { revision: 0, targets: [{ id: targetId, letter: 'A', name: 'Target', color: '#abc' }] };
+            const select = (componentId: typeof main, selection: import('./attacker-targeting-state').AttackerSelection | null) =>
+                unit.dispatchAttackerTargeting({ type: 'edit-attacker-targeting',
+                    edit: { kind: 'set-component-selection', componentId, selection } }, targets, false).changed;
+            const first = mainFirst ? main : arm;
+            const other = mainFirst ? arm : main;
+            expect(unit.dispatchAttackerTargeting({ type: 'edit-attacker-targeting', edit: { kind: 'set-component-selections',
+                componentIds: [main, arm], selection: { kind: 'selected' } } }, targets, false).changed).toBeFalse();
+            unit.dispatch({ type: 'set-system-damage-level', system: 'head', level: 2, target: 'committed', timestamp: 1 });
+            expect(select(first, { kind: 'manual-range', range: 'long' })).toBeFalse();
+            unit.dispatchAttackerTargeting({ type: 'edit-attacker-targeting', edit: { kind: 'set-target-facts',
+                targetId, facts: { distance: 11 } } }, targets, false);
+            expect(select(first, { kind: 'target', targetId })).toBeFalse();
+            expect(select(first, { kind: 'manual-range', range: 'medium' })).toBeTrue();
+            expect(select(other, { kind: 'selected' })).toBeFalse();
+            expect(unit.dispatchSelectedWeaponFire({ type: 'fire-selected-weapons' }, targets, false, false).changed).toBeTrue();
+            select(first, null);
+            expect(select(other, { kind: 'selected' })).toBeFalse();
+            unit.dispatch({ type: 'end-turn', policy: 'manual' });
+            expect(select(other, { kind: 'selected' })).toBeTrue();
+        }
+    });
+
+    it('applies fighter FCS and sensor damage and stops a previously selected weapon at the third FCS hit', () => {
+        const gun = new WeaponEquipment({ id: 'gun', name: 'Laser', type: 'weapon', flags: ['F_ENERGY'],
+            weapon: { damage: 5, ammoType: 'NA', av: [5, 5, 0, 0], ranges: [3, 6, 9, 12] } });
+        const entity = new TestAeroSpaceFighterEntity(createTestEquipmentRegistry({ gun }));
+        entity.uuid.set(UUID);
+        entity.structuralIntegrity.set(10);
+        const id = asComponentId(addTestEquipment(entity, gun, { location: 'Nose' }).mountId);
+        const unit = createNonMekRuntimeForTest('fighter', { ...baseline(), ruleset: TOTAL_WARFARE_RULESET }, entity, TOTAL_WARFARE_RULESET);
+        const targets = { revision: 0, targets: [] };
+        const select = () => unit.dispatchAttackerTargeting({ type: 'edit-attacker-targeting',
+            edit: { kind: 'set-component-selection', componentId: id, selection: { kind: 'selected' } } }, targets, false);
+        expect(select().changed).toBeTrue();
+        for (const level of [1, 2, 3]) {
+            for (const system of ['fire-control', 'sensors'] as const) unit.dispatch({ type: 'set-system-damage-level',
+                system, level, target: 'committed', timestamp: level });
+            const row = projectNonMekEquipmentPanel(entity, unit.getIndex(), TOTAL_WARFARE_RULESET,
+                unit.snapshot(), unit.query(), targets, {}).components.find(row => row.componentId === id)!;
+            const modifier = (label: string) => row.weapon?.hitModifierBreakdown?.find(entry => entry.label === label)?.modifier;
+            expect(modifier('Fire control damage')).toBe(level === 1 ? 2 : 4);
+            expect(modifier('Sensor damage')).toBe(level === 3 ? 5 : level);
+            expect(row.weapon?.selectable).toBe(level < 3);
+        }
+        expect(unit.dispatchSelectedWeaponFire({ type: 'fire-selected-weapons' }, targets, false, false).changed).toBeFalse();
+    });
 
     it('requires TAG for aerospace spotters except a grounded spheroid DropShip', () => {
         const fighter = new TestAeroSpaceFighterEntity();
@@ -1053,7 +1156,7 @@ function baseline(): InstanceBaselineRef {
     });
 }
 
-import { createNonMekRuntimeForTest } from './testing/unit-runtime-owner-fixture';
+import { createNonMekRuntimeForTest, restoreNonMekRuntimeForTest } from './testing/unit-runtime-owner-fixture';
 
 /** An attacker with no declared movement, standard piloting, and an available C3 link. */
 function stationaryAttack(gunnery: number): WeaponAttackContext {

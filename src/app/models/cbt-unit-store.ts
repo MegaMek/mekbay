@@ -34,6 +34,7 @@ import type { ScenarioRules } from './runtime/unit-state-initializer';
 import { DEFAULT_FORCE_DEPLOYMENT_ID,scenarioRuleset } from './runtime/unit-state-initializer';
 import type { UnitConditionKey } from './unit-condition.model';
 import { sourceHashCanaryChanged } from './source-hash-canary';
+import { hydrateInternalPassengerSpaces } from './runtime/internal-bay-loads';
 
 import type { EquipmentInteractionRegistry } from '../services/equipment-interaction-registry.service';
 import { ToastService } from '../services/toast.service';
@@ -171,6 +172,7 @@ export class CBTUnitStore {
         const serializedUnits = new Map<string, SerializedCBTUnitV2 | SerializedNonMekUnit>();
         retainedEntries.forEach(entry => {
             const ready = units.get(entry.instanceId)!;
+            ready.hydratePassengerSpaces(id => units.get(id)?.getUnit(), true);
             const entity = ready.getUnit();
             const serialized = ready.serialize();
             if (ready.instanceId !== entry.instanceId
@@ -466,6 +468,7 @@ export class CBTUnitStore {
         if ([...units.values()].some(unit => unit.ruleset() !== ruleset)) {
             throw new Error('Every unit of a force must play its scenario rules');
         }
+        for (const unit of units.values()) unit.hydratePassengerSpaces(id => units.get(id)?.getUnit(), false);
         this.binding = Object.freeze({
             envelope,
             units,
@@ -540,6 +543,10 @@ export class CBTUnitStore {
         const unit = this.cbtUnit(instanceId);
         if (!unit) return Object.freeze({ accepted: true, changed: false, state: null });
         if (forceReadOnly) return Object.freeze({ accepted: false, changed: false, state: unit.snapshot() });
+        if (command.type === 'set-internal-bay-loads') {
+            const loads = hydrateInternalPassengerSpaces(unit.getUnit(), command.loads, id => this.cbtUnit(id)?.getUnit());
+            return unit.dispatch({ ...command, loads });
+        }
         return unit.dispatch(command);
     }
 
@@ -645,7 +652,7 @@ export class CBTUnitStore {
             .flatMap(unit => isCBTMekUnit(unit)
                 ? [mekTargetRosterRow(forceInstanceId, unit)]
                 : isCBTNonMekUnit(unit)
-                    ? [entityTargetRosterRow(forceInstanceId, unit)]
+                    ? [entityTargetRosterRow(forceInstanceId, unit, id => this.nonMekUnit(id))]
                     : []));
     }
 
@@ -740,6 +747,7 @@ export class CBTUnitStore {
         isReadOnly: () => boolean,
         isOwnerCurrent: () => boolean,
         publishChanged: () => void,
+        canDispatch: (command: CBTUnitCommand) => boolean = () => true,
     ): Promise<CBTEquipmentChoiceDispatchResult> {
         return Promise.resolve(this.dispatchEquipmentChoiceNow(
             command,
@@ -750,6 +758,7 @@ export class CBTUnitStore {
             isReadOnly,
             isOwnerCurrent,
             publishChanged,
+            canDispatch,
         ));
     }
 
@@ -762,6 +771,7 @@ export class CBTUnitStore {
         isReadOnly: () => boolean,
         isOwnerCurrent: () => boolean,
         publishChanged: () => void,
+        canDispatch: (command: CBTUnitCommand) => boolean,
     ): CBTEquipmentChoiceDispatchResult | Promise<CBTEquipmentChoiceDispatchResult> {
         if (!isOwnerCurrent()) return rejectedEquipmentChoice('OWNER_CHANGED');
         const owner = this.binding;
@@ -858,7 +868,7 @@ export class CBTUnitStore {
             const rejection = isReadOnly() ? 'READ_ONLY'
                 : settled || !isOwnerCurrent()
                     || this.binding?.units.get(selected.instanceId) !== unit
-                    || runtime.snapshot() !== before ? 'OWNER_CHANGED' : undefined;
+                    || runtime.snapshot() !== before ? 'OWNER_CHANGED' : !canDispatch(command) ? 'CHOICE_UNAVAILABLE' : undefined;
             if (rejection) {
                 settled ??= rejectedEquipmentChoice(rejection);
                 return Object.freeze({ accepted: false, changed: false, state: runtime.snapshot() });

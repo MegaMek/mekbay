@@ -1,6 +1,7 @@
 // Copyright (C) 2026 The MegaMek Team
 // SPDX-License-Identifier: GPL-3.0-or-later
 
+import { interiorBuildingDistance } from '../rules/infantry-building-damage';
 import type { CBTRuleset } from '../cbt-ruleset.model';
 import type { ComponentId } from '../entity/entity-identifiers';
 import { ImmutableIndex } from '../entity/immutable-collections';
@@ -44,6 +45,9 @@ export const TARGET_STEALTH_SECONDARY_REASON = 'Active stealth armor cannot be a
  * them once, for its panel and its reducer alike.
  */
 export interface WeaponTargetSubject {
+    readonly infantryOnly?: boolean;
+    readonly groundToAirBlocked?: boolean;
+    readonly maximumRange?: number;
     readonly weapon: WeaponEquipment;
     readonly selectedAmmo: AmmoEquipment | null;
     /** The weapon fires from below the water surface; false for a unit without a water layer. */
@@ -60,7 +64,7 @@ export type WeaponTargetSubjectResolver = (
 export interface WeaponPolicyTarget {
     readonly unitType?: TnTargetUnitType;
     readonly calculator?: TnTargetNumberCalculatorState;
-    readonly local?: Pick<AttackerLocalTargetState, 'calculator' | 'manualTnOverride'>;
+    readonly local?: Pick<AttackerLocalTargetState, 'calculator' | 'manualTnOverride' | 'distance'>;
 }
 
 const ARTILLERY_CANNON_AMMO_TYPES = new Set<AmmoType>([
@@ -105,6 +109,21 @@ export function weaponTargetDisabledReason(
     const rules = gameRulesFor(ruleset);
     const merged: TnTargetNumberCalculatorState = { ...target.calculator, ...target.local?.calculator };
     const facts = Object.keys(merged).length === 0 ? undefined : merged;
+    if (ruleset === 'total-warfare' && facts?.buildingCover) {
+        if (!facts.insideTargetBuilding && (target.unitType === 'infantry' || target.unitType === 'battle-armor'))
+            return 'Target the building hex to damage infantry inside';
+        if (facts.insideTargetBuilding && interiorBuildingDistance(target.local?.distance ?? 1, facts.targetLevelDifference) > 3)
+            return 'Building hexes or levels block line of sight';
+    }
+    if (subject.maximumRange !== undefined && (target.local?.distance ?? 1) > subject.maximumRange) {
+        return 'Destroyed ProtoMek head prevents long-range fire';
+    }
+    if (subject.infantryOnly && target.unitType !== undefined && target.unitType !== 'infantry') {
+        return 'Non-penetrating weapons affect only conventional infantry';
+    }
+    if (subject.groundToAirBlocked && target.unitType === 'aero' && facts?.isAirborne) {
+        return 'Requires an anti-aircraft infantry weapon';
+    }
     if (selectedAmmo?.hasMunitionType('M_THUNDER') === true && target.unitType !== 'terrain') {
         return TARGET_THUNDER_TERRAIN_REASON;
     }
@@ -172,9 +191,9 @@ export function applyWeaponTargetPolicies(
     ruleset: CBTRuleset,
     subjects: WeaponTargetSubjectResolver,
 ): AttackerTargetingState | null {
-    const aimed = edit.kind === 'set-component-selection' && edit.selection?.kind === 'target'
+    const aimed = edit.kind === 'set-component-selection' && edit.selection
         ? [edit.componentId]
-        : edit.kind === 'set-component-selections' && edit.selection?.kind === 'target'
+        : edit.kind === 'set-component-selections' && edit.selection
             ? edit.componentIds
             : [];
     if (aimed.some(componentId =>
@@ -212,6 +231,9 @@ function weaponTargetSelectionAllowed(
     subjects: WeaponTargetSubjectResolver,
 ): boolean {
     const component = targeting.components.get(componentId);
+    if (component?.selection?.kind === 'manual-range' && (component.selection.range === 'long' || component.selection.range === 'extreme')) {
+        return subjects(componentId, component.ammo)?.maximumRange === undefined;
+    }
     if (component?.selection?.kind !== 'target') return true;
     const targetId = component.selection.targetId;
     const target = registry.targets.find(candidate => candidate.id === targetId);

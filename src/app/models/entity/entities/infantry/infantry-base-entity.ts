@@ -49,6 +49,8 @@ export abstract class InfantryBaseEntity extends BaseEntity {
       hitModifierAdjustment: 0,
     });
     return Object.freeze([
+      ...(this.equipment().some(mount => mount.equipment?.hasFlag('F_VIBROCLAW'))
+        ? [attack('vibro-claw', 'Vibro-Claw Attack')] : []),
       ...(this.canMakeLegAttacks() ? [attack('leg-attack', 'Leg Attack')] : []),
       ...(this.canMakeSwarmAttacks() ? [attack('swarm', 'Swarm Attack'), attack('end-swarm', 'End Swarm')] : []),
     ]);

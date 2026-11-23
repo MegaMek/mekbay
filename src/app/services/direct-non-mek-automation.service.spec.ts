@@ -7,10 +7,12 @@ import type { CBTUnitCommand } from '../models/runtime/unit-command';
 import { componentIdForMount } from '../models/runtime/unit-runtime-index';
 
 import type { CBTForce } from '../models/cbt-force.model';
+import { systemDamageId } from '../models/rules/system-damage-rules';
 import type { CBTForceUnitCommandResult } from '../models/cbt-force.types';
 import { CORE_2026_RULESET } from '../models/cbt-ruleset.model';
 import type { CBTUnitSnapshot } from '../models/cbt-unit-snapshot';
-import { TestAeroSpaceFighterEntity, TestTankEntity } from '../models/entity/testing/test-entities';
+import { MountedEngine } from '../models/entity/components/engine';
+import { TestAeroSpaceFighterEntity, TestBattleArmorEntity, TestTankEntity, TestVtolEntity } from '../models/entity/testing/test-entities';
 import { createTestEquipmentRegistry } from '../models/entity/testing/test-equipment-registry';
 import {
 addTestEquipment,
@@ -83,6 +85,120 @@ describe('DirectNonMekAutomationService', () => {
             ],
         });
         service = TestBed.inject(DirectNonMekAutomationService);
+    });
+
+    function vehicle(entity: TestTankEntity | TestVtolEntity) {
+        entity.uuid.set(UUID);
+        entity.setTonnage(20);
+        entity.originalWalkMP.set(1);
+        for (const location of entity.locationOrder) entity.setArmorValue(location, 'front', 10);
+        const runtime = createNonMekRuntimeForTest('vehicle', baseline(), entity, CORE_2026_RULESET);
+        const snapshot = (): CBTUnitSnapshot => ({ instanceId: runtime.instanceId, entity, index: runtime.getIndex(), uuid: UUID,
+            ruleset: runtime.ruleset(), crewAssignment: runtime.getCrewAssignment(), editContext: { owner: runtime, state: runtime.snapshot() },
+            state: runtime.snapshot(), query: runtime.query() });
+        const force = { getUnitSnapshot: snapshot } as unknown as CBTForce;
+        const dispatch = async (command: CBTUnitCommand) => runtime.dispatch(command);
+        const location = (code: string) => [...runtime.getIndex().locations.values()].find(loc => loc.code === code)!;
+        return { runtime, snapshot, force, dispatch, location };
+    }
+
+    it('three Infernos in a turn eliminate the last armored trooper across separate attacks', async () => {
+        const entity = new TestBattleArmorEntity();
+        entity.uuid.set(UUID);
+        entity.trooperCount.set(1);
+        entity.setArmorValue('Squad', 'front', 5);
+        const runtime = createNonMekRuntimeForTest('last-suit', baseline(), entity, CORE_2026_RULESET);
+        const snapshot = (): CBTUnitSnapshot => ({ instanceId: runtime.instanceId, entity, index: runtime.getIndex(), uuid: UUID,
+            ruleset: runtime.ruleset(), crewAssignment: runtime.getCrewAssignment(), editContext: { owner: runtime, state: runtime.snapshot() },
+            state: runtime.snapshot(), query: runtime.query() });
+        const force = { getUnitSnapshot: snapshot } as unknown as CBTForce;
+        const hit = (count: number) => service.applyWeaponHits(force, runtime.instanceId, [], 'committed',
+            async command => runtime.dispatch(command), Array.from({ length: count }, () => ({ location: null })));
+        spyOn(Math, 'random').and.returnValue(0);
+        expect(await hit(2)).toBeTrue();
+        expect(runtime.query().destroyed()).toBeFalse();
+        expect(await hit(1)).toBeTrue();
+        expect(runtime.query().destroyed()).toBeTrue();
+        const suit = [...runtime.getIndex().locations.values()].find(loc => loc.code === 'Trooper 1')!;
+        expect(runtime.query().remainingArmor(suit.armorFaceIds[0], 'committed')).toBe(5);
+    });
+
+    it('applies the TW fuel tank errata to actual tank and VTOL power plants', async () => {
+        spyOn(Math, 'random').and.returnValue(0.99); // A roll of 12 on each side critical table.
+        const powerPlants = [
+            { type: 'ICE', installed: true, result: 'fuel-tank' },
+            { type: 'Fuel Cell', installed: true, result: 'fuel-tank' },
+            { type: 'Fission', installed: true, result: 'engine' },
+            { type: 'Fusion', installed: true, result: 'engine' },
+            { type: 'Fuel Cell', installed: false, result: null },
+        ] as const;
+        for (const Vehicle of [TestTankEntity, TestVtolEntity]) {
+            for (const { type, installed, result } of powerPlants) {
+                const design = new Vehicle();
+                design.mountedEngine.set(new MountedEngine({ type, installed, rating: 100, techBase: 'IS' }));
+                const context = `${design.entityType} ${type} (installed: ${installed})`;
+                const unit = vehicle(design);
+                const hit = { locationId: unit.location('Left').id, arc: 'left' as const, damage: 1,
+                    effects: ['critical' as const], source: { kind: 'weapon' as const, types: [] } };
+                expect(await service.applyWeaponHits(unit.force, 'vehicle', [hit], 'committed', unit.dispatch)).toBeTrue();
+                const tracks = unit.runtime.snapshot().damageTracks;
+                expect(tracks.has(systemDamageId('fuel-tank', 1))).withContext(context).toBe(result === 'fuel-tank');
+                expect(tracks.has(systemDamageId('engine', 1))).withContext(context).toBe(result === 'engine');
+                expect(unit.runtime.query().destroyed()).withContext(context).toBe(result === 'fuel-tank');
+            }
+        }
+    });
+
+    it('lands a VTOL after its last rotor MP is lost without creating an engine critical', async () => {
+        const vtol = vehicle(new TestVtolEntity());
+        vtol.runtime.dispatch({ type: 'set-airborne', airborne: true });
+        const before = vtol.snapshot();
+        const command = { type: 'damage-track', damageTrackId: systemDamageId('rotor'), amount: 1, target: 'committed', timestamp: 1 } as const;
+        const changed = vtol.runtime.dispatch(command);
+        choose.and.resolveTo('clear');
+        resolveChecksAutomation.and.resolveTo([{ outcome: 'success' }]);
+        expect(await service.afterCommand(vtol.force, 'vehicle', before, { command }, changed, vtol.dispatch)).toBeTrue();
+        expect(vtol.runtime.snapshot().turn.airborne).toBeFalse();
+        expect(vtol.runtime.snapshot().damageTracks.has(systemDamageId('engine', 1))).toBeFalse();
+        expect(resolveChecksAutomation.calls.mostRecent().args[1][0].targetNumber).toBe(9);
+    });
+
+    it('uses the unmodified Driving Skill Roll for an airborne WiGE engine hit', async () => {
+        const entity = new TestTankEntity();
+        entity.motiveType.set('WiGE');
+        const wige = vehicle(entity);
+        wige.runtime.dispatch({ type: 'set-airborne', airborne: true });
+        const before = wige.snapshot();
+        const command = { type: 'damage-track', damageTrackId: systemDamageId('engine', 1), amount: 1, target: 'committed', timestamp: 1 } as const;
+        const changed = wige.runtime.dispatch(command);
+        choose.and.resolveTo('clear');
+        resolveChecksAutomation.and.resolveTo([{ outcome: 'success' }]);
+        expect(await service.afterCommand(wige.force, 'vehicle', before, { command }, changed, wige.dispatch)).toBeTrue();
+        expect(wige.runtime.snapshot().turn.airborne).toBeFalse();
+        expect(resolveChecksAutomation.calls.mostRecent().args[1][0].targetNumber).toBe(5);
+    });
+
+    it('destroys rotor structure through armor and stages it until phase commit', async () => {
+        const vtol = vehicle(new TestVtolEntity());
+        const rotor = vtol.location('Rotor');
+        expect(await service.applyWeaponHits(vtol.force, 'vehicle', [{ locationId: rotor.id, arc: 'front', damage: 1,
+            effects: ['rotor-destroyed'], source: { kind: 'physical' } }], 'pending', vtol.dispatch)).toBeTrue();
+        expect(vtol.runtime.query().remainingInternal(rotor.id, 'preview')).toBe(0);
+        expect(vtol.runtime.query().remainingInternal(rotor.id, 'committed')).toBeGreaterThan(0);
+        expect(vtol.runtime.query().remainingArmor(rotor.armorFaceIds[0]!, 'preview')).toBe(10);
+    });
+
+    it('checks a surface vessel breach once on the actual hit, including an automatic breach when stripped', async () => {
+        const entity = new TestTankEntity();
+        entity.motiveType.set('Naval');
+        const naval = vehicle(entity);
+        const front = naval.location('Front');
+        const hit = { locationId: front.id, arc: 'front' as const, damage: 10, effects: [], source: { kind: 'weapon' as const, types: [] } };
+        expect(await service.applyWeaponHits(naval.force, 'vehicle', [hit], 'pending', naval.dispatch)).toBeTrue();
+        expect(naval.runtime.snapshot().pendingCombat.damageTrackHits.has(systemDamageId('hull-breach', undefined, 'Front'))).toBeTrue();
+        expect(naval.runtime.query().destroyed()).toBeFalse();
+        expect(naval.runtime.dispatch({ type: 'end-phase' }).changed).toBeTrue();
+        expect(naval.runtime.query().destroyed()).toBeTrue();
     });
 
     it('reviews vehicle launcher explosions and honors declined or cancelled automation', async () => {

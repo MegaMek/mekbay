@@ -28,7 +28,7 @@ export type DamageSource =
      * `rifle`: each hit loses 3 points where it strikes (`rifleHitDamage`). `rackSize`: the autocannon firing
      * armor-piercing rounds, whose size sets its armor-piercing check (`armorPiercingCheckModifiers`).
      */
-    | Readonly<{ kind: 'weapon'; types: readonly WeaponType[]; rifle?: true; ammo?: ArmorSpecialAmmo; rackSize?: number }>;
+    | Readonly<{ kind: 'weapon'; types: readonly WeaponType[]; rifle?: true; capitalScale?: true; ammo?: ArmorSpecialAmmo; rackSize?: number }>;
 
 export const FALL_DAMAGE: DamageSource = Object.freeze({ kind: 'fall' });
 export const PHYSICAL_DAMAGE: DamageSource = Object.freeze({ kind: 'physical' });
@@ -36,7 +36,7 @@ export const PHYSICAL_DAMAGE: DamageSource = Object.freeze({ kind: 'physical' })
 /** The source of an attack's hits: a physical attack, or its weapon's damage types and whether it is a rifle. */
 export function attackDamageSource(
     attack: Readonly<{
-        physical?: unknown; critical?: boolean; types: readonly WeaponType[]; rifle?: true; ammo?: ArmorSpecialAmmo; rackSize?: number;
+        physical?: unknown; critical?: boolean; types: readonly WeaponType[]; rifle?: true; capitalScale?: true; ammo?: ArmorSpecialAmmo; rackSize?: number;
     }>,
 ): DamageSource {
     // TW pp.220, 223: leg attacks and battle armor's swarm damage roll a separate critical check.
@@ -49,6 +49,7 @@ export function attackDamageSource(
             kind: 'weapon',
             types: attack.types,
             ...(attack.rifle ? { rifle: true as const } : {}),
+            ...(attack.capitalScale ? { capitalScale: true as const } : {}),
             ...(attack.ammo ? { ammo: attack.ammo } : {}),
             ...(attack.rackSize === undefined ? {} : { rackSize: attack.rackSize }),
         });

@@ -204,6 +204,9 @@
                 <span class="modifier-badge large defense" [class.empty-modifier]="!coverModifierLabel()">{{ coverModifierLabel() }}</span>
             </span>
             <cover-choices [cover]="cover()" [waterDepth]="waterDepth()" [buildingLevel]="buildingLevel()" (coverChange)="selectCover($event)" (waterDepthChange)="selectWaterDepth($event)" (buildingLevelChange)="selectBuildingLevel($event)" />
+            @if (canEnterAnotherWaterHex()) {
+                <button type="button" class="bt-button" (click)="enterAnotherWaterHex()">Enter another water hex</button>
+            }
         </div>
     </section>
 

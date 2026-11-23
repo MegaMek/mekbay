@@ -81,11 +81,19 @@ export function projectProtoMekRuntimeRules(
         'Right Arm': arm('Right Arm', 'right-arm'),
     });
     const armsLost = !entity.isQuad() && criticalHits['Left Arm'] >= 2 && criticalHits['Right Arm'] >= 2;
-    const fireBlockedComponentIds = new ImmutableSet(armsLost
-        ? [...index.components.values()]
-            .filter(component => component.mount.getOccupiedLocations().includes('Main Gun'))
-            .map(component => component.id)
-        : []);
+    const weapons = [...index.components.values()];
+    const selectedOrFired = weapons.filter(component => state.turn.firedWeapons?.includes(component.id)
+        || state.attackerTargeting.components.get(component.id)?.selection !== undefined);
+    const uses = (locations: readonly string[], group: readonly string[]) => group.some(code => locations.includes(code));
+    const arms = ['Left Arm', 'Right Arm'];
+    const main = ['Main Gun'];
+    const used = (group: readonly string[]) => selectedOrFired.some(c => uses(c.mount.getOccupiedLocations(), group));
+    const blockMain = armsLost || used(arms);
+    const blockArms = used(main);
+    const fireBlockedComponentIds = new ImmutableSet(weapons.filter(c => {
+        const locations = c.mount.getOccupiedLocations();
+        return (blockMain && uses(locations, main)) || (blockArms && uses(locations, arms));
+    }).map(c => c.id));
     const computedConditions: UnitConditionKey[] = [];
     if (abandoned) computedConditions.push('abandoned');
     if (allLimbsDestroyed || !functionalCrew) computedConditions.push('immobile');

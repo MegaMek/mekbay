@@ -7,7 +7,7 @@ import { STRUCTURE_TYPE } from '../entity/types';
 import { ArmorEquipment, StructureEquipment } from '../equipment.model';
 import { infernoEffect } from '../rules/inferno-rules';
 import type { BaseEntity } from '../entity/base-entity';
-import { TestAeroSpaceFighterEntity, TestProtoMekEntity, TestQuadMekEntity, TestTankEntity, TestTripodMekEntity } from '../entity/testing/test-entities';
+import { TestAeroSpaceFighterEntity, TestProtoMekEntity, TestQuadMekEntity, TestTankEntity, TestVtolEntity, TestTripodMekEntity } from '../entity/testing/test-entities';
 import { createNonMekUnit } from './cbt-non-mek-unit';
 import { queryNonMekRuntime } from './non-mek-unit-instance';
 import { projectNonMekRecordSheet } from './non-mek-record-sheet';
@@ -88,6 +88,9 @@ describe('readAttackHitLocation', () => {
             // hit meets no armor there; under TW the first destroys the torso and the second transfers to the armored
             // center torso.
             expect(readAttackThermalEffects(unit, 'front', [weapon, weapon]).heat).toBe(core ? 0 + 5 : 2 + 2);
+            // Two flamers in one BA attack meet armor one after the other, just like separately fired weapons.
+            expect(readAttackThermalEffects(unit, 'front', [{ ...weapon, heat: 10, heatPerGroup: 5,
+                groups: [...weapon.groups, ...weapon.groups] }]).heat).toBe(core ? 5 : 4);
             // The rear torso is already bare.
             expect(readAttackThermalEffects(unit, 'rear', [weapon]).heat).toBe(5);
             const missiles = readAttackThermalEffects(unit, 'front', [{ ...weapon, inferno: true }]).inferno;
@@ -341,6 +344,22 @@ describe('readAttackHitLocation', () => {
         expect(read([[4, 5], [2, 3]])).toEqual(jasmine.objectContaining({ location: 'LA' }));
     });
 
+    it('reports automatic rotor destruction only for a Mek physical against a flying VTOL', () => {
+        const entity = new TestVtolEntity();
+        let airborne = true;
+        const snapshot = { locations: entity.damageLocations().map((loc, index) => ({
+            ...loc, locationId: 'loc:' + index, previewRemainingInternal: 1, armor: [],
+        })) } as unknown as NonMekRecordSheetSnapshot;
+        const member = { entity, force: { getUnitSnapshot: () => ({ state: { turn: { airborne } } }) },
+            nonMekRecordSheetSnapshot: () => snapshot } as unknown as CBTForceMember;
+        const group = { location: [3, 4] as const, aux: 1 };
+        expect(weaponHitLocation(member, 'front', { mekPhysical: true }, group))
+            .toEqual(jasmine.objectContaining({ label: 'Rotor destroyed', effects: ['rotor-destroyed'] }));
+        expect(weaponHitLocation(member, 'front', {}, group)?.label).not.toBe('Rotor destroyed');
+        airborne = false;
+        expect(weaponHitLocation(member, 'front', { mekPhysical: true }, group)?.label).not.toBe('Rotor destroyed');
+    });
+
     it('lets an aimed shot name the vehicle locations its direction can strike, without their table effects', () => {
         const entity = new TestTankEntity();
         entity.hasTurret.set(true);
@@ -383,6 +402,11 @@ describe('readAttackHitLocation', () => {
         expect(readAttackHitLocation(member('core-2026'), 'rear', [2], 1, false, 'punch')).toEqual(jasmine.objectContaining({
             location: 'RT', rear: true, label: 'Right Torso (rear)',
         }));
+        for (const die of [1, 2, 3, 4, 5, 6]) {
+            expect(readAttackHitLocation(member('core-2026'), 'front', [die], 1, true, 'kick'))
+                .toEqual({ kind: 'miss', label: 'Cover' });
+            expect(readAttackHitLocation(member('core-2026'), 'front', [die], 1, false, 'kick')?.kind).toBe('mek');
+        }
         expect(readAttackHitLocation(member('total-warfare'), 'right', [1], 1, false, 'kick')).toEqual(jasmine.objectContaining({
             location: 'RL', rear: false,
         }));
@@ -404,6 +428,9 @@ describe('readAttackHitLocation', () => {
         expect(physicalHit(quad, 'core-2026', 'front', 1, 'punch')).toBe('FRL');
         expect(physicalHit(quad, 'core-2026', 'rear', 5, 'punch')).toBe('RLL');
         expect(physicalHit(quad, 'core-2026', 'front', 4, 'punch')).toBe('LT');
+        expect(readAttackHitLocation(memberOf(quad, 'core-2026'), 'front', [1], 1, true, 'punch'))
+            .toEqual({ kind: 'miss', label: 'Cover' });
+        expect(readAttackHitLocation(memberOf(quad, 'core-2026'), 'front', [4], 1, true, 'punch')?.kind).toBe('mek');
         // Kicks are the same in both books.
         expect(physicalHit(quad, 'core-2026', 'rear', 2, 'kick')).toBe('RRL');
         expect(physicalHit(quad, 'total-warfare', 'left', 6, 'kick')).toBe('RLL');

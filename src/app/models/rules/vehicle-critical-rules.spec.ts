@@ -19,7 +19,7 @@ describe('vehicle critical rules', () => {
         stabilizerHit: false,
         sensorHits: 0,
         engineHit: false,
-        fusionEngine: false,
+        powerSource: 'combustion',
         hasAmmo: true,
         turretLocked: false,
         flightStabilizerHit: false,
@@ -36,9 +36,6 @@ describe('vehicle critical rules', () => {
         expect(vehicleCriticalEffect(14, 'front', facts())).toBe('crew-killed');
         // No weapons in the front: Weapon Malfunction and Stabilizer give way to Sensors.
         expect(vehicleCriticalEffect(7, 'front', facts({ weaponStatuses: [] }))).toBe('sensors');
-        // Rear 12 is the fuel tank; a fusion engine already hit wraps around to 6.
-        expect(vehicleCriticalEffect(12, 'rear', facts({ fusionEngine: true, engineHit: true })))
-            .toBe('weapon-malfunction');
         // A turret with nothing else left to damage is blown off; ground vehicles have no rotor column.
         expect(vehicleCriticalEffect(8, 'turret', facts({
             weaponStatuses: [], hasAmmo: false, turretLocked: true,
@@ -56,10 +53,59 @@ describe('vehicle critical rules', () => {
         expect(vehicleCriticalEffect(6, 'front', facts({ vtol: true, commanderHit: true }))).toBe('crew-killed');
     });
 
-    it('applies the table footnotes for ammunition and fusion engines', () => {
+    it('substitutes Weapon Destroyed for an ammunition critical on a vehicle without ammo', () => {
         expect(vehicleCriticalEffect(11, 'rear', facts({ hasAmmo: false }))).toBe('weapon-destroyed');
-        expect(vehicleCriticalEffect(12, 'side', facts({ fusionEngine: true }))).toBe('engine-hit');
-        expect(vehicleCriticalEffect(12, 'side', facts())).toBe('fuel-tank');
+    });
+
+    for (const powerSource of ['combustion', 'fuel-cell'] as const) {
+        it(`applies Fuel Tank to ${powerSource} vehicles on both critical tables`, () => {
+            for (const vtol of [false, true]) {
+                const vehicle = facts({ powerSource, vtol });
+                expect(vehicleCriticalEffect(12, 'side', vehicle)).toBe('fuel-tank');
+                expect(vehicleCriticalEffect(12, 'rear', vehicle)).toBe('fuel-tank');
+            }
+        });
+    }
+
+    for (const powerSource of ['fusion', 'fission'] as const) {
+        it(`converts Fuel Tank to Engine Hit for ${powerSource} and wraps past an engine already hit`, () => {
+            for (const vtol of [false, true]) {
+                const vehicle = facts({ powerSource, vtol });
+                expect(vehicleCriticalEffect(12, 'side', vehicle)).toBe('engine-hit');
+                expect(vehicleCriticalEffect(12, 'rear', vehicle)).toBe('engine-hit');
+                expect(vehicleCriticalEffect(12, 'rear', { ...vehicle, engineHit: true })).toBe('weapon-malfunction');
+            }
+        });
+    }
+
+    for (const powerSource of ['battery', 'solar', 'steam', 'maglev', 'external'] as const) {
+        it(`skips Fuel Tank in the struck column on a ${powerSource} ground vehicle`, () => {
+            const emptyTruck = facts({ powerSource, hasInternalLoad: false, hasAmmo: false, weaponStatuses: [] });
+            expect(vehicleCriticalEffect(12, 'side', emptyTruck)).toBe('crew-stunned');
+            expect(vehicleCriticalEffect(12, 'rear', emptyTruck)).toBe('engine-hit');
+        });
+    }
+
+    it('applies Fuel Tank to a battery-powered support VTOL', () => {
+        const vtol = facts({ powerSource: 'battery', vtol: true });
+        expect(vehicleCriticalEffect(12, 'side', vtol)).toBe('fuel-tank');
+        expect(vehicleCriticalEffect(12, 'rear', vtol)).toBe('fuel-tank');
+    });
+
+    it('skips both Fuel Tank and Engine Hit when there is no engine', () => {
+        const unpowered = facts({ powerSource: 'none', hasAmmo: false, weaponStatuses: [] });
+        expect(vehicleCriticalEffect(12, 'side', unpowered)).toBe('crew-stunned');
+        expect(vehicleCriticalEffect(10, 'rear', unpowered)).toBeNull();
+        const vtol = { ...unpowered, vtol: true };
+        expect(vehicleCriticalEffect(12, 'rear', vtol)).toBe('sensors');
+        expect(vehicleCriticalEffect(10, 'side', vtol)).toBeNull();
+    });
+
+    it('applies cargo criticals only to real loads and locks the same turret on the second jam', () => {
+        expect(vehicleCriticalEffect(6, 'side', facts({hasInternalLoad: true}))).toBe('cargo-hit');
+        expect(vehicleCriticalEffect(6, 'side', facts({hasInternalLoad: false}))).not.toBe('cargo-hit');
+        expect(vehicleCriticalEffect(7, 'turret', facts())).toBe('turret-jam');
+        expect(vehicleCriticalEffect(7, 'turret', facts({ turretJammedBefore: true }))).toBe('turret-locks');
     });
 
     it('reads the VTOL rotor column', () => {

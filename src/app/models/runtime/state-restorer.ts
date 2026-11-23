@@ -932,7 +932,7 @@ function parseLegacyLocationCondition(raw: JsonValue): ParsedLegacyLocationCondi
         || (record['pending'] !== undefined && typeof record['pending'] !== 'boolean')
         || (value !== undefined && (typeof value !== 'number' || !Number.isFinite(value)));
 
-    if (condition === 'narc') {
+    if (condition === 'narc' || condition === 'new-narc') {
         if (typeof value !== 'number' || !Number.isSafeInteger(value)
             || value <= 0 || value > MAX_MEK_LOCATION_CONDITION_VALUE) {
             return {

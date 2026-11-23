@@ -25,6 +25,21 @@ export function conventionalInfantryRangeWeapon(entity: InfantryEntity): Infantr
         ? secondary : entity.primaryWeapon();
 }
 
+/**
+ * TechManual pp.148–151: two troopers in each squad must carry Heavy Burst weapons. Capping a
+ * primary weapon's damage at 0.60 automatically grants the platoon the same feature.
+ */
+export function platoonHeavyBurstDice(entity: InfantryEntity): number {
+    const primary = entity.primaryWeapon();
+    const secondary = entity.secondaryWeapon();
+    const secondaryCount = entity.secondaryCount();
+    const primaryCount = Math.max(0, entity.squadSize() - secondaryCount);
+    const primaryCapped = primaryCount > 0 && (primary?.infantry.damage ?? 0) > entity.platoonWeaponDamagePerTrooper('primary');
+    const equipped = (primary?.hasFlag('F_INF_BURST') ? primaryCount : 0)
+        + (secondary?.hasFlag('F_INF_BURST') ? secondaryCount : 0);
+    return primaryCapped || equipped >= 2 ? 1 : 0;
+}
+
 // TW/TechManual infantry range categories, also used by MegaMek Compute.getInfantryRangeMods.
 const RANGE_MODIFIERS: readonly (readonly number[])[] = Object.freeze([
     [0],
@@ -48,7 +63,7 @@ export function projectConventionalInfantryCombat(
     const damagePerTrooper = primary === null || squadSize <= 0 ? 0
         : (primaryDamage * (squadSize - secondaryCount)
             + entity.platoonWeaponDamagePerTrooper('secondary') * secondaryCount) / squadSize;
-    const primaryDamageCapped = (primary?.infantry.damage ?? 0) > primaryDamage;
+    const heavyBurst = platoonHeavyBurstDice(entity) > 0;
     const maximumStrength = entity.structureValues().get('Infantry') ?? 0;
     // PrintInfantry.writeTextFields uses rounded per-strength damage, not ceil or AS damage.
     const damageByStrength = Array.from({ length: maximumStrength + 1 }, (_, strength) =>
@@ -60,9 +75,9 @@ export function projectConventionalInfantryCombat(
         maximumStrength,
         damagePerTrooper,
         damageByStrength: Object.freeze(damageByStrength),
-        rangeModifiers: infantryRangeModifiers(rangeWeapon, otherWeapon, false, primaryDamageCapped),
+        rangeModifiers: infantryRangeModifiers(rangeWeapon, otherWeapon, false, heavyBurst),
         underwaterRangeModifiers: underwater
-            ? infantryRangeModifiers(rangeWeapon, otherWeapon, true, primaryDamageCapped) : null,
+            ? infantryRangeModifiers(rangeWeapon, otherWeapon, true, heavyBurst) : null,
     });
 }
 
@@ -76,6 +91,10 @@ export interface PlatoonAttackFacts {
     readonly troopers: number;
     /** Damage dealt when that many troopers hit, indexed by troopers hitting. */
     readonly damageByTroopers: readonly number[];
+    /** Additional dice once against a conventional infantry platoon. */
+    readonly burstDice?: number;
+    /** Beast-mounted infantry add these dice only in the target's hex. */
+    readonly mountBurstDice?: number;
     /** The range modifier at each hex distance; null out of range. */
     readonly rangeModifiers: readonly (number | null)[];
     /** An SRM platoon declared with Inferno munitions fires inferno missiles instead of damage (TW p. 142). */
@@ -88,9 +107,13 @@ export interface PlatoonAttackFacts {
 export function platoonAttack(entity: InfantryEntity, troopers: number): PlatoonAttackFacts {
     const profile = projectConventionalInfantryCombat(entity);
     const firing = Math.max(0, Math.min(troopers, profile.maximumStrength));
+    const burstDice = platoonHeavyBurstDice(entity);
+    const mountBurstDice = entity.mount()?.burstDamage ?? 0;
     return Object.freeze({
         troopers: firing,
         damageByTroopers: Object.freeze(profile.damageByStrength.slice(0, firing + 1)),
+        ...(burstDice ? { burstDice } : {}),
+        ...(mountBurstDice ? { mountBurstDice } : {}),
         rangeModifiers: profile.rangeModifiers,
         inferno: entity.firesInfernoSrms(),
         heatOrDamageWeapon: platoonHeatOrDamageWeapon(entity),
@@ -164,7 +187,7 @@ export function trooperWeaponAttack(
     return Object.freeze({
         troopers: firing,
         damageByTroopers: Object.freeze(Array.from({ length: firing + 1 }, (_, hit) => Math.round(damagePerTrooper * hit))),
-        rangeModifiers: infantryRangeModifiers(weapon, null, false, false),
+        rangeModifiers: infantryRangeModifiers(weapon, null, false, weapon.hasFlag('F_INF_BURST')),
         inferno: false,
         heatOrDamageWeapon: isHeatOrDamageWeapon(weapon) ? weapon : null,
     });
@@ -174,7 +197,7 @@ function infantryRangeModifiers(
     weapon: InfantryWeaponEquipment | null,
     otherWeapon: InfantryWeaponEquipment | null,
     underwater: boolean,
-    primaryDamageCapped: boolean,
+    heavyBurst: boolean,
 ): readonly (number | null)[] {
     const category = weapon === null ? -1 : underwater
         ? Math.floor(weapon.infantry.range / 2) : weapon.infantry.range;
@@ -184,7 +207,7 @@ function infantryRangeModifiers(
         if (weapon.hasFlag('F_INF_POINT_BLANK') || otherWeapon?.hasFlag('F_INF_POINT_BLANK')) pointBlank += 1;
         if (weapon.hasFlag('F_INF_ENCUMBER') || weapon.infantry.crew > 1
             || otherWeapon?.hasFlag('F_INF_ENCUMBER') || (otherWeapon?.infantry.crew ?? 0) > 1) pointBlank += 1;
-        if (weapon.hasFlag('F_INF_BURST') || primaryDamageCapped) pointBlank -= 1;
+        if (heavyBurst) pointBlank -= 1;
     }
     return Object.freeze(Array.from({ length: 22 }, (_, distance) => {
         const modifier = modifiers?.[distance];

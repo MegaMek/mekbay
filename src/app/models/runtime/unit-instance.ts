@@ -56,13 +56,14 @@ import { assignedCrewRuntimeState,canonicalizeCrewAssignment,commitCrewDeaths,cr
 import type { TargetRegistrySnapshot } from './encounter-runtime';
 import { RuntimeEquipmentStatusKernel,type RuntimeEquipmentCommittedState,type RuntimeEquipmentStatusTopology } from './equipment-status-kernel';
 import { buildEquipmentStatusTopology } from './equipment-status-topology';
-import { canPerformMekAction } from './mek-action-availability';
+import { canPerformMekAction, fireConflictsWithPhysicalDeclaration, mekPhysicalAttackGeometry, proneMekCanFire } from './mek-action-availability';
+import { physicalTargetIssue } from '../rules/physical-attack-rules';
 import { ammoSourceFeedsWeapon,mekAmmoCapacity,mekAmmoDefaultMunitionKey,mekAmmoLoadout,mekAmmoLoadouts,weaponAcceptsAmmo,type AmmoLoadout } from './mek-ammo';
 import { mekComponentModes } from './mek-component-rules';
 import { GAUSS_POWERED_UP,isSparseMekGaussPowerState,nextGaussPowerState,settledGaussPowerState,type MekGaussPowerState } from './mek-gauss-power';
 import { isMekLocationPhysicallyDestroyed,isMekLocationPhysicallyDestroyedFromView,mekLocationDestructionParentId } from './mek-location-state-kernel';
 import type { MekShieldTrack } from './mek-shield-rules';
-import { isUnitWaterDepth,unitWaterDepthNumber } from '../unit-cover.model';
+import { isUnitBuildingLevel,isUnitWaterDepth,unitWaterDepthNumber } from '../unit-cover.model';
 import { canonicalizeMekTurnStateV2,createPristineMekTurnStateV2,MAX_MEK_TURN_NUMBER,mekTurnStatesEqualV2,type MekTurnStateV2 } from './mek-turn-state-v2';
 import { applyMekWeaponFirePlanV2,planMekWeaponFireV2,type MekWeaponFireSelectionV2 } from './mek-weapon-fire-v2';
 import { freezeRuntimeState,isMekLocationConditionKey,MAX_MEK_LOCATION_CONDITION_VALUE,type BombastLaserRuntimeState,type C3EmergencyMasterOperatingTurns,type C3EmergencyMasterRuntimeState,type ComponentRuntimeState,type EscalatingFailureRuntimeState,type LocationRuntimeState,type MekLocationConditionKey,type MekShieldDamageRuntimeState,type MekUnitRuntimeState,type PendingCombatOverlay,type PpcCapacitorRuntimeState } from './runtime-state';
@@ -71,6 +72,7 @@ import type { CBTUnitCommand } from './unit-command';
 import type { MekEntity } from '../entity/entities/mek/mek-entity';
 import type { MekSystemType } from '../entity/types';
 import { isModularArmorEquipment,MODULAR_ARMOR_POINTS_PER_MOUNT } from '../modular-armor.model';
+import { missileDefenseSystems, fireMissileDefense } from './anti-missile-defense';
 import { heatSinkSwitchIsImmediate,isHeatValue,sameNextHeat,settleHeatSinkSwitch,withEditedHeat,withHeatSinkSwitch,withFiredWeapons,withNextHeat,withPendingCombatDelta,withPendingHeat,type CBTUnitCommandResult,type CBTUnitQueryPort,type RuntimeStatePerspective } from './cbt-unit-runtime';
 import type { MekCombatModifierProjectionResult } from './mek-combat-modifiers';
 import { projectMekBlowOffV2,projectMekCriticalChanceV2,projectMekCriticalRollProfileV2,projectMekCriticalRollV2,projectPendingMekCriticalExplosionV2,type MekBlowOffPlanV2,type MekCriticalChanceProfileV2,type MekCriticalRollPlanV2,type MekCriticalRollProfileV2,type MekCriticalRuntimeViewV2,type MekEquipmentExplosionPlanV2 } from './mek-critical-hit-v2';
@@ -805,6 +807,26 @@ function reduceAttackerTargeting(
     const selectingComponents = (command.edit.kind === 'set-component-selection'
         || command.edit.kind === 'set-component-selections')
         && command.edit.selection !== null;
+    if (command.edit.kind === 'set-action-selection' && command.edit.selection !== null
+        && !canPerformMekAction(unit.entity, index, runtime, command.edit.target, 'physical-attack', unit.ruleset)) {
+        return unchanged(state);
+    }
+    const edit = command.edit;
+    if (edit.kind === 'set-action-selection' && edit.selection?.kind === 'target') {
+        const targetId = edit.selection.targetId;
+        const defender = registry.targets.find(row => row.id === targetId);
+        const local = state.attackerTargeting.targets.get(targetId);
+        const { kind, hitTable, reach } = mekPhysicalAttackGeometry(index, edit.target, runtime.hasCondition('prone'), runtime.hasCondition('swarmed'));
+        const movement = runtime.mekMovementPsr();
+        if (!defender || physicalTargetIssue(kind, reach, {
+            unitType: defender.unitType, distance: local?.distance ?? 1,
+            tnCalculator: { ...defender.tnCalculator, ...local?.calculator },
+        }, unit.ruleset, hitTable, {
+            jumpMp: movement.kind === 'supported' ? movement.jumpMp : undefined,
+            partiallyUnderwater: resolveMekUnitWaterState(unit.entity, state.turn.cover, runtime.hasCondition('prone')).partiallyUnderwater,
+            insideBuilding: isUnitBuildingLevel(state.turn.cover),
+        }) !== null) return unchanged(state);
+    }
     if (selectingComponents && runtime.crewAssignment().positions.length === 0
         && runtime.hasCondition('abandoned')) return unchanged(state);
     if (selectingComponents
@@ -825,6 +847,11 @@ function reduceAttackerTargeting(
         return forceReadOnly ? readOnly(state) : unchanged(state);
     }
     if (!planned.changed) return unchanged(state);
+    if (selectingComponents) {
+        const selected = [...planned.state.components].flatMap(([id, component]) => component.selection === undefined ? [] : [id]);
+        if (!proneMekCanFire(index, runtime, unit.ruleset, selected)
+            || fireConflictsWithPhysicalDeclaration(index, runtime, unit.ruleset, selected)) return unchanged(state);
+    }
     const nextTargeting = applyWeaponTargetPolicies(planned.state, command.edit, registry, unit.ruleset,
         mekWeaponTargetSubjects(unit, index, runtime));
     if (nextTargeting === null) return unchanged(state);
@@ -1615,6 +1642,12 @@ function reduce(
             changed = { ...state, ammo: new Map() };
             break;
         }
+        case 'engage-ams': {
+            const system = missileDefenseSystems(entity, index, state, runtime, ruleset, command.arc).find(s => s.id === command.componentId);
+            if (!system) return unchanged(state);
+            changed = fireMissileDefense(state, system, true);
+            break;
+        }
         case 'spend-ammo': {
             if (!positiveInteger(command.amount)) return unchanged(state);
             const current = state.ammo.get(command.componentId);
@@ -2166,7 +2199,10 @@ function reduce(
             const movementPsr = state.turn.airborne === turn.airborne
                 ? state.movementPsr
                 : clearMekMovementV2(state.movementPsr);
-            changed = mekTurnStatesEqualV2(state.turn, turn)
+            const explicitEntry = command.enteredWaterHex && isUnitWaterDepth(turn.cover)
+                && movementPsr.movement?.mode === (unit.ruleset === 'core-2026' ? 'run' : 'walk')
+                && movementPsr.movement.distance > 0 && !runtime.hasCondition('prone');
+            changed = !explicitEntry && mekTurnStatesEqualV2(state.turn, turn)
                 && mekMovementPsrStatesEqualV2(state.movementPsr, movementPsr)
                 ? null
                 : { ...state, turn, movementPsr };
@@ -2378,7 +2414,8 @@ function reconcileMovementAfterCommand(
         // A jump raises its landing rolls as the player declares it (a new declaration drops the movement's unrolled
         // rolls), and a jump into water also as the 'Mech enters the water; only then, so a roll already settled is not
         // raised again by later edits.
-        const enteredWater = !isUnitWaterDepth(before.turn.cover) && isUnitWaterDepth(changed.turn.cover);
+        const enteredWater = isUnitWaterDepth(changed.turn.cover) && (before.turn.cover !== changed.turn.cover
+            || command.type === 'replace-turn-state' && command.enteredWaterHex === true);
         if (enteredWater || command.type === 'declare-mek-movement') {
             const raised = raiseMekJumpChecksContextV2(
                 mechanicsContext,
@@ -2388,6 +2425,7 @@ function reconcileMovementAfterCommand(
                 nextRevision,
                 raisesImmediatePilotChecks(changed, 'realPhases' in command ? command.realPhases : undefined),
                 command.type === 'declare-mek-movement' && command.swarmerMagneticClaws === true,
+                enteredWater,
             );
             if (!('kind' in raised)) changed = { ...changed, movementPsr: raised };
         }
@@ -2841,7 +2879,7 @@ function createMovementRuntimeInput(
     for (const condition of ['shutdown', 'prone', 'disconnected', 'swarmed'] as const) {
         if (state.conditions.has(condition)) conditions.add(condition);
     }
-    const weaponFired = weaponFiredLocationIds(unit.index, state.attackerTargeting);
+    const weaponFired = weaponFiredLocationIds(unit.index, state.attackerTargeting, state.turn.firedWeapons, unit.ruleset);
     return Object.freeze({
         currentHeat: state.heat.current,
         airborne: state.turn.airborne === true,
@@ -3093,7 +3131,16 @@ function endTurn(
         : { ...suitesSettled, heat: canonicalizeMekHeatStateV2(settleHeatSinkSwitch(suitesSettled.heat)) };
     const stealthSettled = settleStealthSystems(unit, electronicSettled, statusTopology, true);
     const committed = commitPending(unit, entity, index, stealthSettled) ?? stealthSettled;
-    const deathsSettled = commitCrewDeaths(committed);
+    // Core p. 188: a newly attached pod guides missiles from the following turn.
+    let podsActivated = committed;
+    for (const [locationId, location] of committed.locations) {
+        const fresh = location.conditions.get('new-narc') ?? 0;
+        if (!fresh) continue;
+        podsActivated = withLocationCondition(podsActivated, locationId, 'new-narc', 0) ?? podsActivated;
+        const active = location.conditions.get('narc') ?? 0;
+        podsActivated = withLocationCondition(podsActivated, locationId, 'narc', active + fresh) ?? podsActivated;
+    }
+    const deathsSettled = commitCrewDeaths(podsActivated);
     const conditions = conditionsCarriedIntoNextTurn(deathsSettled.conditions);
     const turn = createPristineMekTurnStateV2(Math.min(
         deathsSettled.turn.turnCounter + 1,
@@ -4505,9 +4552,10 @@ function clearNarcFromCommittedPhysicallyDestroyedLocations(
 ): MekUnitRuntimeState {
     let result = state;
     for (const [locationId, locationState] of state.locations) {
-        if ((locationState.conditions.get('narc') ?? 0) <= 0
-            || !isMekLocationPhysicallyDestroyed(unit.index, state.locations, locationId)) continue;
+        if (!locationState.conditions.has('narc') && !locationState.conditions.has('new-narc')) continue;
+        if (!isMekLocationPhysicallyDestroyed(unit.index, state.locations, locationId)) continue;
         result = withLocationCondition(result, locationId, 'narc', 0) ?? result;
+        result = withLocationCondition(result, locationId, 'new-narc', 0) ?? result;
     }
     return result;
 }
@@ -5023,13 +5071,13 @@ function buildHeatKernelInput(
         }
     }
     const committedUnavailableCriticalSlots = new Set<CriticalSlotId>();
-    const committedDestroyedCriticalSlots = new Set<CriticalSlotId>();
+
     const previewUnavailableCriticalSlots = new Set<CriticalSlotId>();
     for (const slotId of unit.index.slots.keys()) {
         const committedStatus = status.criticalSlot(slotId).status;
         const committedUnavailable = committedStatus !== 'available';
         if (committedUnavailable) committedUnavailableCriticalSlots.add(slotId);
-        if (committedStatus === 'destroyed') committedDestroyedCriticalSlots.add(slotId);
+
         // A pending repair does not erase a committed engine hit before commit. Preview
         // destruction (including pending critical/location loss) does contribute immediately.
         if (committedUnavailable || previewStatus.criticalSlot(slotId).status !== 'available') {
@@ -5103,7 +5151,6 @@ function buildHeatKernelInput(
             state.conditions.has('prone'),
         ),
         committedUnavailableCriticalSlots,
-        committedDestroyedCriticalSlots,
         previewUnavailableCriticalSlots,
         committedUnavailableComponents,
         activeEscalatingFailureComponents,
@@ -5148,7 +5195,7 @@ function isMekLocationConditionValue(
     if (!Number.isSafeInteger(value)
         || Number(value) < (allowZero ? 0 : 1)
         || Number(value) > MAX_MEK_LOCATION_CONDITION_VALUE) return false;
-    return condition === 'narc' || value === 0 || value === 1;
+    return condition === 'narc' || condition === 'new-narc' || value === 0 || value === 1;
 }
 
 function escalatingFailureDefinition(

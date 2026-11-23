@@ -60,7 +60,7 @@ import { encodeNativeEntity } from './entity/write-entity';
 import { matchNativeMounts } from './entity/utils/native-mount-correspondence';
 import { makeUnitFileName } from '../services/unit-catalog/unit-catalog.types';
 import type { NativeUnitSourceHandle } from './native-unit-source-handle';
-import { TestAeroSpaceFighterEntity } from './entity/testing/test-entities';
+import { TestAeroSpaceFighterEntity, TestFixedWingSupportEntity } from './entity/testing/test-entities';
 
 const dataService = {
     getFactionById: () => null,
@@ -420,6 +420,47 @@ describe('CBTForce rules switch', () => {
             dropped: [{ unit: force.runtimeHistoryUnitLabel(mek.id), items: ['skidding condition'] }],
         });
         expect(force.getUnitConditions(mek.id)).not.toContain('skidding');
+    });
+
+    it('locks sheet targeting, reset and the firing mode after a weapon declaration', async () => {
+        const options = optionsService.options();
+        const configuration = spyOn(optionsService, 'options').and.returnValue({ ...options, realPhases: true, trackPhaseAndTurn: true });
+        const laser = new WeaponEquipment({ id: 'PhaseLaser', name: 'Phase Laser', type: 'weapon', modes: ['Normal', 'Low'],
+            weapon: { ammoType: 'NA', damage: 5, heat: 1, ranges: [3, 6, 9, 12] } });
+        const entity = new TestTankEntity(createTestEquipmentRegistry({ [laser.id]: laser }));
+        const componentId = asComponentId(addTestEquipment(entity, laser, { location: 'Front' }).mountId);
+        const { force, instanceId } = await readyEntityForce({ entity });
+        const [a, b] = ['A', 'B'].map(letter => {
+            const id = asEncounterTargetId('target:' + letter);
+            force.dispatchInventoryControlTargetRegistry({ kind: 'create-target', target: { id, letter, name: letter, color: '#123456' } });
+            return id;
+        });
+        const select = (id: typeof a | null) => force.dispatchAttackerTargeting(instanceId, { type: 'edit-attacker-targeting',
+            edit: { kind: 'set-component-selection', componentId, selection: id ? { kind: 'target', targetId: id } : null } });
+        await force.dispatchUnitCommand(instanceId, { type: 'complete-turn-step', step: 0 });
+        expect((await select(a)).changed).toBeTrue();
+        await force.dispatchUnitCommand(instanceId, { type: 'complete-turn-step', step: 1 });
+        expect((await select(b)).accepted).toBeFalse();
+        expect((await select(null)).accepted).toBeFalse();
+        expect((await force.dispatchUnitCommand(instanceId, { type: 'set-component-mode', componentId, mode: 'Low' })).accepted).toBeFalse();
+        expect(force.getAttackerTargeting(instanceId)?.state.components.get(componentId)?.selection).toEqual({ kind: 'target', targetId: a });
+        configuration.and.returnValue({ ...options, realPhases: false });
+        expect((await select(b)).changed).toBeTrue();
+        expect((await select(null)).changed).toBeTrue();
+    });
+
+    it('keeps a declared physical attack when a sheet clears it at To-Hit', async () => {
+        const options = optionsService.options();
+        spyOn(optionsService, 'options').and.returnValue({ ...options, realPhases: true, trackPhaseAndTurn: true });
+        const { force } = await readyCloneForce();
+        const id = force.getCBTMembers()[0]!.id;
+        const select = (selected: boolean) => force.dispatchAttackerTargeting(id, { type: 'edit-attacker-targeting',
+            edit: { kind: 'set-action-selection', target: { kind: 'intrinsic', actionId: 'intrinsic:punch:RA' },
+                selection: selected ? { kind: 'selected' } : null } });
+        for (let step = 0; step < 5; step++) await force.dispatchUnitCommand(id, { type: 'complete-turn-step', step });
+        expect((await select(true)).changed).toBeTrue();
+        expect((await force.dispatchUnitCommand(id, { type: 'complete-turn-step', step: 5 })).changed).toBeTrue();
+        expect((await select(false)).accepted).toBeFalse();
     });
 
     it('drops a jam the new rules do not have instead of failing the switch', async () => {
@@ -2829,6 +2870,18 @@ describe('CBTForce V2 encounter persistence', () => {
         expect(restored.getUnitExternalStoresBattleValue(instanceId)).toBe(48);
         expect(entityRuntimeSnapshot(restored, instanceId).state.bombs)
             .toEqual([{ section: 'external', bombId: he.id, count: 4, spent: 0 }]);
+    });
+
+    it('round-trips an airship half-speed cycle through the force storage wire format', async () => {
+        const entity = new TestFixedWingSupportEntity();
+        entity.motiveType.set('Airship');
+        const { force, instanceId, reload } = await readyEntityForce({ entity });
+        expect((await force.dispatchUnitCommand(instanceId, { type: 'set-velocity-record',
+            turn: 1, field: 'velocity', value: 0.5 })).changed).toBeTrue();
+        const saved = await force.serializeForPersistence() as SerializedCBTForce;
+        const restored = await reload(decodeForceFromStorage(encodeForceForStorage(saved)) as SerializedCBTForce);
+        expect(restored.getNonMekRecordSheetSnapshot(instanceId)!.velocityRecord)
+            .toEqual([1, 2, 3, 4].map(turn => ({ turn, field: 'velocity', value: 0.5 })));
     });
 
     it('keeps an aerospace velocity record with undo, history and storage', async () => {

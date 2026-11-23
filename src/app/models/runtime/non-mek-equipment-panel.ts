@@ -106,7 +106,8 @@ type NonMekAmmoSourceLoads,
 type NonMekUnitQueryPort,
 type NonMekUnitRuntimeState,
 } from './non-mek-unit-instance';
-import { nonMekWeaponAttackGroups } from './non-mek-weapon-attack-groups';
+import { aerospaceRapidFireShots } from './component-rapid-fire-autocannon';
+import { nonMekWeaponAttackGroups, usesAerospaceFiringRates } from './non-mek-weapon-attack-groups';
 import { weaponTargetDisabledReasons } from './weapon-target-policy';
 
 interface NonMekAmmoSourceCandidate {
@@ -196,7 +197,7 @@ export function projectNonMekEquipmentPanel(
             ? Object.freeze([projectVehicleCharge(entity, state, vehicleRules, ruleset)])
             : protoMekRules !== null
                 ? Object.freeze([projectProtoMekFrenzy(entity, state, protoMekRules, ruleset)])
-                : projectAntiMekAttacks(entity, index, state, query, swarming),
+                : projectAntiMekAttacks(entity, index, state, query, swarming, skills.gunnery),
         ...(state.equipmentRowOrder === undefined
             ? {}
             : { equipmentRowOrder: state.equipmentRowOrder }),
@@ -247,6 +248,7 @@ function projectAntiMekAttacks(
     state: NonMekUnitRuntimeState,
     query: NonMekUnitQueryPort,
     swarming: string | null,
+    gunnery: number,
 ): readonly MekPhysicalAttackRow[] {
     if (!isInfantryFamilyEntity(entity)) return Object.freeze([]);
     const battleArmor = isBattleArmorEntity(entity);
@@ -254,9 +256,9 @@ function projectAntiMekAttacks(
     const active = !query.destroyed() && troopers > 0;
     const claws = battleArmor ? battleArmorVibroClaws(entity) : 0;
     const row = (
-        kind: 'leg-attack' | 'swarm' | 'end-swarm',
+        kind: 'leg-attack' | 'swarm' | 'end-swarm' | 'vibro-claw',
         facts: Pick<MekPhysicalAttackRow, 'kind' | 'reach'> & Partial<Pick<MekPhysicalAttackRow,
-            'hitTable' | 'onlyTarget' | 'damageGroupSize' | 'critical'>> & Readonly<{
+            'hitTable' | 'onlyTarget' | 'damageGroupSize' | 'critical' | 'firingSuits' | 'gunnerySkill'>> & Readonly<{
                 label?: string;
                 modifiers?: readonly Readonly<{ label: string; modifier: number }>[] | null;
                 damage?: number;
@@ -287,7 +289,10 @@ function projectAntiMekAttacks(
             ...(selection === undefined ? {} : { selection }),
         });
     };
+    const burdened = isBattleArmorEntity(entity) && [...index.components.values()].some(component =>
+        entity.carriesBodyMissileLauncher(component.mount) && state.components.get(component.id)?.mode !== 'Jettisoned');
     const trooperModifiers = (attack: 'leg-attack' | 'swarm') => {
+        if (burdened) return null;
         const modifier = antiMekTrooperModifier(attack, battleArmor, troopers);
         return modifier === null ? null : [
             Object.freeze({ label: 'Troopers', modifier }),
@@ -297,6 +302,8 @@ function projectAntiMekAttacks(
         ];
     };
     const rows = swarming === null ? [
+        ...(claws > 0 ? [row('vibro-claw', { kind: 'vibro-claw', reach: 'infantry-in-hex',
+            damage: claws, damageGroupSize: claws, firingSuits: troopers, gunnerySkill: gunnery })] : []),
         row('leg-attack', {
             kind: 'leg-attack', reach: 'legs-in-hex', hitTable: 'kick', critical: true,
             modifiers: trooperModifiers('leg-attack'), damage: LEG_ATTACK_DAMAGE + claws,
@@ -409,7 +416,9 @@ function projectComponent(
     const status = query.componentStatus(componentId, 'committed');
     const previewStatus = query.componentStatus(componentId, 'preview');
     const modeDefinition = nonMekComponentModes(entity, mount, ruleset);
-    const mode = effectiveNonMekComponentMode(entity, index, state, ruleset, componentId);
+    const aerospaceShots = equipment instanceof WeaponEquipment && usesAerospaceFiringRates(entity, state)
+        ? aerospaceRapidFireShots(equipment) : 1;
+    const mode = aerospaceShots > 1 ? modeDefinition.modes.at(-1) : effectiveNonMekComponentMode(entity, index, state, ruleset, componentId);
     const heatOrDamageWeapon = nonMekHeatOrDamageWeapon(entity, equipment);
     const locations = mount.getOccupiedLocations().map(code => {
         const location = [...index.locations.values()].find(candidate => candidate.code === code);
@@ -475,6 +484,7 @@ function projectComponent(
     const pulseModule = attachments.find(source => isRiscLaserPulseModule(source.equipment));
     const pulsed = !!pulseModule && statusOf(pulseModule) === 'available'
         && status === 'available' && mode === RISC_LASER_PULSE_MODE;
+    const artemis = activeArtemisKind(fireControl, fireControlStatus, selectedAmmo, query.hasCondition('jammed'));
     const artemisVToHit = artemisVToHitAdjustment(
         fireControl, equipment, fireControlStatus,
         selectedAmmo, query.hasCondition('jammed'), false,
@@ -482,8 +492,7 @@ function projectComponent(
     const aerospace = equipment instanceof WeaponEquipment
         && !mount.isPhysicalWeapon()
         && entity.unitType() === 'Aero'
-        ? projectAerospaceWeapon(equipment, selectedAmmo, ruleset, mode,
-            activeArtemisKind(fireControl, fireControlStatus, selectedAmmo, query.hasCondition('jammed')))
+        ? projectAerospaceWeapon(equipment, selectedAmmo, ruleset, mode, artemis)
         : undefined;
     const apolloToHit = apolloToHitAdjustment(fireControl, equipment, fireControlStatus, ruleset);
     const bombast = bombastLaserEquipmentProfile(equipment, ruleset, mode);
@@ -546,7 +555,7 @@ function projectComponent(
         ? laserInsulatorAdjustedHeat(
             (bombast?.heat ?? equipment.heat) + (pulsed ? RISC_LASER_PULSE_HEAT_BONUS : 0),
             insulationWeakened === false,
-        ) + (entity.unitType() === 'Aero' ? prototypeMaximumHeat : 0)
+        ) * aerospaceShots + (entity.unitType() === 'Aero' ? prototypeMaximumHeat : 0)
         : 0;
     const weapon = equipment instanceof WeaponEquipment && !mount.isPhysicalWeapon()
         ? Object.freeze({
@@ -563,6 +572,7 @@ function projectComponent(
                 && componentState?.jammed !== true
                 && vehicleRules?.fireBlockedComponentIds.has(componentId) !== true
                 && infantryRules?.fireBlockedComponentIds.has(componentId) !== true
+                && aeroRules?.fireControlDestroyed !== true
                 && protoMekRules?.fireBlockedComponentIds.has(componentId) !== true
                 && !hpgBlocksWeaponFire,
             damage: effectiveDamage,
@@ -574,7 +584,9 @@ function projectComponent(
                 ? hit!.default.profile[0]!
                 : Object.freeze([...hit!.default.profile]),
             hitModifierBreakdown: Object.freeze([...hit!.default.modifierBreakdown]),
+            ...(artemis === null ? {} : { artemis }),
             ...(artemisVToHit === null ? {} : { artemisVModifier: artemisVToHit.modifier }),
+            ...(targetSubject?.maximumRange === undefined ? {} : { mediumRangeLimit: true as const }),
             ranges: Object.freeze([...(ammoProfile?.ranges ?? equipment.ranges)]),
             minimumRange: selectedAmmoIsHotLoaded(ammoSources, targeting?.ammo)
                 ? 0 : ammoProfile?.minimumRange ?? equipment.minimumRange,
@@ -585,6 +597,10 @@ function projectComponent(
             underwater: targetSubject!.underwater,
             attackerSubmerged: false,
             effectiveWeaponTypes,
+            ...(isBattleArmorEntity(entity) ? {
+                attackerIsBattleArmor: true as const,
+                ...(mount.location === 'Squad' ? { firingSuits: activeTroopers(entity, index, query) } : {}),
+            } : {}),
             ...(entity.unitType() === 'Infantry' && entity.unitSubtype() !== 'Battle Armor'
                 ? { attackerIsConventionalInfantry: true as const }
                 : {}),
@@ -601,7 +617,7 @@ function projectComponent(
         status,
         previewStatus,
         ...(previewStatus !== 'destroyed' && componentAutocannonHit(state, componentId, 'preview') ? { autocannonHit: true as const } : {}),
-        modes: modeDefinition.modes,
+        modes: aerospaceShots > 1 ? [] : mode === 'Jettisoned' ? [mode] : modeDefinition.modes,
         ...(modeDefinition.defaultMode === undefined ? {} : { defaultMode: modeDefinition.defaultMode }),
         ...(mode === undefined ? {} : { mode }),
         jammed: componentState?.jammed === true,
@@ -673,7 +689,7 @@ function projectWeaponBayComponent(
 ): EquipmentPanelComponent {
     const representative = members.find(member => member.weapon?.selectable === true) ?? members[0];
     const representativeWeapon = representative.weapon!;
-    const operational = members.filter(member => member.status === 'available' && !member.jammed);
+    const operational = members.filter(member => member.weapon?.selectable === true);
     const operationalWeapons = operational.map(member => member.weapon!);
     const capital = representative.equipment instanceof WeaponEquipment
         && (representative.equipment.capital || representative.equipment.subCapital);
@@ -748,6 +764,9 @@ function projectWeaponBayComponent(
             members: Object.freeze(members.map(member => Object.freeze({
                 componentId: member.componentId,
                 selectable: member.weapon?.selectable === true,
+                ...(member.equipment instanceof WeaponEquipment ? { equipment: member.equipment } : {}),
+                ...(member.mode === undefined ? {} : { mode: member.mode }),
+                ...(member.weapon?.aerospace ? { attackValues: member.weapon.aerospace.attackValues } : {}),
                 ...(member.weapon?.selection === undefined
                     ? {}
                     : { selection: member.weapon.selection }),
@@ -893,7 +912,7 @@ function projectVehicleCharge(
         if (modifier !== 0) hitModifiers.push(modifier);
     }
     const movementMode = state.turn.movement?.mode ?? null;
-    const available = !rules.destroyed
+    const available = !rules.destroyed && !rules.systems.crewStunned
         && !state.conditions.has('prone')
         && movementMode !== 'stationary'
         && movementMode !== 'jump';

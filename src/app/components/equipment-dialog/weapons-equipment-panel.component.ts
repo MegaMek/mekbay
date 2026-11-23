@@ -735,6 +735,7 @@ export class WeaponsEquipmentPanelComponent {
 
     canSelectRange(row: EquipmentPanelRow, range: InventoryRangeDisplayKey, state = this.targetState(row)): boolean {
         if (state.target || row.disabled || row.destroyed) return false;
+        if (row.component?.weapon?.mediumRangeLimit && (range === 'long' || range === 'extreme')) return false;
         if (range === 'extreme' && !this.usesAerospaceWeaponValues() && !this.showsGroundExtremeRange()) return false;
         const value = this.rangeValue(row, range);
         return this.isSelectable(row) && value !== '—';
@@ -946,7 +947,7 @@ export class WeaponsEquipmentPanelComponent {
         const modifier = row.physical?.hitModifiers[0];
         const numericModifier = typeof modifier === 'number' ? modifier : 0;
         const piloting = this.runtime().snapshot().crew.piloting;
-        const automatic = physicalAttackAlwaysHits(row.physical!.kind);
+        const automatic = physicalAttackAlwaysHits(row.physical!.kind, this.runtime().snapshot().ruleset, target?.unitType);
         const targetModifiers = target === null ? [] : physicalAttackTargetModifiers(row.physical!, target)
             .filter(item => item.modifier !== 0);
         const issue = target === null ? null : physicalRowTargetIssue(row.physical!, target);

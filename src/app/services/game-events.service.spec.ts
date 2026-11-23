@@ -4,6 +4,14 @@
 import { parseGameEvent } from './game-events.service';
 
 describe('parseGameEvent', () => {
+    it('retains a rear-quarter shot, an underwater attacker and individual missile damage in transit', () => {
+        const original = attack();
+        const packet = { ...original, arc: 'rear-left', attackerUnderwater: true, weapons: [
+            { ...original.weapons[0], projectileDamage: 1 },
+        ] };
+        expect(parseGameEvent(packet)).toEqual(packet as never);
+    });
+
     const attack = () => ({
         kind: 'attack', id: 'a1', fromForce: 'f1', fromUnit: 'u1', attacker: 'Atlas AS7-D', toUnit: 'u2',
         turn: 3, arc: 'rear',
@@ -17,6 +25,40 @@ describe('parseGameEvent', () => {
 
     it('accepts a well-formed attack report from another player', () => {
         expect(parseGameEvent(attack())).toEqual(jasmine.objectContaining({ kind: 'attack', arc: 'rear', turn: 3 }));
+    });
+
+    it('transports interior protection or exterior collateral and rejects conflicting building contexts', () => {
+        const report = (context: object) => ({ ...attack(), weapons: [{ ...attack().weapons[0], ...context }] });
+        for (const field of ['infantryBuilding', 'collateralBuilding']) {
+            expect(parseGameEvent(report({ [field]: 'hardened' }))).toEqual(jasmine.objectContaining({
+                weapons: [jasmine.objectContaining({ [field]: 'hardened' })],
+            }));
+            expect(parseGameEvent(report({ [field]: 'unknown' }))).toBeNull();
+        }
+        expect(parseGameEvent(report({ infantryBuilding: 'light', collateralBuilding: 'medium' }))).toBeNull();
+    });
+
+    it('accepts a defended Streak salvo without a cluster roll and rejects interception that increases damage', () => {
+        const groups = Array.from({ length: 6 }, () => ({ damage: 2, location: [3, 4], aux: 1 }));
+        const report = (damage: number[], heat = 0) => ({ ...attack(), weapons: [{
+            name: 'Streak SRM 6', types: ['M'], targetNumber: 7, toHit: [4, 4], groups,
+            ams: { die: 2, hits: 4, damage, heat },
+        }] });
+        expect(parseGameEvent(report([2, 2, 2, 2]))).not.toBeNull();
+        expect(parseGameEvent(report([3, 2]))).toBeNull();
+        expect(parseGameEvent(report([2], 1))).toBeNull();
+    });
+
+    it('validates aerospace missile AV and the CF absorbed after interception against the original groups', () => {
+        const report = (av: number, absorbed: number[]) => ({ ...attack(), weapons: [{
+            name: 'LRM 15', types: ['M'], targetNumber: 7, toHit: [4, 4],
+            groups: [3, 2].map(damage => ({ damage, buildingDamage: 2, location: [3, 4], aux: 1 })),
+            ams: { die: 3, hits: 1, heat: 0, damage: [3, 0], absorbed,
+                aerospace: { av, groupSize: 5, absorption: 2 } },
+        }] });
+        expect(parseGameEvent(report(9, [2, 1]))).not.toBeNull();
+        expect(parseGameEvent(report(10, [2, 1]))).toBeNull();
+        expect(parseGameEvent(report(9, [2, 3]))).toBeNull();
     });
 
     it('rejects attack reports with impossible dice, damage or unbounded rows', () => {

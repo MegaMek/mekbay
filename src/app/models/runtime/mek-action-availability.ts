@@ -3,6 +3,9 @@
 
 import { isMobileHpgEquipment } from '../aerospace-support-equipment.model';
 import type { CBTRuleset } from '../cbt-ruleset.model';
+import { isDroneOperatingSystemEquipment } from '../drone-operating-system.model';
+import { isHandClawFlags } from '../entity/utils/physical-weapon-kernel';
+import { PHYSICAL_ATTACK_KINDS, physicalHitTable, type HitTable, type PhysicalAttackKind, type PhysicalAttackReach } from '../rules/physical-attack-rules';
 import type { MekEntity } from '../entity/entities/mek/mek-entity';
 import type { ComponentId,LocationId } from '../entity/entity-identifiers';
 import type { MekLocation } from '../entity/types';
@@ -37,6 +40,7 @@ export type MekActionRuntimePort = Pick<
     MekUnitQueryPort,
     | 'remainingInternal'
     | 'criticalHits'
+    | 'crewEffectiveState'
     | 'componentStatus'
     | 'componentMode'
     | 'componentGaussPower'
@@ -52,6 +56,38 @@ export type MekActionRuntimePort = Pick<
 > & {
     mekDestruction(): MekActionDestructionCapability;
 };
+
+/** Geometry shared by the declaration, target preview and hit resolver. */
+export function mekPhysicalAttackGeometry(
+    index: MekRuntimeIndex, target: AttackerActionTarget, prone: boolean, swarmed: boolean,
+): { kind: PhysicalAttackKind | null; hitTable: HitTable; reach: PhysicalAttackReach | undefined } {
+    const action = resolveTarget(index, target);
+    const kind = action?.kind === 'component' ? 'weapon'
+        : PHYSICAL_ATTACK_KINDS.find(value => action?.definition.kind === value) ?? null;
+    const claws = action?.kind === 'component' && !!action.definition.mount.equipment
+        && isHandClawFlags(action.definition.mount.equipment.flags);
+    const hitTable = kind ? physicalHitTable(kind, claws) : 'standard';
+    const reach: PhysicalAttackReach | undefined = kind === 'thrash'
+        ? swarmed ? 'unswarming-infantry-in-hex' : 'infantry-in-hex'
+        : kind === 'punch' && prone ? 'vehicle-in-hex'
+            : kind === 'brush-off' ? 'swarming-infantry' : undefined;
+    return { kind, hitTable, reach };
+}
+
+/** A later weapon declaration must leave already-declared physical attacks legal. */
+export function fireConflictsWithPhysicalDeclaration(
+    index: MekRuntimeIndex, runtime: MekActionRuntimePort, ruleset: CBTRuleset, weapons: readonly ComponentId[],
+): boolean {
+    const selected = runtime.attackerTargetingState().actions;
+    if (!selected.size) return false;
+    const turn = runtime.turnState();
+    const shooting = { ...runtime, turnState: () => ({ ...turn, firedWeapons: [...(turn.firedWeapons ?? []), ...weapons] }) };
+    return [...selected.values()].some(({ target }) => {
+        const action = resolveTarget(index, target);
+        return action !== null && physicalTargetAvailable(index, runtime, action, ruleset)
+            && !physicalTargetAvailable(index, shooting, action, ruleset);
+    });
+}
 
 /** Pure committed-state Mek action availability. Unknown targets default-deny. */
 export function canPerformMekAction(
@@ -69,6 +105,12 @@ export function canPerformMekAction(
         if (destruction.kind === 'unsupported'
             || destruction.destroyed
             || runtime.hasCondition('shutdown')) return false;
+
+        if ((action === 'fire' || action === 'physical-attack')
+            && ![...index.crewPositions.keys()].some(id => runtime.crewEffectiveState(id) === 'healthy')
+            && ![...index.components.values()].some(component => component.kind === 'equipment'
+                && isDroneOperatingSystemEquipment(component.mount.equipment)
+                && runtime.componentStatus(component.id, 'committed') === 'available')) return false;
 
         const movement = runtime.mekMovementMode();
         if ((action === 'fire' || action === 'physical-attack')
@@ -103,7 +145,9 @@ export function canPerformMekAction(
                 || componentBayFirePermission(index, runtime, target.componentId) === false)) return false;
 
         switch (action) {
-            case 'fire': return mekCanFire(index, runtime);
+            case 'fire': return mekCanFire(index, runtime)
+                && (target.kind !== 'component' || proneMekCanFire(index, runtime, ruleset, [target.componentId])
+                    && !fireConflictsWithPhysicalDeclaration(index, runtime, ruleset, [target.componentId]));
             case 'physical-attack':
                 if (!isPhysicalTarget(resolved)) return true;
                 if (physicalMovementUnavailable(runtime, resolved)) return false;
@@ -180,6 +224,27 @@ function mekCanFire(index: MekRuntimeIndex, runtime: MekActionRuntimePort): bool
     return cockpitCode === 'HD' ? unavailableSensors < 2 : unavailableSensors < 3;
 }
 
+/** A prone biped or tripod must leave one arm free to support its upper body. */
+export function proneMekCanFire(
+    index: MekRuntimeIndex,
+    runtime: MekActionRuntimePort,
+    ruleset: CBTRuleset,
+    weapons: readonly ComponentId[],
+): boolean {
+    if (!runtime.hasCondition('prone') || locationIdForCode(index, 'LA') === null) return true;
+    const occupied = new Set([...(runtime.turnState().firedWeapons ?? []), ...weapons].flatMap(id => {
+        const component = index.components.get(id);
+        return component?.kind === 'equipment' ? component.mount.getOccupiedLocations() : [];
+    }));
+    if (['LL', 'RL', 'CL'].some(code => occupied.has(code))) return false;
+    const availableArms = (['LA', 'RA'] as const).filter(code => {
+        const id = locationIdForCode(index, code);
+        return id !== null && !locationUnavailable(index, runtime, id);
+    });
+    if (ruleset === 'total-warfare' && availableArms.length < 2) return false;
+    return availableArms.some(code => !occupied.has(code));
+}
+
 function isPhysicalTarget(target: ResolvedTarget): boolean {
     return target.kind === 'intrinsic' || target.definition.mount.isPhysicalWeapon();
 }
@@ -198,13 +263,14 @@ function physicalMovementUnavailable(runtime: MekActionRuntimePort, target: Reso
     return moveMode === 'stationary' && (kind === 'charge' || kind === 'airmek-ram');
 }
 
-/** The kinds of the other physical actions selected this turn: an intrinsic attack's kind, or 'weapon'. */
-function otherSelectedActionKinds(index: MekRuntimeIndex, runtime: MekActionRuntimePort, actionId: string): string[] {
-    return [...runtime.attackerTargetingState().actions.values()].flatMap(({ target }) => {
-        if (target.kind === 'component') return ['weapon'];
-        if (target.actionId === actionId) return [];
-        return index.intrinsicActions.filter(candidate => candidate.id === target.actionId).map(candidate => candidate.kind);
-    });
+function physicalActionsCompatible(left: ResolvedTarget, right: ResolvedTarget): boolean {
+    if (left.kind === right.kind && left.definition.id === right.definition.id) return true;
+    const kind = (action: ResolvedTarget) => action.kind === 'intrinsic' ? action.definition.kind
+        : isHandClawFlags(action.definition.mount.equipment?.flags ?? new Set()) ? 'punch' : 'weapon';
+    const limbs = (action: ResolvedTarget) => action.kind === 'intrinsic'
+        ? action.definition.locations : action.definition.mount.getOccupiedLocations();
+    return kind(left) === kind(right) && (kind(left) === 'punch' || kind(left) === 'brush-off')
+        && limbs(left).every(location => !limbs(right).some(other => other === location));
 }
 
 function physicalTargetAvailable(
@@ -214,11 +280,10 @@ function physicalTargetAvailable(
     ruleset: CBTRuleset,
 ): boolean {
     const physical = physicalCapabilities(index, runtime, ruleset);
-    // Brushing swarming infantry off is the 'Mech's only physical attack that turn, made with up to both arms
-    // (TW p. 221).
-    const brushingOff = target.kind === 'intrinsic' && target.definition.kind === 'brush-off';
-    const others = otherSelectedActionKinds(index, runtime, target.kind === 'intrinsic' ? target.definition.id : '');
-    if (brushingOff ? others.some(kind => kind !== 'brush-off') : others.includes('brush-off')) return false;
+    const others = [...runtime.attackerTargetingState().actions.values()]
+        .map(action => resolveTarget(index, action.target))
+        .filter((other): other is ResolvedTarget => other !== null && other.definition.id !== target.definition.id);
+    if (others.some(other => !physicalActionsCompatible(target, other))) return false;
     if (target.kind === 'intrinsic') {
         switch (target.definition.kind) {
             case 'punch': {
@@ -226,8 +291,7 @@ function physicalTargetAvailable(
                 // Prone, the 'Mech props itself up on one arm and punches once with the other, and not as well as
                 // thrashing (TW p. 151).
                 if (runtime.hasCondition('prone') && (!physical.canPunchProne
-                    || otherSelectedActionKinds(index, runtime, target.definition.id)
-                        .some(kind => kind === 'punch' || kind === 'thrash'))) return false;
+                    || others.length > 0)) return false;
                 return location === undefined || !(location in physical.canPunch)
                     || physical.canPunch[location as ArmCode];
             }
@@ -239,8 +303,9 @@ function physicalTargetAvailable(
                     && physical.canPunch[location] && !physical.armFired[location];
             }
             // Thrashing is the 'Mech's only attack that turn: no weapon fired and no other attack (TW p. 151).
-            case 'thrash': return physical.noWeaponFired
-                && otherSelectedActionKinds(index, runtime, target.definition.id).length === 0;
+            case 'thrash':
+            case 'charge':
+            case 'death-from-above': return physical.noWeaponFired;
             case 'club': return physical.canClub;
             case 'push': return physical.canPush;
             case 'kick': return physical.canKick;
@@ -292,6 +357,7 @@ function physicalCapabilities(
         else if (unavailableSystemSlotsAt(index, runtime, code, 'Hip') > 0) lostHips.add(locationId);
     }
 
+    const fired = weaponFiredLocationIds(index, runtime.attackerTargetingState(), runtime.turnState().firedWeapons, ruleset);
     const arms = Object.fromEntries((['LA', 'RA'] as const).map(code => {
         const locationId = locationIdForCode(index, code);
         const locationLost = locationId === null || locationUnavailable(index, runtime, locationId);
@@ -302,8 +368,8 @@ function physicalCapabilities(
         const shoulderLost = unavailableSystemSlotsAt(index, runtime, code, 'Shoulder') > 0;
         const handLost = unavailableSystemSlotsAt(index, runtime, code, 'Hand') > 0;
         return [code, {
-            canPunch: !shoulderLost && !locationLost,
-            canPhysicalWeapon: !shoulderLost && !handLost && !locationLost,
+            canPunch: !shoulderLost && !locationLost && !fired.has(locationId!),
+            canPhysicalWeapon: !shoulderLost && !handLost && !locationLost && !fired.has(locationId!),
             locationLost,
         }] as const;
     })) as Record<ArmCode, {
@@ -311,7 +377,6 @@ function physicalCapabilities(
         readonly canPhysicalWeapon: boolean;
         readonly locationLost: boolean;
     }>;
-    const fired = weaponFiredLocationIds(index, runtime.attackerTargetingState());
     const quad = legCodes === quadLegCodes;
     const canKick = (kind: MekKickKind): boolean => {
         const kickLegs = kickLegIds(index, kind);
@@ -336,7 +401,8 @@ function physicalCapabilities(
         canMuleKick: canKick('mule-kick'),
         canPunch: Object.freeze({ LA: arms.LA.canPunch, RA: arms.RA.canPunch }),
         canPhysicalWeapon: Object.freeze({ LA: arms.LA.canPhysicalWeapon, RA: arms.RA.canPhysicalWeapon }),
-        canPush: !arms.LA.locationLost && !arms.RA.locationLost,
+        canPush: (['LA', 'RA'] as const).every(code => !arms[code].locationLost
+            && !fired.has(locationIdForCode(index, code)!)),
         canPunchProne: (['LA', 'RA'] as const).every(code => {
             const locationId = locationIdForCode(index, code);
             return !arms[code].locationLost && locationId !== null && !fired.has(locationId);

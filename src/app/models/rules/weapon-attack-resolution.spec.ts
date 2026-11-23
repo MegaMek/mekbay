@@ -1,12 +1,63 @@
 // Copyright (C) 2026 The MegaMek Team
 // SPDX-License-Identifier: GPL-3.0-or-later
 
+import { battleArmorMissileColumns } from '../../utils/cluster-hit-table';
+import { infantryCasualties, infantryHitClass } from './infantry-hit-damage';
 import { asComponentId } from '../entity/entity-identifiers';
 import { AmmoEquipment, WeaponEquipment } from '../equipment.model';
 import { CORE_2026_GAME_RULES, TW_GAME_RULES, type CBTGameRules } from './game-rules';
 import { locksOnTarget, resolveWeaponAttack, weaponAttackProfile } from './weapon-attack-resolution';
 
 describe('weapon attack resolution', () => {
+    it('uses the full LRM-20 cluster potential against conventional infantry even on a low cluster roll', () => {
+        const lrm20 = new WeaponEquipment({ id: 'LRM20', name: 'LRM 20', type: 'weapon', flags: ['F_MISSILE'],
+            weapon: { damage: 'cluster', ammoType: 'LRM', rackSize: 20 } });
+        const profile = weaponAttackProfile({ ...salvo, equipment: lrm20, targetConventionalInfantry: true }, TW_GAME_RULES)!;
+        expect(resolveWeaponAttack(profile, [4, 4], [1, 1]).hits).toBe(20);
+        expect(resolveWeaponAttack(profile, [1, 1], [1, 1]).hits).toBe(0);
+    });
+
+    it('rolls the published 54-BA-missile salvo twice on column 27 (TW p. 218)', () => {
+        const launcher = new WeaponEquipment({ id: 'BA9', name: 'BA missiles', type: 'weapon', flags: ['F_MISSILE'],
+            weapon: { damage: 'cluster', ammoType: 'SRM', rackSize: 9 } });
+        const profile = weaponAttackProfile({ ...salvo, equipment: launcher, firingSuits: 6, ammo: null,
+            damage: { values: [2], maximum: 18, unit: 'missile' } }, TW_GAME_RULES)!;
+        expect(profile.clusterColumns).toEqual([27, 27]);
+        expect(resolveWeaponAttack(profile, [4, 4], [1, 1], 0, [], undefined, [[6, 6]]).hits).toBe(36);
+        expect(battleArmorMissileColumns(71)).toEqual([24, 24, 23]);
+        expect(battleArmorMissileColumns(61)).toEqual([40, 21]);
+    });
+
+    it('keeps each BA flamer hit separate for damage, heat-only locations and infantry burst dice', () => {
+        const flamer = new WeaponEquipment({ id: 'BAFlamer', name: 'BA Flamer', type: 'weapon', flags: ['F_FLAMER'],
+            weapon: { damage: 2 } });
+        const profile = weaponAttackProfile({ ...salvo, equipment: flamer, firingSuits: 3, ammo: null,
+            damage: { values: [2], maximum: 2 }, heatWeapon: { weapon: { kind: 'flamer', heat: null },
+                mode: 'damage', ruleset: 'total-warfare', target: { tracksHeat: false, fireResistant: false } } }, TW_GAME_RULES)!;
+        const hits = resolveWeaponAttack(profile, [4, 4], [6, 6]);
+        expect(hits.groups).toEqual([2, 2, 2]);
+        const die = jasmine.createSpy('d6').and.returnValue(2);
+        expect(infantryCasualties(infantryHitClass(flamer, true), [], hits.groups, false, false, 1, die)).toBe(18);
+        expect(die).toHaveBeenCalledTimes(9);
+        const heatOnly = { ...profile, heatWeapon: { ...profile.heatWeapon!, mode: 'heat' as const,
+            target: { tracksHeat: true, fireResistant: false } } };
+        expect(resolveWeaponAttack(heatOnly, [4, 4], [6, 6])).toEqual(jasmine.objectContaining({ groups: [0, 0, 0], heat: 6 }));
+    });
+
+    it('rolls one BA squad attack for four lasers or eight SRM missiles', () => {
+        const laser = new WeaponEquipment({ id: 'MediumLaser', name: 'Medium Laser', type: 'weapon', weapon: { damage: 5 } });
+        const gun = weaponAttackProfile({ ...salvo, equipment: laser, ammo: null, firingSuits: 4,
+            damage: { values: [5], maximum: 5 } }, TW_GAME_RULES)!;
+        expect(resolveWeaponAttack(gun, [4, 4], [5, 6]).groups).toEqual([5, 5, 5, 5]);
+        const srm = new WeaponEquipment({ id: 'BASRM2', name: 'SRM 2', type: 'weapon', flags: ['F_MISSILE', 'F_SRM'],
+            weapon: { damage: 'cluster', ammoType: 'SRM', rackSize: 2 } });
+        const ammo = new AmmoEquipment({ id: 'SRMAmmo', name: 'SRM ammo', type: 'ammo',
+            ammo: { type: 'SRM', damagePerShot: 2, rackSize: 2 } });
+        const missiles = weaponAttackProfile({ ...salvo, equipment: srm, ammo, firingSuits: 4,
+            damage: { values: [2], maximum: 4, unit: 'missile' } }, TW_GAME_RULES)!;
+        expect(resolveWeaponAttack(missiles, [4, 4], [5, 6]).groups).toEqual(Array(8).fill(2));
+    });
+
     const weaponId = asComponentId('weapon');
     const lrm15 = new WeaponEquipment({
         id: 'ISLRM15', name: 'LRM 15', type: 'weapon', flags: ['F_MISSILE', 'F_LRM'],
@@ -15,6 +66,112 @@ describe('weapon attack resolution', () => {
     const lrmAmmo = new AmmoEquipment({
         id: 'ISLRM15 Ammo', name: 'LRM 15 Ammo', type: 'ammo',
         ammo: { type: 'LRM', rackSize: 15, damagePerShot: 1 },
+    });
+
+    const salvo = { componentId: weaponId, equipment: lrm15, mode: undefined, ammo: lrmAmmo, types: [],
+        name: 'Salvo', targetNumber: 7, partialCover: false, damage: { values: [1], maximum: 15, unit: 'missile' as const } };
+
+    it('hits an adjacent TW building with a full rack even on a natural 2 and still checks weapon effects', () => {
+        const profile = weaponAttackProfile({ ...salvo, adjacentBuilding: true }, TW_GAME_RULES)!;
+        const shot = resolveWeaponAttack({ ...profile, jamRoll: 2 }, [1, 1], null);
+        expect(shot).toEqual(jasmine.objectContaining({ hit: true, hits: 15, groups: [5, 5, 5], jammed: true }));
+        expect(resolveWeaponAttack(weaponAttackProfile(salvo, TW_GAME_RULES)!, [1, 1], [1, 1]).hit).toBeFalse();
+    });
+
+    it('keeps the CF actually absorbed by each group for the owner of the building', () => {
+        const profile = weaponAttackProfile({ ...salvo, buildingCf: 38 }, TW_GAME_RULES)!;
+        const result = resolveWeaponAttack(profile, [4, 4], [1, 1]);
+        expect(result.groups).toEqual([1]);
+        expect(result.absorbed).toEqual([4]);
+        expect(resolveWeaponAttack({ ...profile, allHit: true, projectiles: 2 }, [4, 4], null).absorbed).toEqual([2]);
+    });
+
+    it('rolls a Silver Bullet Gauss rack of 15 and locates every pellet separately', () => {
+        const equipment = new WeaponEquipment({ id: 'ISSBGauss', name: 'SB Gauss', type: 'weapon',
+            weapon: { damage: 15, ammoType: 'SBGAUSS', rackSize: 15 } });
+        const profile = weaponAttackProfile({ ...salvo, equipment, damage: { values: [15], maximum: 15 } }, TW_GAME_RULES)!;
+        expect(resolveWeaponAttack(profile, [4, 4], [4, 3]).groups).toEqual(Array(9).fill(1));
+    });
+
+    it('locates a Narc homing pod without impact damage and distinguishes the two explosive pods', () => {
+        for (const type of ['NARC', 'INARC'] as const) {
+            const equipment = new WeaponEquipment({ id: type, name: type, type: 'weapon', flags: ['F_NARC'],
+                weapon: { damage: 'cluster', ammoType: type, rackSize: 1 } });
+            for (const explosive of [false, true]) {
+                const ammo = new AmmoEquipment({ id: 'pod', name: 'Pod', type: 'ammo', ammo: { type,
+                    rackSize: 1, munitionType: [explosive ? 'M_NARC_EX' : 'M_STANDARD'] } });
+                const profile = weaponAttackProfile({ ...salvo, equipment, ammo }, TW_GAME_RULES)!;
+                expect(!!profile.narcPod).toBe(!explosive);
+                expect(resolveWeaponAttack(profile, [4, 4], null).groups).toEqual([explosive ? type === 'NARC' ? 4 : 6 : 0]);
+                expect(resolveWeaponAttack(profile, [1, 2], null).groups).toEqual([]);
+            }
+        }
+    });
+
+    it('uses live direct guidance and actual HAG range in the salvo before the cluster roll', () => {
+        const strikes = (facts: Partial<typeof salvo> & Partial<Parameters<typeof weaponAttackProfile>[0]>) =>
+            resolveWeaponAttack(weaponAttackProfile({ ...salvo, ...facts }, TW_GAME_RULES)!, [4, 4], [3, 4]).hits;
+        expect([strikes({ artemis: 'iv' }), strikes({ narcGuided: true }), strikes({ artemis: 'iv', indirect: true }),
+            strikes({ artemis: 'v', hostileEcm: true })]).toEqual([12, 12, 9, 9]);
+        expect(weaponAttackProfile({ ...salvo, artemis: 'v' }, TW_GAME_RULES)?.clusterModifier).toBe(3);
+        const equipment = new WeaponEquipment({ id: 'CLHAG20', name: 'HAG/20', type: 'weapon', flags: ['F_HAG'],
+            weapon: { damage: 'cluster', ammoType: 'HAG', rackSize: 20 } });
+        const hits = (range: 'short' | 'long') => resolveWeaponAttack(weaponAttackProfile({ ...salvo, equipment,
+            damage: { values: [20], maximum: 20 }, range }, TW_GAME_RULES)!, [4, 4], [2, 2]).hits;
+        expect([hits('short'), hits('long')]).toEqual([12, 6]);
+    });
+
+    it('absorbs phase-start CF separately for each TW hit group', () => {
+        const hits = (rules: CBTGameRules) => resolveWeaponAttack(weaponAttackProfile({ ...salvo, buildingCf: 38 },
+            rules)!, [4, 4], [4, 3]).groups;
+        expect(hits(TW_GAME_RULES)).toEqual([1, 0]);
+        expect(hits(CORE_2026_GAME_RULES)).toEqual([5, 4]);
+    });
+
+    it('requires a Streak lock under Angel ECM but rolls the ordinary number of missiles only after the lock', () => {
+        const equipment = new WeaponEquipment({ id: 'streak', name: 'Streak SRM 6', type: 'weapon',
+            flags: ['F_MISSILE', 'F_SRM'], weapon: { damage: 'cluster', rackSize: 6, ammoType: 'SRM_STREAK' } });
+        for (const rules of [TW_GAME_RULES, CORE_2026_GAME_RULES]) {
+            const facts = { ...salvo, equipment, hostileEcm: true };
+            const normal = weaponAttackProfile(facts, rules)!;
+            const angel = weaponAttackProfile({ ...facts, angelEcm: true }, rules)!;
+            expect(resolveWeaponAttack(normal, [4, 4], null).hits).toBe(6);
+            expect(resolveWeaponAttack(angel, [4, 4], [1, 1]).hits).toBe(2);
+            expect(angel.lockRequired).toBeTrue();
+            expect(resolveWeaponAttack(angel, [1, 1], null).hits).toBe(0);
+        }
+    });
+
+    it('engages AMS separately from ordinary penalties, with Core interception and the TW floor', () => {
+        for (const rules of [CORE_2026_GAME_RULES, TW_GAME_RULES]) {
+            const profile = weaponAttackProfile(salvo, rules)!;
+            expect(resolveWeaponAttack(profile, [4, 4], [2, 2], -4).hits).toBe(5);
+            expect(resolveWeaponAttack(profile, [4, 4], [2, 2], 0, [], 2).hits)
+                .toBe(rules.id === 'core-2026' ? 0 : 5);
+            const streak = { ...profile, projectiles: 6, streak: true as const, allHit: true };
+            expect(resolveWeaponAttack(streak, [4, 4], null, 0, [], 6).hits).toBe(4);
+            const single = { ...profile, projectiles: 1 };
+            expect(resolveWeaponAttack(single, [4, 4], null, 0, [], 2).hits).toBe(rules.id === 'core-2026' ? 1 : 0);
+            expect(resolveWeaponAttack(single, [4, 4], null, 0, [], 5).hits).toBe(rules.id === 'core-2026' ? 0 : 1);
+        }
+    });
+
+    it('keeps each operating plasma rifle’s heat dice and resolves one combined bay hit', () => {
+        const heat = { weapon: { kind: 'plasma-rifle', heat: '1d6', otherDamageDice: 2 }, mode: 'both',
+            target: { tracksHeat: true, fireResistant: false }, ruleset: 'total-warfare' } as const;
+        const profile = weaponAttackProfile({ ...salvo, aerospace: { attackValue: 20, grouping: 'single',
+            scale: 1, heatWeapons: [{ heat, value: 10 }, { heat, value: 10 }] } }, TW_GAME_RULES)!;
+        const hit = resolveWeaponAttack(profile, [4, 4], null, 0, [3, 5]);
+        expect([hit.groups, hit.heat]).toEqual([[20], 8]);
+    });
+
+    it('uses air-to-air and combined bay AV with the class-specific hit locations', () => {
+        const fire = (attackValue: number, grouping: 'single' | 'cluster' | 'ultra') => resolveWeaponAttack(
+            weaponAttackProfile({ ...salvo, aerospace: { attackValue, grouping, scale: 1, heatWeapons: [] } },
+                TW_GAME_RULES)!, [4, 4], null).groups;
+        expect(fire(9, 'cluster')).toEqual([5, 4]);
+        expect(fire(24, 'single')).toEqual([24]);
+        expect(fire(20, 'ultra')).toEqual([10, 10]);
     });
 
     it('burns out a charged Total Warfare PPC on a natural 2 even when 2 would hit', () => {
@@ -221,6 +378,22 @@ describe('weapon attack resolution', () => {
         const profile = weaponAttackProfile({ componentId: weaponId, equipment: array, mode: undefined, damage: { values: [2], maximum: 8, unit: 'shot' }, ammo: null, types: [], name: 'MGA', targetNumber: 6, partialCover: false }, TW_GAME_RULES)!;
         // Roll 7 on the 4 column: 3 guns hit.
         expect(resolveWeaponAttack(profile, [4, 4], [3, 4])).toEqual({ hit: true, jammed: false, hits: 3, groups: [2, 2, 2], heat: 0 });
+    });
+
+    it('fires airborne rapid autocannons at maximum rate even in single-shot mode (TW p. 238)', () => {
+        for (const [ammoType, maximum, threshold] of [['AC_ULTRA', 2, 2], ['AC_ROTARY', 6, 4]] as const) {
+            const gun = new WeaponEquipment({ id: ammoType, name: ammoType, type: 'weapon', flags: ['F_AC'],
+                weapon: { damage: 5, ammoType }, modes: ['Single', 'Double'] });
+            const facts = { ...salvo, equipment: gun, mode: 'Single', types: ['DB'] as const,
+                damage: { values: [5], maximum: 5 }, aerospaceFiringRate: true };
+            const groundTarget = weaponAttackProfile(facts, TW_GAME_RULES)!;
+            const airTarget = weaponAttackProfile({ ...facts, aerospace: { attackValue: 7, scale: 1,
+                grouping: 'single', heatWeapons: [] } }, TW_GAME_RULES)!;
+            expect(groundTarget.projectiles).toBe(maximum);
+            expect(airTarget.jamRoll).toBe(threshold);
+            expect(resolveWeaponAttack(airTarget, [1, threshold - 1], null).jammed).toBeTrue();
+            expect(resolveWeaponAttack(airTarget, [1, threshold], null).jammed).toBeFalse();
+        }
     });
 
     it('jams rapid-firing autocannons on low to-hit rolls, by ruleset', () => {

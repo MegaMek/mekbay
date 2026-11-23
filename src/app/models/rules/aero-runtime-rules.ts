@@ -13,6 +13,7 @@ NonMekUnitRuntimeState,
 import type { UnitConditionKey } from '../unit-condition.model';
 import type { ToHitModifierBreakdownEntry } from './game-rules';
 import { gameRulesFor } from './game-rules';
+import { systemDamageId } from './system-damage-rules';
 import { AERO_HEAT_EFFECTS,heatEffectValue } from './heat-effect-rules';
 
 export interface AeroHeatEffects {
@@ -25,6 +26,7 @@ export interface AeroHeatEffects {
 
 export interface AeroRuntimeRulesProjection {
     readonly destroyed: boolean;
+    readonly fireControlDestroyed: boolean;
     readonly computedConditions: readonly UnitConditionKey[];
     readonly conditionControlKeys: readonly UnitConditionKey[];
     readonly crewStateControlKeys: readonly CrewMemberState[];
@@ -100,17 +102,17 @@ export function projectAeroRuntimeRules(
     if (drone !== undefined) conditionControlKeys.push('disconnected');
 
     const tracked = entity.tracksHeat();
-    const heatSinkCount = tracked ? Math.max(0, entity.engineHeatSinks()) : 0;
+    const installedSinks = tracked ? Math.max(0, entity.engineHeatSinks()) : 0;
+    const heatSinkCount = Math.max(0, installedSinks - (state.damageTracks.get(systemDamageId('heat-sink'))?.hits ?? 0));
     const normalDissipation = tracked ? Math.max(0, entity.heatCapacity(false)) : 0;
-    const dissipationPerSink = heatSinkCount === 0
-        ? 0
-        : normalDissipation / heatSinkCount;
-    const dissipation = Math.max(
-        0,
-        normalDissipation - state.heat.heatsinksOff * dissipationPerSink,
-    );
+    const dissipationPerSink = installedSinks === 0 ? 0 : normalDissipation / installedSinks;
+    const dissipation = Math.max(0, heatSinkCount - state.heat.heatsinksOff) * dissipationPerSink;
     const effects = aeroHeatEffects(tracked ? state.heat.current : 0);
-    const ranged = effects.fireModifier === 0
+    const hits = (system: 'fire-control' | 'sensors' | 'combat-information') => [...index.damageTracks.values()].filter(track =>
+        track.system === system && (state.damageTracks.get(track.id)?.hits ?? 0) > 0).length;
+    const fireControl = Math.max(hits('fire-control'), hits('combat-information'));
+    const sensors = hits('sensors');
+    const heatRanged = effects.fireModifier === 0
         ? Object.freeze([])
         : Object.freeze([Object.freeze({
             label: 'Heat - Fire Modifier',
@@ -120,6 +122,7 @@ export function projectAeroRuntimeRules(
         })]);
 
     return Object.freeze({
+        fireControlDestroyed: fireControl >= 3,
         destroyed: state.explicitlyDestroyed || siDestroyed || engineDestroyed || crewKilled,
         computedConditions,
         conditionControlKeys: Object.freeze(conditionControlKeys),
@@ -130,12 +133,15 @@ export function projectAeroRuntimeRules(
             current: tracked ? state.heat.current : 0,
             pending: tracked ? state.heat.pendingOverride ?? null : null,
             previous: tracked ? state.heat.previous : 0,
-            heatsinksOff: tracked ? state.heat.heatsinksOff : 0,
-            ...(tracked && state.heat.heatsinksOffNext !== undefined ? { heatsinksOffNext: state.heat.heatsinksOffNext } : {}),
+            heatsinksOff: tracked ? Math.min(heatSinkCount, state.heat.heatsinksOff) : 0,
+            ...(tracked && state.heat.heatsinksOffNext !== undefined ? { heatsinksOffNext: Math.min(heatSinkCount, state.heat.heatsinksOffNext) } : {}),
             heatSinkCount,
             dissipation,
             effects,
         }),
-        modifiers: Object.freeze({ ranged, physical: Object.freeze([]) }),
+        modifiers: Object.freeze({ ranged: Object.freeze([...heatRanged,
+            ...(fireControl > 0 ? [{ label: 'Fire control damage', modifier: 2 * Math.min(2, fireControl) }] : []),
+            ...(sensors > 0 ? [{ label: 'Sensor damage', modifier: sensors >= 3 ? 5 : sensors }] : []),
+        ]), physical: Object.freeze([]) }),
     });
 }

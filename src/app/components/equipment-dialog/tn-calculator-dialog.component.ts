@@ -1,5 +1,7 @@
 // Copyright (C) 2026 The MegaMek Team
 // SPDX-License-Identifier: GPL-3.0-or-later
+
+import { INFANTRY_BUILDING_TYPES, interiorBuildingDistance, isInfantryBuildingType, type InfantryBuildingType } from '../../models/rules/infantry-building-damage';
 // Author: Drake
 
 import { InventoryControlOpforService } from '../../services/inventory-control-opfor.service';
@@ -365,6 +367,55 @@ export interface TnCalculatorDialogResult {
                             <span class="choice-caption"><span>{{ targetHexCoverCaption() }}</span></span>
                         </div>
                         
+                        <label>Target level relative to attacker
+                            <input type="number" step="1" [value]="targetLevelDifference()"
+                                (input)="setTargetLevelDifference($any($event.target).valueAsNumber)" />
+                        </label>
+                        @if (unitType() === 'vtol-wige') {
+                            <label><input type="checkbox" [disabled]="targetStateReadOnly" [checked]="vtol()"
+                                (change)="vtol.set(!vtol())" /> VTOL rotorcraft</label>
+                        }
+                        @if (gameRules().id === 'total-warfare' && buildingCover() && unitType() !== 'building') {
+                            <label><input type="checkbox" [checked]="insideTargetBuilding()"
+                                (change)="insideTargetBuilding.set(!insideTargetBuilding())" /> Attacker inside the same building</label>
+                        }
+                        @if (gameRules().id === 'total-warfare' && (unitType() === 'building' || infantryInBuilding())) {
+                            @if (unitType() === 'building' || insideTargetBuilding()) {
+                                <label>Building type for infantry damage
+                                    <select [value]="infantryBuildingType() ?? ''" (change)="setInfantryBuildingType($any($event.target).value)">
+                                        <option value="">Scenario default (medium)</option>
+                                        @for (kind of buildingTypes; track kind) { <option [value]="kind">{{ kind }}</option> }
+                                    </select>
+                                </label>
+                            } @else {
+                                <span>Target the building hex to damage its occupants.</span>
+                            }
+                        }
+                        @if (buildingCover() && !infantryInBuilding() && gameRules().id === 'total-warfare') {
+                            @if (availableFloors().length) {
+                                <label>Protecting building hex and floor
+                                    <select [value]="shelterIndex()" (change)="chooseShelter(+$any($event.target).value)">
+                                        <option value="-1">Record building damage manually</option>
+                                        @for (floor of availableFloors(); track $index) {
+                                            <option [value]="$index">{{ floor.label }} · CF {{ floor.cf }}</option>
+                                        }
+                                    </select>
+                                </label>
+                            }
+                            @if (shelterIndex() < 0 && unitType()?.startsWith('mek-') && buildingCover() !== 'building-1') {
+                                <label>Levels from occupied floor to roof
+                                    <input type="number" min="1" step="1" [value]="manualLevelsBelowRoof() ?? ''"
+                                        (input)="setLevelsBelowRoof($any($event.target).valueAsNumber)" />
+                                </label>
+                            }
+                            <label>Building CF at the start of the phase
+                                <input type="number" min="0" step="1" [disabled]="shelterIndex() >= 0" [value]="availableFloors()[shelterIndex()]?.cf ?? buildingCf() ?? ''"
+                                    (input)="setBuildingCf($any($event.target).valueAsNumber)" />
+                            </label>
+                        }
+                        <label><input type="checkbox" [checked]="angelEcm()" (change)="angelEcm.set(!angelEcm())" />
+                            {{ gameRules().id === 'core-2026' ? 'Attacker or target within hostile Angel ECM' : 'Attack passes into or through hostile Angel ECM' }}
+                        </label>
                         <ng-template #partialCoverControl>
                             <div class="button-row partial-cover-row" [class.derived-target-state]="waterPartialCover() || buildingPartialCover()">
                                 <button type="button" class="bt-button move-button partial-cover" [class.selected]="partialCoverSelected()" [class.water-choice]="waterPartialCover()" [class.building-choice]="buildingPartialCover()" [attr.aria-pressed]="partialCoverSelected()" [disabled]="partialCoverDisabled()" (click)="togglePartialCover()"><span>{{ partialCoverLabel() }}</span><span class="modifier-badge">+1</span></button>
@@ -1227,6 +1278,34 @@ export class TnCalculatorDialogComponent {
     readonly interveningWoods = signal<TnInterveningWoods>(this.normalizeInterveningWoods(this.initialCalculator?.interveningWoods as TnInterveningWoods | 'heavy1' | null | undefined));
     readonly targetHexCover = signal<TnTargetHexCover>(this.initialCalculator?.targetHexCover ?? 'none');
     readonly waterDepth = signal<UnitWaterDepth | undefined>(this.initialCalculator?.waterDepth);
+    readonly buildingTypes = INFANTRY_BUILDING_TYPES;
+    readonly insideTargetBuilding = signal(this.initialCalculator?.insideTargetBuilding === true);
+    readonly infantryBuildingType = signal<InfantryBuildingType | undefined>(this.initialCalculator?.infantryBuildingType);
+    readonly infantryInBuilding = computed(() => !!this.buildingCover() && (this.unitType() === 'infantry' || this.unitType() === 'battle-armor'));
+    setInfantryBuildingType(value: string): void {
+        this.infantryBuildingType.set(isInfantryBuildingType(value) ? value : undefined);
+    }
+    readonly shelteringBuilding = signal(this.initialCalculator?.shelteringBuilding);
+    readonly manualLevelsBelowRoof = signal(this.initialCalculator?.levelsBelowRoof);
+    readonly availableFloors = computed(() => this.gameRules().id === 'total-warfare' && this.buildingCover() ? this.targetNames.buildingFloors() : []);
+    readonly levelsBelowRoof = computed(() => this.availableFloors()[this.shelterIndex()]?.levelsBelowRoof ?? this.manualLevelsBelowRoof());
+    readonly shelterIndex = computed(() => {
+        const ref = this.shelteringBuilding();
+        return ref ? this.availableFloors().findIndex(f => f.ref.forceId === ref.forceId && f.ref.unitId === ref.unitId && f.ref.location === ref.location) : -1;
+    });
+    setLevelsBelowRoof(value: number): void {
+        this.manualLevelsBelowRoof.set(Number.isSafeInteger(value) && value > 0 ? value : undefined);
+    }
+    chooseShelter(index: number): void {
+        const floor = this.availableFloors()[index];
+        this.shelteringBuilding.set(floor?.ref);
+        if (floor) this.buildingCf.set(floor.cf);
+    }
+    readonly buildingCf = signal<number | undefined>(this.initialCalculator?.buildingCf);
+    readonly angelEcm = signal(this.initialCalculator?.angelEcm === true);
+    setBuildingCf(value: number): void {
+        this.buildingCf.set(Number.isSafeInteger(value) && value > 0 ? value : undefined);
+    }
     readonly buildingCover = signal<UnitBuildingLevel | undefined>(this.initialCalculator?.buildingCover);
     readonly range = signal<number>(Math.max(0, this.data.target.distance ?? 1));
     readonly c3Distance = signal<number>(Math.max(0, this.data.target.c3Distance ?? this.data.target.distance ?? 1));
@@ -1238,6 +1317,11 @@ export class TnCalculatorDialogComponent {
             ? this.data.gameRules.indirectFireUsesSpotterPartialCover
             : this.range() > ADJACENT_RANGE));
     readonly attackDirection = signal<TnAttackDirection>(this.initialCalculator?.attackDirection ?? 'front');
+    readonly targetLevelDifference = signal(this.initialCalculator?.targetLevelDifference ?? 0);
+    readonly vtol = signal(this.initialCalculator?.vtol === true);
+    setTargetLevelDifference(value: number): void {
+        if (Number.isSafeInteger(value)) this.targetLevelDifference.set(value);
+    }
     readonly indirectFire = signal<boolean>(this.initialIndirectFire);
     readonly secondaryTarget = signal<boolean>((this.initialCalculator?.secondaryTarget ?? false)
         && !stealthDisallowsSecondaryTarget(this.initialCalculator?.stealth));
@@ -1323,8 +1407,10 @@ export class TnCalculatorDialogComponent {
         targetHeight: this.initialTargetHeight,
         largeTarget: this.largeTarget(),
         prone: this.prone(),
-    }));
-    readonly buildingPartialCover = computed(() => this.targetBuildingCoverState().effect === 'partial');
+        levelsBelowRoof: this.levelsBelowRoof(),
+    }, this.gameRules()));
+    readonly interior = computed(() => this.gameRules().id === 'total-warfare' && this.buildingCover() && this.insideTargetBuilding());
+    readonly buildingPartialCover = computed(() => !this.interior() && this.targetBuildingCoverState().effect === 'partial');
     readonly partialCoverUnavailable = computed(() => this.staticTarget()
         || this.prone()
         || (this.indirectFire() && !this.gameRules().indirectFireUsesSpotterPartialCover)
@@ -1376,6 +1462,9 @@ export class TnCalculatorDialogComponent {
         partialCover: this.partialCover(),
         waterDepth: this.waterDepth(),
         buildingCover: this.buildingCover(),
+        levelsBelowRoof: this.levelsBelowRoof(),
+        insideTargetBuilding: this.interior() ? true : undefined,
+        targetLevelDifference: this.targetLevelDifference(),
         targetHeight: this.initialTargetHeight,
         attackDirection: this.attackDirection(),
         indirectFire: this.indirectFire(),
@@ -1416,6 +1505,10 @@ export class TnCalculatorDialogComponent {
     });
     readonly targetHexCoverModifierLabel = computed(() => {
         if (this.waterDepth()) return null;
+        if (this.interior()) {
+            const distance = interiorBuildingDistance(this.range(), this.targetLevelDifference());
+            return distance > 3 ? 'LOS blocked' : this.formatModifier(distance);
+        }
         if (this.buildingCover()) {
             return this.targetBuildingCoverState().modifier === 2 ? '+2' : null;
         }
@@ -1501,6 +1594,8 @@ export class TnCalculatorDialogComponent {
     selectBuildingLevel(value: string): void {
         if (!isUnitBuildingLevel(value) || this.staticTarget() || this.targetStateReadOnly) return;
         this.buildingCover.update(current => current === value ? undefined : value);
+        this.shelteringBuilding.set(undefined);
+        this.manualLevelsBelowRoof.set(undefined);
         this.waterDepth.set(undefined);
         this.targetHexCover.set('none');
         this.partialCover.set(false);
@@ -1642,8 +1737,19 @@ export class TnCalculatorDialogComponent {
             partialCover: this.partialCover() && !this.partialCoverDisabled(),
             waterDepth: this.waterDepth(),
             buildingCover: this.buildingCover(),
+            ...(this.gameRules().id === 'total-warfare' && this.buildingCover() && !this.infantryInBuilding() && this.shelteringBuilding() ? {
+                shelteringBuilding: this.shelteringBuilding(),
+            } : {}),
+            ...(this.buildingCover() && this.levelsBelowRoof() ? { levelsBelowRoof: this.levelsBelowRoof() } : {}),
+            ...(this.buildingCover() && !this.infantryInBuilding() && this.buildingCf() ? { buildingCf: this.buildingCf() } : {}),
+            ...(this.angelEcm() ? { angelEcm: true } : {}),
+            ...(this.interior() ? { insideTargetBuilding: true } : {}),
+            ...(this.gameRules().id === 'total-warfare' && (this.unitType() === 'building' || this.infantryInBuilding())
+                && this.infantryBuildingType() ? { infantryBuildingType: this.infantryBuildingType() } : {}),
             targetHeight: this.initialTargetHeight,
             attackDirection: this.attackDirection(),
+            ...(this.targetLevelDifference() ? { targetLevelDifference: this.targetLevelDifference() } : {}),
+            ...(this.unitType() === 'vtol-wige' && this.vtol() ? { vtol: true } : {}),
             indirectFire: this.indirectFire(),
             secondaryTarget: this.secondaryTarget(),
             secondaryTargetSideBack: this.secondaryTargetSideBack(),
@@ -1681,6 +1787,7 @@ export class TnCalculatorDialogComponent {
         this.interveningWoods.set('none');
         this.partialCover.set(false);
         this.attackDirection.set('front');
+        this.targetLevelDifference.set(0);
         this.indirectFire.set(false);
         this.secondaryTarget.set(false);
         this.secondaryTargetSideBack.set(false);
@@ -1704,6 +1811,12 @@ export class TnCalculatorDialogComponent {
         this.narcUnderwater.set(false);
         this.tagged.set(false);
         this.ecmShielded.set(false);
+        this.angelEcm.set(false);
+        this.buildingCf.set(undefined);
+        this.shelteringBuilding.set(undefined);
+        this.manualLevelsBelowRoof.set(undefined);
+        this.insideTargetBuilding.set(false);
+        this.infantryBuildingType.set(undefined);
         this.stealthChoice.set('none');
     }
 

@@ -4,9 +4,35 @@
 import { TestInfantryEntity } from '../entity/testing/test-entities';
 import type { EquipmentFlag } from '../equipment-flags.type';
 import { WeaponEquipment,type InfantryWeaponEquipment } from '../equipment.model';
-import { projectConventionalInfantryCombat } from './conventional-infantry-combat-rules';
+import { PREDEFINED_INFANTRY_MOUNTS } from '../entity/types/infantry';
+import { platoonAttack, platoonHeavyBurstDice, projectConventionalInfantryCombat } from './conventional-infantry-combat-rules';
 
 describe('conventional infantry combat reference', () => {
+    it('uses the Heavy Burst feature of at least two troopers, independent of the weapon used for range', () => {
+        const entity = infantry(8, 3);
+        const rifle = weapon(0.25, 2);
+        const burst = weapon(0.30, 1, ['F_INF_BURST']);
+        entity.setPlatoonWeapon('primary', burst);
+        entity.setPlatoonWeapon('secondary', rifle);
+        entity.secondaryCount.set(4);
+        expect(platoonAttack(entity, 24).burstDice).toBe(1);
+        expect(projectConventionalInfantryCombat(entity).rangeModifiers[0]).toBe(-3);
+        entity.setPlatoonWeapon('primary', rifle);
+        entity.setPlatoonWeapon('secondary', burst);
+        entity.secondaryCount.set(1);
+        expect(platoonAttack(entity, 24).burstDice).toBeUndefined();
+        entity.secondaryCount.set(2);
+        expect(platoonAttack(entity, 24).burstDice).toBe(1);
+        entity.setPlatoonWeapon('primary', burst);
+        expect(platoonHeavyBurstDice(entity)).toBe(1);
+        entity.setPlatoonWeapon('primary', weapon(0.8, 2));
+        entity.setPlatoonWeapon('secondary', rifle);
+        entity.secondaryCount.set(7);
+        expect(platoonHeavyBurstDice(entity)).toBe(1);
+        entity.mount.set(PREDEFINED_INFANTRY_MOUNTS.get('Elephant')!);
+        expect(platoonAttack(entity, 24).mountBurstDice).toBe(1);
+    });
+
     it('uses the capped primary and uncapped secondary, with printed CBT damage rounding', () => {
         const entity = infantry(8, 3);
         entity.setPlatoonWeapon('primary', weapon(0.8, 1));

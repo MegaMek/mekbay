@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 
 import type { MekConversionMode } from '../mek-conversion-mode';
-import type { SpottingMode } from '../target-number-calculator.model';
+import type { SpottingMode, TnAttackDirection } from '../target-number-calculator.model';
 import type { HeatAutomationPolicy } from './cbt-unit-runtime';
 
 import type { BombLoadChoice,BombSection } from '../aerospace-bomb.model';
@@ -210,6 +210,30 @@ export type CBTUnitCommand =
         readonly loads: readonly BombLoadChoice[];
     }
     | {
+        /** Each Crew Stunned critical costs a vehicle one additional turn beginning next turn (TW p.195). */
+        readonly type: 'stun-vehicle-crew';
+        readonly target?: 'pending' | 'committed';
+    }
+    | {
+        readonly type: 'destroy-bay-cargo';
+        readonly losses: readonly import('./internal-bay-loads').InternalBayLoad[];
+        readonly target: 'pending' | 'committed';
+    }
+    | {
+        readonly type: 'destroy-bay-cargo';
+        readonly bay: string;
+        readonly cargo: string;
+        readonly target: 'pending' | 'committed';
+    }
+    | {
+        readonly type: 'set-tractor';
+        readonly unitId: string | null;
+    }
+    | {
+        readonly type: 'set-internal-bay-loads';
+        readonly loads: readonly import('./internal-bay-loads').InternalBayLoad[];
+    }
+    | {
         /** An infantry unit takes hold of the target it swarmed (its encounter target id), or lets go (null). */
         readonly type: 'set-swarming';
         readonly target: string | null;
@@ -235,6 +259,11 @@ export type CBTUnitCommand =
         readonly section: BombSection;
         readonly bombId: string;
         readonly spent: number;
+    }
+    | {
+        readonly type: 'engage-ams';
+        readonly componentId: ComponentId;
+        readonly arc: TnAttackDirection;
     }
     | {
         readonly type: 'spend-ammo';
@@ -375,6 +404,8 @@ export type CBTUnitCommand =
     | {
         readonly type: 'replace-turn-state';
         readonly turn: MekTurnStateV2;
+        /** The player entered another water hex at the same depth. */
+        readonly enteredWaterHex?: true;
         /** Stamped by the force: under the full phase system, a roll the turn's new facts raise is rolled at once. */
         readonly realPhases?: true;
     }
@@ -410,7 +441,7 @@ export type CBTUnitCommand =
     | { readonly type: 'rewind-turn-step'; readonly step: number }
     | { readonly type: 'commit-pending' }
     | { readonly type: 'cancel-pending' }
-    | { readonly type: 'set-destroyed'; readonly destroyed: boolean }
+    | { readonly type: 'set-destroyed'; readonly destroyed: boolean; readonly target?: 'pending' | 'committed' }
     | { readonly type: 'set-internal-damage'; readonly locationId: LocationId; readonly damage: number }
     | { readonly type: 'set-armor-damage'; readonly faceId: ArmorFaceId; readonly damage: number }
     | { readonly type: 'damage-track'; readonly damageTrackId: SystemDamageTrackId; readonly amount: number; readonly target: 'committed' | 'pending'; readonly timestamp: number }

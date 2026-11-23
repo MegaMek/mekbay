@@ -27,10 +27,14 @@ import {
 crewStateDefinitions,
 unitConditionControls,
 } from '../../../models/unit-status-presentation';
+import { DialogsService } from '../../../services/dialogs.service';
+import { internalBayAccepts, internalCargoBays, internalPassengerLoad, usedBayCapacity, type InternalBayLoad } from '../../../models/runtime/internal-bay-loads';
+import { isAeroEntity } from '../../../models/entity/utils/entity-type-guards';
+import { workingBayDoors } from '../../../models/rules/system-damage-rules';
 import { LoggerService } from '../../../services/logger.service';
 import { OptionsService } from '../../../services/options.service';
 import { UnitNameService } from '../../../services/unit-name.service';
-import { suggestedVelocityRecordValue,VELOCITY_RECORD_LABELS } from '../../../models/aerospace-velocity-record.model';
+import { isAirshipSpeed, suggestedVelocityRecordValue,VELOCITY_RECORD_LABELS } from '../../../models/aerospace-velocity-record.model';
 import {
 recordSheetDamageChoices,
 recordSheetDamageCommand,
@@ -61,6 +65,7 @@ interface BoundEntitySheets {
 export class PageViewerNonMekRuntimeService {
     private readonly unitNames = inject(UnitNameService);
     private readonly logger = inject(LoggerService);
+    private readonly dialogs = inject(DialogsService);
     private readonly overlays = inject(PageViewerOverlayService);
     private readonly options = inject(OptionsService);
     private readonly bound = new Map<string, BoundEntitySheets>();
@@ -230,6 +235,8 @@ export class PageViewerNonMekRuntimeService {
                 unitConditionControls(snapshot.conditionControlKeys).filter(control => control.placement === 'menu'),
                 condition => snapshot.conditions.includes(condition),
                 snapshot.editContext,
+                internalCargoBays(member.entity).length ? { label: 'Manage internal bay loads', run: () => void this.editBayLoads(member) } : undefined,
+                key => { if (key !== 'hitched') return false; void this.editTractor(member); return true; },
             );
             return;
         }
@@ -251,6 +258,90 @@ export class PageViewerNonMekRuntimeService {
         }
         if (interaction.kind === 'armor' || interaction.kind === 'internal') {
             this.openDamagePicker(member, interaction, snapshot, event);
+        }
+    }
+
+    private async editTractor(member: CBTForceMember): Promise<void> {
+        const snap = member.force.getUnitSnapshot(member.id);
+        if (!snap || !hasNonMekRuntime(snap)) return;
+        const members = member.force.getCBTMembers();
+        const tractors = members.filter(m => m.id !== member.id && m.entity.equipment().some(mount => mount.equipment?.hasFlag('F_TRACTOR_MODIFICATION'))
+            && !member.force.getUnitSnapshot(m.id)?.query.destroyed()).filter(m => {
+            const seen = new Set([member.id]);
+            let id: string | undefined = m.id;
+            while (id) {
+                if (seen.has(id)) return false;
+                seen.add(id);
+                const other = member.force.getUnitSnapshot(id);
+                id = other && hasNonMekRuntime(other) ? other.state.towedBy : undefined;
+            }
+            return true;
+        });
+        const choice = await this.dialogs.choose('Trailer hitch', 'Select the tractor or preceding trailer.',
+            [...tractors.map(m => ({ label: m.entity.displayName(), value: m.id })),
+                { label: 'Towed by a mobile tractor off this sheet', value: '@table' },
+                { label: 'Detached', value: '@detach' }, { label: 'Cancel', value: '' }], '');
+        if (!choice) return;
+        const update = await member.force.dispatchUnitCommand(member.id, { type: 'set-tractor', unitId: choice.startsWith('@') ? null : choice });
+        if (update.accepted) await member.force.dispatchUnitCommand(member.id, { type: 'set-condition', condition: 'hitched', active: choice === '@table' });
+    }
+
+    private async editBayLoads(member: CBTForceMember): Promise<void> {
+        const snap = member.force.getUnitSnapshot(member.id);
+        if (!snap || !hasNonMekRuntime(snap)) return;
+        const bays = internalCargoBays(member.entity);
+        const bayId = bays.length === 1 ? bays[0]!.id : await this.dialogs.choose('Internal bay', 'Choose a bay.',
+            [...bays.map(b => ({ value: b.id, label: b.label + ' (' + b.id + ')' })), { value: '', label: 'Cancel' }], '');
+        const bay = bays.find(b => b.id === bayId);
+        if (!bay) return;
+        const transporter = member.entity.transporters().find(t => t.id === bayId);
+        if (isAeroEntity(member.entity) && transporter?.kind === 'bay' && workingBayDoors(transporter, snap.state.damageTracks) === 0) {
+            await this.dialogs.choose('Internal bay', 'This bay has no working doors.', [{label: 'Close', value: true}], true);
+            return;
+        }
+        if (snap.state.pendingCombat.lostCargo?.length) {
+            await this.dialogs.choose('Internal bay', 'Resolve pending cargo damage before changing the manifest.', [{ label: 'Close', value: true }], true);
+            return;
+        }
+        const loads = [...snap.state.internalBayLoads ?? []];
+        const space = Math.max(0, bay.capacity - usedBayCapacity(bay, loads));
+        const inUse = new Set(member.force.getCBTMembers().flatMap(m => {
+            const other = member.force.getUnitSnapshot(m.id);
+            return other && hasNonMekRuntime(other) ? (other.state.internalBayLoads ?? []).flatMap(row => 'unitId' in row ? [row.unitId] : []) : [];
+        }));
+        const others = member.force.getCBTMembers().filter(m => m.id !== member.id && internalBayAccepts(member.entity, bay.id, m.entity));
+        const memberName = (id: string) => others.find(m => m.id === id)?.entity.displayName() ?? id;
+        const options = [
+            ...loads.flatMap((row, index) => row.bay === bay.id ? [{ value: 'remove:' + index,
+                label: 'Unload ' + ('unitId' in row ? memberName(row.unitId) : row.cargo) }] : []),
+            ...(bay.cargo && space > 0 ? [{ value: 'cargo', label: 'Load cargo' }] : []),
+            ...others.filter(m => bay.troops && usedBayCapacity(bay, [internalPassengerLoad(member.entity, bay.id, m.entity, m.id)]) <= space && !inUse.has(m.id) && !member.force.getUnitSnapshot(m.id)?.query.destroyed())
+                .map(m => ({ value: 'unit:' + m.id, label: 'Embark ' + m.entity.displayName() })),
+            { value: '', label: 'Cancel' },
+        ];
+        const picked = await this.dialogs.choose('Internal bay loads', bay.label, options, '');
+        if (!picked) return;
+        let updated: InternalBayLoad[];
+        if (picked.startsWith('remove:')) updated = loads.filter((_, i) => i !== Number(picked.slice(7)));
+        else if (picked === 'cargo') {
+            const cargo = (await this.dialogs.prompt('Cargo type or item', 'Load cargo'))?.trim();
+            if (!cargo) return;
+            const tons = Number(await this.dialogs.prompt('Tons carried', 'Load ' + cargo, '1'));
+            if (!(tons > 0 && Number.isFinite(tons))) return;
+            if (tons > space) {
+                await this.dialogs.choose('Load cargo', 'Only ' + space + ' tons of space remain in this bay.', [{ label: 'Close', value: true }], true);
+                return;
+            }
+            const same = loads.find(row => row.bay === bay.id && 'cargo' in row && row.cargo === cargo);
+            updated = same ? loads.map(row => row === same ? { ...row, tons: row.tons + tons } : row) : [...loads, { bay: bay.id, cargo, tons }];
+        } else {
+            const unit = others.find(m => m.id === picked.slice(5));
+            if (!unit) return;
+            updated = [...loads, internalPassengerLoad(member.entity, bay.id, unit.entity, unit.id)];
+        }
+        const fresh = member.force.getUnitSnapshot(member.id);
+        if (fresh?.query.stateRevision === snap.query.stateRevision) {
+            await this.overlays.dispatch(member, { type: 'set-internal-bay-loads', loads: updated }, snap.editContext);
         }
     }
 
@@ -348,14 +439,19 @@ export class PageViewerNonMekRuntimeService {
             write(null);
             return;
         }
-        const selected = suggestedVelocityRecordValue(snapshot.velocityRecord, turn, field);
+        const airship = member.entity.motiveType() === 'Airship';
+        const selected = suggestedVelocityRecordValue(snapshot.velocityRecord, turn, field, airship);
         // Thrust is bounded by the unit's maximum thrust and altitude by the low-altitude map; velocity has headroom.
         const limit = field === 'thrust' ? member.entity.runMP() : field === 'altitude' ? 10 : 30;
         this.overlays.openNumberPicker(member.id, event, {
             min: 0,
             max: Math.max(limit, selected),
             selected,
-            title: `Turn ${turn} ${VELOCITY_RECORD_LABELS[field]}`,
+            ...(airship && isAirshipSpeed(field) ? { choices: Array.from({ length: Math.max(limit, selected) * 4 + 1 },
+                (_, i) => ({ value: i / 4, label: String(i / 4) })) } : {}),
+            title: airship && field === 'velocity'
+                ? `Turns ${turn - (turn - 1) % 4}–${turn - (turn - 1) % 4 + 3} Velocity`
+                : `Turn ${turn} ${VELOCITY_RECORD_LABELS[field]}`,
             linear: true,
         }, write);
     }

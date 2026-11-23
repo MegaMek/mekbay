@@ -15,6 +15,7 @@ cbtUnitCheckPresentation,
 import { hasNonMekRuntime,type CBTUnitSnapshot } from '../models/cbt-unit-snapshot';
 import { activeCrewController,DEFAULT_PILOTING_SKILL } from '../models/crew-member.model';
 import { isDroneOperatingSystemEquipment } from '../models/drone-operating-system.model';
+import { buildingCfLosses } from '../models/runtime/building-cf';
 import type { BaseEntity } from '../models/entity/base-entity';
 import type { AeroEntity } from '../models/entity/entities/aero/aero-entity';
 import type { CrewPositionId, LocationId } from '../models/entity/entity-identifiers';
@@ -28,11 +29,11 @@ import {
     type InfernoMissile,
 } from '../models/rules/inferno-rules';
 import { infernoMissilesThisTurn, struckArmorFace } from '../models/runtime/attack-hit-location';
-import type { NonMekHitArc, NonMekHitEffect } from '../models/runtime/non-mek-hit-location';
+import { resolveNonMekHitLocation, type NonMekHitArc, type NonMekHitEffect } from '../models/runtime/non-mek-hit-location';
 import { aeroExplosionStructuralIntegrityDamage, type AeroCriticalType } from '../models/rules/aero-critical-rules';
 import { projectAeroRuntimeRules } from '../models/rules/aero-runtime-rules';
 import { projectAeroHeatAutomationChecks } from '../models/runtime/aero-heat-automation-rules';
-import { heatAmmoExplosionCandidates, rollD6, twoD6Total, type HeatAmmoExplosionCandidate } from '../models/runtime/mek-automation-rules';
+import { heatAmmoExplosionCandidates, roll2D6, rollD6, twoD6Total, type HeatAmmoExplosionCandidate } from '../models/runtime/mek-automation-rules';
 import { canDestroyComponents, vehicleHotLoadBlasts } from '../models/runtime/non-mek-unit-instance';
 import type { CBTRuntimeLocation } from '../models/runtime/cbt-unit-runtime';
 import type { NonMekRuntimeIndex } from '../models/runtime/non-mek-runtime-index';
@@ -47,6 +48,8 @@ import {
     projectNonMekMovementCapabilities,
     type NonMekMovementDeclaration,
 } from '../models/runtime/non-mek-unit-instance';
+import { navalBreachThreshold } from '../models/rules/vehicle-runtime-rules';
+import { systemDamageId } from '../models/rules/system-damage-rules';
 import { DialogsService } from './dialogs.service';
 import { loadSwarmService } from './swarm-service-loader';
 import { automationCheckEvidenceDice,CBTAutomationCheckService } from './cbt-automation-check.service';
@@ -77,6 +80,10 @@ type AeroSnapshot = Omit<CBTUnitSnapshot, 'entity' | 'index' | 'state'> & Readon
 
 /** One damage group read on a non-Mek's own hit-location table, with that table's markers. */
 export interface NonMekDamageGroup {
+    readonly projectileDamage?: number;
+    readonly attackerUnderwater?: true;
+    /** Groups of one attack share this index for the ProtoMek pilot-wound limit. */
+    readonly attackIndex?: number;
     readonly locationId: LocationId;
     readonly damage: number;
     readonly arc: NonMekHitArc;
@@ -214,15 +221,30 @@ export class DirectNonMekAutomationService {
         inferno: readonly InfernoMissile[] = [],
         weaponHeat = 0,
     ): Promise<boolean> {
+        const pilotWounds = new Map<number, { wounded: boolean }>();
         for (const group of groups) {
+            const before = this.nonMekSnapshot(force, instanceId);
+            const pilot = group.attackIndex === undefined ? { wounded: false } : pilotWounds.get(group.attackIndex) ?? { wounded: false };
+            if (group.attackIndex !== undefined) pilotWounds.set(group.attackIndex, pilot);
             const outcome = await this.applyDamageGroup(force, instanceId, group, target, dispatch);
-            if (!outcome || !await this.criticals.resolveDamageGroup(force, instanceId, group, outcome, target, dispatch)) {
+            if (outcome && !await this.checkNavalHull(force, instanceId, group, outcome, target, dispatch)) return false;
+            if (!outcome || !group.effects.includes('rotor-destroyed') && !await this.criticals.resolveDamageGroup(force, instanceId, group, outcome, target, dispatch, pilot)) {
                 return false;
             }
+            if (target === 'committed' && !await this.resolveFlightDamage(force, instanceId, before, dispatch)) return false;
         }
         if (weaponHeat > 0 && this.nonMekSnapshot(force, instanceId)?.entity.tracksHeat()
             && !(await dispatch({ type: 'add-outside-heat', amount: weaponHeat, target }, false)).accepted) return false;
-        return inferno.length === 0 || this.applyInferno(force, instanceId, inferno, target, dispatch);
+        if (!inferno.length) return true;
+        if (inferno.some(missile => missile.attackIndex !== undefined)) {
+            // Each ProtoMek pilot wound is limited by the originating attack, including inferno destruction.
+            for (const source of new Set(inferno.map(missile => missile.attackIndex))) {
+                const missiles = inferno.filter(missile => missile.attackIndex === source);
+                if (!await this.applyInferno(force, instanceId, missiles, target, dispatch)) return false;
+            }
+            return true;
+        }
+        return this.applyInferno(force, instanceId, inferno, target, dispatch);
     }
 
     /** Applies what an attack's inferno missiles do to this unit (TW pp. 141-142). */
@@ -286,6 +308,27 @@ export class DirectNonMekAutomationService {
         }
     }
 
+    private async checkNavalHull(force: CBTForce, instanceId: string, group: NonMekDamageGroup,
+        outcome: NonMekDamageGroupOutcome, target: 'committed' | 'pending', dispatch: CBTForceUnitCommandDispatch): Promise<boolean> {
+        if (this.options.cbtAutomationMode('breachAndFloodCheck') === 'no' || (!outcome.armorHit && !outcome.structureDamaged.length)) return true;
+        const snapshot = this.nonMekSnapshot(force, instanceId);
+        const loc = snapshot?.index.locations.get(group.locationId);
+        if (!snapshot || !loc || !isVehicleEntity(snapshot.entity)) return true;
+        const threshold = navalBreachThreshold(snapshot.entity.motiveType(), loc.code, isUnitWaterDepth(snapshot.state.turn.cover), !!group.attackerUnderwater);
+        if (threshold === null) return true;
+        const id = systemDamageId('hull-breach', undefined, loc.code);
+        if (snapshot.state.damageTracks.get(id)?.hits || snapshot.state.pendingCombat.damageTrackHits.get(id)?.hitDelta) return true;
+        const perspective = target === 'pending' ? 'preview' : 'committed';
+        const bare = loc.armorFaceIds.every(face => snapshot.query.remainingArmor(face, perspective) === 0);
+        const dice = bare ? null : twoD6Total(roll2D6());
+        const breached = bare || dice !== null && dice >= threshold;
+        const event = { id: 'naval-breach:' + instanceId + ':' + snapshot.query.stateRevision + ':' + loc.code,
+            subject: this.subject(snapshot), event: 'Hull integrity', description: bare ? loc.code + ' has no armor' : loc.code + ': rolled ' + dice + ' against ' + threshold,
+            effects: [breached ? 'Hull breached; vessel is lost' : 'Hull holds'] };
+        const accepted = await this.automation.resolve('breachAndFloodCheck', [event], { title: 'Hull Integrity' });
+        return !breached || !accepted?.has(event.id) || (await dispatch({ type: 'damage-track', damageTrackId: id, amount: 1, target, timestamp: Date.now() }, false)).accepted;
+    }
+
     private async applyDamageGroup(
         force: CBTForce,
         instanceId: string,
@@ -301,6 +344,11 @@ export class DirectNonMekAutomationService {
         const struckLocation = struck?.index.locations.get(group.locationId);
         const struckFace = struck && struckLocation ? struckArmorFace(struck.index, struckLocation.id, false) : undefined;
         const struckArmor = struck && struckFace ? struck.query.remainingArmor(struckFace.id, perspective) : 0;
+        if (group.effects.includes('rotor-destroyed') && struck && struckLocation?.code === 'Rotor') {
+            const remaining = struck.query.remainingInternal(struckLocation.id, perspective);
+            if (remaining && !(await dispatch({ type: 'damage-internal', locationId: struckLocation.id, amount: remaining, target }, false)).accepted) return null;
+            return { structureDamaged: [struckLocation.id], structuralIntegrityDamage: 0, struckArmor, armorHit: null };
+        }
         // A rifle hit loses 3 points against the armor where it strikes (`rifleHitDamage`).
         const weaponDamage = struck && struckLocation && group.source.kind === 'weapon' && group.source.rifle
             ? rifleHitDamage(struck.ruleset, group.damage, {
@@ -333,6 +381,15 @@ export class DirectNonMekAutomationService {
                 damage = armor.remainingDamage;
             }
             if (damage <= 0) break;
+            if (snapshot.ruleset === 'total-warfare' && snapshot.entity.entityType === 'BuildingEntity') {
+                const losses = buildingCfLosses(snapshot, location.code, damage, perspective);
+                if (losses) {
+                    for (const { locationId, amount } of losses) {
+                        if (!(await dispatch({ type: 'damage-internal', locationId, amount, target }, false)).accepted) return null;
+                    }
+                    break;
+                }
+            }
             const structuralIntegrity = isAeroEntity(snapshot.entity)
                 ? [...snapshot.index.locations.values()].find(candidate => candidate.code === 'SI')
                 : undefined;
@@ -460,12 +517,86 @@ export class DirectNonMekAutomationService {
         dispatch: CBTForceUnitCommandDispatch,
     ): Promise<boolean> {
         if (!result.accepted || !result.changed) return true;
+        if (prepared.command.type === 'set-cover' && isUnitWaterDepth(prepared.command.cover)
+            && !isUnitWaterDepth(before?.state.turn.cover)) {
+            const current = this.nonMekSnapshot(force, instanceId);
+            if (current && current.entity.motiveType() === 'Submarine' && !current.query.destroyed()) {
+                for (const loc of current.index.locations.values()) {
+                    if (!loc.armorFaceIds.length || loc.code === 'Body' || !loc.internalPoints
+                        || loc.armorFaceIds.some(face => current.query.remainingArmor(face) > 0)) continue;
+                    if (!await this.checkNavalHull(force, instanceId, { locationId: loc.id, damage: 0, arc: 'front', effects: [], source: { kind: 'fall' } },
+                        { structureDamaged: [loc.id], structuralIntegrityDamage: 0, struckArmor: 0, armorHit: null }, 'committed', dispatch)) return false;
+                    if (this.nonMekSnapshot(force, instanceId)?.query.destroyed()) break;
+                }
+            }
+        }
+        if (before && hasNonMekRuntime(before) && !await this.resolveFlightDamage(force, instanceId, before, dispatch)) return false;
         if (prepared.shookOffSwarm && !await this.releaseSwarm(force, instanceId, dispatch)) return false;
         const aeroAfter = this.snapshot(force, instanceId);
         if (aeroAfter?.state.turn.controlRecovery !== undefined
             && !this.hasPotentialController(aeroAfter)
             && !this.hasDroneController(aeroAfter)
             && !await this.setControlRecovery(force, instanceId, null, dispatch)) return false;
+        return true;
+    }
+
+    private async resolveFlightDamage(force: CBTForce, instanceId: string, before: NonMekSnapshot | null,
+        dispatch: CBTForceUnitCommandDispatch): Promise<boolean> {
+        if (!before || before.state.turn.airborne !== true || !isVehicleEntity(before.entity)) return true;
+        const vtol = before.entity.unitType() === 'VTOL';
+        if (!vtol && before.entity.motiveType() !== 'WiGE') return true;
+        const current = this.nonMekSnapshot(force, instanceId);
+        if (!current || current.state.turn.airborne !== true || current.query.destroyed() || !isVehicleEntity(current.entity)) return true;
+        const project = (s: NonMekSnapshot) => projectNonMekMovementCapabilities(s.entity, s.index, s.state, s.ruleset, s.crewAssignment);
+        if (current.crewAssignment.positions.some(position => current.query.crewState(position.positionId).isDeathCommitted())) {
+            return (await dispatch({ type: 'set-destroyed', destroyed: true }, false)).accepted;
+        }
+        const engine = systemDamageId('engine', 1);
+        const lostMotive = [...current.index.damageTracks.values()].some(track => (track.system === 'motive' || track.system === 'rotor')
+            && (current.state.damageTracks.get(track.id)?.hits ?? 0) > (before.state.damageTracks.get(track.id)?.hits ?? 0));
+        const engineHit = !before.state.damageTracks.get(engine)?.hits && !!current.state.damageTracks.get(engine)?.hits;
+        if (!engineHit && (!lostMotive || project(before).maximum.walk === 0 || project(current).maximum.walk > 0)) return true;
+        const terrain = await this.dialogs.choose('Emergency landing', 'What terrain is the vehicle over?', [
+            { label: 'Clear or paved', value: 'clear' }, { label: 'Rough or building', value: 'rough' },
+            { label: 'Water', value: 'water' }, { label: 'Other terrain', value: 'other' },
+        ], 'other');
+        let landed = false;
+        if ((vtol || engineHit) && (terrain === 'clear' || terrain === 'rough')) {
+            const driver = activeCrewController(current, 'piloting');
+            const mods = projectNonMekControlRoll(current.entity, current.index, current.state, current.ruleset, current.crewAssignment)
+                .modifiers.reduce((n, row) => n + row.modifier, vtol ? 4 : 0);
+            const targetNumber = (driver?.piloting ?? 5) + mods;
+            if (this.options.cbtAutomationMode('pilotSkillCheck') === 'no') {
+                landed = await this.dialogs.choose('Emergency landing', 'Did the Driving Skill Roll succeed (' + targetNumber + '+)?',
+                    [{ label: 'Success', value: true }, { label: 'Failure', value: false }], false);
+            } else {
+                const rolls = await this.automationChecks.resolve('pilotSkillCheck', [{ id: 'landing:' + instanceId + ':' + current.query.stateRevision,
+                    subject: this.subject(current), label: 'Emergency landing', description: vtol ? 'VTOL engine damage (+4)' : 'WiGE engine damage',
+                    failureOutcome: 'Crash', targetNumber }], { title: 'Driving Skill Roll' });
+                if (!rolls?.length) return false;
+                landed = rolls[0]!.outcome === 'success';
+            }
+        }
+        const distance = before.state.turn.movement?.distance ?? 0;
+        if (!(await dispatch({ type: 'set-airborne', airborne: false }, false)).accepted) return false;
+        if (landed) return (await dispatch({ type: 'set-condition', condition: 'immobile', active: true }, false)).accepted;
+        if (vtol || (terrain !== 'clear' && terrain !== 'water')) {
+            return (await dispatch({ type: 'set-destroyed', destroyed: true }, false)).accepted;
+        }
+        if (!(await dispatch({ type: 'set-condition', condition: 'crashed', active: true }, false)).accepted) return false;
+        const damage = Math.ceil(distance * current.entity.tonnage() / 10);
+        if (!damage) return true;
+        const arc = await this.dialogs.choose<NonMekHitArc>('WiGE crash', 'Which side struck the terrain?',
+            (['front', 'left', 'right', 'rear'] as const).map(value => ({ value, label: value })), 'front');
+        const member = force.getCBTMembers().find(m => m.id === instanceId);
+        for (let remaining = damage; remaining > 0; remaining -= 5) {
+            const sheet = member?.nonMekRecordSheetSnapshot();
+            if (!sheet) return false;
+            const table = resolveNonMekHitLocation(current.entity, sheet, arc, twoD6Total(roll2D6()), rollD6);
+            const loc = sheet.locations.find(l => l.sheetCode === table?.locationCode);
+            if (loc && !await this.applyWeaponHits(force, instanceId, [{ locationId: loc.locationId, arc, damage: Math.min(remaining, 5),
+                effects: table?.effects ?? [], source: { kind: 'fall' } }], 'committed', dispatch)) return false;
+        }
         return true;
     }
 

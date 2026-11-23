@@ -113,8 +113,7 @@ export interface MekHeatKernelInputV2 {
     readonly water: UnitWaterState;
     /** Committed slot unavailability drives SCM/wing support and current movement rules. */
     readonly committedUnavailableCriticalSlots: ReadonlySet<CriticalSlotId>;
-    /** Only committed destruction reduces ordinary heat-sink cooling this turn. */
-    readonly committedDestroyedCriticalSlots: ReadonlySet<CriticalSlotId>;
+
     /** Committed plus pending hits generate damaged-engine heat before damage commit. */
     readonly previewUnavailableCriticalSlots: ReadonlySet<CriticalSlotId>;
     readonly committedUnavailableComponents: ReadonlySet<ComponentId>;
@@ -604,7 +603,7 @@ export function buildMekHeatKernelInputV2(input: MekHeatKernelInputV2): MekHeatK
         standAttempts: input.standAttempts,
         water: Object.freeze({ ...input.water }),
         committedUnavailableCriticalSlots: new ImmutableSet(input.committedUnavailableCriticalSlots),
-        committedDestroyedCriticalSlots: new ImmutableSet(input.committedDestroyedCriticalSlots),
+
         previewUnavailableCriticalSlots: new ImmutableSet(input.previewUnavailableCriticalSlots),
         committedUnavailableComponents: new ImmutableSet(input.committedUnavailableComponents),
         activeEscalatingFailureComponents: new ImmutableSet(input.activeEscalatingFailureComponents),
@@ -822,7 +821,7 @@ function committedCoolingCapacity(
         .filter(slotId => input.committedUnavailableCriticalSlots.has(slotId)).length;
     // The bulk switch leaves leg sinks on as long as possible, as the sheet's anonymous pips always have.
     for (const heatSink of profile.heatSinks) {
-        if (heatSink.criticalSlotIds.some(slotId => input.committedDestroyedCriticalSlots.has(slotId))) continue;
+        if (heatSink.criticalSlotIds.some(slotId => input.committedUnavailableCriticalSlots.has(slotId))) continue;
         const lost = Math.min(myomerLoss, heatSink.units);
         myomerLoss -= lost;
         const surviving = heatSink.units - lost;

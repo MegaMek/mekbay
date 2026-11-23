@@ -1,17 +1,23 @@
 // Copyright (C) 2026 The MegaMek Team
 // SPDX-License-Identifier: GPL-3.0-or-later
 
-import { DIALOG_DATA, DialogRef } from '@angular/cdk/dialog';
-import { ChangeDetectionStrategy, Component, computed, inject } from '@angular/core';
+import { buildingCollateral } from '../../models/rules/infantry-building-damage';
 
+import { DIALOG_DATA, DialogRef } from '@angular/cdk/dialog';
+import { ChangeDetectionStrategy, Component, computed, inject, signal } from '@angular/core';
+
+import type { ComponentId } from '../../models/entity/entity-identifiers';
+import { type DefenseAssignment, availableMissileDefenses } from '../../models/runtime/anti-missile-defense';
 import type { CBTForceMember } from '../../models/force-member.model';
 import { toHitSucceeds } from '../../models/rules/weapon-attack-resolution';
 import { attackDamageSource } from '../../models/rules/armor-damage-rules';
 import { infernoEffect, infernoEffectText } from '../../models/rules/inferno-rules';
 import {
     attackDamagePreview,
+    shelterDamage,
     infernoMissilesThisTurn,
     readAttackThermalEffects,
+    weaponHitLocation,
     type AttackHitLocation,
 } from '../../models/runtime/attack-hit-location';
 import type { AttackEvent } from '../../services/game-events.service';
@@ -26,6 +32,8 @@ import {
     type AttackReportWeapon,
 } from '../attack-report/attack-report.component';
 
+export type IncomingAttackChoice = boolean | Readonly<{ buildingLocation?: string; defenses: readonly Readonly<{ weapon: number; componentId: ComponentId }>[] }>;
+
 export interface IncomingAttackDialogData {
     readonly event: AttackEvent;
     readonly member: CBTForceMember;
@@ -34,6 +42,8 @@ export interface IncomingAttackDialogData {
     readonly fromDisplayName: string | null;
     /** Accepted damage waits for the end of the phase. */
     readonly pending: boolean;
+    readonly choosingDefenses?: true;
+    readonly defenseDice?: ReadonlyMap<number, readonly number[]>;
 }
 
 /** Shows an opponent's resolved attack on one of this player's units; closes true to accept the damage. */
@@ -45,9 +55,39 @@ export interface IncomingAttackDialogData {
     styleUrl: './incoming-attack-dialog.component.scss',
 })
 export class IncomingAttackDialogComponent {
-    private readonly dialogRef = inject<DialogRef<boolean>>(DialogRef);
+    private readonly dialogRef = inject<DialogRef<IncomingAttackChoice>>(DialogRef);
     protected readonly data = inject<IncomingAttackDialogData>(DIALOG_DATA);
     protected readonly arcLabel = ATTACK_ARC_LABELS[this.data.event.arc];
+    protected readonly defenses = signal<readonly DefenseAssignment[]>([]);
+    protected readonly buildingLocations = this.data.member.entity.entityType === 'BuildingEntity'
+        ? this.data.member.nonMekRecordSheetSnapshot()?.locations.map(row => row.code) ?? [] : [];
+    protected readonly creditedFloor = (() => {
+        const weapons = this.data.event.weapons;
+        if (!weapons.every(w => w.cfHit) && !weapons.some(w => w.physical === 'charge' && w.automaticBuildingHit)) return undefined;
+        const groups = weapons.flatMap(weapon => weapon.groups);
+        const location = groups[0]?.buildingLocation;
+        return location && this.buildingLocations.includes(location) && groups.every(group => group.buildingLocation === location)
+            ? location : undefined;
+    })();
+    protected readonly buildingLocation = signal(this.creditedFloor ?? (this.buildingLocations.length === 1 ? this.buildingLocations[0] : ''));
+    private readonly reportedWeapons = computed(() => this.data.event.weapons.map(resolved => {
+        return this.buildingLocation() ? { ...resolved, groups: resolved.groups.map(group => ({ ...group, buildingLocation: this.buildingLocation() })) } : resolved;
+    }));
+    protected defenseChoices(weapon: number) {
+        return availableMissileDefenses(this.data.member, this.data.event, weapon, []);
+    }
+    protected selected(weapon: number, id: ComponentId): boolean {
+        return this.defenses().some(a => a.weapon === weapon && a.componentId === id);
+    }
+    protected canAssign(weapon: number, id: ComponentId): boolean {
+        return this.selected(weapon, id) || availableMissileDefenses(this.data.member, this.data.event, weapon, this.defenses()).some(s => s.id === id);
+    }
+    protected toggle(weapon: number, componentId: ComponentId): void {
+        if (this.selected(weapon, componentId)) this.defenses.update(rows => rows.filter(a => a.weapon !== weapon || a.componentId !== componentId));
+        else if (this.canAssign(weapon, componentId)) this.defenses.update(rows => [...rows, { weapon, componentId }]);
+    }
+    protected commitDefenses(): void { this.dialogRef.close({ defenses: this.defenses() }); }
+
     /** With critical automation off, critical and motive effects are rolled on the sheet. */
     protected readonly manualCriticals = inject(OptionsService).cbtAutomationMode('criticalHitChanceCheck') === 'no';
 
@@ -55,12 +95,14 @@ export class IncomingAttackDialogComponent {
         // Hits are previewed in the order this unit takes them; inferno missiles and swarm strikes deal none here.
         const ruleset = this.data.member.force.getUnitSnapshot(this.data.member.id)?.ruleset;
         const deal = ruleset ? attackDamagePreview(this.data.member, ruleset) : null;
-        return this.data.event.weapons.map(weapon => {
+        return this.reportedWeapons().map((weapon, index) => {
             const source = attackDamageSource(weapon);
-            const preview = deal && !weapon.inferno && !weapon.swarmStrike
+            const preview = deal && !weapon.cfHit && !weapon.inferno && !weapon.swarmStrike
                 ? (location: AttackHitLocation | null, damage: number) => deal(location, damage, source) : undefined;
             return {
                 name: weapon.name,
+                ...(weapon.automaticBuildingHit ? { automaticHit: true as const, rollForEffects: true as const } : {}),
+                buildingDamage: ruleset ? shelterDamage(this.data.member, this.data.event.arc, weapon, ruleset) : 0,
                 targetNumber: weapon.targetNumber,
                 // Infantry shaken off, or struck by a hit on the unit it swarms, takes its damage without a to-hit roll.
                 ...(physicalAttackAlwaysHits(weapon.physical)
@@ -70,6 +112,9 @@ export class IncomingAttackDialogComponent {
                 hit: toHitSucceeds(weapon.toHit, weapon.targetNumber),
                 cluster: weapon.cluster ?? null,
                 inferno: weapon.inferno === true,
+                narcPod: weapon.narcPod,
+                collateral: buildingCollateral(weapon, weapon.groups.reduce((sum, group) => sum + group.damage, 0)),
+                amsDice: this.data.defenseDice?.get(index),
                 ...(weapon.aim ? { aim: attackReportAim(weapon.aim) } : {}),
                 groups: weapon.groups.map(group => attackReportGroup(this.data.member, this.data.event.arc, weapon, group, preview)),
             };
@@ -85,6 +130,10 @@ export class IncomingAttackDialogComponent {
         }
         return [...totals].map(([label, damage]) => ({ label, damage }));
     });
+    protected readonly narc = computed(() => this.reportedWeapons().some(weapon => weapon.narcPod && weapon.groups.some(group => {
+        const hit = weaponHitLocation(this.data.member, this.data.event.arc, weapon, group);
+        return hit && hit.kind !== 'miss';
+    })));
     protected readonly totalDamage = computed(() => this.summary().reduce((sum, row) => sum + row.damage, 0));
     /** Infantry took hold of this unit with the attack, or let go of it; this infantry came off the unit it swarmed. */
     protected readonly swarm = computed(() => {
@@ -93,7 +142,7 @@ export class IncomingAttackDialogComponent {
         return swarmed === null ? null : swarmed ? 'Swarmed' : 'Swarm ended';
     });
     /** Outside heat the attack's heat-causing weapons apply. */
-    private readonly thermal = computed(() => readAttackThermalEffects(this.data.member, this.data.event.arc, this.data.event.weapons));
+    private readonly thermal = computed(() => readAttackThermalEffects(this.data.member, this.data.event.arc, this.reportedWeapons()));
     protected readonly heat = computed(() => this.thermal().heat);
     /** What the attack's inferno missiles do to this unit; null without inferno hits. */
     protected readonly inferno = computed(() => {
@@ -102,11 +151,13 @@ export class IncomingAttackDialogComponent {
         return missiles.length === 0 ? null : infernoEffectText(infernoEffect(this.data.member.entity, missiles, earlier));
     });
     /** Infantry and battle armor allocate damage by trooper: the player applies it on the sheet. */
+    protected readonly absorbedCf = computed(() => this.weapons().reduce((sum, weapon) => sum + (weapon.buildingDamage ?? 0), 0));
     protected readonly applicable = computed(() =>
         this.weapons().every(weapon => weapon.inferno || weapon.groups.every(group => group.label !== null)));
 
     protected accept(): void {
-        this.dialogRef.close(true);
+        const buildingLocation = this.buildingLocation();
+        this.dialogRef.close(buildingLocation ? { defenses: [], buildingLocation } : true);
     }
 
     protected ignore(): void {

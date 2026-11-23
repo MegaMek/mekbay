@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 
 import { NgTemplateOutlet } from '@angular/common';
+import { battleArmorMissileColumns } from '../../utils/cluster-hit-table';
 import { physicalAttackTroopersHit } from '../../models/rules/physical-attack-rules';
 import { isInfantryEntity } from '../../models/entity/utils/entity-type-guards';
 import { ChangeDetectionStrategy, Component, input, output } from '@angular/core';
@@ -13,7 +14,7 @@ import { weaponHitLocation, type AttackHitLocation } from '../../models/runtime/
 import type { AttackHitGroup, AttackWeaponReport } from '../../services/game-events.service';
 import { aimedShotStrikes, type AimedShotRoll } from '../../models/rules/aimed-shot-rules';
 import { getMekLocationLabel } from '../../models/entity/types/mek';
-import type { MekHitArc } from '../../utils/record-sheet-reference-table';
+import type { TnAttackDirection } from '../../models/target-number-calculator.model';
 import { DiceRollerComponent } from '../dice-roller/dice-roller.component';
 
 export interface AttackReportGroup {
@@ -28,19 +29,26 @@ export interface AttackReportGroup {
 }
 
 export interface AttackReportWeapon {
+    readonly casualtyDice?: readonly number[];
+    readonly manualInfantry?: Readonly<{ mechanized: number; armorApplies?: boolean }>;
+    readonly collateral?: Readonly<{ damage: number; troopers?: number }>;
     readonly name: string;
     readonly targetNumber: number;
     /** The attack hits without a to-hit roll (`physicalAttackAlwaysHits`). */
     readonly automaticHit?: true;
+    readonly rollForEffects?: true;
+    readonly buildingDamage?: number;
     readonly toHit: TwoDice;
     readonly hit: boolean;
     readonly capacitorBurnout?: true;
     readonly jammed?: boolean;
     /** An insulated laser's failure roll after a to-hit roll of 2, and whether the laser suffers a critical hit. */
     readonly insulator?: Readonly<{ dice: TwoDice; failed: boolean }>;
-    readonly cluster: Readonly<{ dice: TwoDice; modifier: number; projectiles: number; hits: number }> | null;
+    readonly cluster: NonNullable<AttackWeaponReport['cluster']> | null;
     /** Each group is one inferno missile rather than damage. */
     readonly inferno?: boolean;
+    readonly narcPod?: boolean;
+    readonly amsDice?: readonly number[];
     /**
      * Outside heat a heat-causing weapon's hit applies, with the heat dice it read (none for a flamer); `reduced` when
      * armor or partial cover reduces the heat.
@@ -55,7 +63,7 @@ export interface AttackReportWeapon {
  * Which roll of a weapon an edit sets: to-hit, a laser insulator's failure, cluster, heat dice, aim, or a hit-location
  * group by index.
  */
-export type AttackReportRoll = 'to-hit' | 'insulator' | 'cluster' | 'heat' | 'aim' | number;
+export type AttackReportRoll = 'to-hit' | 'insulator' | 'cluster' | 'heat' | 'aim' | number | { additionalCluster: number };
 
 /** An aimed shot as the report shows it. */
 export function attackReportAim(aim: AimedShotRoll): NonNullable<AttackReportWeapon['aim']> {
@@ -72,8 +80,10 @@ export interface AttackReportRollEdit {
     readonly total: number;
 }
 
-export const ATTACK_ARC_LABELS: Readonly<Record<MekHitArc, string>> = Object.freeze({
+export const ATTACK_ARC_LABELS: Readonly<Record<TnAttackDirection, string>> = Object.freeze({
     front: 'Front', left: 'Left side', right: 'Right side', rear: 'Rear',
+    'front-left': 'Front left', 'front-right': 'Front right', 'rear-left': 'Rear left', 'rear-right': 'Rear right',
+    above: 'Above', below: 'Below',
 });
 
 /**
@@ -83,7 +93,7 @@ export const ATTACK_ARC_LABELS: Readonly<Record<MekHitArc, string>> = Object.fre
  */
 export function attackReportGroup(
     defender: CBTForceMember | null,
-    arc: MekHitArc,
+    arc: TnAttackDirection,
     weapon: AttackWeaponReport,
     group: AttackHitGroup,
     deal: (location: AttackHitLocation | null, damage: number) => number = (_, damage) => damage,
@@ -94,7 +104,7 @@ export function attackReportGroup(
     const infantry = defender !== null && physical !== undefined && isInfantryEntity(defender.entity)
         ? defender.entity : null;
     return Object.freeze({
-        ...(infantry && physical
+        ...(infantry && group.trooperLocation ? { damage: dealt, troopers: true as const } : infantry && physical
             ? { damage: physicalAttackTroopersHit(physical, dealt, infantry.isMechanized()), troopers: true as const }
             : { damage: dealt }),
         location: group.location,
@@ -102,7 +112,7 @@ export function attackReportGroup(
         // Without the struck unit here, an aimed shot that strikes still names its location.
         label: read?.label ?? (!defender && aim && aimedShotStrikes(aim.roll) ? attackReportAim(aim).label : null),
         // A leg attack and battle armor's swarm damage roll for a critical hit wherever they strike a 'Mech.
-        criticalCheck: read?.kind !== 'mek' ? undefined
+        criticalCheck: read?.kind !== 'mek' || weapon.narcPod || group.damage === 0 ? undefined
             : read.throughArmorCritical ? 'TAC check' : weapon.critical ? 'Critical check' : undefined,
     });
 }
@@ -123,17 +133,21 @@ const CLUSTER_MODIFIERS = Object.freeze([-4, -3, -2, -1, 0, 1, 2, 3, 4]);
 export class AttackReportComponent {
     readonly weapons = input.required<readonly AttackReportWeapon[]>();
     readonly editable = input(false);
+    readonly concealed = input<readonly boolean[]>([]);
+    readonly locked = input<readonly boolean[]>([]);
 
     readonly rollSet = output<AttackReportRollEdit>();
     readonly clusterModifierSet = output<Readonly<{ weapon: number; modifier: number }>>();
     readonly rerolled = output<number>();
 
     protected readonly clusterModifiers = CLUSTER_MODIFIERS;
+    protected readonly missileColumns = battleArmorMissileColumns;
     protected readonly infernoLabel = INFERNO_LABEL;
 
     /** The totals a roll of these dice can show: 1D6 (punch and kick tables), 2D6, or 3D6 (plasma). */
     protected totals(dice: readonly number[]): readonly number[] {
-        return dice.length === 1 ? ONE_D6_TOTALS : dice.length === 3 ? THREE_D6_TOTALS : TWO_D6_TOTALS;
+        return dice.length === 1 ? ONE_D6_TOTALS : dice.length === 2 ? TWO_D6_TOTALS : dice.length === 3 ? THREE_D6_TOTALS
+            : Array.from({ length: 5 * dice.length + 1 }, (_, index) => dice.length + index);
     }
 
     protected sum(dice: readonly number[]): number {

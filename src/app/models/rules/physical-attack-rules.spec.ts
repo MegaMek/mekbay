@@ -19,9 +19,85 @@ import {
 } from './physical-attack-rules';
 import type { CBTRuleset } from '../cbt-ruleset.model';
 import { damageGroups, physicalAttackProfile, resolveWeaponAttack } from './weapon-attack-resolution';
-import { physicalAttackMeetsPartialCover, physicalAttackTargetNumber } from '../runtime/equipment-panel';
+import { asEncounterTargetId } from '../runtime/encounter-runtime';
+import { physicalAttackMeetsPartialCover, physicalAttackTargetNumber, physicalHitUsesCover, physicalRowTargetIssue } from '../runtime/equipment-panel';
 
 describe('physical attack rules', () => {
+    for (const ruleset of ['core-2026', 'total-warfare'] as const) {
+        it(`checks a push target and the landing height of a DFA under ${ruleset}`, () => {
+            const target = { distance: 1, unitType: 'mek-biped' as const, tnCalculator: { targetLevelDifference: 2 } };
+            expect(physicalTargetIssue('death-from-above', undefined, target, ruleset, 'punch', { jumpMp: 3 })).toBe('out-of-range');
+            expect(physicalTargetIssue('death-from-above', undefined, target, ruleset, 'punch', { jumpMp: 4 })).toBeNull();
+            expect(physicalTargetIssue('death-from-above', undefined, { ...target, tnCalculator: {
+                ...target.tnCalculator, prone: true,
+            } }, ruleset, 'punch', { jumpMp: 3 })).toBeNull();
+            const id = asEncounterTargetId('target:declared');
+            const row = { kind: 'death-from-above' as const, ruleset, jumpMp: 1,
+                selection: { kind: 'target' as const, targetId: id } };
+            expect(physicalRowTargetIssue(row, { ...target, id })).toBe(ruleset === 'core-2026' ? null : 'out-of-range');
+            expect(physicalRowTargetIssue(row, { ...target, id: 'target:other' })).toBe('out-of-range');
+            expect(physicalTargetIssue('push', undefined, { distance: 1, unitType: 'vehicle' }, ruleset)).toBe('invalid');
+            expect(physicalTargetIssue('push', undefined, { distance: 1, unitType: 'mek-biped', tnCalculator: { prone: true } }, ruleset)).toBe('invalid');
+            expect(physicalTargetIssue('push', undefined, { distance: 1, unitType: 'mek-biped' }, ruleset)).toBeNull();
+        });
+        it(`checks punch reach, posture and relative height under ${ruleset}`, () => {
+            const punch = (distance: number, prone: boolean, targetLevelDifference: number) =>
+                physicalTargetIssue('punch', undefined, { distance, unitType: 'mek-biped', tnCalculator: { prone, targetLevelDifference } }, ruleset);
+            expect([punch(5, false, 0), punch(0, false, 0), punch(1, true, 0), punch(1, false, -1),
+                punch(1, false, 1), punch(1, true, 1), punch(1, false, 2)])
+                .toEqual(['out-of-range', 'out-of-range', 'invalid', 'invalid', null, null, 'out-of-range']);
+            expect(physicalStrike('punch', 'punch', { mek: true, prone: false, levelDifference: 1 }, ruleset).table).toBe('kick');
+            expect(physicalStrike('punch', 'punch', { mek: true, prone: true, levelDifference: 1 }, ruleset).table)
+                .toBe(ruleset === 'core-2026' ? 'punch' : 'standard');
+        });
+        it(`checks the standing target's chassis and resolved table for water cover under ${ruleset}`, () => {
+            const row = { ruleset, hitTable: 'punch' as const, kind: 'punch' as const,
+                attackerWater: { partiallyUnderwater: false, submerged: false }, hitModifiers: [0] };
+            const covered = { tnModifier: 1, partialCover: { modifier: 1, water: true } };
+            expect(physicalAttackTargetNumber(row, 5, null, { ...covered, unitType: 'mek-biped' })).toBe(5);
+            expect(physicalAttackTargetNumber(row, 5, null, { ...covered, unitType: 'mek-quad' })).toBe(6);
+            expect(physicalAttackTargetNumber(row, 5, null,
+                { ...covered, unitType: 'mek-biped', tnCalculator: { targetLevelDifference: 1 } })).toBe(6);
+        });
+    }
+
+    it('intercepts Core kick-table damage with a Level 1 building, including an uphill punch', () => {
+        const building = { unitType: 'mek-biped' as const, partialCover: { water: false, modifier: 1 },
+            tnCalculator: { buildingCover: 'building-1' as const } };
+        const water = { ...building, partialCover: { water: true, modifier: 1 }, tnCalculator: { waterDepth: 'underwater-depth-1' as const } };
+        const kick = { kind: 'kick' as const, hitTable: 'kick' as const, ruleset: 'core-2026' as const,
+            attackerWater: { submerged: false, partiallyUnderwater: false } };
+        expect(physicalHitUsesCover(kick, building, 'kick', 'core-2026')).toBeTrue();
+        expect(physicalHitUsesCover(kick, water, 'kick', 'core-2026')).toBeFalse();
+        expect(physicalHitUsesCover({ ...kick, kind: 'charge' }, building, 'standard', 'core-2026')).toBeFalse();
+        expect(physicalHitUsesCover({ ...kick, kind: 'punch', hitTable: 'punch' }, { ...building,
+            tnCalculator: { ...building.tnCalculator, targetLevelDifference: 1 } }, 'kick', 'core-2026')).toBeTrue();
+    });
+
+    it('checks building occupants independently of intervening cover under Total Warfare', () => {
+        const target = { distance: 1, unitType: 'mek-quad' as const, tnCalculator: { buildingCover: 'building-1' as const } };
+        expect(physicalTargetIssue('punch', undefined, target, 'total-warfare', 'punch', { insideBuilding: false })).toBe('invalid');
+        expect(physicalTargetIssue('punch', undefined, target, 'total-warfare', 'punch', { insideBuilding: true })).toBeNull();
+        expect(physicalTargetIssue('charge', undefined, target, 'total-warfare', 'standard', { insideBuilding: false })).toBeNull();
+        const covered = { tnModifier: 1, partialCover: { modifier: 1, water: false } };
+        expect(physicalAttackMeetsPartialCover({
+            kind: 'punch', hitTable: 'punch', ruleset: 'core-2026',
+            attackerWater: { submerged: false, partiallyUnderwater: false },
+        }, { ...covered, unitType: 'mek-quad' })).toBeTrue();
+    });
+
+    it('requires overlap with a ground target or a flying VTOL at the elevation of the attack', () => {
+        const vtol = (kind: PhysicalAttackKind, targetLevelDifference: number, largeTarget = false, jumpMp = 0) =>
+            physicalTargetIssue(kind, undefined, { distance: 1, unitType: 'vtol-wige',
+                tnCalculator: { isAirborne: true, vtol: true, largeTarget, targetLevelDifference } }, 'total-warfare', 'standard', { jumpMp });
+        expect([vtol('kick', -1), vtol('kick', -1, true), vtol('punch', 0), vtol('punch', 1),
+            vtol('kick', 2), vtol('club', 3), vtol('club', 4), vtol('death-from-above', 4, false, 3)])
+            .toEqual(['out-of-range', null, 'out-of-range', null, 'out-of-range', null, 'out-of-range', 'out-of-range']);
+        expect(physicalTargetIssue('punch', undefined, { unitType: 'vehicle', distance: 1 })).toBe('invalid');
+        expect(physicalTargetIssue('punch', undefined, { unitType: 'vehicle', distance: 1,
+            tnCalculator: { targetLevelDifference: 1 } })).toBeNull();
+    });
+
     it('reaches only infantry in the hex with a thrash, and only a vehicle there with a prone punch', () => {
         expect(physicalTargetIssue('thrash', 'infantry-in-hex', { unitType: 'infantry', distance: 0 })).toBeNull();
         expect(physicalTargetIssue('thrash', 'infantry-in-hex', { unitType: 'battle-armor', distance: 0 })).toBeNull();
@@ -141,6 +217,8 @@ describe('physical attack rules', () => {
         const facts = { attackerTons: 55, targetTons: 85, attackDamage: 6, attackerSubmerged: false };
         expect(physicalSelfDamage('total-warfare', 'charge', true, { ...facts, attackerTons: 50 }))
             .toEqual({ damage: 9, table: 'standard', groupSize: 5 });
+        expect(physicalSelfDamage('total-warfare', 'charge', true, { ...facts, targetTons: 500, buildingChargeCf: 21 }))
+            .toEqual({ damage: 3, table: 'standard', groupSize: 5 });
         // Charging underwater halves it, rounding down (Core p. 77; BMM p. 35): to 0 under Total Warfare, never below 1
         // under Core (p. 88).
         const submerged = (ruleset: CBTRuleset, targetTons: number) =>

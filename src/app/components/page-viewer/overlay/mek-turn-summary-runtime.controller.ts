@@ -216,6 +216,19 @@ export class MekTurnSummaryRuntimeController {
         });
     }
 
+    public canEnterAnotherWaterHex(): boolean {
+        const movement = this.currentMovement();
+        const ruleset = this.member.force.getUnitSnapshot(this.member.id)?.ruleset;
+        return !!movement && movement.distance > 0 && movement.mode === (ruleset === 'core-2026' ? 'run' : 'walk')
+            && this.snapshot().canTakeActiveActions && !this.busy();
+    }
+
+    public async enterAnotherWaterHex(): Promise<void> {
+        if (this.canEnterAnotherWaterHex()) await this.dispatch({
+            type: 'replace-turn-state', turn: this.snapshot().turn, enteredWaterHex: true,
+        });
+    }
+
     public async selectCover(cover: UnitCover | null): Promise<void> {
         const turn = this.snapshot().turn;
         await this.dispatch({

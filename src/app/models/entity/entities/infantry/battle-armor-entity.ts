@@ -129,6 +129,11 @@ export class BattleArmorEntity extends InfantryBaseEntity {
     && this.weightClass() !== 'Heavy' && this.weightClass() !== 'Assault'
     && this.motiveType() !== 'UMU' && !this.isBurdened());
 
+  carriesBodyMissileLauncher(mount: EntityMountedEquipment): boolean {
+    return this.techBase() !== 'Clan' && mount.baMountLocation === 'Body'
+      && mount.equipment instanceof WeaponEquipment && mount.equipment.hasFlag('F_MISSILE');
+  }
+
   readonly isBurdened = computed(() => {
     if (this.techBase() === 'Clan') return false;
     return this.equipment().some(mount => {

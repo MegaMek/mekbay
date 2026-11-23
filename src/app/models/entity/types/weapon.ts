@@ -45,6 +45,7 @@ export type IntrinsicWeaponKind =
   | 'brush-off'
   | 'frenzy'
   // Infantry anti-'Mech attacks (TW pp. 220-223).
+  | 'vibro-claw'
   | 'leg-attack'
   | 'swarm'
   | 'end-swarm';

@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 
 import type { CBTRuleset } from '../cbt-ruleset.model';
-import type { TnTargetNumberCalculatorState, TnTargetUnitType } from '../target-number-calculator.model';
+import { resolveTnTargetHeight, type TnTargetNumberCalculatorState, type TnTargetUnitType } from '../target-number-calculator.model';
 import type { IntrinsicWeaponKind } from '../entity/types/weapon';
 import type { MekPhysicalAttackCheckTriggerKindV2 } from '../runtime/mek-movement-psr-v2';
 import { legAttackTarget, SWARM_VEHICLE_MODIFIER, swarmTarget } from './anti-mek-attack-rules';
@@ -16,7 +16,7 @@ export type PhysicalAttackKind = Exclude<IntrinsicWeaponKind, 'airmek-ram' | 'fr
 
 export const PHYSICAL_ATTACK_KINDS: readonly PhysicalAttackKind[] = Object.freeze([
     'punch', 'kick', 'mule-kick', 'club', 'push', 'charge', 'death-from-above', 'thrash', 'weapon',
-    'leg-attack', 'swarm', 'swarm-damage', 'end-swarm', 'brush-off',
+    'vibro-claw', 'leg-attack', 'swarm', 'swarm-damage', 'end-swarm', 'brush-off',
 ]);
 
 /**
@@ -38,8 +38,9 @@ export function physicalAttackTakesMovement(kind: PhysicalAttackKind | null | un
  * A thrash automatically succeeds, so it rolls no to-hit (TW p. 151); so does the damage of a unit already swarming
  * (TW p. 223) and its choice to end the swarm.
  */
-export function physicalAttackAlwaysHits(kind: PhysicalAttackKind | null | undefined): boolean {
-    return kind === 'thrash' || kind === 'swarm-damage' || kind === 'end-swarm';
+export function physicalAttackAlwaysHits(kind: PhysicalAttackKind | null | undefined, ruleset?: CBTRuleset, unitType?: TnTargetUnitType): boolean {
+    return kind === 'thrash' || kind === 'swarm-damage' || kind === 'end-swarm'
+        || (!!kind && ruleset === 'total-warfare' && unitType === 'building');
 }
 
 /**
@@ -80,9 +81,18 @@ export function physicalHitTable(kind: PhysicalAttackKind, claws: boolean): HitT
 export function physicalStrike(
     kind: PhysicalAttackKind,
     standingMekTable: HitTable,
-    target: Readonly<{ mek: boolean; prone: boolean }>,
+    target: Readonly<{ mek: boolean; prone: boolean; levelDifference?: number }>,
+    ruleset: CBTRuleset = 'core-2026',
 ): Readonly<{ table: HitTable; arc?: 'rear' | 'front' }> {
-    if (target.mek && !target.prone) return Object.freeze({ table: standingMekTable });
+    if (target.mek && !target.prone) {
+        const level = target.levelDifference ?? 0;
+        if (level !== 0 && kind !== 'charge' && kind !== 'death-from-above') {
+            return Object.freeze({ table: level > 0 ? 'kick' : 'punch' });
+        }
+        return Object.freeze({ table: standingMekTable });
+    }
+    if (target.mek && target.levelDifference === 1 && kind !== 'death-from-above'
+        && (ruleset === 'core-2026' || kind === 'weapon')) return Object.freeze({ table: standingMekTable });
     return Object.freeze(kind === 'death-from-above'
         ? { table: 'standard', arc: target.mek ? 'rear' : 'front' }
         : { table: 'standard' });
@@ -91,11 +101,12 @@ export function physicalStrike(
 /**
  * Whether a target's partial cover (a building's) counts against a physical attack, with both 'Mechs at the same
  * level. Total Warfare applies it to every attack but a DFA, whose roll is not modified for terrain (pp. 102, 144);
- * Core never to a charge or to an attack on the punch table (p. 66). Core's exception is for tables with no leg
- * hits: a quad's punch table has them, which this does not tell apart.
+ * Core exempts a charge and attacks on a table without leg hits (pp. 66, 239). A quad's punch table has leg hits.
  */
-export function physicalAttackMeetsBuildingCover(ruleset: CBTRuleset, kind: PhysicalAttackKind | null, table: HitTable): boolean {
-    return ruleset === 'core-2026' ? kind !== 'charge' && table !== 'punch' : kind !== 'death-from-above';
+export function physicalAttackMeetsBuildingCover(
+    ruleset: CBTRuleset, kind: PhysicalAttackKind | null, table: HitTable, quad = false,
+): boolean {
+    return ruleset === 'core-2026' ? kind !== 'charge' && (quad || table !== 'punch') : kind !== 'death-from-above';
 }
 
 /**
@@ -108,9 +119,10 @@ export function physicalAttackMeetsWaterCover(
     kind: PhysicalAttackKind | null,
     table: HitTable,
     attackerWater: Readonly<{ partiallyUnderwater: boolean; submerged: boolean }>,
+    quad = false,
 ): boolean {
-    if (!physicalAttackMeetsBuildingCover(ruleset, kind, table)) return false;
-    if (ruleset !== 'core-2026') return true;
+    if (!physicalAttackMeetsBuildingCover(ruleset, kind, table, quad)) return false;
+    if (ruleset !== 'core-2026') return quad || table !== 'punch';
     if (attackerWater.submerged) return false;
     return table !== 'kick' || !attackerWater.partiallyUnderwater;
 }
@@ -162,11 +174,53 @@ export function physicalTargetIssue(
         unitType?: TnTargetUnitType;
         distance: number;
         tnCalculator?: Pick<TnTargetNumberCalculatorState,
-            'targetHexCover' | 'waterDepth' | 'buildingCover' | 'isAirborne' | 'swarmed' | 'swarming'>;
+            'targetHexCover' | 'waterDepth' | 'buildingCover' | 'isAirborne' | 'swarmed' | 'swarming'
+            | 'prone' | 'targetLevelDifference' | 'targetHeight' | 'largeTarget' | 'vtol' | 'buildingCf' | 'insideTargetBuilding' | 'infantryBuildingType'>;
     }>,
+    ruleset: CBTRuleset = 'core-2026',
+    hitTable: HitTable = 'standard',
+    attacker?: Readonly<{ jumpMp?: number; partiallyUnderwater?: boolean; insideBuilding?: boolean }> | null,
 ): 'invalid' | 'out-of-range' | null {
+    if (ruleset === 'total-warfare' && target.tnCalculator?.buildingCover && infantryTarget(target.unitType)
+        && kind !== 'brush-off' && !target.tnCalculator.insideTargetBuilding) return 'invalid';
     if (kind === 'charge' && infantryTarget(target.unitType)) return 'invalid';
-    if (reach === undefined) return null;
+    if (reach === undefined) {
+        if (attacker === null || !kind || !['charge', 'death-from-above', 'punch', 'kick', 'mule-kick', 'club', 'push', 'weapon'].includes(kind)) return null;
+        if (target.distance > 1) return 'out-of-range';
+        const mek = target.unitType?.startsWith('mek-') ?? true;
+        if (target.distance === 0 && (mek || kind === 'charge' || kind === 'push')) return 'out-of-range';
+        const level = target.tnCalculator?.targetLevelDifference ?? 0;
+        if (kind === 'push' && (!mek || target.tnCalculator?.prone)) return 'invalid';
+        if (ruleset === 'total-warfare' && target.tnCalculator?.buildingCover && kind !== 'charge'
+            && (level !== 0 || (!target.tnCalculator.insideTargetBuilding
+                && (attacker?.insideBuilding === false || target.tnCalculator.buildingCf)))) return 'invalid';
+        if (target.unitType === 'vtol-wige' && target.tnCalculator?.vtol && target.tnCalculator.isAirborne) {
+            if (kind === 'death-from-above') return attacker?.jumpMp !== undefined && attacker.jumpMp < level ? 'out-of-range' : null;
+            const canReach = (height: number) => height === 0 ? kind !== 'punch'
+                : height === 1 || height === 2 ? kind !== 'kick' && kind !== 'mule-kick'
+                    : height === 3 && (kind === 'club' || kind === 'weapon');
+            return canReach(level) || target.tnCalculator.largeTarget && canReach(level + 1) ? null : 'out-of-range';
+        }
+        if (kind === 'death-from-above') {
+            const height = resolveTnTargetHeight({ ...target.tnCalculator, unitType: target.unitType ?? 'mek-biped' });
+            return attacker?.jumpMp !== undefined && attacker.jumpMp < level + height ? 'out-of-range' : null;
+        }
+        if (!mek) {
+            if (target.unitType === 'vehicle' || target.unitType === 'protoMek' || infantryTarget(target.unitType)
+                || target.unitType === 'vtol-wige' && !target.tnCalculator?.isAirborne) {
+                if (level < 0 || level > 1) return 'out-of-range';
+                if (level === 1) return kind === 'punch' || kind === 'weapon' || kind === 'club' ? null : 'invalid';
+                if (kind === 'punch' && !attacker?.partiallyUnderwater) return 'invalid';
+            }
+            return null;
+        }
+        const prone = target.tnCalculator?.prone === true;
+        if (Math.abs(level) > 1) return 'out-of-range';
+        if (level === 1) return ['punch', 'club', 'weapon'].includes(kind) || (!prone && kind === 'charge') ? null : 'invalid';
+        if (level === -1) return !prone && ['charge', 'club', 'weapon', 'kick', 'mule-kick'].includes(kind) ? null : 'invalid';
+        if (!prone || kind === 'kick' || kind === 'mule-kick') return null;
+        return ruleset === 'core-2026' && (kind === 'club' || kind === 'weapon' && hitTable !== 'punch') ? null : 'invalid';
+    }
     const hex = target.tnCalculator;
     // The infantry a 'Mech brushes off clings to it, wherever its distance is recorded.
     if (reach === 'swarming-infantry') return infantryTarget(target.unitType) && hex?.swarming === true ? null : 'invalid';
@@ -176,11 +230,12 @@ export function physicalTargetIssue(
             case 'unswarming-infantry-in-hex':
                 // TW p. 151: swarming infantry is dislodged by the anti-'Mech rules, never thrashed at. The one unit
                 // that swarms a 'Mech shares its hex, so swarming infantry there is taken to be that unit.
+                if (kind === 'vibro-claw') return infantryTarget(target.unitType);
                 return infantryTarget(target.unitType) && !hex?.waterDepth && !hex?.buildingCover
                     && (hex?.targetHexCover === undefined || hex.targetHexCover === 'none')
                     && (reach === 'infantry-in-hex' || hex?.swarming !== true);
             case 'vehicle-in-hex':
-                return target.unitType === 'vehicle';
+                return target.unitType === 'vehicle' || target.unitType === 'vtol-wige' && !hex?.isAirborne;
             case 'legs-in-hex':
                 return legAttackTarget(target.unitType);
             // A unit is swarmed by one unit at a time (TW p. 220).
@@ -248,13 +303,16 @@ export function physicalSelfDamage(
     ruleset: CBTRuleset,
     kind: PhysicalAttackKind,
     hit: boolean,
-    facts: Readonly<{ attackerTons: number; targetTons: number; attackDamage: number; attackerSubmerged: boolean }>,
+    facts: Readonly<{ attackerTons: number; targetTons: number; attackDamage: number; attackerSubmerged: boolean; buildingChargeCf?: number }>,
 ): Readonly<{ damage: number; table: HitTable; groupSize: number }> | null {
     if (kind === 'brush-off' && !hit) {
         return Object.freeze({ damage: facts.attackDamage, table: 'punch', groupSize: Math.max(1, facts.attackDamage) });
     }
     if (!hit) return null;
     if (kind === 'charge') {
+        if (ruleset === 'total-warfare' && facts.buildingChargeCf !== undefined) {
+            return Object.freeze({ damage: Math.ceil(facts.buildingChargeCf / 10), table: 'standard', groupSize: 5 });
+        }
         const damage = Math.ceil(facts.targetTons / 10);
         return Object.freeze({
             damage: facts.attackerSubmerged ? underwaterPhysicalDamage(ruleset, damage) : damage,

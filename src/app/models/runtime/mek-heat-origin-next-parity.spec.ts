@@ -352,6 +352,20 @@ describe('origin/next Mek movement and engine heat parity', () => {
         expect(fixture.instance.query().heatState().current).toBe(5);
     });
 
+    for (const ruleset of ['core-2026', 'total-warfare'] as const) {
+        it(`stops cooling with flooded arm sinks on dry ground under ${ruleset}`, () => {
+            const fixture = createDirectMekRuntimeFixture(ruleset);
+            const arm = [...fixture.index.locations.values()].find(location => location.code === 'RA')!;
+            const capacity = () => mekProjection(fixture)().capacity;
+            expect(capacity()).toBe(10);
+            fixture.instance.dispatch({ type: 'replace-turn-state', turn: { ...fixture.instance.query().turnState(), cover: 'underwater-depth-2' } });
+            fixture.instance.dispatch({ type: 'set-location-condition', locationId: arm.id,
+                condition: 'flooded', value: 1, target: 'committed' });
+            fixture.instance.dispatch({ type: 'replace-turn-state', turn: { ...fixture.instance.query().turnState(), cover: null } });
+            expect(capacity()).toBe(4);
+        });
+    }
+
     it('gives back the dissipation APPLY HEAT booked on a heat sink destroyed afterwards', () => {
         const fixture = createDirectMekRuntimeFixture('core-2026', 'unit:heat:lost-sink');
         const laser = fixture.equipmentComponent('ISMediumLaser');

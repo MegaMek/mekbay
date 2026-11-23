@@ -1347,12 +1347,15 @@ function translateSavedSettledHeat(
     // The fired weapons follow their components the same way; one that no longer resolves stays as saved.
     const firedWeapons = turn.firedWeapons && withFiredWeapons(undefined, turn.firedWeapons.map(componentId =>
         translateSavedComponentId(componentId, accumulator, 'fired weapon') as ComponentId));
-    return settledHeat === null && firedWeapons?.join() === turn.firedWeapons?.join()
+    const amsEngagements = turn.amsEngagements?.map(id =>
+        translateSavedComponentId(id, accumulator, 'fired AMS') as ComponentId).sort();
+    return settledHeat === null && firedWeapons?.join() === turn.firedWeapons?.join() && amsEngagements?.join() === turn.amsEngagements?.join()
         ? turn
         : canonicalizeMekTurnStateV2({
             ...turn,
             ...(settledHeat === null ? {} : { settledHeat }),
             ...(firedWeapons === undefined ? {} : { firedWeapons }),
+            ...(amsEngagements ? { amsEngagements } : {}),
         });
 }
 
@@ -2464,7 +2467,7 @@ function assertNoNarcOnPhysicallyDestroyedLocations(
     errorCode: V2StateCodecErrorCode,
 ): void {
     for (const [locationId, state] of locations) {
-        if ((state.conditions.get('narc') ?? 0) > 0
+        if ((state.conditions.has('narc') || state.conditions.has('new-narc'))
             && isMekLocationPhysicallyDestroyed(index, locations, locationId)) {
             codecFail(
                 errorCode,

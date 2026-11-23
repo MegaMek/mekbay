@@ -694,6 +694,11 @@ export abstract class TurnTrackerControls {
         });
     }
 
+    readonly canEnterAnotherWaterHex = computed(() => !!this.waterDepth() && this.runtime()?.canEnterAnotherWaterHex());
+    enterAnotherWaterHex(): void {
+        if (this.canEnterAnotherWaterHex()) void this.runtime()?.enterAnotherWaterHex();
+    }
+
     selectWaterDepth(value: string): void {
         if (isUnitWaterDepth(value)) this.selectCover(value);
     }

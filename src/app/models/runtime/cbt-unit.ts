@@ -12,6 +12,7 @@ import type { MekEntity } from '../entity/entities/mek/mek-entity';
 import { cloneNativeUnitSourceHandle,pinnedCustomSourceForHandle,type NativeUnitSourceHandle } from '../native-unit-source-handle';
 import type { PrototypeLaserHeatResult } from '../prototype-laser-heat.model';
 import type { AttackerTargetingState } from './attacker-targeting-state';
+import { hydrateInternalPassengerSpaces } from './internal-bay-loads';
 import { followCalculatedHeat,type CBTUnitCommandResult,type CBTUnitQueryPort,type CBTUnitRuntimeReadModel,type CBTUnitRuntimeState } from './cbt-unit-runtime';
 import { assignedCrewRuntimeState,canonicalizeCrewAssignment,type CrewAssignment } from './crew-assignment';
 import type { TargetRegistrySnapshot } from './encounter-runtime';
@@ -133,6 +134,15 @@ export class CBTUnit<F extends CBTUnitFamily = CBTUnitFamily> {
     }
     revision(): number { return this.#runtime.state.stateRevision; }
     snapshot(): CBTUnitStateFor<F> { return this.#runtime.state as CBTUnitStateFor<F>; }
+    hydratePassengerSpaces(resolvePassenger: (id: string) => BaseEntity | undefined, restored: boolean): void {
+        const runtime = this.#runtime;
+        if (runtime.kind !== 'non-mek' || !runtime.state.internalBayLoads?.length) return;
+        const loads = hydrateInternalPassengerSpaces(runtime.binding.entity, runtime.state.internalBayLoads, resolvePassenger);
+        if (loads === runtime.state.internalBayLoads) return;
+        // During restore the hydrated envelope is built below the same revision. A later admission must dirty the carrier.
+        const state: NonMekUnitRuntimeState = { ...runtime.state, internalBayLoads: loads, stateRevision: runtime.state.stateRevision + (restored ? 0 : 1) };
+        this.installState(state);
+    }
     query(): UnitQueryFor<F> {
         const runtime = this.#runtime;
         if (this.#queryCache?.state === runtime.state) return this.#queryCache.query as UnitQueryFor<F>;

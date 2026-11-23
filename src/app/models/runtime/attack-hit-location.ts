@@ -61,17 +61,71 @@ function hasHeatReducingArmor(snapshot: CBTUnitSnapshot | null): snapshot is CBT
         && [...snapshot.entity.armorByLocation().values()].some(armor => armor.type === 'HEAT_DISSIPATING' || armor.type === 'REFLECTIVE');
 }
 
-type WeaponLocationTable = Pick<AttackWeaponReport, 'arc' | 'aim'> & { readonly partialCover?: boolean; readonly table?: HitTable };
+type WeaponLocationTable = Pick<AttackWeaponReport, 'arc' | 'aim' | 'mekPhysical'> & { readonly partialCover?: boolean; readonly table?: HitTable };
 type LocationRoll = Omit<AttackHitGroup, 'damage'>;
 
 export function weaponHitLocation(
     member: CBTForceMember,
-    arc: MekHitArc,
+    arc: NonMekHitArc,
     weapon: WeaponLocationTable,
     group: LocationRoll,
 ): AttackHitLocation | null {
+    if (group.buildingLocation && member.entity.entityType === 'BuildingEntity') {
+        const struck = member.nonMekRecordSheetSnapshot()?.locations.find(row => row.code === group.buildingLocation);
+        return struck ? { kind: 'non-mek', label: struck.code, locationId: struck.locationId, arc, effects: [] } : null;
+    }
+    if (group.trooperLocation !== undefined) {
+        const trooper = member.nonMekRecordSheetSnapshot()?.locations.find(row => row.code === group.trooperLocation);
+        return trooper ? { kind: 'non-mek', label: trooper.code, locationId: trooper.locationId,
+            arc: weapon.arc ?? arc, effects: [] } : null;
+    }
+    if (weapon.mekPhysical && member.entity.unitType() === 'VTOL' && member.force.getUnitSnapshot(member.id)?.state.turn.airborne === true) {
+        const rotor = member.nonMekRecordSheetSnapshot()?.locations.find(location => location.code === 'Rotor');
+        if (rotor) return { kind: 'non-mek', label: 'Rotor destroyed', locationId: rotor.locationId,
+            arc: weapon.arc ?? arc, effects: ['rotor-destroyed'] };
+    }
     return readAttackHitLocation(member, weapon.arc ?? arc, group.location, group.aux,
         weapon.partialCover === true, weapon.table, weapon.aim, group.floating);
+}
+
+/** A building owner receives the credited CF at the floor identified by the attacker's cover selection. */
+export function shelterHitReport(name: string, damage: number, location: string): AttackWeaponReport {
+    return { name, types: [], targetNumber: 2, automaticBuildingHit: true, cfHit: true, toHit: [1, 1],
+        groups: [{ damage, buildingLocation: location, location: [1, 1], aux: 1 }] };
+}
+
+/** The hex takes its absorbed CF and all remaining damage from a leg struck through building cover. */
+export function shelterDamage(member: CBTForceMember | null, arc: NonMekHitArc, weapon: AttackWeaponReport,
+    ruleset: CBTRuleset, unitType?: TnTargetUnitType): number {
+    return weapon.groups.reduce((sum, group) => sum + shelterGroupDamage(member, arc, weapon, group, ruleset, unitType), weapon.strayBuildingDamage ?? 0);
+}
+
+export function shelterGroupDamage(member: CBTForceMember | null, arc: NonMekHitArc, weapon: AttackWeaponReport,
+    group: AttackHitGroup, ruleset: CBTRuleset, unitType?: TnTargetUnitType): number {
+    if (group.buildingDamage === undefined) return 0;
+    const absorbed = group.buildingDamage;
+    if (!weapon.partialCover || !group.damage) return absorbed;
+    if (member) {
+        const hit = weaponHitLocation(member, arc, weapon, group);
+        return absorbed + (hit?.kind === 'miss' && hit.label === 'Cover' ? group.damage : 0);
+    }
+    if (unitType && !unitType.startsWith('mek-')) return absorbed;
+    const chassis = { chassisConfig: targetMekConfig(unitType) };
+    const direction = fourDirection(weapon.arc ?? arc);
+    const total = group.location.reduce((a, b) => a + b, 0);
+    let leg = false;
+    if (weapon.table === 'kick') leg = true;
+    else if (weapon.table === 'punch') {
+        const row = mekPhysicalLocationRows(mekHitLocationTable(chassis), ruleset).find(r => r.roll === total);
+        const column = direction === 'left' ? 'punchLeftSide' : direction === 'right' ? 'punchRightSide' : 'punchFrontRear';
+        if (row) leg = isMekLegLocation(chassis.chassisConfig, row[column].split('/')[0]);
+    } else if (weapon.table !== 'swarm') {
+        const hit = standardMekTableHit(chassis, direction, total, group.aux, weapon.aim);
+        const loc = hit?.throughArmorCritical && group.floating
+            ? resolveMekHitLocation(mekHitLocationTable(chassis), direction, hit.hitLocationRoll, group.aux, twoD6Total(group.floating)).location : hit?.location;
+        leg = !!loc && isMekLegLocation(chassis.chassisConfig, loc);
+    }
+    return absorbed + (leg ? group.damage : 0);
 }
 
 /** Reroll covered legs, accept a second 2 as a torso hit (Core p. 95, TO:AR p. 75). */
@@ -87,12 +141,12 @@ export function rollFloatingMekHitLocation(entity: Pick<MekEntity, 'chassisConfi
 }
 
 /** Record a qualifying shot's reroll once, for previews and delivery. A successful aimed shot bypasses the table. */
-export function rollFloatingCriticals<T extends LocationRoll>(member: CBTForceMember | null, arc: MekHitArc,
+export function rollFloatingCriticals<T extends LocationRoll>(member: CBTForceMember | null, arc: NonMekHitArc,
     weapon: WeaponLocationTable, groups: readonly T[], unitType?: TnTargetUnitType): readonly T[] {
     const chassis = member ? (isMekEntity(member.entity) ? member.entity : null)
         : unitType && !unitType.startsWith('mek-') ? null : { chassisConfig: targetMekConfig(unitType) };
     if (!chassis || (weapon.table ?? 'standard') !== 'standard') return groups;
-    const direction = weapon.arc ?? arc;
+    const direction = fourDirection(weapon.arc ?? arc);
     const aimed = weapon.aim && aimedShotStrikes(weapon.aim.roll) && (!member || readAimedLocation(member, direction, weapon.aim.location));
     return groups.map(group => {
         const hit = !aimed && group.location.length === 2
@@ -125,7 +179,7 @@ function standardMekTableHit(chassis: Pick<MekEntity, 'chassisConfig'>, arc: Mek
  */
 export function attackHeatHits(
     member: CBTForceMember,
-    arc: MekHitArc,
+    arc: NonMekHitArc,
     weapon: AttackWeaponReport,
 ): readonly Readonly<{ location: AttackHitLocation | null; heat: number }>[] {
     if (weapon.inferno) {
@@ -133,7 +187,11 @@ export function attackHeatHits(
     }
     if (!weapon.heat) return [];
     if (!weapon.groups.length) return [{ location: null, heat: weapon.heat }];
-    // Only a platoon's heat comes in several groups; a weapon's heat rides its single hit.
+    const perSuitHeat = weapon.heatPerGroup;
+    if (perSuitHeat !== undefined) {
+        return weapon.groups.map(group => ({ location: weaponHitLocation(member, arc, weapon, group), heat: perSuitHeat }));
+    }
+    // A platoon's heat is allocated in the same 2-point groups as its shots.
     const shares = weapon.groups.length > 1 ? damageGroups(weapon.heat, PLATOON_DAMAGE_GROUP) : [weapon.heat];
     return weapon.groups.map((group, index) => ({ location: weaponHitLocation(member, arc, weapon, group), heat: shares[index] ?? 0 }));
 }
@@ -145,7 +203,7 @@ export function attackHeatHits(
  */
 export function readAttackThermalEffects(
     member: CBTForceMember,
-    arc: MekHitArc,
+    arc: NonMekHitArc,
     weapons: readonly AttackWeaponReport[],
     ledger = attackDamageLedger(),
 ): { heat: number; inferno: InfernoMissile[] } {
@@ -166,9 +224,12 @@ export function readAttackThermalEffects(
             ? reflectedHeat(snapshot!.ruleset, snapshot!.entity.armorAt(code).type, source, amount) : amount;
     };
     const deal = reducing ? attackDamagePreview(member, reducing.ruleset, undefined, ledger) : null;
-    const missile = (location: AttackHitLocation | null, sent: number, delivered: number): InfernoMissile =>
-        ({ location, ...(delivered === sent ? {} : { heat: delivered }) });
-    for (const weapon of weapons) {
+    const distinctProtoAttacks = snapshot?.entity.entityType === 'ProtoMek' && weapons.filter(weapon => weapon.inferno).length > 1;
+    const thermalHits = weapons.flatMap((weapon, index) => weapon.heatPerGroup === undefined ? [{ weapon, index }]
+        : weapon.groups.map(group => ({ index, weapon: { ...weapon, heat: weapon.heatPerGroup, groups: [group] } })));
+    for (const { index, weapon } of thermalHits) {
+        const missile = (location: AttackHitLocation | null, sent: number, delivered: number): InfernoMissile =>
+            ({ location, ...(delivered === sent ? {} : { heat: delivered }), ...(distinctProtoAttacks ? { attackIndex: index } : {}) });
         for (const hit of attackHeatHits(member, arc, weapon)) {
             if (hit.location?.kind === 'miss') {
                 if (weapon.inferno) inferno.push(missile(hit.location, hit.heat, 0));
@@ -222,7 +283,7 @@ export interface AimedShotLocation {
  * 'Mech, and on a vehicle those its hit-location table gives that direction, so never the far side or the body
  * (TW p. 110 names no vehicle locations; this is MegaMek's reading). Other units have none.
  */
-export function aimedShotLocations(member: CBTForceMember, arc: MekHitArc): readonly AimedShotLocation[] {
+export function aimedShotLocations(member: CBTForceMember, arc: NonMekHitArc): readonly AimedShotLocation[] {
     const entity = member.entity;
     if (isMekEntity(entity)) {
         return Object.freeze((member.mekRecordSheetSnapshot()?.locations ?? []).map(location => {
@@ -264,14 +325,23 @@ export function aimedShotLocations(member: CBTForceMember, arc: MekHitArc): read
     }));
 }
 
-/** The attacker records four directions; six-sided vehicles take side attacks on their front quarters. */
-function nonMekHitArc(entity: BaseEntity, arc: MekHitArc): NonMekHitArc {
-    const sixArcs = nonMekHitArcs(entity).length === 6;
+export function fourDirection(arc: NonMekHitArc): MekHitArc {
+    if (arc === 'front-left' || arc === 'rear-left') return 'left';
+    if (arc === 'front-right' || arc === 'rear-right') return 'right';
+    if (arc === 'above' || arc === 'below') return 'front';
+    return arc;
+}
+
+/** Older four-direction attack records used the front quarter for a side hit. */
+function nonMekHitArc(entity: BaseEntity, arc: NonMekHitArc): NonMekHitArc {
+    if (nonMekHitArcs(entity).includes(arc)) return arc;
+    const sixArcs = nonMekHitArcs(entity).includes('front-left');
+    if (!sixArcs) return fourDirection(arc);
     return sixArcs && arc === 'left' ? 'front-left' : sixArcs && arc === 'right' ? 'front-right' : arc;
 }
 
 /** The named location of an aimed shot that strikes it; null when the unit has no such location to aim at. */
-function readAimedLocation(member: CBTForceMember, arc: MekHitArc, code: string): AttackHitLocation | null {
+function readAimedLocation(member: CBTForceMember, arc: NonMekHitArc, code: string): AttackHitLocation | null {
     const entity = member.entity;
     if (isMekEntity(entity)) {
         if (!entity.locationOrder.some(location => location === code)) return null;
@@ -301,7 +371,7 @@ function readAimedLocation(member: CBTForceMember, arc: MekHitArc, code: string)
  */
 export function readAttackHitLocation(
     member: CBTForceMember,
-    arc: MekHitArc,
+    arc: NonMekHitArc,
     roll: HitLocationDice,
     aux: number,
     partialCover = false,
@@ -333,6 +403,10 @@ export function readAttackHitLocation(
         const cell = row[`${table}${arc === 'left' ? 'LeftSide' : arc === 'right' ? 'RightSide' : 'FrontRear'}`];
         const [front, rear = front] = cell.split('/');
         const location = arc === 'rear' ? rear! : front!;
+        // A Core kick-table attack intercepted by Level 1 building cover hits the building (p. 136).
+        if (partialCover && (table === 'kick' || entity.locationIsLeg(location))) {
+            return Object.freeze({ kind: 'miss', label: 'Cover' });
+        }
         const rearArmor = arc === 'rear' && MEK_TORSO_LOCATIONS.has(location);
         return Object.freeze({
             kind: 'mek',
@@ -345,11 +419,11 @@ export function readAttackHitLocation(
     if (isMekEntity(entity)) {
         // An aimed shot at a 'Mech in partial cover rerolls a leg result until another location comes up
         // (Core p. 70); should every roll made ahead be a leg, the shot strikes the location it named.
-        const initial = standardMekTableHit(entity, arc, total, aux, aim);
+        const initial = standardMekTableHit(entity, fourDirection(arc), total, aux, aim);
         if (!initial) return readAimedLocation(member, arc, aim!.location);
         const floated = initial.throughArmorCritical && floating !== undefined;
         const result = floated
-            ? resolveMekHitLocation(mekHitLocationTable(entity), arc, initial.hitLocationRoll, aux, twoD6Total(floating))
+            ? resolveMekHitLocation(mekHitLocationTable(entity), fourDirection(arc), initial.hitLocationRoll, aux, twoD6Total(floating))
             : initial;
         if (!result.location) return null;
         // TW and Core p.66: a leg hit on a 'Mech in partial cover strikes the cover instead.

@@ -26,7 +26,7 @@ calculateChargeDamage,
 type ChargeDamageProjection,
 } from './charge-damage';
 import { gameRulesFor, type ToHitModifierBreakdownEntry } from './game-rules';
-import { type SystemDamageKind } from './system-damage-rules';
+import { systemDamageId, type SystemDamageKind } from './system-damage-rules';
 
 export interface VehicleMotiveHit {
     readonly level: number;
@@ -91,6 +91,18 @@ export interface VehicleRuntimeRulesProjection {
  * cannot move under its own power to charge (TW p. 205). Core supersedes the charge damage but does not address them,
  * so the limits hold under both rulesets.
  */
+export function navalBreachThreshold(motive: string, location: string, submerged: boolean, attackerUnderwater: boolean): number | null {
+    if (motive === 'Submarine') return submerged ? 10 : null;
+    if ((motive !== 'Naval' && motive !== 'Hydrofoil') || location.includes('Turret') || location === 'Body') return null;
+    return attackerUnderwater ? 10 : 12;
+}
+
+export const TURRET_CLEAR_ACTIONS = {
+    'clear-turret-jam': 'Turret',
+    'clear-front-turret-jam': 'Front Turret',
+    'clear-rear-turret-jam': 'Rear Turret',
+} as const;
+
 export function vehicleHasChargeAttack(entity: VehicleEntity): boolean {
     return !['VTOL', 'WiGE', 'Airship'].includes(entity.motiveType()) && !entity.effectiveIsTrailer();
 }
@@ -110,7 +122,8 @@ export function projectVehicleRuntimeRules(
     const vacant = index.crewPositions.size > 0 && occupied.length === 0;
     const crewKilled = occupied.some(positionId =>
         CrewMember.from(state.crew.get(positionId)).isDeathCommitted());
-    const crewStunned = occupied.some(positionId =>
+    const crewStunned = (state.vehicleCrewStun !== undefined && state.turn.turnCounter >= state.vehicleCrewStun[0]
+        && state.turn.turnCounter <= state.vehicleCrewStun[1]) || occupied.some(positionId =>
         CrewMember.from(state.crew.get(positionId)).hasState('stunned'));
     const motiveHits = Object.freeze(activeDamageTracks.flatMap(track => {
         if (track.motiveLevel === undefined) return [];
@@ -166,11 +179,15 @@ export function projectVehicleRuntimeRules(
     const motiveImmobile = motiveHits.some(hit => hit.level === 4);
     const storedImmobile = state.conditions.has('immobile');
     const computedConditions = new Set<UnitConditionKey>();
+    if (state.towedBy) computedConditions.add('hitched');
     if ((crewKilled || vacant) && !hasDroneOperatingSystem) computedConditions.add('abandoned');
     if (disconnected) computedConditions.add('disconnected');
-    if (crewKilled || (vacant && !hasDroneOperatingSystem) || motiveImmobile || disconnected) computedConditions.add('immobile');
+    if (crewKilled || (vacant && !hasDroneOperatingSystem) || motiveImmobile || engineHit || disconnected
+        || (entity.effectiveIsTrailer() && !state.towedBy && !state.conditions.has('hitched'))) {
+        computedConditions.add('immobile');
+    }
     // A fuel tank critical is a fuel explosion: MegaMek dooms the vehicle outright (TWGameManager CRIT_FUEL_TANK).
-    const destroyed = state.explicitlyDestroyed || hasDamage('fuel-tank')
+    const destroyed = state.explicitlyDestroyed || hasDamage('hull-breach') || hasDamage('fuel-tank')
         || [...index.locations.values()].some(location =>
             location.internalPoints > 0
             && (state.locations.get(location.id)?.internalDamage ?? 0) >= location.internalPoints);
@@ -180,9 +197,10 @@ export function projectVehicleRuntimeRules(
     const battleValueMovement = vehicleMovement(entity, systems, immobile, BV_MOVEMENT_CALCULATION);
     const fireBlockedComponentIds = new Set<ComponentId>();
     const stabilizerAffectedComponentIds = new Set<ComponentId>();
+    const clearing = (Object.keys(TURRET_CLEAR_ACTIONS) as (keyof typeof TURRET_CLEAR_ACTIONS)[]).some(key => state.conditions.has(key));
     for (const component of index.components.values()) {
         const equipment = component.mount.equipment;
-        if (sensorHits >= 4 && equipment instanceof WeaponEquipment
+        if ((sensorHits >= 4 || crewStunned || crewKilled || clearing || state.conditions.has('crashed')) && equipment instanceof WeaponEquipment
             && !component.mount.isPhysicalWeapon()) fireBlockedComponentIds.add(component.id);
         if (component.mount.getOccupiedLocations().some(location =>
             stabilizerLocations.has(location))) {
@@ -190,6 +208,11 @@ export function projectVehicleRuntimeRules(
         }
     }
     const conditionControlKeys: UnitConditionKey[] = ['swarmed', 'tagged', 'ecm-shielded'];
+    for (const [key, turret] of Object.entries(TURRET_CLEAR_ACTIONS)) {
+        const hit = (kind: SystemDamageKind) => (state.damageTracks.get(systemDamageId(kind, undefined, turret))?.hits ?? 0) > 0;
+        if (hit('turret-jam') && !hit('turret-jam-cleared') && !hit('turret-lock') && !engineHit) conditionControlKeys.push(key as UnitConditionKey);
+    }
+    if (entity.effectiveIsTrailer()) conditionControlKeys.push('hitched');
     if (gameRulesFor(ruleset).supportsSkidding) conditionControlKeys.push('skidding');
     conditionControlKeys.push('jammed');
     if (hasDroneOperatingSystem) conditionControlKeys.push('disconnected');

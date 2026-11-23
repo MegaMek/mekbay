@@ -493,6 +493,10 @@ export function unitCommandHistory(
         case 'set-consciousness-rolls-due':
         case 'set-control-recovery':
         // The attack that began or ended the swarm is what the log records.
+        case 'set-tractor':
+        case 'set-internal-bay-loads':
+        case 'destroy-bay-cargo':
+        case 'stun-vehicle-crew':
         case 'set-swarming':
             return undefined;
         case 'cancel-pending':
@@ -532,6 +536,7 @@ export function unitCommandHistory(
         case 'reset-ammo-loadout':
             return ammoLoadoutResetHistory(instanceId, unit, before.ammo, after.ammo);
         case 'configure-ammo-source':
+        case 'engage-ams':
         case 'spend-ammo':
         case 'activate-coolant-pod':
             return unitHistory(RUNTIME_HISTORY_MESSAGE.AMMO_CHANGED, instanceId);
