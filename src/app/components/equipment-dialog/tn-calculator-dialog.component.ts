@@ -402,14 +402,15 @@ export interface TnCalculatorDialogResult {
                                     </select>
                                 </label>
                             }
-                            @if (shelterIndex() < 0 && unitType()?.startsWith('mek-') && buildingCover() !== 'building-1') {
+                            @if (shelterIndex() < 0 && unitType().startsWith('mek-') && buildingCover() !== 'building-1') {
                                 <label>Levels from occupied floor to roof
                                     <input type="number" min="1" step="1" [value]="manualLevelsBelowRoof() ?? ''"
                                         (input)="setLevelsBelowRoof($any($event.target).valueAsNumber)" />
                                 </label>
                             }
                             <label>Building CF at the start of the phase
-                                <input type="number" min="0" step="1" [disabled]="shelterIndex() >= 0" [value]="availableFloors()[shelterIndex()]?.cf ?? buildingCf() ?? ''"
+                                <input type="number" min="0" step="1" [disabled]="shelterIndex() >= 0"
+                                    [value]="shelterIndex() >= 0 ? availableFloors()[shelterIndex()].cf : (buildingCf() ?? '')"
                                     (input)="setBuildingCf($any($event.target).valueAsNumber)" />
                             </label>
                         }
