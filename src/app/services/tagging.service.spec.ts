@@ -44,6 +44,8 @@ describe('TaggingService', () => {
         getTagData: jasmine.createSpy('getTagData'),
         modifyTag: jasmine.createSpy('modifyTag'),
         setTagQuantity: jasmine.createSpy('setTagQuantity'),
+        tagIdExists: jasmine.createSpy('tagIdExists'),
+        renameTag: jasmine.createSpy('renameTag'),
     };
     const publicTagsServiceMock = {
         getPublicTagsForUnit: jasmine.createSpy('getPublicTagsForUnit'),
@@ -56,7 +58,7 @@ describe('TaggingService', () => {
         unblockClose: jasmine.createSpy('unblockClose'),
     };
     const dialogsServiceMock = {
-        createDialog: jasmine.createSpy('createDialog'),
+        prompt: jasmine.createSpy('prompt'),
         showError: jasmine.createSpy('showError'),
     };
     const overlayMock = {
@@ -108,7 +110,7 @@ describe('TaggingService', () => {
         });
         overlayManagerMock.blockCloseUntil.calls.reset();
         overlayManagerMock.unblockClose.calls.reset();
-        dialogsServiceMock.createDialog.calls.reset();
+        dialogsServiceMock.prompt.calls.reset();
         dialogsServiceMock.showError.calls.reset();
         overlayMock.scrollStrategies.close.calls.reset();
         overlayMock.scrollStrategies.close.and.returnValue({});
@@ -146,6 +148,28 @@ describe('TaggingService', () => {
         tagSelector.tagSelected.emit({ tag: 'CLAN', tagType: 'chassis' });
 
         expect(tagsServiceMock.modifyTag).toHaveBeenCalledWith([prime, variantA, variantB], 'CLAN', 'chassis', 'add');
+    });
+
+    it('creates a mixed-case unit tag with the standard text prompt', async () => {
+        const unit = createUnit('Dasher Prime');
+        dataServiceMock.getUnits.and.returnValue([unit]);
+        tagsServiceMock.getTagData.and.resolveTo({ tags: {}, timestamp: 1, formatVersion: 5 });
+        dialogsServiceMock.prompt.and.resolveTo('RoS-GUARDS');
+
+        await service.openTagSelector([unit]);
+        tagSelector.onAddNewNameTag();
+        await Promise.resolve();
+
+        expect(dialogsServiceMock.prompt).toHaveBeenCalledWith('Enter the new tag name:', 'Add New Tag to Unit');
+        expect(tagsServiceMock.modifyTag).toHaveBeenCalledWith([unit], 'RoS-GUARDS', 'name', 'add');
+    });
+
+    it('returns the new capitalization after a case-only rename', async () => {
+        dialogsServiceMock.prompt.and.resolveTo('RoS-GUARDS');
+        tagsServiceMock.tagIdExists.and.resolveTo('ros-guards');
+        tagsServiceMock.renameTag.and.resolveTo('success');
+
+        expect(await service.renameTag('ros-guards', 'name')).toBe('RoS-GUARDS');
     });
 
     it('tags the catalog entry and reads its live tags when given a details copy of the unit', async () => {

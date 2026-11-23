@@ -6,7 +6,7 @@ import { inject, Injectable, Injector } from '@angular/core';
 import { outputToObservable } from '@angular/core/rxjs-interop';
 import { Overlay } from '@angular/cdk/overlay';
 import { ComponentPortal } from '@angular/cdk/portal';
-import { firstValueFrom, takeUntil } from 'rxjs';
+import { takeUntil } from 'rxjs';
 import type { UnitSummary, PublicTagInfo } from '../models/unit-summary.model';
 import { getChassisTagTargetUnits } from '../utils/chassis-tag-target.util';
 import { collectAllChassisTags, collectAllNameTags } from '../utils/tag-list.util';
@@ -15,7 +15,6 @@ import { UnitSearchFiltersService } from './unit-search-filters.service';
 import { OverlayManagerService } from './overlay-manager.service';
 import { DialogsService } from './dialogs.service';
 import { TagSelectorComponent, type TagSelectionEvent, type TagQuantityChangeEvent } from '../components/tag-selector/tag-selector.component';
-import { InputDialogComponent, type InputDialogData } from '../components/input-dialog/input-dialog.component';
 import { TagsService } from './tags.service';
 import { PublicTagsService } from './public-tags.service';
 import type { TagData } from './db.service';
@@ -175,26 +174,18 @@ export class TaggingService {
 
             // If "Add new tag..." was selected, show text input dialog
             if (selectedTag === '__new__') {
-                let newTag : string | null | undefined;
+                let newTag: string | null;
                 // Block tag selector from closing while input dialog is open
                 this.overlayManager.blockCloseUntil('tagSelector');
                 try {
-                    const newTagRef = this.dialogsService.createDialog<string | null>(InputDialogComponent, {
-                        data: {
-                            title: tagType === 'chassis' ? 'Add New Tag to all variants' : 'Add New Tag to Unit',
-                            inputType: 'text',
-                            defaultValue: '',
-                            placeholder: 'Enter tag...',
-                            centerInput: true,
-                        } as InputDialogData
-                    });
-    
-                    newTag = await firstValueFrom(newTagRef.closed);
+                    newTag = await this.dialogsService.prompt(
+                        'Enter the new tag name:',
+                        tagType === 'chassis' ? 'Add New Tag to all variants' : 'Add New Tag to Unit',
+                    );
                 } finally {
                     // Unblock after small delay to prevent immediate close from residual events
                     setTimeout(() => this.overlayManager.unblockClose('tagSelector'), 100);
                 }
-                
 
                 // User cancelled or entered empty string
                 if (!newTag || newTag.trim().length === 0) {
@@ -438,6 +429,6 @@ export class TaggingService {
         // No need to rename "other type" separately - renameTag now merges BOTH collections
 
         this.filtersService.invalidateTagsCache();
-        return existingTag ?? trimmedNew;
+        return isDifferentTag ? existingTag : trimmedNew;
     }
 }

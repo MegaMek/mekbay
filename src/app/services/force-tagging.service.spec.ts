@@ -40,7 +40,7 @@ describe('ForceTaggingService', () => {
         unblockClose: jasmine.createSpy('unblockClose'),
     };
     const dialogsServiceMock = {
-        createDialog: jasmine.createSpy('createDialog'),
+        prompt: jasmine.createSpy('prompt'),
         showError: jasmine.createSpy('showError'),
     };
     const overlayMock = {
@@ -85,12 +85,24 @@ describe('ForceTaggingService', () => {
         });
         overlayManagerMock.blockCloseUntil.calls.reset();
         overlayManagerMock.unblockClose.calls.reset();
-        dialogsServiceMock.createDialog.calls.reset();
+        dialogsServiceMock.prompt.calls.reset();
         dialogsServiceMock.showError.calls.reset();
         overlayMock.scrollStrategies.close.calls.reset();
         overlayMock.scrollStrategies.close.and.returnValue({});
 
         service = TestBed.inject(ForceTaggingService);
+    });
+
+    it('creates a mixed-case force tag with the standard text prompt', async () => {
+        const force = { instanceId: 'force-1', owned: true };
+        dialogsServiceMock.prompt.and.resolveTo('RoS-GUARDS');
+
+        await service.openForceTagSelector([force], null, { updateCloud: false });
+        forceTagSelector.onAddNewTag();
+        await new Promise<void>(resolve => setTimeout(resolve, 0));
+
+        expect(dialogsServiceMock.prompt).toHaveBeenCalledWith('Enter the new tag name:', 'Add New Tag to Force');
+        expect(forcePersistenceMock.updateForceTags).toHaveBeenCalledWith('force-1', ['RoS-GUARDS'], false);
     });
 
     it('passes every available force tag label to the selector when there are more than 32 labels', async () => {

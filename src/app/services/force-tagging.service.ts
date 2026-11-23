@@ -6,14 +6,13 @@ import { inject, Injectable, Injector } from '@angular/core';
 import { outputToObservable } from '@angular/core/rxjs-interop';
 import { Overlay } from '@angular/cdk/overlay';
 import { ComponentPortal } from '@angular/cdk/portal';
-import { firstValueFrom, takeUntil } from 'rxjs';
+import { takeUntil } from 'rxjs';
 
 import {
     FORCE_TAG_SELECTOR_NEW_TAG,
     ForceTagSelectorComponent,
 } from '../components/force-tag-selector/force-tag-selector.component';
 import type { ForceTaggableEntry } from '../components/force-tags/force-tags.component';
-import { InputDialogComponent, type InputDialogData } from '../components/input-dialog/input-dialog.component';
 import { sanitizeForceTagLabels, sanitizeForceTags } from '../models/force-serialization';
 import { ForcePersistenceService } from './force-persistence.service';
 import { DialogsService } from './dialogs.service';
@@ -183,20 +182,10 @@ export class ForceTaggingService {
     }
 
     private async promptForNewTag(): Promise<string | null> {
-        let newTag: string | null | undefined;
+        let newTag: string | null;
         this.overlayManager.blockCloseUntil(FORCE_TAG_SELECTOR_OVERLAY_KEY);
         try {
-            const ref = this.dialogsService.createDialog<string | null>(InputDialogComponent, {
-                data: {
-                    title: 'Add New Tag to Force',
-                    inputType: 'text',
-                    defaultValue: '',
-                    placeholder: 'Enter tag...',
-                    centerInput: true,
-                } as InputDialogData
-            });
-
-            newTag = await firstValueFrom(ref.closed);
+            newTag = await this.dialogsService.prompt('Enter the new tag name:', 'Add New Tag to Force');
         } finally {
             setTimeout(() => this.overlayManager.unblockClose(FORCE_TAG_SELECTOR_OVERLAY_KEY), 100);
         }
