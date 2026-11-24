@@ -1238,6 +1238,11 @@ export class UnitConstructionComponent {
         const generated = automatic.has(location.id);
         const supportsAutomatic = entity.supportsAutomaticClanCaseAt(location.id);
         const hasExplosives = mounts.some((mount) => entity.isMountedEquipmentExplosive(mount));
+        const locationCandidates = candidates.filter(
+          (equipment) =>
+            (entity.mixedTech() || equipment.techBase === 'All' || equipment.techBase === entity.techBase()) &&
+            equipmentLocationIssues(entity, equipment, location.id, protection[0], false).length === 0,
+        );
         const options =
           entity instanceof MekEntity &&
           (hasExplosives || protection.length > 0) &&
@@ -1248,7 +1253,15 @@ export class UnitConstructionComponent {
                   ['case', 'CASE'],
                   ['case-ii', 'CASE II'],
                 ] as const
-              ).map(([value, label]) => {
+              )
+              .filter(
+                ([value]) =>
+                  value === 'none' ||
+                  installed.includes(value) ||
+                  (value === 'case' && supportsAutomatic) ||
+                  locationCandidates.some((equipment) => caseEquipmentKind(equipment) === value),
+              )
+              .map(([value, label]) => {
                 const needsEquipment = value !== 'none' && !(value === 'case' && supportsAutomatic);
                 const eligible = needsEquipment
                   ? candidates.filter((equipment) => caseEquipmentKind(equipment) === value

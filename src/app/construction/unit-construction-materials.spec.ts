@@ -513,11 +513,14 @@ describe('construction material selections and CASE controls', () => {
     expect(card('LT').querySelector('.case-badge')?.textContent?.trim()).toBe('CASE II');
   });
 
-  it('keeps unavailable CASE choices disabled and prevents changes to a locked design', async () => {
+  it('filters location-invalid CASE and prevents changes to a locked design', async () => {
     editor.panel.set('loadout');
     addTestEquipment(editor.entity(), ammo, { location: 'LA' });
+    addTestEquipment(editor.entity(), ammo, { location: 'RT' });
     await render();
-    expect(caseSelect('LA').querySelector<HTMLOptionElement>('option[value="case"]')?.disabled).toBeTrue();
+    expect(caseSelect('LA').querySelector('option[value="case"]')).toBeNull();
+    expect(caseSelect('LA').querySelector('option[value="case-ii"]')).not.toBeNull();
+    expect(caseSelect('RT').querySelector('option[value="case"]')).not.toBeNull();
     await chooseCase('case-ii', 'LA');
     editor.foreignDesign.set(true);
     await render();
@@ -529,6 +532,21 @@ describe('construction material selections and CASE controls', () => {
         .equipment()
         .some((mount) => mount.equipmentId === caseII.id),
     ).toBeTrue();
+  });
+
+  it('keeps location-valid CASE II visible when the location has no free slots', async () => {
+    editor.panel.set('loadout');
+    const entity = editor.entity() as MekEntity;
+    addTestEquipment(entity, ammo, { location: 'LA' });
+    for (const [slotIndex, slot] of entity.criticalSlotGrid().get('LA')!.entries()) {
+        if (slot.type === 'empty')
+          addTestEquipment(entity, isLaser, {
+            allocation: { kind: 'location', location: 'LA', placements: [{ location: 'LA', slotIndex }] },
+          });
+    }
+    await render();
+    expect(caseSelect('LA').querySelector('option[value="case"]')).toBeNull();
+    expect(caseSelect('LA').querySelector<HTMLOptionElement>('option[value="case-ii"]')?.disabled).toBeTrue();
   });
 
   it('offers CASE in every location occupied by a split explosive weapon', async () => {
