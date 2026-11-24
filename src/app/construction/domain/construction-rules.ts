@@ -64,9 +64,18 @@ import {
 } from './construction-technology-rules';
 import { firstCriticalSlots } from '../../models/entity/utils/critical-slot-allocation';
 import { constructionArmorTechRating, constructionMaterialMessages } from './construction-material-rules';
-import { syncConstructionMekEngine, constructionOmniApplies, constructionOmniWeaponRemovesArmActuators } from './construction-system-rules';
+import {
+  syncConstructionMekEngine,
+  constructionOmniApplies,
+  constructionOmniWeaponRemovesArmActuators,
+} from './construction-system-rules';
 import { MekWithArmsEntity } from '../../models/entity/entities/mek/mek-entity';
-import { constructionProtoMekRequiresSlot, constructionProtoMekSlotCapacity, constructionProtoMekLocationUsage, constructionProtoMekMessages } from './construction-protomek-rules';
+import {
+  constructionProtoMekRequiresSlot,
+  constructionProtoMekSlotCapacity,
+  constructionProtoMekLocationUsage,
+  constructionProtoMekMessages,
+} from './construction-protomek-rules';
 import { constructionEquipmentConflictMessages } from './construction-equipment-conflicts';
 import { buildingFacility } from '../../models/entity/utils/building-construction';
 export { getConstructionArmorOptions, getConstructionStructureOptions } from './construction-material-rules';
@@ -75,9 +84,17 @@ const any = (equipment: Equipment, flags: readonly EquipmentFlag[]) => flags.som
 
 /** Families whose native BLK equipment grammar preserves an authored ammunition quantity. */
 export function constructionSupportsAmmoQuantity(entity: BaseEntity): boolean {
-  return ['BattleArmor', 'ProtoMek', 'HandheldWeapon', 'DropShip', 'JumpShip', 'WarShip', 'SpaceStation', 'BuildingEntity', 'MobileStructure'].includes(
-    entity.entityType,
-  );
+  return [
+    'BattleArmor',
+    'ProtoMek',
+    'HandheldWeapon',
+    'DropShip',
+    'JumpShip',
+    'WarShip',
+    'SpaceStation',
+    'BuildingEntity',
+    'MobileStructure',
+  ].includes(entity.entityType);
 }
 
 /** Platform eligibility is separate from technology and current space availability. */
@@ -88,11 +105,20 @@ export function constructionEquipmentApplies(entity: BaseEntity, equipment: Equi
   if (entity instanceof StaticEmplacementEntity) {
     if (entity.hasNoInterior()) return false;
     if (buildingFacility(equipment)) return true;
-    if (equipment instanceof AmmoEquipment) return !equipment.hasAnyFlag(['F_BATTLEARMOR', 'F_PROTOMEK']) && equipment.category !== 'Bomb';
-    if (equipment instanceof WeaponEquipment) return equipment.isInfantryWeapon() || equipment.hasFlag('F_TANK_WEAPON') || equipment.capital;
-    return !equipment.hasFlag('F_TURRET') && equipment.hasAnyFlag([
-      'F_SUPPORT_TANK_EQUIPMENT', 'F_DS_EQUIPMENT', 'F_POWER_GENERATOR', 'F_HEAT_SINK', 'F_DOUBLE_HEAT_SINK',
-    ]);
+    if (equipment instanceof AmmoEquipment)
+      return !equipment.hasAnyFlag(['F_BATTLEARMOR', 'F_PROTOMEK']) && equipment.category !== 'Bomb';
+    if (equipment instanceof WeaponEquipment)
+      return equipment.isInfantryWeapon() || equipment.hasFlag('F_TANK_WEAPON') || equipment.capital;
+    return (
+      !equipment.hasFlag('F_TURRET') &&
+      equipment.hasAnyFlag([
+        'F_SUPPORT_TANK_EQUIPMENT',
+        'F_DS_EQUIPMENT',
+        'F_POWER_GENERATOR',
+        'F_HEAT_SINK',
+        'F_DOUBLE_HEAT_SINK',
+      ])
+    );
   }
   // Heat sinks have only their sink flags in MegaMek's registry; MML handles
   // them through the dedicated heat-sink selector rather than platform flags.
@@ -135,7 +161,8 @@ export function constructionEquipmentApplies(entity: BaseEntity, equipment: Equi
   }
   if (equipment instanceof WeaponEquipment) {
     if (equipment.hasFlag('F_BOMB_WEAPON') || equipment.id === weaponBayEquipmentId(equipment)) return false;
-    if (entity instanceof InfantryEntity) return equipment.isInfantryWeapon() || equipment.hasFlag('F_EXTINGUISHER') || isConstructionFieldGun(equipment);
+    if (entity instanceof InfantryEntity)
+      return equipment.isInfantryWeapon() || equipment.hasFlag('F_EXTINGUISHER') || isConstructionFieldGun(equipment);
     if (entity instanceof BattleArmorEntity)
       return (
         (equipment.hasFlag('F_BA_WEAPON') && !equipment.capital && !equipment.subCapital) ||
@@ -232,9 +259,15 @@ function isConstructionFieldGun(equipment: WeaponEquipment): boolean {
 }
 
 /** Warehouse eligibility omits allocation, location and free-space constraints. */
-export function constructionEquipmentEligibilityIssues(entity: BaseEntity, equipment: Equipment, ignoreMount?: EntityMountedEquipment): readonly string[] {
+export function constructionEquipmentEligibilityIssues(
+  entity: BaseEntity,
+  equipment: Equipment,
+  ignoreMount?: EntityMountedEquipment,
+): readonly string[] {
   const issues = constructionEquipmentPlatformIssues(entity, equipment);
-  issues.push(...constructionEquipmentConflictMessages(entity, equipment, ignoreMount).map(message => message.message));
+  issues.push(
+    ...constructionEquipmentConflictMessages(entity, equipment, ignoreMount).map((message) => message.message),
+  );
   if (!entity.mountedEquipmentContributesStaticTech(equipment)) return issues;
   const technology = constructionTechnologyEligibility(entity, equipment.tech);
   if (!technology.techBase) issues.push('Requires mixed technology.');
@@ -303,22 +336,26 @@ export function setConstructionHybridStructure(entity: BaseEntity, enabled: bool
   if (enabled) {
     setConstructionOmni(entity, false);
     entity.enableHybridStructure();
-  }
-  else entity.setUniformStructure(entity.structureAt('CT'));
+  } else entity.setUniformStructure(entity.structureAt('CT'));
   reconcileConstructionMaterialSlots(entity, 'structure');
 }
 
 /** A chassis edit owns the whole transition, including facts serialized as Omni pods. */
 export function setConstructionOmni(entity: BaseEntity, enabled: boolean): void {
   if (enabled && !constructionOmniApplies(entity)) throw new Error('This chassis cannot use Omni technology.');
-  if (enabled && entity instanceof MekEntity && entity.hasHybridStructure()) setConstructionHybridStructure(entity, false);
+  if (enabled && entity instanceof MekEntity && entity.hasHybridStructure())
+    setConstructionHybridStructure(entity, false);
   entity.omni.set(enabled);
-  if (enabled) for (const mount of entity.equipment()) if (mount.equipment) {
-    removeConstructionOmniArmActuators(entity, mount.equipment, mount.getOccupiedLocations());
-  }
+  if (enabled)
+    for (const mount of entity.equipment())
+      if (mount.equipment) {
+        removeConstructionOmniArmActuators(entity, mount.equipment, mount.getOccupiedLocations());
+      }
   if (!enabled) {
-    entity.updateEquipment(mounts => mounts.map(mount => mount.omniPodMounted ? mount.clone({ omniPodMounted: false }) : mount));
-    entity.transporters.update(items => items.map(item => item.omni ? { ...item, omni: false } : item));
+    entity.updateEquipment((mounts) =>
+      mounts.map((mount) => (mount.omniPodMounted ? mount.clone({ omniPodMounted: false }) : mount)),
+    );
+    entity.transporters.update((items) => items.map((item) => (item.omni ? { ...item, omni: false } : item)));
     if (entity instanceof AeroEntity) entity.omnipodHeatSinkCount.set(0);
     if (entity instanceof VehicleEntity) {
       entity.baseChassisTurretWeight.set(-1);
@@ -326,8 +363,8 @@ export function setConstructionOmni(entity: BaseEntity, enabled: boolean): void 
     }
     if (entity.isSupportVehicle()) entity.baseChassisFireConWeight.set(-1);
   }
-  if (entity instanceof MekEntity) entity.mountedEngine().setBaseChassisHeatSinks(enabled
-    ? entity.heatSinkCount() : -1);
+  if (entity instanceof MekEntity)
+    entity.mountedEngine().setBaseChassisHeatSinks(enabled ? entity.heatSinkCount() : -1);
 }
 
 /** Retarget equivalent materials; retain unsupported selections so their existing issues stay actionable. */
@@ -335,11 +372,16 @@ export function setConstructionTechBase(entity: BaseEntity, base: EntityTechBase
   if (base === entity.techBase()) return;
   entity.techBase.set(base);
   const registry = entity.getEquipmentRegistry();
-  let armorChanged = false, structureChanged = false;
+  let armorChanged = false,
+    structureChanged = false;
   const rebaseArmor = (mounted: MountedArmor): MountedArmor => {
     const candidate = resolveArmorEquipment(mounted.type, base === 'Clan', registry);
-    const armor = candidate && (candidate.techBase === 'All' || candidate.techBase === base) ? candidate
-      : mounted.armor.techBase === 'All' ? mounted.armor : null;
+    const armor =
+      candidate && (candidate.techBase === 'All' || candidate.techBase === base)
+        ? candidate
+        : mounted.armor.techBase === 'All'
+          ? mounted.armor
+          : null;
     if (!armor) return mounted;
     armorChanged ||= armor.id !== mounted.armor.id;
     return new MountedArmor({ armor, techBase: base, techRating: mounted.techRating });
@@ -352,8 +394,9 @@ export function setConstructionTechBase(entity: BaseEntity, base: EntityTechBase
   }
   if (entity instanceof MekEntity) {
     const rebaseStructure = (mounted: MountedStructure): MountedStructure => {
-      const structure = getStructureByTypeId(mounted.structure.structureTypeId, base, registry)
-        ?? (mounted.structure.techBase === 'All' ? mounted.structure : null);
+      const structure =
+        getStructureByTypeId(mounted.structure.structureTypeId, base, registry) ??
+        (mounted.structure.techBase === 'All' ? mounted.structure : null);
       if (!structure) return mounted;
       structureChanged ||= structure.id !== mounted.structure.id;
       return new MountedStructure({ structure, tonnage: mounted.tonnage, techBase: base });
@@ -362,11 +405,13 @@ export function setConstructionTechBase(entity: BaseEntity, base: EntityTechBase
     if (uniformStructure && !entity.hasHybridStructure()) entity.setUniformStructure(rebaseStructure(uniformStructure));
     else {
       if (entity.hasHybridStructure()) entity.enableHybridStructure();
-      for (const [location, structure] of entity.structureByLocation()) entity.setStructureAt(location, rebaseStructure(structure));
+      for (const [location, structure] of entity.structureByLocation())
+        entity.setStructureAt(location, rebaseStructure(structure));
     }
     // Release both old reservations before assigning either new material's slots: the armor's here, the structure's in
     // its reconcile, which first reads the rows a FrankenMek location keeps (CO p. 213).
-    if (armorChanged) for (const mount of entity.equipment()) if (mount.equipment?.type === 'armor') entity.removeEquipment(mount);
+    if (armorChanged)
+      for (const mount of entity.equipment()) if (mount.equipment?.type === 'armor') entity.removeEquipment(mount);
     if (structureChanged) reconcileConstructionMaterialSlots(entity, 'structure');
     if (armorChanged) reconcileConstructionMaterialSlots(entity, 'armor');
   }
@@ -494,13 +539,15 @@ export function getConstructionLocations(entity: BaseEntity): ConstructionLocati
       }
     } else {
       // Platoon weapons are edited through the Primary/Secondary weapon fields.
-      entity.getEquipmentAtLocation(id).filter((mount) => !mount.platoonWeapon)
+      entity
+        .getEquipmentAtLocation(id)
+        .filter((mount) => !mount.platoonWeapon)
         .forEach((mount, index) => slots.push({ index, mount }));
       if (capacity !== null) while (slots.length < capacity) slots.push({ index: slots.length });
     }
     return {
       id,
-      label: entity instanceof StaticEmplacementEntity ? entity.displayLocation(id) : getMekLocationLabel(id) ?? id,
+      label: entity instanceof StaticEmplacementEntity ? entity.displayLocation(id) : (getMekLocationLabel(id) ?? id),
       armor: armor?.front ?? 0,
       rearArmor: armor?.rear ?? 0,
       maxArmor: entity.maxArmorValues().get(entity instanceof BattleArmorEntity ? 'Squad' : id) ?? 0,
@@ -522,12 +569,20 @@ export function constructionSlotMountBlocks(slots: ConstructionLocation['slots']
 }
 
 /** The location's mount order with `mountId`'s block moved before `beforeMountId`'s block, or to the end. */
-function constructionMountOrder(entity: BaseEntity, location: string, mountId: string, beforeMountId?: string): string[] {
-  const blocks = constructionSlotMountBlocks(getConstructionLocations(entity).find((item) => item.id === location)?.slots ?? []);
+function constructionMountOrder(
+  entity: BaseEntity,
+  location: string,
+  mountId: string,
+  beforeMountId?: string,
+): string[] {
+  const blocks = constructionSlotMountBlocks(
+    getConstructionLocations(entity).find((item) => item.id === location)?.slots ?? [],
+  );
   const block = blocks.find((candidate) => candidate.includes(mountId)) ?? [mountId];
   if (beforeMountId !== undefined && block.includes(beforeMountId)) return blocks.flat();
   const rest = blocks.filter((candidate) => candidate !== block);
-  const index = beforeMountId === undefined ? rest.length : rest.findIndex((candidate) => candidate.includes(beforeMountId));
+  const index =
+    beforeMountId === undefined ? rest.length : rest.findIndex((candidate) => candidate.includes(beforeMountId));
   rest.splice(index < 0 ? rest.length : index, 0, block);
   return rest.flat();
 }
@@ -539,7 +594,7 @@ export function setConstructionArmor(entity: BaseEntity, location: string, front
   if (rear > 0 && !entity.hasRearArmor(location)) throw new Error('This location has no rear armor.');
   if (entity instanceof BattleArmorEntity) entity.armorValues.set(new Map([['Squad', { front, rear: 0 }]]));
   else if (entity instanceof StaticEmplacementEntity)
-    entity.armorValues.set(new Map(entity.locationOrder.map(location => [location, { front, rear: 0 }])));
+    entity.armorValues.set(new Map(entity.locationOrder.map((location) => [location, { front, rear: 0 }])));
   else entity.armorValues.update((values) => new Map(values).set(location, { front, rear }));
 }
 
@@ -574,13 +629,18 @@ export function equipmentLocationIssues(
   must(
     entity.validLocations.has(location) ||
       ((entity instanceof VehicleEntity || entity instanceof ProtoMekEntity) && location === 'Body') ||
-      ((entity instanceof BattleArmorEntity || entity instanceof MekEntity) && location === 'None'
-        && getNumCriticalSlots(entity, equipment, ignoreMount?.size ?? 1) === 0
-        && !(equipment instanceof WeaponEquipment && equipment.isInfantryWeapon())),
+      ((entity instanceof BattleArmorEntity || entity instanceof MekEntity) &&
+        location === 'None' &&
+        getNumCriticalSlots(entity, equipment, ignoreMount?.size ?? 1) === 0 &&
+        !(equipment instanceof WeaponEquipment && equipment.isInfantryWeapon())),
     'Invalid equipment location.',
   );
   if (entity instanceof StaticEmplacementEntity && entity.isMobile()) {
-    issues.push(...constructionEquipmentConflictMessages(entity, equipment, ignoreMount, location).map(message => message.message));
+    issues.push(
+      ...constructionEquipmentConflictMessages(entity, equipment, ignoreMount, location).map(
+        (message) => message.message,
+      ),
+    );
   }
   if (entity instanceof InfantryEntity) {
     if (equipment instanceof WeaponEquipment)
@@ -597,16 +657,26 @@ export function equipmentLocationIssues(
       );
   } else if (entity instanceof BattleArmorEntity) {
     if (ignoreMount) {
-      const attachedToPack = ignoreMount.isDWP || entity.getLinkingMounts(ignoreMount).some(source =>
-        source.isDWP || source.equipment?.hasFlag('F_DETACHABLE_WEAPON_PACK'));
-      if (equipment.hasFlag('F_BATTLEMEK_NIU')) must(ignoreMount.baMountLocation === 'Body',
-        'Neural interfaces require the suit body.');
-      else must(!!ignoreMount.baMountLocation || attachedToPack === true
-        || getNumCriticalSlots(entity, equipment, ignoreMount.size ?? 1) === 0,
-      'Equipment requiring slots must be assigned a suit body or arm location.');
+      const attachedToPack =
+        ignoreMount.isDWP ||
+        entity
+          .getLinkingMounts(ignoreMount)
+          .some((source) => source.isDWP || source.equipment?.hasFlag('F_DETACHABLE_WEAPON_PACK'));
+      if (equipment.hasFlag('F_BATTLEMEK_NIU'))
+        must(ignoreMount.baMountLocation === 'Body', 'Neural interfaces require the suit body.');
+      else
+        must(
+          !!ignoreMount.baMountLocation ||
+            attachedToPack === true ||
+            getNumCriticalSlots(entity, equipment, ignoreMount.size ?? 1) === 0,
+          'Equipment requiring slots must be assigned a suit body or arm location.',
+        );
     }
-    if (isSimpleCamoEquipment(equipment)) must(constructionBattleArmorCamoCount(entity, location, ignoreMount) === 0,
-      'Only one camo system is permitted on a suit.');
+    if (isSimpleCamoEquipment(equipment))
+      must(
+        constructionBattleArmorCamoCount(entity, location, ignoreMount) === 0,
+        'Only one camo system is permitted on a suit.',
+      );
   } else if (entity instanceof MekEntity) {
     const torso = ['CT', 'LT', 'RT'].includes(location);
     const arm = ['LA', 'RA'].includes(location);
@@ -655,7 +725,7 @@ export function equipmentLocationIssues(
       any(equipment, ['F_FUEL', 'F_LADDER', 'F_VGL']) ||
       (equipment.hasFlag('F_CASE') && equipment.techBase !== 'Clan')
     )
-      must(torso, 'Requires a torso.');
+      must(torso, 'Requires a torso location.');
     if (equipment.hasFlag('F_LIFT_HOIST')) must(torso || arm, 'Lift hoists require a torso or arm.');
     if (equipment.hasFlag('F_MODULAR_ARMOR')) must(location !== 'HD', 'Modular armor cannot be mounted in the head.');
     if (equipment.hasFlag('F_EJECTION_SEAT')) must(location === 'HD', 'Ejection seats require the head.');
@@ -664,7 +734,7 @@ export function equipmentLocationIssues(
       ['GAUSS_HEAVY', 'IGAUSS_HEAVY'].includes(equipment.ammoType) &&
       !entity.isSuperHeavy()
     )
-      must(torso, 'Heavy Gauss rifles require a torso.');
+      must(torso, 'Heavy Gauss rifles require a torso location.');
   } else if (entity instanceof VehicleEntity) {
     const bodyOnly =
       equipment instanceof AmmoEquipment ||
@@ -715,13 +785,11 @@ export function equipmentLocationIssues(
     if (equipment.hasFlag('F_MAGNETIC_CLAMP'))
       must(!entity.isQuad() && !entity.isGlider(), 'Magnetic clamps are unavailable to quad and glider ProtoMeks.');
     if (equipment.hasFlag('S_PROTO_QMS')) must(entity.isQuad(), 'Quad melee systems require a quad ProtoMek.');
-    if (equipment.hasFlag('S_PROTOMEK_WEAPON')) must(!entity.isQuad(), 'Arm melee weapons cannot be mounted on quad ProtoMeks.');
+    if (equipment.hasFlag('S_PROTOMEK_WEAPON'))
+      must(!entity.isQuad(), 'Arm melee weapons cannot be mounted on quad ProtoMeks.');
     if (needsSlot) {
       const usage = constructionProtoMekLocationUsage(entity, location, ignoreMount);
-      must(
-        usage.slots + 1 <= usage.maxSlots,
-        'The ProtoMek location has no equipment slots left.',
-      );
+      must(usage.slots + 1 <= usage.maxSlots, 'The ProtoMek location has no equipment slots left.');
       const candidate = ignoreMount ?? constructionEquipmentCandidate(entity, equipment, location);
       const tons = usage.tons + (getEquipmentTonnage(entity, candidate) ?? 0);
       must(tons <= usage.maxTons + 1e-9, `Equipment exceeds this location's ${usage.maxTons} t limit.`);
@@ -753,8 +821,10 @@ export function equipmentLocationIssues(
       must(['Nose', 'Aft'].includes(location), 'Heavy Gauss rifles require the nose or aft.');
   }
   if (entity instanceof MekEntity) {
-    const needed = equipment instanceof ArmorEquipment || equipment instanceof StructureEquipment
-      ? constructionMaterialSlotCount(entity, equipment) : getNumCriticalSlots(entity, equipment, ignoreMount?.size ?? 1);
+    const needed =
+      equipment instanceof ArmorEquipment || equipment instanceof StructureEquipment
+        ? constructionMaterialSlotCount(entity, equipment)
+        : getNumCriticalSlots(entity, equipment, ignoreMount?.size ?? 1);
     const distribution = requiredMekDistribution(entity, equipment);
     if (distribution)
       must(distribution.has(location), 'This distributed system requires one of its prescribed locations.');
@@ -762,7 +832,8 @@ export function equipmentLocationIssues(
       must(['CT', 'LT', 'RT'].includes(location), 'Ground mobile HPGs require torso locations.');
     if (checkCapacity && needed !== undefined)
       must(
-        distribution ? [...distribution].every(([target, count]) => freeMekSlots(entity, target, ignoreMount).length >= count)
+        distribution
+          ? [...distribution].every(([target, count]) => freeMekSlots(entity, target, ignoreMount).length >= count)
           : availableMekPlacements(entity, equipment, location, ignoreMount).length > 0 || needed === 0,
         `Requires ${needed} critical slots in contiguous blocks in this location${equipment.canSplit() ? ' or two adjacent non-leg locations' : equipment.isSpreadable ? ' or other eligible locations' : ''}.`,
       );
@@ -771,7 +842,12 @@ export function equipmentLocationIssues(
 }
 
 /** Slots a candidate may use, empty ones first, then slots it can share. */
-function freeMekSlots(entity: MekEntity, location: string, ignore?: EntityMountedEquipment, candidate?: Equipment): number[] {
+function freeMekSlots(
+  entity: MekEntity,
+  location: string,
+  ignore?: EntityMountedEquipment,
+  candidate?: Equipment,
+): number[] {
   const { free, shared } = mekSlotAvailability(entity, location, ignore, candidate);
   return [...free, ...shared];
 }
@@ -780,20 +856,34 @@ function freeMekSlots(entity: MekEntity, location: string, ignore?: EntityMounte
  * Empty slots, plus the slots a one-slot superheavy load can join because they hold a
  * single compatible load (see MekEntity.canShareCriticalSlot).
  */
-function mekSlotAvailability(entity: MekEntity, location: string, ignore?: EntityMountedEquipment, candidate?: Equipment):
-  { readonly free: readonly number[]; readonly shared: readonly number[] } {
+function mekSlotAvailability(
+  entity: MekEntity,
+  location: string,
+  ignore?: EntityMountedEquipment,
+  candidate?: Equipment,
+): { readonly free: readonly number[]; readonly shared: readonly number[] } {
   const grid =
     entity.criticalSlotGrid().get(location as Parameters<ReturnType<typeof entity.criticalSlotGrid>['get']>[0]) ?? [];
-  const incoming = candidate && entity.isSuperHeavy() && getNumCriticalSlots(entity, candidate, ignore?.size ?? 1) === 1
-    ? (ignore?.equipment === candidate ? ignore : constructionEquipmentCandidate(entity, candidate, location))
-    : undefined;
+  const incoming =
+    candidate && entity.isSuperHeavy() && getNumCriticalSlots(entity, candidate, ignore?.size ?? 1) === 1
+      ? ignore?.equipment === candidate
+        ? ignore
+        : constructionEquipmentCandidate(entity, candidate, location)
+      : undefined;
   const free: number[] = [];
   const shared: number[] = [];
   grid.slice(0, constructionSlotCapacity(entity, location) ?? 0).forEach((slot, index) => {
     const occupants = slot.type === 'equipment' ? slot.mounts.filter((mount) => mount.mountId !== ignore?.mountId) : [];
-    if (slot.type === 'empty' || (slot.type === 'equipment' && occupants.length === 0) ||
-      (candidate && entity.omni() && ['LA', 'RA'].includes(location) && constructionOmniWeaponRemovesArmActuators(candidate)
-        && slot.type === 'system' && (slot.systemType === 'Lower Arm Actuator' || slot.systemType === 'Hand Actuator'))) {
+    if (
+      slot.type === 'empty' ||
+      (slot.type === 'equipment' && occupants.length === 0) ||
+      (candidate &&
+        entity.omni() &&
+        ['LA', 'RA'].includes(location) &&
+        constructionOmniWeaponRemovesArmActuators(candidate) &&
+        slot.type === 'system' &&
+        (slot.systemType === 'Lower Arm Actuator' || slot.systemType === 'Hand Actuator'))
+    ) {
       free.push(index);
     } else if (incoming && occupants.length === 1 && entity.canShareCriticalSlot(location, occupants[0], incoming)) {
       shared.push(index);
@@ -804,11 +894,16 @@ function mekSlotAvailability(entity: MekEntity, location: string, ignore?: Entit
 
 /** Crossing 100 tons changes every location's slot scale (IO:AE p. 157); roll back a refit that cannot fit. */
 function resizeMekChassis(entity: MekEntity, tonnage: number, edit: () => void): void {
-  if (entity.isSuperHeavy() === (tonnage > 100)) { edit(); return; }
+  if (entity.isSuperHeavy() === tonnage > 100) {
+    edit();
+    return;
+  }
   const structures = entity.structureByLocation();
-  const donors = entity.locationOrder.filter(isMekLocation).map(loc => [loc, entity.structureDonorAt(loc)] as const);
-  const hybrid = entity.hasHybridStructure(), mounts = entity.equipment();
-  const engine = entity.mountedEngine(), walkMp = entity.originalWalkMP();
+  const donors = entity.locationOrder.filter(isMekLocation).map((loc) => [loc, entity.structureDonorAt(loc)] as const);
+  const hybrid = entity.hasHybridStructure(),
+    mounts = entity.equipment();
+  const engine = entity.mountedEngine(),
+    walkMp = entity.originalWalkMP();
   try {
     edit();
     reconcileResizedMekSlots(entity);
@@ -829,27 +924,49 @@ function resizeMekChassis(entity: MekEntity, tonnage: number, edit: () => void):
 /** Refit every mount to the new slot scale, then pack each location again in its old order (shifting up or down). */
 function reconcileResizedMekSlots(entity: MekEntity): void {
   const firstRow = (mount: EntityMountedEquipment, location: string) =>
-    Math.min(...(mount.placements ?? []).filter(p => p.location === location).map(p => p.slotIndex));
-  const order = new Map(entity.locationOrder.map(location => [location, entity.equipment()
-    .filter(mount => mount.placements?.some(p => p.location === location))
-    .sort((a, b) => firstRow(a, location) - firstRow(b, location)).map(mount => mount.mountId)] as const));
-  const pending: { mount: EntityMountedEquipment; distribution: ReadonlyMap<string, number> | null; required: number }[] = [];
+    Math.min(...(mount.placements ?? []).filter((p) => p.location === location).map((p) => p.slotIndex));
+  const order = new Map(
+    entity.locationOrder.map(
+      (location) =>
+        [
+          location,
+          entity
+            .equipment()
+            .filter((mount) => mount.placements?.some((p) => p.location === location))
+            .sort((a, b) => firstRow(a, location) - firstRow(b, location))
+            .map((mount) => mount.mountId),
+        ] as const,
+    ),
+  );
+  const pending: {
+    mount: EntityMountedEquipment;
+    distribution: ReadonlyMap<string, number> | null;
+    required: number;
+  }[] = [];
   for (const mount of entity.equipment()) {
     const old = mount.placements;
     if (!mount.equipment || !old?.length) continue;
     // A FrankenMek's structure keeps its donors' rows (CO p. 213); other prescribed systems follow their tables.
     const distribution = requiredMekDistribution(entity, mount.equipment);
-    const required = distribution ? [...distribution.values()].reduce((sum, n) => sum + n, 0)
+    const required = distribution
+      ? [...distribution.values()].reduce((sum, n) => sum + n, 0)
       : mount.getNumCriticalSlots(entity);
     if (required === undefined) continue;
-    const legal = old.every(p => {
+    const legal = old.every((p) => {
       if (entity.getSystemSlotsForLocation(p.location)[p.slotIndex]?.type === 'system') return false;
       const slot = isMekLocation(p.location) ? entity.criticalSlotGrid().get(p.location)?.[p.slotIndex] : undefined;
-      return slot?.type !== 'equipment' || slot.mounts[0].mountId === mount.mountId ||
-        entity.canShareCriticalSlot(p.location, slot.mounts[0], mount);
+      return (
+        slot?.type !== 'equipment' ||
+        slot.mounts[0].mountId === mount.mountId ||
+        entity.canShareCriticalSlot(p.location, slot.mounts[0], mount)
+      );
     });
-    if (legal && old.length === required && (!distribution || [...distribution].every(([loc, n]) =>
-      old.filter(p => p.location === loc).length === n))) continue;
+    if (
+      legal &&
+      old.length === required &&
+      (!distribution || [...distribution].every(([loc, n]) => old.filter((p) => p.location === loc).length === n))
+    )
+      continue;
     // Shrinking a contiguous block releases its tail and keeps its start.
     if (legal && !distribution && old.length > required && !mount.isSplitAcrossLocations) {
       entity.moveEquipment(mount, mount.location, old.slice(0, required));
@@ -859,28 +976,36 @@ function reconcileResizedMekSlots(entity: MekEntity): void {
     }
   }
   // Mounts held to their locations take their rows before mounts that can divide them differently.
-  const flexible = ({ mount, distribution }: typeof pending[number]) =>
+  const flexible = ({ mount, distribution }: (typeof pending)[number]) =>
     !distribution && (mount.equipment!.isSpreadable || mount.getOccupiedLocations().length > 1);
   pending.sort((a, b) => Number(flexible(a)) - Number(flexible(b)));
   for (const { mount, distribution, required } of pending) {
     const equipment = mount.equipment!;
     const sections = mount.getOccupiedLocations();
     const spread = equipment.isSpreadable && !distribution;
-    const previous = (location: string) => mount.placements!.filter(p => p.location === location);
+    const previous = (location: string) => mount.placements!.filter((p) => p.location === location);
     // Each earlier section keeps its share at the new scale and the last takes the rest.
     let left = required;
     const preferred = sections.map((location, index) => {
-      const share = distribution?.get(location) ?? (index === sections.length - 1 ? left : Math.min(left,
-        entity.isSuperHeavy() ? Math.ceil(previous(location).length / 2) : previous(location).length * 2));
+      const share =
+        distribution?.get(location) ??
+        (index === sections.length - 1
+          ? left
+          : Math.min(
+              left,
+              entity.isSuperHeavy() ? Math.ceil(previous(location).length / 2) : previous(location).length * 2,
+            ));
       left -= share;
       return Math.max(0, share);
     });
     // A split weapon may divide its slots differently between the same two locations when that share no longer fits.
     const divisions = [preferred];
     if (!distribution && sections.length === 2 && !equipment.isSpreadable) {
-      divisions.push(...Array.from({ length: Math.max(0, required - 1) }, (_, k) => [k + 1, required - k - 1])
-        .filter(([first]) => first !== preferred[0])
-        .sort((a, b) => Math.abs(a[0] - preferred[0]) - Math.abs(b[0] - preferred[0])));
+      divisions.push(
+        ...Array.from({ length: Math.max(0, required - 1) }, (_, k) => [k + 1, required - k - 1])
+          .filter(([first]) => first !== preferred[0])
+          .sort((a, b) => Math.abs(a[0] - preferred[0]) - Math.abs(b[0] - preferred[0])),
+      );
     }
     let failure = '';
     const fit = (counts: readonly number[]): MountPlacement[] | null => {
@@ -888,10 +1013,16 @@ function reconcileResizedMekSlots(entity: MekEntity): void {
       for (const [index, location] of sections.entries()) {
         const free = freeMekSlots(entity, location, mount, equipment);
         // Spread equipment places what fits here and carries the rest on to its later sections.
-        const count = spread && index < sections.length - 1 ? Math.min(counts[index], free.length)
-          : spread ? required - placements.length : counts[index];
+        const count =
+          spread && index < sections.length - 1
+            ? Math.min(counts[index], free.length)
+            : spread
+              ? required - placements.length
+              : counts[index];
         const anchored = Array.from({ length: count }, (_, offset) => previous(location)[0].slotIndex + offset);
-        let slots = anchored.every(slot => free.includes(slot)) ? anchored : firstCriticalSlots(free, count, equipment.isSpreadable);
+        let slots = anchored.every((slot) => free.includes(slot))
+          ? anchored
+          : firstCriticalSlots(free, count, equipment.isSpreadable);
         if (slots.length < count && free.length >= count) {
           entity.arrangeEquipment(location);
           slots = firstCriticalSlots(freeMekSlots(entity, location, mount, equipment), count, equipment.isSpreadable);
@@ -900,26 +1031,37 @@ function reconcileResizedMekSlots(entity: MekEntity): void {
           failure ||= `${equipment.name} needs ${count} free critical slots in ${location}. Move it before changing the chassis tonnage.`;
           return null;
         }
-        placements.push(...slots.map(slotIndex => ({ location, slotIndex })));
+        placements.push(...slots.map((slotIndex) => ({ location, slotIndex })));
       }
       return placements;
     };
     const placements = divisions.reduce<MountPlacement[] | null>((found, counts) => found ?? fit(counts), null);
     if (!placements) throw new Error(failure);
-    const primary = placements.reduce((loc, slot) => getMekSplitPrimaryLocation(loc, slot.location), placements[0]?.location ?? mount.location);
+    const primary = placements.reduce(
+      (loc, slot) => getMekSplitPrimaryLocation(loc, slot.location),
+      placements[0]?.location ?? mount.location,
+    );
     entity.moveEquipment(mount, primary, placements);
   }
   for (const [location, mounts] of order) entity.arrangeEquipment(location, mounts);
 }
 
 /** Superheavy slots a one-slot load can join as their second load. */
-export function constructionSharedMekSlots(entity: MekEntity, equipment: Equipment, location: string,
-  ignore?: EntityMountedEquipment): readonly number[] {
+export function constructionSharedMekSlots(
+  entity: MekEntity,
+  equipment: Equipment,
+  location: string,
+  ignore?: EntityMountedEquipment,
+): readonly number[] {
   return mekSlotAvailability(entity, location, ignore, equipment).shared;
 }
 
 /** Default installation context for placement checks and palette statistics; does not install the equipment. */
-export function constructionEquipmentCandidate(entity: BaseEntity, equipment: Equipment, location: string): EntityMountedEquipment {
+export function constructionEquipmentCandidate(
+  entity: BaseEntity,
+  equipment: Equipment,
+  location: string,
+): EntityMountedEquipment {
   return new EntityMountedEquipment(
     {
       mountId: 'construction-candidate',
@@ -946,8 +1088,10 @@ export function allocationPlacements(
   if (!(entity instanceof MekEntity)) return undefined;
   if (slotIndex !== undefined && constructionSharedMekSlots(entity, equipment, location, ignore).includes(slotIndex))
     return [{ location, slotIndex }];
-  const needed = equipment instanceof ArmorEquipment || equipment instanceof StructureEquipment
-    ? constructionMaterialSlotCount(entity, equipment) : getNumCriticalSlots(entity, equipment, ignore?.size ?? 1);
+  const needed =
+    equipment instanceof ArmorEquipment || equipment instanceof StructureEquipment
+      ? constructionMaterialSlotCount(entity, equipment)
+      : getNumCriticalSlots(entity, equipment, ignore?.size ?? 1);
   if (needed === undefined) throw new Error('Set this equipment size before allocating variable critical slots.');
   const distribution = requiredMekDistribution(entity, equipment);
   if (distribution) {
@@ -973,9 +1117,10 @@ export function installConstructionEquipment(
   location?: string,
   slotIndex?: number,
 ): EntityMountedEquipment {
-  const issues = location === undefined
-    ? constructionEquipmentEligibilityIssues(entity, equipment)
-    : equipmentPlacementIssues(entity, equipment, location);
+  const issues =
+    location === undefined
+      ? constructionEquipmentEligibilityIssues(entity, equipment)
+      : equipmentPlacementIssues(entity, equipment, location);
   if (issues.length) throw new Error(issues.join(' '));
   let allocation: EntityMountedEquipment['allocation'] = { kind: 'unallocated' };
   if (location !== undefined) {
@@ -983,7 +1128,11 @@ export function installConstructionEquipment(
     const primary =
       placements?.reduce((current, placement) => getMekSplitPrimaryLocation(current, placement.location), location) ??
       location;
-    removeConstructionOmniArmActuators(entity, equipment, placements?.map(placement => placement.location) ?? [primary]);
+    removeConstructionOmniArmActuators(
+      entity,
+      equipment,
+      placements?.map((placement) => placement.location) ?? [primary],
+    );
     allocation = { kind: 'location', location: primary, placements };
   }
   return entity.addEquipment({
@@ -1009,8 +1158,12 @@ export function planConstructionCaseInstallation(
   location: string,
   previous?: EntityMountedEquipment,
 ): readonly { mount: EntityMountedEquipment; placements: readonly MountPlacement[] }[] | null {
-  if (!isMekLocation(location) || constructionEquipmentEligibilityIssues(entity, equipment, previous).length
-    || equipmentLocationIssues(entity, equipment, location, previous, false).length) return null;
+  if (
+    !isMekLocation(location) ||
+    constructionEquipmentEligibilityIssues(entity, equipment, previous).length ||
+    equipmentLocationIssues(entity, equipment, location, previous, false).length
+  )
+    return null;
   const needed = getNumCriticalSlots(entity, equipment);
   if (needed === undefined) return null;
   if (freeMekSlots(entity, location, previous).length >= needed) return [];
@@ -1022,10 +1175,13 @@ export function planConstructionCaseInstallation(
     const mount = slot.mounts[0];
     const allocation = constructionSpreadAllocation(entity, mount);
     if (!allocation || allocation.prescribed) continue;
-    const destination = allocation.locations.find(target => target.id !== location
-      && target.free > 0 && target.count < target.limit);
+    const destination = allocation.locations.find(
+      (target) => target.id !== location && target.free > 0 && target.count < target.limit,
+    );
     if (!destination) continue;
-    return [{ mount, placements: constructionSpreadMovePlacements(entity, mount, location, destination.id, 1, slotIndex) }];
+    return [
+      { mount, placements: constructionSpreadMovePlacements(entity, mount, location, destination.id, 1, slotIndex) },
+    ];
   }
   return null;
 }
@@ -1047,23 +1203,34 @@ export function setConstructionCase(
   optOut: boolean,
 ): boolean {
   const installed = constructionLocationCase(entity, location);
-  const relocations = equipment === undefined
-    ? []
-    : planConstructionCaseInstallation(entity, equipment, location, installed[0]);
+  const relocations =
+    equipment === undefined ? [] : planConstructionCaseInstallation(entity, equipment, location, installed[0]);
   if (relocations === null) return false;
   for (const { mount, placements } of relocations) applyConstructionSpreadPlacements(entity, mount, placements);
   for (const mount of installed) removeConstructionEquipment(entity, mount);
-  entity.setLocationMetadata(location, { ...entity.locationMetadata().get(location), clanCaseOptOut: optOut || undefined });
+  entity.setLocationMetadata(location, {
+    ...entity.locationMetadata().get(location),
+    clanCaseOptOut: optOut || undefined,
+  });
   if (equipment) installConstructionEquipment(entity, equipment, location);
   return true;
 }
 
-function removeConstructionOmniArmActuators(entity: BaseEntity, equipment: Equipment, locations: readonly string[]): void {
-  if (!(entity instanceof MekWithArmsEntity) || !entity.omni() || !constructionOmniWeaponRemovesArmActuators(equipment)) return;
-  for (const [location, side] of [['LA', 'left'], ['RA', 'right']] as const) if (locations.includes(location)) {
-    entity.hasHandActuator.update(current => ({ ...current, [side]: false }));
-    entity.hasLowerArmActuator.update(current => ({ ...current, [side]: false }));
-  }
+function removeConstructionOmniArmActuators(
+  entity: BaseEntity,
+  equipment: Equipment,
+  locations: readonly string[],
+): void {
+  if (!(entity instanceof MekWithArmsEntity) || !entity.omni() || !constructionOmniWeaponRemovesArmActuators(equipment))
+    return;
+  for (const [location, side] of [
+    ['LA', 'left'],
+    ['RA', 'right'],
+  ] as const)
+    if (locations.includes(location)) {
+      entity.hasHandActuator.update((current) => ({ ...current, [side]: false }));
+      entity.hasLowerArmActuator.update((current) => ({ ...current, [side]: false }));
+    }
 }
 
 /** Resolve the same legal donor for both the myomer selector and its installation. */
@@ -1115,14 +1282,30 @@ export function moveConstructionEquipment(
   const primary =
     placements?.reduce((current, placement) => getMekSplitPrimaryLocation(current, placement.location), location) ??
     location;
-  removeConstructionOmniArmActuators(entity, mount.equipment, placements?.map(placement => placement.location) ?? [primary]);
+  removeConstructionOmniArmActuators(
+    entity,
+    mount.equipment,
+    placements?.map((placement) => placement.location) ?? [primary],
+  );
   const moved = entity.moveEquipment(mount, primary, placements);
   if (entity instanceof StaticEmplacementEntity) {
     const design = entity.equipmentDesign().get(mount.mountId);
-    const position = parseBuildingLocation(primary), previous = parseBuildingLocation(mount.location);
-    if (design?.positions.length && position && previous) entity.equipmentDesign.update(values => new Map(values).set(mount.mountId,
-      { ...design, positions: [...design.positions.filter(item => buildingHexKey(item.hex) !== buildingHexKey(previous.hex)
-        && buildingHexKey(item.hex) !== buildingHexKey(position.hex)), position] }));
+    const position = parseBuildingLocation(primary),
+      previous = parseBuildingLocation(mount.location);
+    if (design?.positions.length && position && previous)
+      entity.equipmentDesign.update((values) =>
+        new Map(values).set(mount.mountId, {
+          ...design,
+          positions: [
+            ...design.positions.filter(
+              (item) =>
+                buildingHexKey(item.hex) !== buildingHexKey(previous.hex) &&
+                buildingHexKey(item.hex) !== buildingHexKey(position.hex),
+            ),
+            position,
+          ],
+        }),
+      );
   }
   if (entity instanceof MekEntity) {
     for (const source of new Set(mount.placements?.map((p) => p.location))) entity.arrangeEquipment(source);
@@ -1132,23 +1315,32 @@ export function moveConstructionEquipment(
 
 export function removeConstructionEquipment(entity: BaseEntity, mount: EntityMountedEquipment): void {
   if (isRequiredConstructionEquipment(entity, mount)) {
-    throw new Error('This component is required by the chassis configuration. Uninstall it or change the chassis material.');
+    throw new Error(
+      'This component is required by the chassis configuration. Uninstall it or change the chassis material.',
+    );
   }
   entity.removeEquipment(mount);
-  if (entity instanceof StaticEmplacementEntity) entity.equipmentDesign.update(values => {
-    const next = new Map(values); next.delete(mount.mountId); return next;
-  });
+  if (entity instanceof StaticEmplacementEntity)
+    entity.equipmentDesign.update((values) => {
+      const next = new Map(values);
+      next.delete(mount.mountId);
+      return next;
+    });
   if (entity instanceof MekEntity)
     for (const location of new Set(mount.placements?.map((p) => p.location))) entity.arrangeEquipment(location);
 }
 
 /** Keep the component and its options while releasing all of its occupied slots. */
-export function uninstallConstructionEquipment(entity: BaseEntity, mount: EntityMountedEquipment): EntityMountedEquipment {
+export function uninstallConstructionEquipment(
+  entity: BaseEntity,
+  mount: EntityMountedEquipment,
+): EntityMountedEquipment {
   if (mount.allocation.kind === 'engine') throw new Error('Integral equipment is configured with the engine.');
   const unallocated = mount.clone({ allocation: { kind: 'unallocated' } });
-  entity.updateEquipment(mounts => mounts.map(item => item.mountId === mount.mountId ? unallocated : item));
+  entity.updateEquipment((mounts) => mounts.map((item) => (item.mountId === mount.mountId ? unallocated : item)));
   if (entity instanceof MekEntity) {
-    for (const location of new Set(mount.placements?.map(placement => placement.location))) entity.arrangeEquipment(location);
+    for (const location of new Set(mount.placements?.map((placement) => placement.location)))
+      entity.arrangeEquipment(location);
   }
   return unallocated;
 }
@@ -1159,87 +1351,135 @@ export function constructionSpreadAllocation(entity: BaseEntity, mount: EntityMo
   const equipment = mount.equipment;
   if (!(entity instanceof MekEntity) || !equipment?.isSpreadable) return null;
   const distribution = requiredMekDistribution(entity, equipment);
-  const total = distribution ? [...distribution.values()].reduce((sum, value) => sum + value, 0)
+  const total = distribution
+    ? [...distribution.values()].reduce((sum, value) => sum + value, 0)
     : equipment instanceof ArmorEquipment || equipment instanceof StructureEquipment
-      ? constructionMaterialSlotCount(entity, equipment) : mount.getNumCriticalSlots(entity);
+      ? constructionMaterialSlotCount(entity, equipment)
+      : mount.getNumCriticalSlots(entity);
   if (!total) return null;
   const allocated = mount.placements?.length ?? 0;
   const remaining = Math.max(0, total - allocated);
-  const locations = entity.locationOrder.map(id => {
-    const count = mount.placements?.filter(placement => placement.location === id).length ?? 0;
+  const locations = entity.locationOrder.map((id) => {
+    const count = mount.placements?.filter((placement) => placement.location === id).length ?? 0;
     const allowed = equipmentLocationIssues(entity, equipment, id, mount, false).length === 0;
     const required = distribution?.get(id) ?? null;
-    const limit = allowed ? required ?? total : 0;
+    const limit = allowed ? (required ?? total) : 0;
     const free = freeMekSlots(entity, id).length;
-    return { id, label: entity instanceof StaticEmplacementEntity ? entity.displayLocation(id) : getMekLocationLabel(id) ?? id, count, free, required, limit,
-      maximum: Math.max(count, Math.min(limit, count + free, count + remaining)) };
+    return {
+      id,
+      label: entity instanceof StaticEmplacementEntity ? entity.displayLocation(id) : (getMekLocationLabel(id) ?? id),
+      count,
+      free,
+      required,
+      limit,
+      maximum: Math.max(count, Math.min(limit, count + free, count + remaining)),
+    };
   });
   return { total, allocated, remaining, prescribed: distribution !== null, locations };
 }
 
 /** Plan a visible block transfer, or place as many of the remaining slots as fit in one location. */
-export function constructionSpreadMovePlacements(entity: MekEntity, mount: EntityMountedEquipment,
-  source: string | undefined, destination: string | undefined, slotCount?: number, sourceSlotIndex?: number): readonly MountPlacement[] {
+export function constructionSpreadMovePlacements(
+  entity: MekEntity,
+  mount: EntityMountedEquipment,
+  source: string | undefined,
+  destination: string | undefined,
+  slotCount?: number,
+  sourceSlotIndex?: number,
+): readonly MountPlacement[] {
   const allocation = constructionSpreadAllocation(entity, mount);
   if (!allocation) throw new Error('This component does not have spreadable critical slots.');
   const current = mount.placements ?? [];
   if (source && source === destination) return current;
-  const block = source ? current.filter(placement => placement.location === source
-    && (sourceSlotIndex === undefined || placement.slotIndex >= sourceSlotIndex
-      && placement.slotIndex < sourceSlotIndex + (slotCount ?? allocation.total))).slice(0, slotCount) : [];
+  const block = source
+    ? current
+        .filter(
+          (placement) =>
+            placement.location === source &&
+            (sourceSlotIndex === undefined ||
+              (placement.slotIndex >= sourceSlotIndex &&
+                placement.slotIndex < sourceSlotIndex + (slotCount ?? allocation.total))),
+        )
+        .slice(0, slotCount)
+    : [];
   if (source && !block.length) throw new Error('This critical-slot block is no longer installed.');
-  const rest = current.filter(placement => !block.includes(placement));
+  const rest = current.filter((placement) => !block.includes(placement));
   if (!destination) return rest;
-  const target = allocation.locations.find(location => location.id === destination);
+  const target = allocation.locations.find((location) => location.id === destination);
   if (!target?.limit) throw new Error('This system cannot allocate critical slots in that location.');
   const capacity = Math.min(target.free, target.limit - target.count);
   const count = source ? block.length : Math.min(allocation.remaining, capacity);
-  if (count <= 0 || count > capacity) throw new Error(`${target.label} can accept ${Math.max(0, capacity)} more critical slots.`);
-  return [...rest, ...freeMekSlots(entity, destination).slice(0, count).map(slotIndex => ({ location: destination, slotIndex }))];
+  if (count <= 0 || count > capacity)
+    throw new Error(`${target.label} can accept ${Math.max(0, capacity)} more critical slots.`);
+  return [
+    ...rest,
+    ...freeMekSlots(entity, destination)
+      .slice(0, count)
+      .map((slotIndex) => ({ location: destination, slotIndex })),
+  ];
 }
 
 /** Preserve all manual assignments when filling the remainder. */
-export function constructionSpreadAutoPlacements(entity: MekEntity, mount: EntityMountedEquipment): readonly MountPlacement[] {
+export function constructionSpreadAutoPlacements(
+  entity: MekEntity,
+  mount: EntityMountedEquipment,
+): readonly MountPlacement[] {
   const allocation = constructionSpreadAllocation(entity, mount);
   if (!allocation) throw new Error('This component does not have spreadable critical slots.');
-  const placements = [...mount.placements ?? []];
+  const placements = [...(mount.placements ?? [])];
   let remaining = allocation.remaining;
   for (const location of allocation.locations) {
     const count = Math.max(0, Math.min(remaining, location.free, location.limit - location.count));
-    placements.push(...freeMekSlots(entity, location.id).slice(0, count).map(slotIndex => ({ location: location.id, slotIndex })));
+    placements.push(
+      ...freeMekSlots(entity, location.id)
+        .slice(0, count)
+        .map((slotIndex) => ({ location: location.id, slotIndex })),
+    );
     remaining -= count;
   }
   if (remaining) throw new Error(`${remaining} critical slots still need room in eligible locations.`);
   return placements;
 }
 
-export function setConstructionSpreadSlots(entity: MekEntity, mount: EntityMountedEquipment, location: string, count: number, slotIndex?: number): EntityMountedEquipment {
+export function setConstructionSpreadSlots(
+  entity: MekEntity,
+  mount: EntityMountedEquipment,
+  location: string,
+  count: number,
+  slotIndex?: number,
+): EntityMountedEquipment {
   const allocation = constructionSpreadAllocation(entity, mount);
-  const target = allocation?.locations.find(item => item.id === location);
+  const target = allocation?.locations.find((item) => item.id === location);
   if (!target || !Number.isInteger(count) || count < 0 || count > target.maximum) {
     throw new Error('Choose a whole number of slots within the available capacity.');
   }
   const current = mount.placements ?? [];
   let kept = 0;
-  const placements = current.filter(placement => placement.location !== location || ++kept <= count);
+  const placements = current.filter((placement) => placement.location !== location || ++kept <= count);
   if (count > target.count) {
     const free = freeMekSlots(entity, location);
     if (slotIndex !== undefined && free.includes(slotIndex)) free.unshift(...free.splice(free.indexOf(slotIndex), 1));
-    placements.push(...free.slice(0, count - target.count).map(slotIndex => ({ location, slotIndex })));
+    placements.push(...free.slice(0, count - target.count).map((slotIndex) => ({ location, slotIndex })));
   }
   return applyConstructionSpreadPlacements(entity, mount, placements);
 }
 
-export function applyConstructionSpreadPlacements(entity: MekEntity, mount: EntityMountedEquipment, placements: readonly MountPlacement[]): EntityMountedEquipment {
+export function applyConstructionSpreadPlacements(
+  entity: MekEntity,
+  mount: EntityMountedEquipment,
+  placements: readonly MountPlacement[],
+): EntityMountedEquipment {
   if (!placements.length) return uninstallConstructionEquipment(entity, mount);
-  const primary = placements.some(placement => placement.location === mount.location) ? mount.location : placements[0].location;
+  const primary = placements.some((placement) => placement.location === mount.location)
+    ? mount.location
+    : placements[0].location;
   entity.moveEquipment(mount, primary, placements);
-  for (const location of new Set(mount.placements?.map(placement => placement.location))) {
+  for (const location of new Set(mount.placements?.map((placement) => placement.location))) {
     // Keep unaffected locations exactly as authored.
-    const before = mount.placements!.filter(placement => placement.location === location);
-    if (before.some(placement => !placements.includes(placement))) entity.arrangeEquipment(location);
+    const before = mount.placements!.filter((placement) => placement.location === location);
+    if (before.some((placement) => !placements.includes(placement))) entity.arrangeEquipment(location);
   }
-  return entity.equipment().find(item => item.mountId === mount.mountId)!;
+  return entity.equipment().find((item) => item.mountId === mount.mountId)!;
 }
 
 /** Move one section of a split weapon, joining it with an existing section at the destination. */
@@ -1281,7 +1521,12 @@ export function moveConstructionEquipmentBlock(
 ): EntityMountedEquipment {
   const placements = constructionBlockMovePlacements(entity, mount, source, destination);
   const primary = placements.reduce((location, p) => getMekSplitPrimaryLocation(location, p.location), destination);
-  if (mount.equipment) removeConstructionOmniArmActuators(entity, mount.equipment, placements.map(placement => placement.location));
+  if (mount.equipment)
+    removeConstructionOmniArmActuators(
+      entity,
+      mount.equipment,
+      placements.map((placement) => placement.location),
+    );
   const moved = entity.moveEquipment(mount, primary, placements);
   entity.arrangeEquipment(source);
   return entity.equipment().find((item) => item.mountId === moved.mountId)!;
@@ -1414,7 +1659,8 @@ export function validateConstruction(entity: BaseEntity): EntityValidationResult
     mountId?: string,
   ) => messages.push({ category, code, message, location, severity, ...(mountId ? { mountId } : {}) });
   if (!entity.chassis().trim()) add('general', 'CHASSIS_REQUIRED', 'Enter a chassis name.');
-  if (entity.omni() && !constructionOmniApplies(entity)) add('structure', 'OMNI_CHASSIS', 'This chassis cannot use Omni technology.');
+  if (entity.omni() && !constructionOmniApplies(entity))
+    add('structure', 'OMNI_CHASSIS', 'This chassis cannot use Omni technology.');
   if (entity.originalBuildYear() > entity.year())
     add('tech', 'OEM_YEAR_AFTER_INTRODUCTION', 'OEM year must be earlier than the introduction year.');
   const mass = getConstructionMass(entity);
@@ -1478,7 +1724,14 @@ export function validateConstruction(entity: BaseEntity): EntityValidationResult
     // applies no per-equipment tech checks to them.
     if (!eq || mount.platoonWeapon) continue;
     if (mount.allocation.kind === 'unallocated') {
-      add('crit', 'UNALLOCATED_EQUIPMENT', `${eq.name} has not been assigned a location.`, undefined, 'error', mount.mountId);
+      add(
+        'crit',
+        'UNALLOCATED_EQUIPMENT',
+        `${eq.name} has not been assigned a location.`,
+        undefined,
+        'error',
+        mount.mountId,
+      );
       continue;
     }
     // Materials have already been checked above; their critical-slot mounts are the same technology.
@@ -1493,25 +1746,51 @@ export function validateConstruction(entity: BaseEntity): EntityValidationResult
       if (entity.mountedEquipmentContributesStaticTech(eq)) {
         const technology = constructionTechnologyEligibility(entity, eq.tech);
         if (!technology.techBase)
-          add('tech', 'TECH_BASE_MISMATCH', `${eq.name} requires mixed technology.`, mount.location, 'error', mount.mountId);
+          add(
+            'tech',
+            'TECH_BASE_MISMATCH',
+            `${eq.name} requires mixed technology.`,
+            mount.location,
+            'error',
+            mount.mountId,
+          );
         if (!technology.available)
           add(
             'tech',
             'TECH_UNAVAILABLE',
             `${eq.name} is unavailable in ${constructionTechnologyYearLabel(entity)}.`,
             mount.location,
-            'error', mount.mountId,
+            'error',
+            mount.mountId,
           );
         if (!technology.rulesLevel)
-          add('tech', 'TECH_LEVEL_EXCEEDED', `${eq.name} exceeds the selected rules level.`, mount.location, 'error', mount.mountId);
+          add(
+            'tech',
+            'TECH_LEVEL_EXCEEDED',
+            `${eq.name} exceeds the selected rules level.`,
+            mount.location,
+            'error',
+            mount.mountId,
+          );
       }
     }
     if (entity instanceof MekEntity && mount.allocation.kind === 'location') {
       const distribution = requiredMekDistribution(entity, eq);
-      const required = eq.type === 'armor' || eq.type === 'structure' ? undefined
-        : distribution ? [...distribution.values()].reduce((sum, count) => sum + count, 0) : mount.getNumCriticalSlots(entity);
+      const required =
+        eq.type === 'armor' || eq.type === 'structure'
+          ? undefined
+          : distribution
+            ? [...distribution.values()].reduce((sum, count) => sum + count, 0)
+            : mount.getNumCriticalSlots(entity);
       if (required !== undefined && (mount.placements?.length ?? 0) !== required)
-        add('crit', 'CRIT_ALLOCATION_COUNT', `${eq.name} requires ${required} critical slots.`, mount.location, 'error', mount.mountId);
+        add(
+          'crit',
+          'CRIT_ALLOCATION_COUNT',
+          `${eq.name} requires ${required} critical slots.`,
+          mount.location,
+          'error',
+          mount.mountId,
+        );
       for (const placement of mount.placements ?? [])
         if (
           placement.slotIndex < 0 ||
@@ -1522,7 +1801,8 @@ export function validateConstruction(entity: BaseEntity): EntityValidationResult
             'CRIT_OUT_OF_BOUNDS',
             `${eq.name} is outside the physical critical-slot grid.`,
             placement.location,
-            'error', mount.mountId,
+            'error',
+            mount.mountId,
           );
       const occupied = [...new Set(mount.placements?.map((placement) => placement.location) ?? [])];
       if (!eq.isSpreadable)
@@ -1532,18 +1812,39 @@ export function validateConstruction(entity: BaseEntity): EntityValidationResult
             .map((p) => p.slotIndex)
             .sort((a, b) => a - b);
           if (slots.some((slot, index) => index > 0 && slot !== slots[index - 1] + 1))
-            add('crit', 'CRIT_CONTIGUOUS', `${eq.name} requires one contiguous block in ${location}.`, location, 'error', mount.mountId);
+            add(
+              'crit',
+              'CRIT_CONTIGUOUS',
+              `${eq.name} requires one contiguous block in ${location}.`,
+              location,
+              'error',
+              mount.mountId,
+            );
         }
       if (
         occupied.length > 1 &&
         !eq.isSpreadable &&
         (!eq.canSplit() || occupied.length > 2 || !areMekSplitLocationsAdjacent(occupied[0], occupied[1]))
       )
-        add('crit', 'CRIT_SPLIT_LOCATION', `${eq.name} has an invalid location split.`, mount.location, 'error', mount.mountId);
+        add(
+          'crit',
+          'CRIT_SPLIT_LOCATION',
+          `${eq.name} has an invalid location split.`,
+          mount.location,
+          'error',
+          mount.mountId,
+        );
       if (distribution)
         for (const [location, count] of distribution) {
           if (mount.placements?.filter((placement) => placement.location === location).length !== count)
-            add('crit', 'CRIT_DISTRIBUTION', `${eq.name} requires ${count} critical slots in ${location}.`, location, 'error', mount.mountId);
+            add(
+              'crit',
+              'CRIT_DISTRIBUTION',
+              `${eq.name} requires ${count} critical slots in ${location}.`,
+              location,
+              'error',
+              mount.mountId,
+            );
         }
     }
   }
@@ -1557,7 +1858,10 @@ export function validateConstruction(entity: BaseEntity): EntityValidationResult
   }
   const unique = [
     ...new Map(
-      messages.map((message) => [`${message.code}|${message.location ?? ''}|${message.mountId ?? ''}|${message.message}`, message]),
+      messages.map((message) => [
+        `${message.code}|${message.location ?? ''}|${message.mountId ?? ''}|${message.message}`,
+        message,
+      ]),
     ).values(),
   ];
   return { valid: !unique.some((message) => message.severity === 'error'), messages: unique };
@@ -1589,7 +1893,11 @@ function availableMekPlacements(
   if (eq.isSpreadable) {
     for (const other of candidates) {
       if (primary.length >= needed) return primary;
-      primary.push(...freeMekSlots(entity, other, ignore).slice(0, needed - primary.length).map(slotIndex => ({ location: other, slotIndex })));
+      primary.push(
+        ...freeMekSlots(entity, other, ignore)
+          .slice(0, needed - primary.length)
+          .map((slotIndex) => ({ location: other, slotIndex })),
+      );
     }
     return primary.length >= needed ? primary : [];
   }
@@ -1613,17 +1921,24 @@ function availableMekPlacements(
 /** TestMek.checkMiscSpreadAllocation prescribes these locations, rather than any free slots. */
 function requiredMekDistribution(entity: MekEntity, eq: Equipment): ReadonlyMap<string, number> | null {
   if (eq instanceof ArmorEquipment && entity.hasPatchworkArmor()) {
-    return new Map(entity.locationOrder
-      .filter(location => entity.armorByLocation().get(location)?.armor.id === eq.id)
-      .map(location => [location, Math.ceil(eq.patchworkSlotsMekSV / (entity.isSuperHeavy() ? 2 : 1))]));
+    return new Map(
+      entity.locationOrder
+        .filter((location) => entity.armorByLocation().get(location)?.armor.id === eq.id)
+        .map((location) => [location, Math.ceil(eq.patchworkSlotsMekSV / (entity.isSuperHeavy() ? 2 : 1))]),
+    );
   }
   if (eq instanceof StructureEquipment && entity.hasHybridStructure()) {
     // CO p. 213: a FrankenMek location keeps the rows its donor design carries as loaded; a location without any, or one
     // whose structure the editor changed, takes the Internal Structure Distribution Table's count (CO p. 212).
-    return new Map(entity.locationOrder
-      .filter(location => entity.structureAt(location).structure.id === eq.id)
-      .map(location => [location, entity.donorStructureRowsAt(location) || hybridStructureCriticals(entity, location)] as const)
-      .filter(([, count]) => count > 0));
+    return new Map(
+      entity.locationOrder
+        .filter((location) => entity.structureAt(location).structure.id === eq.id)
+        .map(
+          (location) =>
+            [location, entity.donorStructureRowsAt(location) || hybridStructureCriticals(entity, location)] as const,
+        )
+        .filter(([, count]) => count > 0),
+    );
   }
   if (eq.hasFlag('F_RAM_PLATE')) return new Map(['CT', 'LT', 'RT'].map((location) => [location, 1]));
   if (eq.hasFlag('F_TRACKS'))
@@ -1664,23 +1979,35 @@ export function constructionMaterialSlotCount(entity: MekEntity, material: Equip
 
 function constructionRequiredMaterials(entity: BaseEntity): readonly Equipment[] {
   if (!(entity instanceof MekEntity)) return [];
-  return [...new Map([
-    ...[...entity.armorByLocation().values()].map(material => material.armor),
-    ...[...entity.structureByLocation().values()].map(material => material.structure),
-  ].map(material => [material.id, material])).values()]
-    .filter(material => constructionMaterialSlotCount(entity, material) > 0);
+  return [
+    ...new Map(
+      [
+        ...[...entity.armorByLocation().values()].map((material) => material.armor),
+        ...[...entity.structureByLocation().values()].map((material) => material.structure),
+      ].map((material) => [material.id, material]),
+    ).values(),
+  ].filter((material) => constructionMaterialSlotCount(entity, material) > 0);
 }
 
 export function isRequiredConstructionEquipment(entity: BaseEntity, mount: EntityMountedEquipment): boolean {
-  return constructionRequiredMaterials(entity).some(material => material.id === (mount.equipment?.id ?? mount.equipmentId));
+  return constructionRequiredMaterials(entity).some(
+    (material) => material.id === (mount.equipment?.id ?? mount.equipmentId),
+  );
 }
 
 /** Drafts can name a chassis material without supplying any of its critical reservations. */
 export function ensureConstructionMaterialEquipment(entity: BaseEntity): void {
   for (const equipment of constructionRequiredMaterials(entity)) {
-    if (entity.equipment().some(mount => (mount.equipment?.id ?? mount.equipmentId) === equipment.id)) continue;
-    entity.addEquipment({ equipmentId: equipment.id, equipment, allocation: { kind: 'unallocated' },
-      rearMounted: false, turretMounted: false, omniPodMounted: false, armored: false });
+    if (entity.equipment().some((mount) => (mount.equipment?.id ?? mount.equipmentId) === equipment.id)) continue;
+    entity.addEquipment({
+      equipmentId: equipment.id,
+      equipment,
+      allocation: { kind: 'unallocated' },
+      rearMounted: false,
+      turretMounted: false,
+      omniPodMounted: false,
+      armored: false,
+    });
   }
 }
 
@@ -1694,8 +2021,12 @@ function hybridStructureCriticals(entity: MekEntity, location: string): number {
   const type = material.structure.structureTypeId;
   if (type !== STRUCTURE_TYPE.ENDO_STEEL && type !== STRUCTURE_TYPE.ENDO_COMPOSITE) return 0;
   if (type === STRUCTURE_TYPE.ENDO_COMPOSITE || material.techBase === 'Clan') return location === 'HD' ? 0 : 1;
-  const slots = location === 'HD' || location === 'CT' || entity.locationIsLeg(location)
-    ? 1 : location === 'LT' || location === 'RT' ? 3 : 2;
+  const slots =
+    location === 'HD' || location === 'CT' || entity.locationIsLeg(location)
+      ? 1
+      : location === 'LT' || location === 'RT'
+        ? 3
+        : 2;
   return entity.isSuperHeavy() ? Math.ceil(slots / 2) : slots;
 }
 
@@ -1715,10 +2046,21 @@ function reconcileConstructionMaterialSlots(entity: MekEntity, kind: 'armor' | '
         ];
   // A FrankenMek location keeps its structure's rows where it still has them (CO p. 213); read them before the old
   // reservations go.
-  const previousRows = kind === 'structure' && entity.hasHybridStructure()
-    ? new Map(materials.map((material) => [material.id,
-        entity.equipment().filter((mount) => mount.equipment?.id === material.id).flatMap((mount) => mount.placements ?? [])] as const))
-    : null;
+  const previousRows =
+    kind === 'structure' && entity.hasHybridStructure()
+      ? new Map(
+          materials.map(
+            (material) =>
+              [
+                material.id,
+                entity
+                  .equipment()
+                  .filter((mount) => mount.equipment?.id === material.id)
+                  .flatMap((mount) => mount.placements ?? []),
+              ] as const,
+          ),
+        )
+      : null;
   for (const mount of entity.equipment()) if (mount.equipment?.type === kind) entity.removeEquipment(mount);
   for (const equipment of materials) {
     const rows = previousRows?.get(equipment.id);
@@ -1743,10 +2085,14 @@ function reconcileConstructionMaterialSlots(entity: MekEntity, kind: 'armor' | '
     } else if (rows) {
       for (const [location, count] of requiredMekDistribution(entity, equipment)!) {
         const free = freeMekSlots(entity, location);
-        const own = rows.filter((placement) => placement.location === location && free.includes(placement.slotIndex))
+        const own = rows
+          .filter((placement) => placement.location === location && free.includes(placement.slotIndex))
           .map((placement) => placement.slotIndex);
-        placements.push(...[...own, ...free.filter((slotIndex) => !own.includes(slotIndex))].slice(0, count)
-          .map((slotIndex) => ({ location, slotIndex })));
+        placements.push(
+          ...[...own, ...free.filter((slotIndex) => !own.includes(slotIndex))]
+            .slice(0, count)
+            .map((slotIndex) => ({ location, slotIndex })),
+        );
       }
     } else if (requiredMekDistribution(entity, equipment)) {
       placements.push(...availableMekPlacements(entity, equipment, matching[0]));
