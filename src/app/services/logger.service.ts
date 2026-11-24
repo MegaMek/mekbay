@@ -68,9 +68,37 @@ export class LoggerService {
     }
 
     handleError(error: unknown): void {
-        const message = error instanceof Error ? error.message : String(error);
-        this.error(`Unhandled error: ${message}`);
-        console.trace(error);
+        this.error(`Unhandled error:\n${this.formatErrorDetails(error)}`);
+        console.error(error);
+    }
+
+    private formatErrorDetails(error: unknown, seen = new Set<object>()): string {
+        if (typeof error !== 'object' || error === null) return String(error);
+        if (seen.has(error)) return '[Circular error cause]';
+        seen.add(error);
+
+        if (error instanceof Error) {
+            const details = [`${error.name}: ${error.message}`];
+            if (error.stack) details.push(error.stack);
+            if (error.cause !== undefined) {
+                details.push(`Caused by:\n${this.formatErrorDetails(error.cause, seen)}`);
+            }
+            return details.join('\n');
+        }
+
+        if (typeof ErrorEvent !== 'undefined' && error instanceof ErrorEvent) {
+            const location = [error.filename, error.lineno || '', error.colno || '']
+                .filter(Boolean)
+                .join(':');
+            const details = [`ErrorEvent: ${error.message}`];
+            if (location) details.push(`Source: ${location}`);
+            if (error.error != null) {
+                details.push(`Event error:\n${this.formatErrorDetails(error.error, seen)}`);
+            }
+            return details.join('\n');
+        }
+
+        return String(error);
     }
 
     public clear(): void {

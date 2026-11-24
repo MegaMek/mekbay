@@ -84,4 +84,24 @@ describe('LoggerService', () => {
 
         expect(service.logs().map(entry => entry.message)).toEqual(['computed log']);
     });
+
+    it('includes ErrorEvent cause details and source location for global errors', async () => {
+        const consoleError = spyOn(console, 'error');
+        const event = new ErrorEvent('error', {
+            message: 'ResizeObserver loop completed with undelivered notifications.',
+            filename: 'app.js',
+            lineno: 12,
+            colno: 34,
+        });
+        const error = new Error('An ErrorEvent with no error occurred.', { cause: event });
+
+        service.handleError(error);
+        await Promise.resolve();
+
+        const message = service.logs()[0].message;
+        expect(message).toContain('An ErrorEvent with no error occurred.');
+        expect(message).toContain('ResizeObserver loop completed with undelivered notifications.');
+        expect(message).toContain('Source: app.js:12:34');
+        expect(consoleError).toHaveBeenCalledWith(error);
+    });
 });
