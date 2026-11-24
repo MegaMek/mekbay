@@ -20,7 +20,7 @@ type ComponentDisplayStyle = 'normal' | 'small' | 'tiny' | 'text' | 'additional'
     templateUrl: './unit-component-item.component.html',
     styleUrl: './unit-component-item.component.css',
     host: {
-        '[style.display]': 'hostDisplay'
+        '[style.display]': 'hostDisplay()'
     }
 })
 export class UnitComponentItemComponent {

@@ -123,6 +123,14 @@
 @media screen and (max-width: 600px) {
   .modal-btn {
     width: auto;
-    padding-inline: 14px;
+  }
+}
+
+/* The share button joins the footer, so phones get narrower text buttons to keep one line. */
+@media screen and (max-width: 350px) {
+  .modal-btn:not(.bt-split-button),
+  .bt-split-button.modal-btn .split-main,
+  .bt-split-button.modal-btn .split-extra {
+    padding-inline: 8px;
   }
 }
