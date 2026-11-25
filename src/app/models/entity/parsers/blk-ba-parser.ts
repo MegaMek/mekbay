@@ -20,9 +20,7 @@ import {
 } from './blk-codec';
 import { decodeMotiveType } from './motive-type-codec';
 import { createCompoundTechLevel } from '../types/tech';
-import {
-  MountedArmor,
-} from '../components';
+import { MountedArmor } from '../components';
 import { BuildingBlock } from './building-block';
 import { parseBaseBlk } from './blk-base-parser';
 import { parseEquipmentLine } from './equipment-resolver';
@@ -49,53 +47,55 @@ export function parseBlkBA(bb: BuildingBlock, ctx: ParseContext): BattleArmorEnt
 
   // ── BA-specific fields ──
   // Trooper Count can appear as 'Trooper Count' (with space) or 'troopercount'
-  if (bb.exists('Trooper Count'))       entity.trooperCount.set(bb.getFirstInt('Trooper Count'));
-  else if (bb.exists('troopercount'))   entity.trooperCount.set(bb.getFirstInt('troopercount'));
+  if (bb.exists('Trooper Count')) entity.trooperCount.set(bb.getFirstInt('Trooper Count'));
+  else if (bb.exists('troopercount')) entity.trooperCount.set(bb.getFirstInt('troopercount'));
 
-  if (bb.exists('weightclass'))    entity.declaredWeightClass.set(BA_WEIGHT_CLASS_BY_CODE[bb.getFirstInt('weightclass')] ?? 'Medium');
+  if (bb.exists('weightclass'))
+    entity.declaredWeightClass.set(BA_WEIGHT_CLASS_BY_CODE[bb.getFirstInt('weightclass')] ?? 'Medium');
   // Native files write `biped` / `quad`; MegaMek reads the block case-insensitively and refuses anything else.
   if (bb.exists('chassis')) {
     const chassis = bb.getFirstString('chassis').trim().toLowerCase();
-    if (chassis !== 'biped' && chassis !== 'quad') ctx.warn('chassis', `Unsupported chassis "${chassis}" is read as biped`);
+    if (chassis !== 'biped' && chassis !== 'quad')
+      ctx.warn('chassis', `Unsupported chassis "${chassis}" is read as biped`);
     entity.chassisType.set(chassis === 'quad' ? 'Quad' : 'Biped');
   }
-  if (bb.exists('turret'))         entity.turretConfig.set(bb.getFirstString('turret'));
-  if (bb.exists('exoskeleton'))    entity.isExoskeleton.set(bb.getFirstString('exoskeleton') === 'true');
+  if (bb.exists('turret')) entity.turretConfig.set(bb.getFirstString('turret'));
+  if (bb.exists('exoskeleton')) entity.isExoskeleton.set(bb.getFirstString('exoskeleton') === 'true');
   if (bb.exists('clan_exo_without_harjel')) {
     entity.clanExoWithoutHarJel.set(bb.getFirstString('clan_exo_without_harjel') === 'true');
   }
-  if (bb.exists('jumpingMP'))      entity.propulsionMP.set(bb.getFirstInt('jumpingMP'));
-  if (bb.exists('motion_type'))    entity.motiveType.set(decodeMotiveType(bb.getFirstString('motion_type')));
+  if (bb.exists('jumpingMP')) entity.propulsionMP.set(bb.getFirstInt('jumpingMP'));
+  if (bb.exists('motion_type')) entity.motiveType.set(decodeMotiveType(bb.getFirstString('motion_type')));
+  // Autocorrect motive_type to Jump when unit has propulsion but no Jump/UMU
+  if (entity.propulsionMP() > 0 && entity.motiveType() === 'Leg') {
+    entity.motiveType.set('Jump');
+  }
 
   // cruiseMP → walkMP (BA movement)
-  if (bb.exists('cruiseMP'))       entity.originalWalkMP.set(bb.getFirstInt('cruiseMP'));
+  if (bb.exists('cruiseMP')) entity.originalWalkMP.set(bb.getFirstInt('cruiseMP'));
 
   // ── Armor ──
   {
-    const type: ArmorType = bb.exists('armor_type')
-      ? decodeBlkArmorType(bb.getFirstInt('armor_type'))
-      : 'BA_STANDARD';
+    const type: ArmorType = bb.exists('armor_type') ? decodeBlkArmorType(bb.getFirstInt('armor_type')) : 'BA_STANDARD';
     const compoundCode = bb.exists('armor_tech') ? bb.getFirstInt('armor_tech') : null;
-    const techBase: EquipmentTechBase = compoundCode != null
-      ? decodeBlkCompoundTechBase(compoundCode, entity.techBase())
-      : entity.techBase();
+    const techBase: EquipmentTechBase =
+      compoundCode != null ? decodeBlkCompoundTechBase(compoundCode, entity.techBase()) : entity.techBase();
     const armor = resolveArmorEquipment(type, techBase === 'Clan', ctx.equipmentRegistry);
     if (type !== 'PATCHWORK' && !armor) {
       ctx.error('armor_type', `Invalid armor type ${type} for ${techBase} technology`);
     }
-    const technology = compoundCode == null
-      ? createCompoundTechLevel(componentTechLevelFromRulesLevel(entity.rulesLevel()), techBase)
-      : decodeBlkCompoundTechLevel(compoundCode);
+    const technology =
+      compoundCode == null
+        ? createCompoundTechLevel(componentTechLevelFromRulesLevel(entity.rulesLevel()), techBase)
+        : decodeBlkCompoundTechLevel(compoundCode);
     if (type !== 'PATCHWORK') {
-      entity.setUniformArmor(new MountedArmor({
-        techBase,
-        armor: armor ?? requireArmorEquipment(
-          'BA_STANDARD',
-          techBase === 'Clan',
-          ctx.equipmentRegistry,
-        ),
-        technology,
-      }));
+      entity.setUniformArmor(
+        new MountedArmor({
+          techBase,
+          armor: armor ?? requireArmorEquipment('BA_STANDARD', techBase === 'Clan', ctx.equipmentRegistry),
+          technology,
+        }),
+      );
     }
   }
 
@@ -132,9 +132,9 @@ function addMissingMovementEquipment(entity: BattleArmorEntity, ctx: ParseContex
   if (!equipmentId) return;
 
   const resolved = ctx.resolveEquipment(equipmentId, 'motion_type');
-  const alreadyPresent = entity.equipment().some(mount =>
-    mount.equipmentId === equipmentId || mount.equipment === resolved
-  );
+  const alreadyPresent = entity
+    .equipment()
+    .some((mount) => mount.equipmentId === equipmentId || mount.equipment === resolved);
   if (alreadyPresent) return;
 
   entity.addEquipment({
@@ -151,11 +151,7 @@ function addMissingMovementEquipment(entity: BattleArmorEntity, ctx: ParseContex
 /**
  * Parse BA squad and trooper equipment blocks.
  */
-function parseBaEquipment(
-  bb: BuildingBlock,
-  entity: BattleArmorEntity,
-  ctx: ParseContext,
-): void {
+function parseBaEquipment(bb: BuildingBlock, entity: BattleArmorEntity, ctx: ParseContext): void {
   // Squad Equipment (or legacy Point Equipment) → Squad
   if (bb.exists('Squad Equipment')) {
     parseLocationEquipment(bb, entity, 'Squad Equipment', 'Squad', ctx);
