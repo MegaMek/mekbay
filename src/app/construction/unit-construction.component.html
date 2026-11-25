@@ -646,79 +646,79 @@
             >
               @if (row.mount) {
                 @for (mount of row.sharedMount ? [row.mount, row.sharedMount] : [row.mount]; track mount.mountId) {
-                @let display = mountedDisplay(mount);
-                @let mountLabel = (display.custom ? '*' : '') + display.name;
-                @if (
-                  dragging()?.mountId === mount.mountId &&
-                  dragging()?.sourceLocation === location.id &&
-                  (dragging()?.sourceSlotIndex === undefined || dragging()?.sourceSlotIndex === row.index) &&
-                  (dragTarget()?.location !== location.id || !dropArrangement())
-                ) {
-                  <div class="slot-drag-origin" aria-hidden="true">
-                    <span>{{ mountLabel }}</span
-                    ><small>{{ row.span }} slot{{ row.span === 1 ? '' : 's' }}</small>
-                  </div>
-                }
-                <div
-                  class="installed-equipment"
-                  [attr.data-mount-id]="mount.mountId"
-                  [class.tech-incompatible]="equipmentTechMismatch(mount.equipment)"
-                  [class.armored-equipment]="mount.armored"
-                  [class]="equipmentClass(mount.equipment)"
-                  [class.hovered-equipment]="hoveredMountId() === mount.mountId"
-                  (mouseenter)="hoveredMountId.set(mount.mountId)"
-                  (mouseleave)="hoveredMountId.set(null)"
-                  [class.selected-equipment]="inspectorOpen() && selectedMountId() === mount.mountId"
-                  [class.damaged-equipment]="!!mountCondition(mount.mountId)"
-                  [class.destroyed-equipment]="mountCondition(mount.mountId) === 'Destroyed'"
-                  cdkDrag
-                  [cdkDragDisabled]="!canReorderMount(mount)"
-                  [cdkDragData]="{
-                    equipmentId: mount.equipmentId,
-                    mountId: mount.mountId,
-                    sourceLocation: location.id,
-                    sourceSlotIndex: mount.equipment?.isSpreadable ? row.index : undefined,
-                    slotCount: mount.equipment?.isSpreadable ? row.span : undefined,
-                  }"
-                  (cdkDragStarted)="
-                    startDrag({
+                  @let display = mountedDisplay(mount);
+                  @let mountLabel = (display.custom ? '*' : '') + display.name;
+                  @if (
+                    dragging()?.mountId === mount.mountId &&
+                    dragging()?.sourceLocation === location.id &&
+                    (dragging()?.sourceSlotIndex === undefined || dragging()?.sourceSlotIndex === row.index) &&
+                    (dragTarget()?.location !== location.id || !dropArrangement())
+                  ) {
+                    <div class="slot-drag-origin" aria-hidden="true">
+                      <span>{{ mountLabel }}</span
+                      ><small>{{ row.span }} slot{{ row.span === 1 ? '' : 's' }}</small>
+                    </div>
+                  }
+                  <div
+                    class="installed-equipment"
+                    [attr.data-mount-id]="mount.mountId"
+                    [class.tech-incompatible]="equipmentTechMismatch(mount.equipment)"
+                    [class.armored-equipment]="mount.armored"
+                    [class]="equipmentClass(mount.equipment)"
+                    [class.hovered-equipment]="hoveredMountId() === mount.mountId"
+                    (mouseenter)="hoveredMountId.set(mount.mountId)"
+                    (mouseleave)="hoveredMountId.set(null)"
+                    [class.selected-equipment]="inspectorOpen() && selectedMountId() === mount.mountId"
+                    [class.damaged-equipment]="!!mountCondition(mount.mountId)"
+                    [class.destroyed-equipment]="mountCondition(mount.mountId) === 'Destroyed'"
+                    cdkDrag
+                    [cdkDragDisabled]="!canReorderMount(mount)"
+                    [cdkDragData]="{
                       equipmentId: mount.equipmentId,
                       mountId: mount.mountId,
                       sourceLocation: location.id,
                       sourceSlotIndex: mount.equipment?.isSpreadable ? row.index : undefined,
                       slotCount: mount.equipment?.isSpreadable ? row.span : undefined,
-                    })
-                  "
-                  (cdkDragMoved)="dragMoved($event)"
-                  (cdkDragEnded)="dragEnded()"
-                  [cdkDragStartDelay]="{ touch: 180, mouse: 0 }"
-                  [cdkDragPreviewContainer]="constructionShell"
-                >
-                  <ng-template cdkDragPlaceholder><div class="construction-drag-placeholder"></div></ng-template>
-                  <ng-template cdkDragPreview [matchSize]="true"
-                    ><div class="construction-drag-preview">
-                      <ng-container
-                        [ngTemplateOutlet]="equipmentDragPreview"
-                        [ngTemplateOutletContext]="{
-                          equipment: mount.equipment,
-                          mount,
-                          span: row.span,
-                          location: location.id,
-                          index: row.index,
-                        }"
-                      /></div
-                  ></ng-template>
-                  <ng-container
-                    [ngTemplateOutlet]="equipmentBlockContent"
-                    [ngTemplateOutletContext]="{
-                      equipment: mount.equipment,
-                      mount,
-                      span: row.span,
-                      location: location.id,
-                      index: row.index,
                     }"
-                  />
-                </div>
+                    (cdkDragStarted)="
+                      startDrag({
+                        equipmentId: mount.equipmentId,
+                        mountId: mount.mountId,
+                        sourceLocation: location.id,
+                        sourceSlotIndex: mount.equipment?.isSpreadable ? row.index : undefined,
+                        slotCount: mount.equipment?.isSpreadable ? row.span : undefined,
+                      })
+                    "
+                    (cdkDragMoved)="dragMoved($event)"
+                    (cdkDragEnded)="dragEnded()"
+                    [cdkDragStartDelay]="{ touch: 180, mouse: 0 }"
+                    [cdkDragPreviewContainer]="constructionShell"
+                  >
+                    <ng-template cdkDragPlaceholder><div class="construction-drag-placeholder"></div></ng-template>
+                    <ng-template cdkDragPreview [matchSize]="true"
+                      ><div class="construction-drag-preview">
+                        <ng-container
+                          [ngTemplateOutlet]="equipmentDragPreview"
+                          [ngTemplateOutletContext]="{
+                            equipment: mount.equipment,
+                            mount,
+                            span: row.span,
+                            location: location.id,
+                            index: row.index,
+                          }"
+                        /></div
+                    ></ng-template>
+                    <ng-container
+                      [ngTemplateOutlet]="equipmentBlockContent"
+                      [ngTemplateOutletContext]="{
+                        equipment: mount.equipment,
+                        mount,
+                        span: row.span,
+                        location: location.id,
+                        index: row.index,
+                      }"
+                    />
+                  </div>
                 }
               } @else {
                 <button
@@ -847,7 +847,8 @@
             </button></span
           >
           <span class="mass-value"
-            >{{ mass() === null ? '—' : (mass() | number: '1.0-3') }}<small>
+            >{{ mass() === null ? '—' : (mass() | number: '1.0-3')
+            }}<small>
               /
               @if (tonnageField(); as field) {
                 @if (canEditField(field) && tonnageOptions(); as options) {
@@ -1207,8 +1208,7 @@
                     >
                     @let bv = equipmentBV(eq);
                     <span class="equipment-number equipment-bv"
-                      ><small>BV</small
-                      ><span>{{ bv === 'variable' ? 'Var.' : (bv | number: '1.0-2') }}</span></span
+                      ><small>BV</small><span>{{ bv === 'variable' ? 'Var.' : (bv | number: '1.0-2') }}</span></span
                     >
                   </span>
                 </button>
@@ -1489,7 +1489,7 @@
                   <h2>Materials</h2>
                   <div class="system-fields">
                     @if (armorOptions().length) {
-                      <label
+                      <label [class.full-row]="!structureOptions().length"
                         >Armor<select
                           class="bt-select"
                           aria-label="Armor material"
@@ -1955,12 +1955,16 @@
                 hardpoints
               </span>
               @if (stores.staged && !forceMember()?.force?.readOnly()) {
-                <button class="bt-button" type="button" (click)="setRuntimeBombs()" [disabled]="busy()">SET BOMBS</button>
+                <button class="bt-button" type="button" (click)="setRuntimeBombs()" [disabled]="busy()">
+                  SET BOMBS
+                </button>
               }
             </div>
             @for (row of stores.rows; track row.id) {
               <div class="bomb-stores-row">
-                <span>{{ row.name }}</span><small>{{ row.section }}</small><span>{{ row.carried }}/{{ row.count }}</span>
+                <span>{{ row.name }}</span
+                ><small>{{ row.section }}</small
+                ><span>{{ row.carried }}/{{ row.count }}</span>
               </div>
             } @empty {
               <small>{{ stores.staged ? 'No bombs loaded.' : 'Bombs are loaded on a force unit.' }}</small>
@@ -2789,8 +2793,8 @@
               Armored · all {{ slots.length }} critical slots
               @if (armoredSlots && armoredSlots < slots.length) {
                 ({{ armoredSlots }} armored)
-              }</label
-            >
+              }
+            </label>
           }
         </fieldset>
         @if (removableSystem(system.location, system.system)) {
