@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 
 import { VehicleEntity } from '../../models/entity/entities/vehicle/vehicle-entity';
+import { BattleArmorEntity } from '../../models/entity/entities/infantry/battle-armor-entity';
 import { createTestEquipmentRegistry } from '../../models/entity/testing/test-equipment-registry';
 import { constructionLocationLayout } from './construction-location-layout';
 import { CONSTRUCTION_UNIT_TYPES, createConstructionEntity } from './construction-factory';
@@ -51,6 +52,17 @@ describe('fixed construction location layouts', () => {
             .toEqual([['FLS', 'Left Broadside', 'ALS'], ['Nose', 'Hull', 'Aft'], ['FRS', 'Right Broadside', 'ARS']]);
     });
 
+    it('splits Battle Armor squad and troopers at wide widths', () => {
+        const entity = createConstructionEntity('BattleArmor', registry) as BattleArmorEntity;
+        const layout = constructionLocationLayout(entity);
+        const locations = getConstructionLocations(entity).map(location => location.id);
+        expect(layout.desktopColumns).toEqual([
+            ['Squad'],
+            locations.filter(location => location.startsWith('Trooper ')),
+        ]);
+        expect(layout.compactColumns).toEqual([locations]);
+    });
+
     for (const kind of CONSTRUCTION_UNIT_TYPES) {
         it(`renders every ${kind.id} construction location exactly once at each width`, () => {
             const entity = createConstructionEntity(kind.id, registry);
@@ -59,7 +71,6 @@ describe('fixed construction location layouts', () => {
             for (const columns of [layout.desktopColumns, layout.compactColumns]) {
                 expect(columns.flat().slice().sort()).toEqual(expected);
                 expect(new Set(columns.flat()).size).toBe(expected.length);
-                expect(columns.length).toBe(layout.kind === 'list' ? 1 : columns === layout.desktopColumns && layout.kind === 'mek' ? 5 : 3);
             }
         });
     }

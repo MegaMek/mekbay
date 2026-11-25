@@ -7,6 +7,7 @@ import { SmallCraftEntity } from '../../models/entity/entities/aero/small-craft-
 import { JumpShipEntity } from '../../models/entity/entities/largecraft/jumpship-entity';
 import { MekEntity } from '../../models/entity/entities/mek/mek-entity';
 import { VehicleEntity } from '../../models/entity/entities/vehicle/vehicle-entity';
+import { BattleArmorEntity } from '../../models/entity/entities/infantry/battle-armor-entity';
 import { mekCriticalLocationMatrix } from '../../utils/mek-location-layout.util';
 
 export type ConstructionLocationColumns = readonly (readonly string[])[];
@@ -61,6 +62,18 @@ export function constructionLocationLayout(entity: BaseEntity): ConstructionLoca
     if (columns) {
         const fixed = fitLocations(columns, locations);
         return { kind: 'matrix', desktopColumns: fixed, compactColumns: fixed };
+    }
+    if (entity instanceof BattleArmorEntity) {
+        const squad = locations.filter(location => location === 'Squad');
+        const troopers = locations.filter(location => location.startsWith('Trooper '));
+        const squadIds = new Set<string>(squad);
+        const trooperIds = new Set<string>(troopers);
+        const remaining = locations.filter(location => !squadIds.has(location) && !trooperIds.has(location));
+        return {
+            kind: 'list',
+            desktopColumns: [[...squad], [...troopers, ...remaining]],
+            compactColumns: [locations],
+        };
     }
     // Infantry, BA troopers, ProtoMek hit locations and emplacement sections
     // have list-based sheet layouts rather than a fixed critical-location matrix.
