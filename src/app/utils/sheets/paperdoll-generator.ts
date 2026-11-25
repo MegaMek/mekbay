@@ -961,27 +961,44 @@ export class PaperdollGenerator {
     }
 
     const allocations = this.allocateFillAreaPips(group, count);
-    const rendered: SVGGElement[] = [];
-    for (let index = 0; index < group.areas.length; index++) {
-      const areaCount = allocations[index];
-      if (areaCount <= 0) {
-        continue;
+    const renderAreas = (areaOptions: PaperdollOptions): SVGGElement[] | null => {
+      const areas: SVGGElement[] = [];
+      for (let index = 0; index < group.areas.length; index++) {
+        const areaCount = allocations[index];
+        if (areaCount <= 0) {
+          continue;
+        }
+        const pips = this.createActiveFillPlaceholderPips(
+          group.areas[index].geometry,
+          areaCount,
+          layout,
+          areaOptions,
+          group.type,
+          group.location,
+        );
+        if (!pips) {
+          return null;
+        }
+        areas.push(pips);
       }
-      const pips = this.createActiveFillPlaceholderPips(
-        group.areas[index].geometry,
-        areaCount,
-        layout,
-        options,
-        group.type,
-        group.location,
-      );
-      if (!pips) {
-        return null;
-      }
-      rendered.push(pips);
-    }
-    if (rendered.length === 0) {
+      return areas;
+    };
+    let rendered = renderAreas(options);
+    if (!rendered || rendered.length === 0) {
       return null;
+    }
+    // One location shows one pip size: its areas share the smallest radius any of them needs.
+    const radii = rendered.flatMap((pips) =>
+      Array.from(pips.querySelectorAll('circle'), (pip) => pip.r.baseVal.value),
+    );
+    const pipRadius = Math.min(...radii);
+    if (radii.some((radius) => radius > pipRadius + 1e-6)) {
+      rendered =
+        renderAreas({
+          ...options,
+          pipOptions: { ...options.pipOptions, pipRadius },
+          structurePipOptions: options.structurePipOptions && { ...options.structurePipOptions, pipRadius },
+        }) ?? rendered;
     }
 
     const combined = PipRendererShared.createGroup(pipOptions, group.type, group.location, Math.floor(count), layout);

@@ -149,132 +149,208 @@
           <text style="font-style:normal;font-variant:normal;font-weight:bold;font-stretch:normal;font-size:7.7273px;font-family:Eurostile;font-variant-ligatures:normal;font-variant-caps:normal;font-variant-numeric:normal;font-variant-east-asian:normal;fill:#000000;fill-opacity:1;fill-rule:nonzero;stroke:none" transform="matrix(1,0,0,-1,283.33,378)" text-anchor="middle"><tspan x="0" y="0" style="font-style:normal;font-variant:normal;font-weight:bold;font-stretch:normal;font-size:7.7273px;font-family:Eurostile;font-variant-ligatures:normal;font-variant-caps:normal;font-variant-numeric:normal;font-variant-east-asian:normal">Left</tspan><tspan x="0" y="9.2727604" style="font-style:normal;font-variant:normal;font-weight:bold;font-stretch:normal;font-size:7.7273px;font-family:Eurostile;font-variant-ligatures:normal;font-variant-caps:normal;font-variant-numeric:normal;font-variant-east-asian:normal">Damage</tspan><tspan x="0" y="18.545521" style="font-style:normal;font-variant:normal;font-weight:bold;font-stretch:normal;font-size:7.7273px;font-family:Eurostile;font-variant-ligatures:normal;font-variant-caps:normal;font-variant-numeric:normal;font-variant-east-asian:normal">Threshold</tspan><tspan x="0" y="27.8183" style="font-style:normal;font-variant:normal;font-weight:bold;font-stretch:normal;font-size:7.7273px;font-family:Eurostile;font-variant-ligatures:normal;font-variant-caps:normal;font-variant-numeric:normal;font-variant-east-asian:normal">(Total Armor)</tspan><tspan x="0" y="37.091" id="textArmor_LS" style="font-style:normal;font-variant:normal;font-weight:bold;font-stretch:normal;font-size:7.7273px;font-family:Eurostile;font-variant-ligatures:normal;font-variant-caps:normal;font-variant-numeric:normal;font-variant-east-asian:normal">( )</tspan></text>
         </g>
         <g fill="none">
-          <g transform="translate(148.105,38.3)" class="paperdoll-pip-profile">
-            <rect x="-37.599998" width="75.199997" y="0" height="6.8000002" data-fill="armor" data-location="NOS"/>
-            <rect x="-55" width="110" y="6.8000002" height="6.8000002" data-fill="armor" data-location="NOS"/>
-            <rect x="-62.299999" width="124.6" y="15.6" height="6.8000002" data-fill="armor" data-location="NOS"/>
-            <rect x="-60.400002" width="120.8" y="20.4" height="6.8000002" data-fill="armor" data-location="NOS"/>
-            <rect x="-58.57" width="117.14" y="27.200001" height="6.8000002" data-fill="armor" data-location="NOS"/>
-            <rect x="-56.73" width="113.46" y="34" height="6.8000002" data-fill="armor" data-location="NOS"/>
-            <rect x="-54.900002" width="109.8" y="40.799999" height="6.8000002" data-fill="armor" data-location="NOS"/>
-            <rect x="-53.169998" width="106.14" y="47.599998" height="6.8000002" data-fill="armor" data-location="NOS"/>
-            <rect x="-51.23" width="102.46" y="54.400002" height="6.8000002" data-fill="armor" data-location="NOS"/>
-            <rect x="-49.400002" width="98.800003" y="61.200001" height="6.8000002" data-fill="armor" data-location="NOS"/>
-            <rect x="-47.57" width="95.139999" y="68" height="6.8000002" data-fill="armor" data-location="NOS"/>
-            <rect x="-45.73" width="91.459999" y="74.800003" height="6.8000002" data-fill="armor" data-location="NOS"/>
-            <rect x="-43.900002" width="87.800003" y="81.400002" height="6.8000002" data-fill="armor" data-location="NOS"/>
-            <rect x="-42.07" width="84.139999" y="88.199997" height="6.8000002" data-fill="armor" data-location="NOS"/>
-            <rect x="-40.23" width="80.459999" y="95" height="6.8000002" data-fill="armor" data-location="NOS"/>
-            <rect x="-38.400002" width="76.800003" y="101.8" height="6.8000002" data-fill="armor" data-location="NOS"/>
-            <rect x="-36.57" width="73.139999" y="108.6" height="6.8000002" data-fill="armor" data-location="NOS"/>
-            <rect x="-34.73" width="69.459999" y="115.4" height="6.8000002" data-fill="armor" data-location="NOS"/>
-            <rect x="-32.900002" width="65.800003" y="122.2" height="6.8000002" data-fill="armor" data-location="NOS"/>
+          <path data-fill="armor" data-location="NOS" d="M 86.62 54.72 L 209.59 54.72 L 208.64 59.88 L 206.77 64.68 L 181.1 159.68 L 180.19 166.48 L 116.02 166.48 L 115.11 159.68 L 89.44 64.68 L 87.57 59.88 Z" style="fill: none; stroke: rgb(0, 0, 255); stroke-width: 1.13; stroke-dasharray: 2.26;"/>
+          <g data-rail="armor" data-location="NOS">
+            <path d="M 138.52 55.88 L 138.52 87.84" style="fill: none; stroke: rgb(0, 255, 0); stroke-width: 1.13; stroke-linecap: round; stroke-dasharray: 2.26;" data-rail-capacity="5" data-rail-index="1"/>
+            <path d="M 157.69 55.88 L 157.69 87.84" style="fill: none; stroke: rgb(0, 255, 0); stroke-width: 1.13; stroke-linecap: round; stroke-dasharray: 2.26;" data-rail-capacity="5" data-rail-index="2"/>
+            <path d="M 125.73 55.88 L 125.73 87.84" style="fill: none; stroke: rgb(0, 255, 0); stroke-width: 1.13; stroke-linecap: round; stroke-dasharray: 2.26;" data-rail-capacity="5" data-rail-index="3"/>
+            <path d="M 170.48 55.88 L 170.48 87.84" style="fill: none; stroke: rgb(0, 255, 0); stroke-width: 1.13; stroke-linecap: round; stroke-dasharray: 2.26;" data-rail-capacity="5" data-rail-index="4"/>
+            <path d="M 112.95 55.88 L 112.95 87.84" style="fill: none; stroke: rgb(0, 255, 0); stroke-width: 1.13; stroke-linecap: round; stroke-dasharray: 2.26;" data-rail-capacity="5" data-rail-index="5"/>
+            <path d="M 183.26 55.88 L 183.26 87.84" style="fill: none; stroke: rgb(0, 255, 0); stroke-width: 1.13; stroke-linecap: round; stroke-dasharray: 2.26;" data-rail-capacity="5" data-rail-index="6"/>
+            <path d="M 100.17 55.88 L 100.17 87.84" style="fill: none; stroke: rgb(0, 255, 0); stroke-width: 1.13; stroke-linecap: round; stroke-dasharray: 2.26;" data-rail-capacity="5" data-rail-index="7"/>
+            <path d="M 196.05 55.88 L 196.05 87.84" style="fill: none; stroke: rgb(0, 255, 0); stroke-width: 1.13; stroke-linecap: round; stroke-dasharray: 2.26;" data-rail-capacity="5" data-rail-index="8"/>
+            <path d="M 148.11 92.63 L 148.11 124.59" style="fill: none; stroke: rgb(0, 255, 0); stroke-width: 1.13; stroke-linecap: round; stroke-dasharray: 2.26;" data-rail-capacity="5" data-rail-index="9"/>
+            <path d="M 135.32 92.63 L 135.32 124.59" style="fill: none; stroke: rgb(0, 255, 0); stroke-width: 1.13; stroke-linecap: round; stroke-dasharray: 2.26;" data-rail-capacity="5" data-rail-index="10"/>
+            <path d="M 160.89 92.63 L 160.89 124.59" style="fill: none; stroke: rgb(0, 255, 0); stroke-width: 1.13; stroke-linecap: round; stroke-dasharray: 2.26;" data-rail-capacity="5" data-rail-index="11"/>
+            <path d="M 122.54 92.63 L 122.54 124.59" style="fill: none; stroke: rgb(0, 255, 0); stroke-width: 1.13; stroke-linecap: round; stroke-dasharray: 2.26;" data-rail-capacity="5" data-rail-index="12"/>
+            <path d="M 173.67 92.63 L 173.67 124.59" style="fill: none; stroke: rgb(0, 255, 0); stroke-width: 1.13; stroke-linecap: round; stroke-dasharray: 2.26;" data-rail-capacity="5" data-rail-index="13"/>
+            <path d="M 109.75 92.63 L 109.75 124.59" style="fill: none; stroke: rgb(0, 255, 0); stroke-width: 1.13; stroke-linecap: round; stroke-dasharray: 2.26;" data-rail-capacity="5" data-rail-index="14"/>
+            <path d="M 186.46 92.63 L 186.46 124.59" style="fill: none; stroke: rgb(0, 255, 0); stroke-width: 1.13; stroke-linecap: round; stroke-dasharray: 2.26;" data-rail-capacity="5" data-rail-index="15"/>
+            <path d="M 144.91 129.39 L 144.91 161.35" style="fill: none; stroke: rgb(0, 255, 0); stroke-width: 1.13; stroke-linecap: round; stroke-dasharray: 2.26;" data-rail-capacity="5" data-rail-index="16"/>
+            <path d="M 151.3 129.39 L 151.3 161.35" style="fill: none; stroke: rgb(0, 255, 0); stroke-width: 1.13; stroke-linecap: round; stroke-dasharray: 2.26;" data-rail-capacity="5" data-rail-index="17"/>
+            <path d="M 132.13 129.39 L 132.13 161.35" style="fill: none; stroke: rgb(0, 255, 0); stroke-width: 1.13; stroke-linecap: round; stroke-dasharray: 2.26;" data-rail-capacity="5" data-rail-index="18"/>
+            <path d="M 164.09 129.39 L 164.09 161.35" style="fill: none; stroke: rgb(0, 255, 0); stroke-width: 1.13; stroke-linecap: round; stroke-dasharray: 2.26;" data-rail-capacity="5" data-rail-index="19"/>
+            <path d="M 119.34 129.39 L 119.34 161.35" style="fill: none; stroke: rgb(0, 255, 0); stroke-width: 1.13; stroke-linecap: round; stroke-dasharray: 2.26;" data-rail-capacity="5" data-rail-index="20"/>
+            <path d="M 176.87 129.39 L 176.87 161.35" style="fill: none; stroke: rgb(0, 255, 0); stroke-width: 1.13; stroke-linecap: round; stroke-dasharray: 2.26;" data-rail-capacity="5" data-rail-index="21"/>
+            <path d="M 144.91 59.08 L 144.91 91.04" style="fill: none; stroke: rgb(0, 255, 0); stroke-width: 1.13; stroke-linecap: round; stroke-dasharray: 2.26;" data-rail-capacity="5" data-rail-index="22"/>
+            <path d="M 141.71 95.83 L 141.71 127.79" style="fill: none; stroke: rgb(0, 255, 0); stroke-width: 1.13; stroke-linecap: round; stroke-dasharray: 2.26;" data-rail-capacity="5" data-rail-index="23"/>
+            <path d="M 138.52 132.58 L 138.52 164.54" style="fill: none; stroke: rgb(0, 255, 0); stroke-width: 1.13; stroke-linecap: round; stroke-dasharray: 2.26;" data-rail-capacity="5" data-rail-index="24"/>
+            <path d="M 151.3 59.08 L 151.3 91.04" style="fill: none; stroke: rgb(0, 255, 0); stroke-width: 1.13; stroke-linecap: round; stroke-dasharray: 2.26;" data-rail-capacity="5" data-rail-index="25"/>
+            <path d="M 154.5 95.83 L 154.5 127.79" style="fill: none; stroke: rgb(0, 255, 0); stroke-width: 1.13; stroke-linecap: round; stroke-dasharray: 2.26;" data-rail-capacity="5" data-rail-index="26"/>
+            <path d="M 157.69 132.58 L 157.69 164.54" style="fill: none; stroke: rgb(0, 255, 0); stroke-width: 1.13; stroke-linecap: round; stroke-dasharray: 2.26;" data-rail-capacity="5" data-rail-index="27"/>
+            <path d="M 132.13 59.08 L 132.13 91.04" style="fill: none; stroke: rgb(0, 255, 0); stroke-width: 1.13; stroke-linecap: round; stroke-dasharray: 2.26;" data-rail-capacity="5" data-rail-index="28"/>
+            <path d="M 128.93 95.83 L 128.93 127.79" style="fill: none; stroke: rgb(0, 255, 0); stroke-width: 1.13; stroke-linecap: round; stroke-dasharray: 2.26;" data-rail-capacity="5" data-rail-index="29"/>
+            <path d="M 125.73 132.58 L 125.73 164.54" style="fill: none; stroke: rgb(0, 255, 0); stroke-width: 1.13; stroke-linecap: round; stroke-dasharray: 2.26;" data-rail-capacity="5" data-rail-index="30"/>
+            <path d="M 164.09 59.08 L 164.09 91.04" style="fill: none; stroke: rgb(0, 255, 0); stroke-width: 1.13; stroke-linecap: round; stroke-dasharray: 2.26;" data-rail-capacity="5" data-rail-index="31"/>
+            <path d="M 167.28 95.83 L 167.28 127.79" style="fill: none; stroke: rgb(0, 255, 0); stroke-width: 1.13; stroke-linecap: round; stroke-dasharray: 2.26;" data-rail-capacity="5" data-rail-index="32"/>
+            <path d="M 170.48 132.58 L 170.48 164.54" style="fill: none; stroke: rgb(0, 255, 0); stroke-width: 1.13; stroke-linecap: round; stroke-dasharray: 2.26;" data-rail-capacity="5" data-rail-index="33"/>
+            <path d="M 119.34 59.08 L 119.34 91.04" style="fill: none; stroke: rgb(0, 255, 0); stroke-width: 1.13; stroke-linecap: round; stroke-dasharray: 2.26;" data-rail-capacity="5" data-rail-index="34"/>
+            <path d="M 116.15 95.83 L 116.15 127.79" style="fill: none; stroke: rgb(0, 255, 0); stroke-width: 1.13; stroke-linecap: round; stroke-dasharray: 2.26;" data-rail-capacity="5" data-rail-index="35"/>
+            <path d="M 176.87 59.08 L 176.87 91.04" style="fill: none; stroke: rgb(0, 255, 0); stroke-width: 1.13; stroke-linecap: round; stroke-dasharray: 2.26;" data-rail-capacity="5" data-rail-index="36"/>
+            <path d="M 180.07 95.83 L 180.07 127.79" style="fill: none; stroke: rgb(0, 255, 0); stroke-width: 1.13; stroke-linecap: round; stroke-dasharray: 2.26;" data-rail-capacity="5" data-rail-index="37"/>
+            <path d="M 106.56 59.08 L 106.56 91.04" style="fill: none; stroke: rgb(0, 255, 0); stroke-width: 1.13; stroke-linecap: round; stroke-dasharray: 2.26;" data-rail-capacity="5" data-rail-index="38"/>
+            <path d="M 189.65 59.08 L 189.65 91.04" style="fill: none; stroke: rgb(0, 255, 0); stroke-width: 1.13; stroke-linecap: round; stroke-dasharray: 2.26;" data-rail-capacity="5" data-rail-index="39"/>
           </g>
-          <g transform="translate(187.32,65.3)" class="paperdoll-pip-profile">
-            <rect x="27.4" width="21" y="0" height="6.8000002" data-fill="armor" data-location="RS"/>
-            <rect x="25.690001" width="30.700001" y="6.8000002" height="6.8000002" data-fill="armor" data-location="RS"/>
-            <rect x="23.98" width="40.599998" y="15.6" height="6.8000002" data-fill="armor" data-location="RS"/>
-            <rect x="22.26" width="46" y="20.4" height="6.8000002" data-fill="armor" data-location="RS"/>
-            <rect x="20.549999" width="53.299999" y="27.200001" height="6.8000002" data-fill="armor" data-location="RS"/>
-            <rect x="18.84" width="59.200001" y="34" height="6.8000002" data-fill="armor" data-location="RS"/>
-            <rect x="17.129999" width="65.099998" y="40.799999" height="6.8000002" data-fill="armor" data-location="RS"/>
-            <rect x="15.41" width="70.300003" y="47.599998" height="6.8000002" data-fill="armor" data-location="RS"/>
-            <rect x="13.7" width="75.400002" y="54.400002" height="6.8000002" data-fill="armor" data-location="RS"/>
-            <rect x="11.99" width="79.300003" y="61.200001" height="6.8000002" data-fill="armor" data-location="RS"/>
-            <rect x="10.28" width="82.800003" y="68" height="6.8000002" data-fill="armor" data-location="RS"/>
-            <rect x="8.5600004" width="87.199997" y="74.800003" height="6.8000002" data-fill="armor" data-location="RS"/>
-            <rect x="6.8499999" width="89.5" y="81.599998" height="6.8000002" data-fill="armor" data-location="RS"/>
-            <rect x="5.1399999" width="92.800003" y="88.400002" height="6.8000002" data-fill="armor" data-location="RS"/>
-            <rect x="3.4300001" width="95.300003" y="95.199997" height="6.8000002" data-fill="armor" data-location="RS"/>
-            <rect x="1.71" width="97.099998" y="102" height="6.8000002" data-fill="armor" data-location="RS"/>
-            <rect x="0" width="100" y="108.8" height="6.8000002" data-fill="armor" data-location="RS"/>
-            <rect x="0" width="99.5" y="115.6" height="6.8000002" data-fill="armor" data-location="RS"/>
-            <rect x="0" width="98.099998" y="122.4" height="6.8000002" data-fill="armor" data-location="RS"/>
-            <rect x="0" width="98.300003" y="129.2" height="6.8000002" data-fill="armor" data-location="RS"/>
-            <rect x="0" width="96.699997" y="136" height="6.8000002" data-fill="armor" data-location="RS"/>
-            <rect x="0" width="95.300003" y="142.8" height="6.8000002" data-fill="armor" data-location="RS"/>
-            <rect x="0" width="93.900002" y="149.60001" height="6.8000002" data-fill="armor" data-location="RS"/>
-            <rect x="0" width="91.800003" y="156.39999" height="6.8000002" data-fill="armor" data-location="RS"/>
-            <rect x="1.79" width="88.800003" y="163.2" height="6.8000002" data-fill="armor" data-location="RS"/>
-            <rect x="3.5799999" width="84.5" y="170" height="6.8000002" data-fill="armor" data-location="RS"/>
-            <rect x="5.3800001" width="80.199997" y="176.8" height="6.8000002" data-fill="armor" data-location="RS"/>
-            <rect x="7.1700001" width="75.400002" y="183.60001" height="6.8000002" data-fill="armor" data-location="RS"/>
-            <rect x="8.96" width="69.199997" y="190.39999" height="6.8000002" data-fill="armor" data-location="RS"/>
-            <rect x="10.75" width="64.900002" y="197.2" height="6.8000002" data-fill="armor" data-location="RS"/>
-            <rect x="12.54" width="59.599998" y="204" height="6.8000002" data-fill="armor" data-location="RS"/>
-            <rect x="14.34" width="54.299999" y="210.8" height="6.8000002" data-fill="armor" data-location="RS"/>
-            <rect x="16.129999" width="49.099998" y="217.60001" height="6.8000002" data-fill="armor" data-location="RS"/>
-            <rect x="17.92" width="42.900002" y="224.39999" height="6.8000002" data-fill="armor" data-location="RS"/>
-            <rect x="19.719999" width="35.700001" y="231.2" height="6.8000002" data-fill="armor" data-location="RS"/>
-            <rect x="21.51" width="30.299999" y="237" height="6.8000002" data-fill="armor" data-location="RS"/>
-            <rect x="23.299999" width="21.4" y="244.8" height="6.8000002" data-fill="armor" data-location="RS"/>
+          <path data-fill="armor" data-location="RS" d="M 212.12 81.72 L 251.08 81.72 L 252.92 86.52 L 257.56 93.32 L 262.45 100.12 L 266.64 106.92 L 270.47 113.72 L 273.91 120.52 L 276.7 127.32 L 278.69 134.12 L 280.92 140.92 L 282.56 147.72 L 284.84 161.32 L 286.25 180.08 L 285.3 186.88 L 284.7 195.32 L 284 200.48 L 281.1 214.08 L 277.7 227.68 L 275.84 234.48 L 273.33 241.28 L 270.58 248.08 L 266.87 254.88 L 263.41 261.68 L 260.4 268.48 L 253.44 282.08 L 249.53 288.88 L 244.62 295.68 L 240.12 302.48 L 238.31 308.28 L 209.65 308.28 L 208.75 302.48 L 190.82 234.48 L 189.93 227.68 L 188.14 227.68 L 188.14 174.92 L 189.85 174.92 L 190.71 168.12 L 211.26 86.52 Z" style="fill: none; stroke: rgb(0, 0, 255); stroke-width: 1.13; stroke-dasharray: 2.26;"/>
+          <g data-rail="armor" data-location="RS">
+            <path d="M 241.78 94.95 L 241.78 128.95" style="fill: none; stroke: rgb(0, 255, 0); stroke-width: 1.13; stroke-linecap: round; stroke-dasharray: 2.26;" data-rail-capacity="5" data-rail-index="1"/>
+            <path d="M 228.18 94.95 L 228.18 128.95" style="fill: none; stroke: rgb(0, 255, 0); stroke-width: 1.13; stroke-linecap: round; stroke-dasharray: 2.26;" data-rail-capacity="5" data-rail-index="2"/>
+            <path d="M 255.38 94.95 L 255.38 128.95" style="fill: none; stroke: rgb(0, 255, 0); stroke-width: 1.13; stroke-linecap: round; stroke-dasharray: 2.26;" data-rail-capacity="5" data-rail-index="3"/>
+            <path d="M 214.58 94.95 L 214.58 128.95" style="fill: none; stroke: rgb(0, 255, 0); stroke-width: 1.13; stroke-linecap: round; stroke-dasharray: 2.26;" data-rail-capacity="5" data-rail-index="4"/>
+            <path d="M 235.8 134.05 L 235.8 168.05" style="fill: none; stroke: rgb(0, 255, 0); stroke-width: 1.13; stroke-linecap: round; stroke-dasharray: 2.26;" data-rail-capacity="5" data-rail-index="5"/>
+            <path d="M 249.28 134.05 L 249.28 168.05" style="fill: none; stroke: rgb(0, 255, 0); stroke-width: 1.13; stroke-linecap: round; stroke-dasharray: 2.26;" data-rail-capacity="5" data-rail-index="6"/>
+            <path d="M 222.31 134.05 L 222.31 168.05" style="fill: none; stroke: rgb(0, 255, 0); stroke-width: 1.13; stroke-linecap: round; stroke-dasharray: 2.26;" data-rail-capacity="5" data-rail-index="7"/>
+            <path d="M 262.77 134.05 L 262.77 168.05" style="fill: none; stroke: rgb(0, 255, 0); stroke-width: 1.13; stroke-linecap: round; stroke-dasharray: 2.26;" data-rail-capacity="5" data-rail-index="8"/>
+            <path d="M 208.83 134.05 L 208.83 168.05" style="fill: none; stroke: rgb(0, 255, 0); stroke-width: 1.13; stroke-linecap: round; stroke-dasharray: 2.26;" data-rail-capacity="5" data-rail-index="9"/>
+            <path d="M 238.91 173.15 L 238.91 207.15" style="fill: none; stroke: rgb(0, 255, 0); stroke-width: 1.13; stroke-linecap: round; stroke-dasharray: 2.26;" data-rail-capacity="5" data-rail-index="10"/>
+            <path d="M 225.6 173.15 L 225.6 207.15" style="fill: none; stroke: rgb(0, 255, 0); stroke-width: 1.13; stroke-linecap: round; stroke-dasharray: 2.26;" data-rail-capacity="5" data-rail-index="11"/>
+            <path d="M 252.22 173.15 L 252.22 207.15" style="fill: none; stroke: rgb(0, 255, 0); stroke-width: 1.13; stroke-linecap: round; stroke-dasharray: 2.26;" data-rail-capacity="5" data-rail-index="12"/>
+            <path d="M 212.29 173.15 L 212.29 207.15" style="fill: none; stroke: rgb(0, 255, 0); stroke-width: 1.13; stroke-linecap: round; stroke-dasharray: 2.26;" data-rail-capacity="5" data-rail-index="13"/>
+            <path d="M 265.54 173.15 L 265.54 207.15" style="fill: none; stroke: rgb(0, 255, 0); stroke-width: 1.13; stroke-linecap: round; stroke-dasharray: 2.26;" data-rail-capacity="5" data-rail-index="14"/>
+            <path d="M 198.98 173.15 L 198.98 207.15" style="fill: none; stroke: rgb(0, 255, 0); stroke-width: 1.13; stroke-linecap: round; stroke-dasharray: 2.26;" data-rail-capacity="5" data-rail-index="15"/>
+            <path d="M 278.85 173.15 L 278.85 207.15" style="fill: none; stroke: rgb(0, 255, 0); stroke-width: 1.13; stroke-linecap: round; stroke-dasharray: 2.26;" data-rail-capacity="5" data-rail-index="16"/>
+            <path d="M 238.91 212.25 L 238.91 246.25" style="fill: none; stroke: rgb(0, 255, 0); stroke-width: 1.13; stroke-linecap: round; stroke-dasharray: 2.26;" data-rail-capacity="5" data-rail-index="17"/>
+            <path d="M 225.6 212.25 L 225.6 246.25" style="fill: none; stroke: rgb(0, 255, 0); stroke-width: 1.13; stroke-linecap: round; stroke-dasharray: 2.26;" data-rail-capacity="5" data-rail-index="18"/>
+            <path d="M 252.22 212.25 L 252.22 246.25" style="fill: none; stroke: rgb(0, 255, 0); stroke-width: 1.13; stroke-linecap: round; stroke-dasharray: 2.26;" data-rail-capacity="5" data-rail-index="19"/>
+            <path d="M 212.29 212.25 L 212.29 246.25" style="fill: none; stroke: rgb(0, 255, 0); stroke-width: 1.13; stroke-linecap: round; stroke-dasharray: 2.26;" data-rail-capacity="5" data-rail-index="20"/>
+            <path d="M 265.54 212.25 L 265.54 246.25" style="fill: none; stroke: rgb(0, 255, 0); stroke-width: 1.13; stroke-linecap: round; stroke-dasharray: 2.26;" data-rail-capacity="5" data-rail-index="21"/>
+            <path d="M 198.98 212.25 L 198.98 246.25" style="fill: none; stroke: rgb(0, 255, 0); stroke-width: 1.13; stroke-linecap: round; stroke-dasharray: 2.26;" data-rail-capacity="5" data-rail-index="22"/>
+            <path d="M 234.83 251.35 L 234.83 285.35" style="fill: none; stroke: rgb(0, 255, 0); stroke-width: 1.13; stroke-linecap: round; stroke-dasharray: 2.26;" data-rail-capacity="5" data-rail-index="23"/>
+            <path d="M 221.35 251.35 L 221.35 285.35" style="fill: none; stroke: rgb(0, 255, 0); stroke-width: 1.13; stroke-linecap: round; stroke-dasharray: 2.26;" data-rail-capacity="5" data-rail-index="24"/>
+            <path d="M 248.32 251.35 L 248.32 285.35" style="fill: none; stroke: rgb(0, 255, 0); stroke-width: 1.13; stroke-linecap: round; stroke-dasharray: 2.26;" data-rail-capacity="5" data-rail-index="25"/>
+            <path d="M 207.87 251.35 L 207.87 285.35" style="fill: none; stroke: rgb(0, 255, 0); stroke-width: 1.13; stroke-linecap: round; stroke-dasharray: 2.26;" data-rail-capacity="5" data-rail-index="26"/>
+            <path d="M 234.98 98.35 L 234.98 132.35" style="fill: none; stroke: rgb(0, 255, 0); stroke-width: 1.13; stroke-linecap: round; stroke-dasharray: 2.26;" data-rail-capacity="5" data-rail-index="27"/>
+            <path d="M 242.54 137.45 L 242.54 171.45" style="fill: none; stroke: rgb(0, 255, 0); stroke-width: 1.13; stroke-linecap: round; stroke-dasharray: 2.26;" data-rail-capacity="5" data-rail-index="28"/>
+            <path d="M 232.26 176.55 L 232.26 210.55" style="fill: none; stroke: rgb(0, 255, 0); stroke-width: 1.13; stroke-linecap: round; stroke-dasharray: 2.26;" data-rail-capacity="5" data-rail-index="29"/>
+            <path d="M 232.26 215.65 L 232.26 249.65" style="fill: none; stroke: rgb(0, 255, 0); stroke-width: 1.13; stroke-linecap: round; stroke-dasharray: 2.26;" data-rail-capacity="5" data-rail-index="30"/>
+            <path d="M 228.09 254.75 L 228.09 288.75" style="fill: none; stroke: rgb(0, 255, 0); stroke-width: 1.13; stroke-linecap: round; stroke-dasharray: 2.26;" data-rail-capacity="5" data-rail-index="31"/>
+            <path d="M 248.58 98.35 L 248.58 132.35" style="fill: none; stroke: rgb(0, 255, 0); stroke-width: 1.13; stroke-linecap: round; stroke-dasharray: 2.26;" data-rail-capacity="5" data-rail-index="32"/>
+            <path d="M 229.05 137.45 L 229.05 171.45" style="fill: none; stroke: rgb(0, 255, 0); stroke-width: 1.13; stroke-linecap: round; stroke-dasharray: 2.26;" data-rail-capacity="5" data-rail-index="33"/>
+            <path d="M 245.57 176.55 L 245.57 210.55" style="fill: none; stroke: rgb(0, 255, 0); stroke-width: 1.13; stroke-linecap: round; stroke-dasharray: 2.26;" data-rail-capacity="5" data-rail-index="34"/>
+            <path d="M 245.57 215.65 L 245.57 249.65" style="fill: none; stroke: rgb(0, 255, 0); stroke-width: 1.13; stroke-linecap: round; stroke-dasharray: 2.26;" data-rail-capacity="5" data-rail-index="35"/>
+            <path d="M 241.58 254.75 L 241.58 288.75" style="fill: none; stroke: rgb(0, 255, 0); stroke-width: 1.13; stroke-linecap: round; stroke-dasharray: 2.26;" data-rail-capacity="5" data-rail-index="36"/>
+            <path d="M 221.38 98.35 L 221.38 132.35" style="fill: none; stroke: rgb(0, 255, 0); stroke-width: 1.13; stroke-linecap: round; stroke-dasharray: 2.26;" data-rail-capacity="5" data-rail-index="37"/>
+            <path d="M 256.03 137.45 L 256.03 171.45" style="fill: none; stroke: rgb(0, 255, 0); stroke-width: 1.13; stroke-linecap: round; stroke-dasharray: 2.26;" data-rail-capacity="5" data-rail-index="38"/>
+            <path d="M 218.94 176.55 L 218.94 210.55" style="fill: none; stroke: rgb(0, 255, 0); stroke-width: 1.13; stroke-linecap: round; stroke-dasharray: 2.26;" data-rail-capacity="5" data-rail-index="39"/>
+            <path d="M 218.94 215.65 L 218.94 249.65" style="fill: none; stroke: rgb(0, 255, 0); stroke-width: 1.13; stroke-linecap: round; stroke-dasharray: 2.26;" data-rail-capacity="5" data-rail-index="40"/>
+            <path d="M 214.61 254.75 L 214.61 288.75" style="fill: none; stroke: rgb(0, 255, 0); stroke-width: 1.13; stroke-linecap: round; stroke-dasharray: 2.26;" data-rail-capacity="5" data-rail-index="41"/>
+            <path d="M 215.57 137.45 L 215.57 171.45" style="fill: none; stroke: rgb(0, 255, 0); stroke-width: 1.13; stroke-linecap: round; stroke-dasharray: 2.26;" data-rail-capacity="5" data-rail-index="42"/>
+            <path d="M 258.88 176.55 L 258.88 210.55" style="fill: none; stroke: rgb(0, 255, 0); stroke-width: 1.13; stroke-linecap: round; stroke-dasharray: 2.26;" data-rail-capacity="5" data-rail-index="43"/>
+            <path d="M 258.88 215.65 L 258.88 249.65" style="fill: none; stroke: rgb(0, 255, 0); stroke-width: 1.13; stroke-linecap: round; stroke-dasharray: 2.26;" data-rail-capacity="5" data-rail-index="44"/>
+            <path d="M 269.51 137.45 L 269.51 171.45" style="fill: none; stroke: rgb(0, 255, 0); stroke-width: 1.13; stroke-linecap: round; stroke-dasharray: 2.26;" data-rail-capacity="5" data-rail-index="45"/>
+            <path d="M 205.63 176.55 L 205.63 210.55" style="fill: none; stroke: rgb(0, 255, 0); stroke-width: 1.13; stroke-linecap: round; stroke-dasharray: 2.26;" data-rail-capacity="5" data-rail-index="46"/>
+            <path d="M 205.63 215.65 L 205.63 249.65" style="fill: none; stroke: rgb(0, 255, 0); stroke-width: 1.13; stroke-linecap: round; stroke-dasharray: 2.26;" data-rail-capacity="5" data-rail-index="47"/>
+            <path d="M 202.08 137.45 L 202.08 171.45" style="fill: none; stroke: rgb(0, 255, 0); stroke-width: 1.13; stroke-linecap: round; stroke-dasharray: 2.26;" data-rail-capacity="5" data-rail-index="48"/>
+            <path d="M 272.19 176.55 L 272.19 210.55" style="fill: none; stroke: rgb(0, 255, 0); stroke-width: 1.13; stroke-linecap: round; stroke-dasharray: 2.26;" data-rail-capacity="5" data-rail-index="49"/>
+            <path d="M 192.32 176.55 L 192.32 210.55" style="fill: none; stroke: rgb(0, 255, 0); stroke-width: 1.13; stroke-linecap: round; stroke-dasharray: 2.26;" data-rail-capacity="5" data-rail-index="50"/>
           </g>
-          <g transform="matrix(-1,0,0,1,108.59,65.3)" class="paperdoll-pip-profile">
-            <rect x="27.4" width="21" y="0" height="6.8000002" data-fill="armor" data-location="LS"/>
-            <rect x="25.690001" width="30.700001" y="6.8000002" height="6.8000002" data-fill="armor" data-location="LS"/>
-            <rect x="23.98" width="40.599998" y="15.6" height="6.8000002" data-fill="armor" data-location="LS"/>
-            <rect x="22.26" width="46" y="20.4" height="6.8000002" data-fill="armor" data-location="LS"/>
-            <rect x="20.549999" width="53.299999" y="27.200001" height="6.8000002" data-fill="armor" data-location="LS"/>
-            <rect x="18.84" width="59.200001" y="34" height="6.8000002" data-fill="armor" data-location="LS"/>
-            <rect x="17.129999" width="65.099998" y="40.799999" height="6.8000002" data-fill="armor" data-location="LS"/>
-            <rect x="15.41" width="70.300003" y="47.599998" height="6.8000002" data-fill="armor" data-location="LS"/>
-            <rect x="13.7" width="75.400002" y="54.400002" height="6.8000002" data-fill="armor" data-location="LS"/>
-            <rect x="11.99" width="79.300003" y="61.200001" height="6.8000002" data-fill="armor" data-location="LS"/>
-            <rect x="10.28" width="82.800003" y="68" height="6.8000002" data-fill="armor" data-location="LS"/>
-            <rect x="8.5600004" width="87.199997" y="74.800003" height="6.8000002" data-fill="armor" data-location="LS"/>
-            <rect x="6.8499999" width="89.5" y="81.599998" height="6.8000002" data-fill="armor" data-location="LS"/>
-            <rect x="5.1399999" width="92.800003" y="88.400002" height="6.8000002" data-fill="armor" data-location="LS"/>
-            <rect x="3.4300001" width="95.300003" y="95.199997" height="6.8000002" data-fill="armor" data-location="LS"/>
-            <rect x="1.71" width="97.099998" y="102" height="6.8000002" data-fill="armor" data-location="LS"/>
-            <rect x="0" width="100" y="108.8" height="6.8000002" data-fill="armor" data-location="LS"/>
-            <rect x="0" width="99.5" y="115.6" height="6.8000002" data-fill="armor" data-location="LS"/>
-            <rect x="0" width="98.099998" y="122.4" height="6.8000002" data-fill="armor" data-location="LS"/>
-            <rect x="0" width="98.300003" y="129.2" height="6.8000002" data-fill="armor" data-location="LS"/>
-            <rect x="0" width="96.699997" y="136" height="6.8000002" data-fill="armor" data-location="LS"/>
-            <rect x="0" width="95.300003" y="142.8" height="6.8000002" data-fill="armor" data-location="LS"/>
-            <rect x="0" width="93.900002" y="149.60001" height="6.8000002" data-fill="armor" data-location="LS"/>
-            <rect x="0" width="91.800003" y="156.39999" height="6.8000002" data-fill="armor" data-location="LS"/>
-            <rect x="1.79" width="88.800003" y="163.2" height="6.8000002" data-fill="armor" data-location="LS"/>
-            <rect x="3.5799999" width="84.5" y="170" height="6.8000002" data-fill="armor" data-location="LS"/>
-            <rect x="5.3800001" width="80.199997" y="176.8" height="6.8000002" data-fill="armor" data-location="LS"/>
-            <rect x="7.1700001" width="75.400002" y="183.60001" height="6.8000002" data-fill="armor" data-location="LS"/>
-            <rect x="8.96" width="69.199997" y="190.39999" height="6.8000002" data-fill="armor" data-location="LS"/>
-            <rect x="10.75" width="64.900002" y="197.2" height="6.8000002" data-fill="armor" data-location="LS"/>
-            <rect x="12.54" width="59.599998" y="204" height="6.8000002" data-fill="armor" data-location="LS"/>
-            <rect x="14.34" width="54.299999" y="210.8" height="6.8000002" data-fill="armor" data-location="LS"/>
-            <rect x="16.129999" width="49.099998" y="217.60001" height="6.8000002" data-fill="armor" data-location="LS"/>
-            <rect x="17.92" width="42.900002" y="224.39999" height="6.8000002" data-fill="armor" data-location="LS"/>
-            <rect x="19.719999" width="35.700001" y="231.2" height="6.8000002" data-fill="armor" data-location="LS"/>
-            <rect x="21.51" width="30.299999" y="237" height="6.8000002" data-fill="armor" data-location="LS"/>
-            <rect x="23.299999" width="21.4" y="244.8" height="6.8000002" data-fill="armor" data-location="LS"/>
+          <path data-fill="armor" data-location="LS" d="M 44.83 81.72 L 83.79 81.72 L 84.65 86.52 L 105.2 168.12 L 106.06 174.92 L 107.77 174.92 L 107.77 227.68 L 105.98 227.68 L 105.09 234.48 L 87.16 302.48 L 86.26 308.28 L 57.6 308.28 L 55.79 302.48 L 51.29 295.68 L 46.38 288.88 L 42.47 282.08 L 35.51 268.48 L 32.5 261.68 L 29.04 254.88 L 25.33 248.08 L 22.58 241.28 L 20.07 234.48 L 18.21 227.68 L 14.81 214.08 L 11.91 200.48 L 11.21 195.32 L 10.61 186.88 L 9.66 180.08 L 11.07 161.32 L 13.35 147.72 L 14.99 140.92 L 17.22 134.12 L 19.21 127.32 L 22 120.52 L 25.44 113.72 L 29.27 106.92 L 33.46 100.12 L 38.35 93.32 L 42.99 86.52 Z" style="fill: none; stroke: rgb(0, 0, 255); stroke-width: 1.13; stroke-dasharray: 2.26;"/>
+          <g data-rail="armor" data-location="LS">
+            <path d="M 54.13 94.95 L 54.13 128.95" style="fill: none; stroke: rgb(0, 255, 0); stroke-width: 1.13; stroke-linecap: round; stroke-dasharray: 2.26;" data-rail-capacity="5" data-rail-index="1"/>
+            <path d="M 67.73 94.95 L 67.73 128.95" style="fill: none; stroke: rgb(0, 255, 0); stroke-width: 1.13; stroke-linecap: round; stroke-dasharray: 2.26;" data-rail-capacity="5" data-rail-index="2"/>
+            <path d="M 40.53 94.95 L 40.53 128.95" style="fill: none; stroke: rgb(0, 255, 0); stroke-width: 1.13; stroke-linecap: round; stroke-dasharray: 2.26;" data-rail-capacity="5" data-rail-index="3"/>
+            <path d="M 81.33 94.95 L 81.33 128.95" style="fill: none; stroke: rgb(0, 255, 0); stroke-width: 1.13; stroke-linecap: round; stroke-dasharray: 2.26;" data-rail-capacity="5" data-rail-index="4"/>
+            <path d="M 60.11 134.05 L 60.11 168.05" style="fill: none; stroke: rgb(0, 255, 0); stroke-width: 1.13; stroke-linecap: round; stroke-dasharray: 2.26;" data-rail-capacity="5" data-rail-index="5"/>
+            <path d="M 46.63 134.05 L 46.63 168.05" style="fill: none; stroke: rgb(0, 255, 0); stroke-width: 1.13; stroke-linecap: round; stroke-dasharray: 2.26;" data-rail-capacity="5" data-rail-index="6"/>
+            <path d="M 73.6 134.05 L 73.6 168.05" style="fill: none; stroke: rgb(0, 255, 0); stroke-width: 1.13; stroke-linecap: round; stroke-dasharray: 2.26;" data-rail-capacity="5" data-rail-index="7"/>
+            <path d="M 33.14 134.05 L 33.14 168.05" style="fill: none; stroke: rgb(0, 255, 0); stroke-width: 1.13; stroke-linecap: round; stroke-dasharray: 2.26;" data-rail-capacity="5" data-rail-index="8"/>
+            <path d="M 87.08 134.05 L 87.08 168.05" style="fill: none; stroke: rgb(0, 255, 0); stroke-width: 1.13; stroke-linecap: round; stroke-dasharray: 2.26;" data-rail-capacity="5" data-rail-index="9"/>
+            <path d="M 57 173.15 L 57 207.15" style="fill: none; stroke: rgb(0, 255, 0); stroke-width: 1.13; stroke-linecap: round; stroke-dasharray: 2.26;" data-rail-capacity="5" data-rail-index="10"/>
+            <path d="M 70.31 173.15 L 70.31 207.15" style="fill: none; stroke: rgb(0, 255, 0); stroke-width: 1.13; stroke-linecap: round; stroke-dasharray: 2.26;" data-rail-capacity="5" data-rail-index="11"/>
+            <path d="M 43.69 173.15 L 43.69 207.15" style="fill: none; stroke: rgb(0, 255, 0); stroke-width: 1.13; stroke-linecap: round; stroke-dasharray: 2.26;" data-rail-capacity="5" data-rail-index="12"/>
+            <path d="M 83.62 173.15 L 83.62 207.15" style="fill: none; stroke: rgb(0, 255, 0); stroke-width: 1.13; stroke-linecap: round; stroke-dasharray: 2.26;" data-rail-capacity="5" data-rail-index="13"/>
+            <path d="M 30.37 173.15 L 30.37 207.15" style="fill: none; stroke: rgb(0, 255, 0); stroke-width: 1.13; stroke-linecap: round; stroke-dasharray: 2.26;" data-rail-capacity="5" data-rail-index="14"/>
+            <path d="M 96.93 173.15 L 96.93 207.15" style="fill: none; stroke: rgb(0, 255, 0); stroke-width: 1.13; stroke-linecap: round; stroke-dasharray: 2.26;" data-rail-capacity="5" data-rail-index="15"/>
+            <path d="M 17.06 173.15 L 17.06 207.15" style="fill: none; stroke: rgb(0, 255, 0); stroke-width: 1.13; stroke-linecap: round; stroke-dasharray: 2.26;" data-rail-capacity="5" data-rail-index="16"/>
+            <path d="M 57 212.25 L 57 246.25" style="fill: none; stroke: rgb(0, 255, 0); stroke-width: 1.13; stroke-linecap: round; stroke-dasharray: 2.26;" data-rail-capacity="5" data-rail-index="17"/>
+            <path d="M 70.31 212.25 L 70.31 246.25" style="fill: none; stroke: rgb(0, 255, 0); stroke-width: 1.13; stroke-linecap: round; stroke-dasharray: 2.26;" data-rail-capacity="5" data-rail-index="18"/>
+            <path d="M 43.69 212.25 L 43.69 246.25" style="fill: none; stroke: rgb(0, 255, 0); stroke-width: 1.13; stroke-linecap: round; stroke-dasharray: 2.26;" data-rail-capacity="5" data-rail-index="19"/>
+            <path d="M 83.62 212.25 L 83.62 246.25" style="fill: none; stroke: rgb(0, 255, 0); stroke-width: 1.13; stroke-linecap: round; stroke-dasharray: 2.26;" data-rail-capacity="5" data-rail-index="20"/>
+            <path d="M 30.37 212.25 L 30.37 246.25" style="fill: none; stroke: rgb(0, 255, 0); stroke-width: 1.13; stroke-linecap: round; stroke-dasharray: 2.26;" data-rail-capacity="5" data-rail-index="21"/>
+            <path d="M 96.93 212.25 L 96.93 246.25" style="fill: none; stroke: rgb(0, 255, 0); stroke-width: 1.13; stroke-linecap: round; stroke-dasharray: 2.26;" data-rail-capacity="5" data-rail-index="22"/>
+            <path d="M 61.08 251.35 L 61.08 285.35" style="fill: none; stroke: rgb(0, 255, 0); stroke-width: 1.13; stroke-linecap: round; stroke-dasharray: 2.26;" data-rail-capacity="5" data-rail-index="23"/>
+            <path d="M 74.56 251.35 L 74.56 285.35" style="fill: none; stroke: rgb(0, 255, 0); stroke-width: 1.13; stroke-linecap: round; stroke-dasharray: 2.26;" data-rail-capacity="5" data-rail-index="24"/>
+            <path d="M 47.59 251.35 L 47.59 285.35" style="fill: none; stroke: rgb(0, 255, 0); stroke-width: 1.13; stroke-linecap: round; stroke-dasharray: 2.26;" data-rail-capacity="5" data-rail-index="25"/>
+            <path d="M 88.04 251.35 L 88.04 285.35" style="fill: none; stroke: rgb(0, 255, 0); stroke-width: 1.13; stroke-linecap: round; stroke-dasharray: 2.26;" data-rail-capacity="5" data-rail-index="26"/>
+            <path d="M 60.93 98.35 L 60.93 132.35" style="fill: none; stroke: rgb(0, 255, 0); stroke-width: 1.13; stroke-linecap: round; stroke-dasharray: 2.26;" data-rail-capacity="5" data-rail-index="27"/>
+            <path d="M 53.37 137.45 L 53.37 171.45" style="fill: none; stroke: rgb(0, 255, 0); stroke-width: 1.13; stroke-linecap: round; stroke-dasharray: 2.26;" data-rail-capacity="5" data-rail-index="28"/>
+            <path d="M 63.65 176.55 L 63.65 210.55" style="fill: none; stroke: rgb(0, 255, 0); stroke-width: 1.13; stroke-linecap: round; stroke-dasharray: 2.26;" data-rail-capacity="5" data-rail-index="29"/>
+            <path d="M 63.65 215.65 L 63.65 249.65" style="fill: none; stroke: rgb(0, 255, 0); stroke-width: 1.13; stroke-linecap: round; stroke-dasharray: 2.26;" data-rail-capacity="5" data-rail-index="30"/>
+            <path d="M 67.82 254.75 L 67.82 288.75" style="fill: none; stroke: rgb(0, 255, 0); stroke-width: 1.13; stroke-linecap: round; stroke-dasharray: 2.26;" data-rail-capacity="5" data-rail-index="31"/>
+            <path d="M 47.33 98.35 L 47.33 132.35" style="fill: none; stroke: rgb(0, 255, 0); stroke-width: 1.13; stroke-linecap: round; stroke-dasharray: 2.26;" data-rail-capacity="5" data-rail-index="32"/>
+            <path d="M 66.86 137.45 L 66.86 171.45" style="fill: none; stroke: rgb(0, 255, 0); stroke-width: 1.13; stroke-linecap: round; stroke-dasharray: 2.26;" data-rail-capacity="5" data-rail-index="33"/>
+            <path d="M 50.34 176.55 L 50.34 210.55" style="fill: none; stroke: rgb(0, 255, 0); stroke-width: 1.13; stroke-linecap: round; stroke-dasharray: 2.26;" data-rail-capacity="5" data-rail-index="34"/>
+            <path d="M 50.34 215.65 L 50.34 249.65" style="fill: none; stroke: rgb(0, 255, 0); stroke-width: 1.13; stroke-linecap: round; stroke-dasharray: 2.26;" data-rail-capacity="5" data-rail-index="35"/>
+            <path d="M 54.33 254.75 L 54.33 288.75" style="fill: none; stroke: rgb(0, 255, 0); stroke-width: 1.13; stroke-linecap: round; stroke-dasharray: 2.26;" data-rail-capacity="5" data-rail-index="36"/>
+            <path d="M 74.53 98.35 L 74.53 132.35" style="fill: none; stroke: rgb(0, 255, 0); stroke-width: 1.13; stroke-linecap: round; stroke-dasharray: 2.26;" data-rail-capacity="5" data-rail-index="37"/>
+            <path d="M 39.88 137.45 L 39.88 171.45" style="fill: none; stroke: rgb(0, 255, 0); stroke-width: 1.13; stroke-linecap: round; stroke-dasharray: 2.26;" data-rail-capacity="5" data-rail-index="38"/>
+            <path d="M 76.97 176.55 L 76.97 210.55" style="fill: none; stroke: rgb(0, 255, 0); stroke-width: 1.13; stroke-linecap: round; stroke-dasharray: 2.26;" data-rail-capacity="5" data-rail-index="39"/>
+            <path d="M 76.97 215.65 L 76.97 249.65" style="fill: none; stroke: rgb(0, 255, 0); stroke-width: 1.13; stroke-linecap: round; stroke-dasharray: 2.26;" data-rail-capacity="5" data-rail-index="40"/>
+            <path d="M 81.3 254.75 L 81.3 288.75" style="fill: none; stroke: rgb(0, 255, 0); stroke-width: 1.13; stroke-linecap: round; stroke-dasharray: 2.26;" data-rail-capacity="5" data-rail-index="41"/>
+            <path d="M 80.34 137.45 L 80.34 171.45" style="fill: none; stroke: rgb(0, 255, 0); stroke-width: 1.13; stroke-linecap: round; stroke-dasharray: 2.26;" data-rail-capacity="5" data-rail-index="42"/>
+            <path d="M 37.03 176.55 L 37.03 210.55" style="fill: none; stroke: rgb(0, 255, 0); stroke-width: 1.13; stroke-linecap: round; stroke-dasharray: 2.26;" data-rail-capacity="5" data-rail-index="43"/>
+            <path d="M 37.03 215.65 L 37.03 249.65" style="fill: none; stroke: rgb(0, 255, 0); stroke-width: 1.13; stroke-linecap: round; stroke-dasharray: 2.26;" data-rail-capacity="5" data-rail-index="44"/>
+            <path d="M 26.4 137.45 L 26.4 171.45" style="fill: none; stroke: rgb(0, 255, 0); stroke-width: 1.13; stroke-linecap: round; stroke-dasharray: 2.26;" data-rail-capacity="5" data-rail-index="45"/>
+            <path d="M 90.28 176.55 L 90.28 210.55" style="fill: none; stroke: rgb(0, 255, 0); stroke-width: 1.13; stroke-linecap: round; stroke-dasharray: 2.26;" data-rail-capacity="5" data-rail-index="46"/>
+            <path d="M 90.28 215.65 L 90.28 249.65" style="fill: none; stroke: rgb(0, 255, 0); stroke-width: 1.13; stroke-linecap: round; stroke-dasharray: 2.26;" data-rail-capacity="5" data-rail-index="47"/>
+            <path d="M 93.83 137.45 L 93.83 171.45" style="fill: none; stroke: rgb(0, 255, 0); stroke-width: 1.13; stroke-linecap: round; stroke-dasharray: 2.26;" data-rail-capacity="5" data-rail-index="48"/>
+            <path d="M 23.72 176.55 L 23.72 210.55" style="fill: none; stroke: rgb(0, 255, 0); stroke-width: 1.13; stroke-linecap: round; stroke-dasharray: 2.26;" data-rail-capacity="5" data-rail-index="49"/>
+            <path d="M 103.59 176.55 L 103.59 210.55" style="fill: none; stroke: rgb(0, 255, 0); stroke-width: 1.13; stroke-linecap: round; stroke-dasharray: 2.26;" data-rail-capacity="5" data-rail-index="50"/>
           </g>
-          <g transform="translate(148.105,230.98)" class="paperdoll-pip-profile">
-            <rect x="-33" width="66" y="0" height="6.8000002" data-fill="armor" data-location="AFT"/>
-            <rect x="-34.830002" width="69.660004" y="6.8000002" height="6.8000002" data-fill="armor" data-location="AFT"/>
-            <rect x="-36.650002" width="73.300003" y="15.6" height="6.8000002" data-fill="armor" data-location="AFT"/>
-            <rect x="-38.48" width="76.959999" y="20.4" height="6.8000002" data-fill="armor" data-location="AFT"/>
-            <rect x="-40.310001" width="80.620003" y="27.200001" height="6.8000002" data-fill="armor" data-location="AFT"/>
-            <rect x="-42.130001" width="84.260002" y="34" height="6.8000002" data-fill="armor" data-location="AFT"/>
-            <rect x="-43.959999" width="87.919998" y="40.799999" height="6.8000002" data-fill="armor" data-location="AFT"/>
-            <rect x="-45.790001" width="91.580002" y="47.599998" height="6.8000002" data-fill="armor" data-location="AFT"/>
-            <rect x="-47.610001" width="95.220001" y="54.400002" height="6.8000002" data-fill="armor" data-location="AFT"/>
-            <rect x="-49.439999" width="98.879997" y="61.200001" height="6.8000002" data-fill="armor" data-location="AFT"/>
-            <rect x="-51.27" width="102.54" y="68" height="6.8000002" data-fill="armor" data-location="AFT"/>
-            <rect x="-53.09" width="106.18" y="74.800003" height="6.8000002" data-fill="armor" data-location="AFT"/>
-            <rect x="-54.919998" width="109.84" y="81.599998" height="6.8000002" data-fill="armor" data-location="AFT"/>
-            <rect x="-56.75" width="113.5" y="88.400002" height="6.8000002" data-fill="armor" data-location="AFT"/>
-            <rect x="-58.57" width="117.14" y="95.199997" height="6.8000002" data-fill="armor" data-location="AFT"/>
-            <rect x="-60.400002" width="120.8" y="102" height="6.8000002" data-fill="armor" data-location="AFT"/>
-            <rect x="-66.5" width="133" y="108.8" height="6.8000002" data-fill="armor" data-location="AFT"/>
-            <rect x="-68.800003" width="137.60001" y="115.6" height="6.8000002" data-fill="armor" data-location="AFT"/>
-            <rect x="-67.699997" width="135.39999" y="122.4" height="6.8000002" data-fill="armor" data-location="AFT"/>
+          <path data-fill="armor" data-location="AFT" d="M 112.27 247.4 L 183.94 247.4 L 184.85 252.2 L 206.77 333.8 L 210.74 340.6 L 214.94 347.4 L 215.54 352.56 L 214.99 359.36 L 81.22 359.36 L 80.67 352.56 L 81.27 347.4 L 85.47 340.6 L 89.44 333.8 L 111.36 252.2 Z" style="fill: none; stroke: rgb(0, 0, 255); stroke-width: 1.13; stroke-dasharray: 2.26;"/>
+          <g data-rail="armor" data-location="AFT">
+            <path d="M 141.71 249.36 L 141.71 281.32" style="fill: none; stroke: rgb(0, 255, 0); stroke-width: 1.13; stroke-linecap: round; stroke-dasharray: 2.26;" data-rail-capacity="5" data-rail-index="1"/>
+            <path d="M 154.5 249.36 L 154.5 281.32" style="fill: none; stroke: rgb(0, 255, 0); stroke-width: 1.13; stroke-linecap: round; stroke-dasharray: 2.26;" data-rail-capacity="5" data-rail-index="2"/>
+            <path d="M 128.93 249.36 L 128.93 281.32" style="fill: none; stroke: rgb(0, 255, 0); stroke-width: 1.13; stroke-linecap: round; stroke-dasharray: 2.26;" data-rail-capacity="5" data-rail-index="3"/>
+            <path d="M 167.28 249.36 L 167.28 281.32" style="fill: none; stroke: rgb(0, 255, 0); stroke-width: 1.13; stroke-linecap: round; stroke-dasharray: 2.26;" data-rail-capacity="5" data-rail-index="4"/>
+            <path d="M 116.15 249.36 L 116.15 281.32" style="fill: none; stroke: rgb(0, 255, 0); stroke-width: 1.13; stroke-linecap: round; stroke-dasharray: 2.26;" data-rail-capacity="5" data-rail-index="5"/>
+            <path d="M 180.07 249.36 L 180.07 281.32" style="fill: none; stroke: rgb(0, 255, 0); stroke-width: 1.13; stroke-linecap: round; stroke-dasharray: 2.26;" data-rail-capacity="5" data-rail-index="6"/>
+            <path d="M 144.91 286.11 L 144.91 318.07" style="fill: none; stroke: rgb(0, 255, 0); stroke-width: 1.13; stroke-linecap: round; stroke-dasharray: 2.26;" data-rail-capacity="5" data-rail-index="7"/>
+            <path d="M 151.3 286.11 L 151.3 318.07" style="fill: none; stroke: rgb(0, 255, 0); stroke-width: 1.13; stroke-linecap: round; stroke-dasharray: 2.26;" data-rail-capacity="5" data-rail-index="8"/>
+            <path d="M 132.12 286.11 L 132.12 318.07" style="fill: none; stroke: rgb(0, 255, 0); stroke-width: 1.13; stroke-linecap: round; stroke-dasharray: 2.26;" data-rail-capacity="5" data-rail-index="9"/>
+            <path d="M 164.08 286.11 L 164.08 318.07" style="fill: none; stroke: rgb(0, 255, 0); stroke-width: 1.13; stroke-linecap: round; stroke-dasharray: 2.26;" data-rail-capacity="5" data-rail-index="10"/>
+            <path d="M 119.34 286.11 L 119.34 318.07" style="fill: none; stroke: rgb(0, 255, 0); stroke-width: 1.13; stroke-linecap: round; stroke-dasharray: 2.26;" data-rail-capacity="5" data-rail-index="11"/>
+            <path d="M 176.87 286.11 L 176.87 318.07" style="fill: none; stroke: rgb(0, 255, 0); stroke-width: 1.13; stroke-linecap: round; stroke-dasharray: 2.26;" data-rail-capacity="5" data-rail-index="12"/>
+            <path d="M 106.56 286.11 L 106.56 318.07" style="fill: none; stroke: rgb(0, 255, 0); stroke-width: 1.13; stroke-linecap: round; stroke-dasharray: 2.26;" data-rail-capacity="5" data-rail-index="13"/>
+            <path d="M 189.65 286.11 L 189.65 318.07" style="fill: none; stroke: rgb(0, 255, 0); stroke-width: 1.13; stroke-linecap: round; stroke-dasharray: 2.26;" data-rail-capacity="5" data-rail-index="14"/>
+            <path d="M 138.73 322.87 L 138.73 354.83" style="fill: none; stroke: rgb(0, 255, 0); stroke-width: 1.13; stroke-linecap: round; stroke-dasharray: 2.26;" data-rail-capacity="5" data-rail-index="15"/>
+            <path d="M 157.48 322.87 L 157.48 354.83" style="fill: none; stroke: rgb(0, 255, 0); stroke-width: 1.13; stroke-linecap: round; stroke-dasharray: 2.26;" data-rail-capacity="5" data-rail-index="16"/>
+            <path d="M 126.23 322.87 L 126.23 354.83" style="fill: none; stroke: rgb(0, 255, 0); stroke-width: 1.13; stroke-linecap: round; stroke-dasharray: 2.26;" data-rail-capacity="5" data-rail-index="17"/>
+            <path d="M 169.98 322.87 L 169.98 354.83" style="fill: none; stroke: rgb(0, 255, 0); stroke-width: 1.13; stroke-linecap: round; stroke-dasharray: 2.26;" data-rail-capacity="5" data-rail-index="18"/>
+            <path d="M 113.73 322.87 L 113.73 354.83" style="fill: none; stroke: rgb(0, 255, 0); stroke-width: 1.13; stroke-linecap: round; stroke-dasharray: 2.26;" data-rail-capacity="5" data-rail-index="19"/>
+            <path d="M 182.48 322.87 L 182.48 354.83" style="fill: none; stroke: rgb(0, 255, 0); stroke-width: 1.13; stroke-linecap: round; stroke-dasharray: 2.26;" data-rail-capacity="5" data-rail-index="20"/>
+            <path d="M 101.23 322.87 L 101.23 354.83" style="fill: none; stroke: rgb(0, 255, 0); stroke-width: 1.13; stroke-linecap: round; stroke-dasharray: 2.26;" data-rail-capacity="5" data-rail-index="21"/>
+            <path d="M 194.98 322.87 L 194.98 354.83" style="fill: none; stroke: rgb(0, 255, 0); stroke-width: 1.13; stroke-linecap: round; stroke-dasharray: 2.26;" data-rail-capacity="5" data-rail-index="22"/>
+            <path d="M 148.11 252.56 L 148.11 284.52" style="fill: none; stroke: rgb(0, 255, 0); stroke-width: 1.13; stroke-linecap: round; stroke-dasharray: 2.26;" data-rail-capacity="5" data-rail-index="23"/>
+            <path d="M 138.52 289.31 L 138.52 321.27" style="fill: none; stroke: rgb(0, 255, 0); stroke-width: 1.13; stroke-linecap: round; stroke-dasharray: 2.26;" data-rail-capacity="5" data-rail-index="24"/>
+            <path d="M 144.98 326.06 L 144.98 358.02" style="fill: none; stroke: rgb(0, 255, 0); stroke-width: 1.13; stroke-linecap: round; stroke-dasharray: 2.26;" data-rail-capacity="5" data-rail-index="25"/>
+            <path d="M 135.32 252.56 L 135.32 284.52" style="fill: none; stroke: rgb(0, 255, 0); stroke-width: 1.13; stroke-linecap: round; stroke-dasharray: 2.26;" data-rail-capacity="5" data-rail-index="26"/>
+            <path d="M 157.69 289.31 L 157.69 321.27" style="fill: none; stroke: rgb(0, 255, 0); stroke-width: 1.13; stroke-linecap: round; stroke-dasharray: 2.26;" data-rail-capacity="5" data-rail-index="27"/>
+            <path d="M 151.23 326.06 L 151.23 358.02" style="fill: none; stroke: rgb(0, 255, 0); stroke-width: 1.13; stroke-linecap: round; stroke-dasharray: 2.26;" data-rail-capacity="5" data-rail-index="28"/>
+            <path d="M 160.89 252.56 L 160.89 284.52" style="fill: none; stroke: rgb(0, 255, 0); stroke-width: 1.13; stroke-linecap: round; stroke-dasharray: 2.26;" data-rail-capacity="5" data-rail-index="29"/>
+            <path d="M 125.73 289.31 L 125.73 321.27" style="fill: none; stroke: rgb(0, 255, 0); stroke-width: 1.13; stroke-linecap: round; stroke-dasharray: 2.26;" data-rail-capacity="5" data-rail-index="30"/>
+            <path d="M 132.48 326.06 L 132.48 358.02" style="fill: none; stroke: rgb(0, 255, 0); stroke-width: 1.13; stroke-linecap: round; stroke-dasharray: 2.26;" data-rail-capacity="5" data-rail-index="31"/>
+            <path d="M 122.54 252.56 L 122.54 284.52" style="fill: none; stroke: rgb(0, 255, 0); stroke-width: 1.13; stroke-linecap: round; stroke-dasharray: 2.26;" data-rail-capacity="5" data-rail-index="32"/>
+            <path d="M 170.48 289.31 L 170.48 321.27" style="fill: none; stroke: rgb(0, 255, 0); stroke-width: 1.13; stroke-linecap: round; stroke-dasharray: 2.26;" data-rail-capacity="5" data-rail-index="33"/>
+            <path d="M 163.73 326.06 L 163.73 358.02" style="fill: none; stroke: rgb(0, 255, 0); stroke-width: 1.13; stroke-linecap: round; stroke-dasharray: 2.26;" data-rail-capacity="5" data-rail-index="34"/>
+            <path d="M 173.67 252.56 L 173.67 284.52" style="fill: none; stroke: rgb(0, 255, 0); stroke-width: 1.13; stroke-linecap: round; stroke-dasharray: 2.26;" data-rail-capacity="5" data-rail-index="35"/>
+            <path d="M 112.95 289.31 L 112.95 321.27" style="fill: none; stroke: rgb(0, 255, 0); stroke-width: 1.13; stroke-linecap: round; stroke-dasharray: 2.26;" data-rail-capacity="5" data-rail-index="36"/>
+            <path d="M 119.98 326.06 L 119.98 358.02" style="fill: none; stroke: rgb(0, 255, 0); stroke-width: 1.13; stroke-linecap: round; stroke-dasharray: 2.26;" data-rail-capacity="5" data-rail-index="37"/>
+            <path d="M 183.26 289.31 L 183.26 321.27" style="fill: none; stroke: rgb(0, 255, 0); stroke-width: 1.13; stroke-linecap: round; stroke-dasharray: 2.26;" data-rail-capacity="5" data-rail-index="38"/>
+            <path d="M 176.23 326.06 L 176.23 358.02" style="fill: none; stroke: rgb(0, 255, 0); stroke-width: 1.13; stroke-linecap: round; stroke-dasharray: 2.26;" data-rail-capacity="5" data-rail-index="39"/>
+            <path d="M 107.48 326.06 L 107.48 358.02" style="fill: none; stroke: rgb(0, 255, 0); stroke-width: 1.13; stroke-linecap: round; stroke-dasharray: 2.26;" data-rail-capacity="5" data-rail-index="40"/>
+            <path d="M 188.73 326.06 L 188.73 358.02" style="fill: none; stroke: rgb(0, 255, 0); stroke-width: 1.13; stroke-linecap: round; stroke-dasharray: 2.26;" data-rail-capacity="5" data-rail-index="41"/>
+            <path d="M 94.98 326.06 L 94.98 358.02" style="fill: none; stroke: rgb(0, 255, 0); stroke-width: 1.13; stroke-linecap: round; stroke-dasharray: 2.26;" data-rail-capacity="5" data-rail-index="42"/>
+            <path d="M 201.23 326.06 L 201.23 358.02" style="fill: none; stroke: rgb(0, 255, 0); stroke-width: 1.13; stroke-linecap: round; stroke-dasharray: 2.26;" data-rail-capacity="5" data-rail-index="43"/>
           </g>
         </g>
         <g fill="none">
-          <g transform="translate(148.105,204.3)" class="paperdoll-pip-profile">
-            <rect x="-32" width="64" y="0" height="5.5999999" data-fill="structure" data-location="SI"/>
-            <rect x="-32" width="64" y="5.5999999" height="5.5999999" data-fill="structure" data-location="SI"/>
-            <rect x="-32" width="64" y="11.2" height="5.5999999" data-fill="structure" data-location="SI"/>
+          <path data-fill="structure" data-location="SI" d="M 116.78 204.97 L 179.43 204.97 L 179.43 220.43 L 116.78 220.43 Z" style="fill: none; stroke: rgb(0, 0, 255); stroke-width: 0.93; stroke-dasharray: 1.86;"/>
+          <g data-rail="structure" data-location="SI">
+            <path d="M 149.09 210.07 L 175.41 210.07" style="fill: none; stroke: rgb(0, 255, 0); stroke-width: 0.93; stroke-linecap: round; stroke-dasharray: 1.86;" data-rail-capacity="5" data-rail-index="1"/>
+            <path d="M 118.17 210.07 L 144.49 210.07" style="fill: none; stroke: rgb(0, 255, 0); stroke-width: 0.93; stroke-linecap: round; stroke-dasharray: 1.86;" data-rail-capacity="5" data-rail-index="2"/>
+            <path d="M 151.72 215.33 L 178.04 215.33" style="fill: none; stroke: rgb(0, 255, 0); stroke-width: 0.93; stroke-linecap: round; stroke-dasharray: 1.86;" data-rail-capacity="5" data-rail-index="3"/>
+            <path d="M 120.8 215.33 L 147.12 215.33" style="fill: none; stroke: rgb(0, 255, 0); stroke-width: 0.93; stroke-linecap: round; stroke-dasharray: 1.86;" data-rail-capacity="5" data-rail-index="4"/>
           </g>
         </g>
       </g>

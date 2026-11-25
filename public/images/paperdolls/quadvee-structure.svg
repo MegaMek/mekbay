@@ -40,59 +40,65 @@
               <path fill="#FFFFFF" style="stroke:#000000;stroke-width:0.487;stroke-linecap:butt;stroke-linejoin:miter;stroke-miterlimit:2.414;stroke-dasharray:none;stroke-opacity:1" d="m 0,0 c -0.96,0 -1.76,0.8 -1.76,1.759 0,0.959 0.8,1.76 1.76,1.76 0.959,0 1.758,-0.801 1.758,-1.76 C 1.758,0.8 0.959,0 0,0 Z" id="is_pip_hd_2" class="pip structure" data-loc="HD" />
             </g>
           </g>
-          <g fill="none" transform="translate(455.61,418.302)" class="paperdoll-pip-profile">
-            <rect x="0" width="31.219999" y="0" height="5.4313002" data-fill="structure" data-location="CT" />
-            <rect x="0.82999998" width="29.559999" y="4.7034998" height="5.4313002" data-fill="structure" data-location="CT" />
-            <rect x="1.66" width="27.9" y="9.4069996" height="5.4313002" data-fill="structure" data-location="CT" />
-            <rect x="2.49" width="26.24" y="14.1105" height="5.4313002" data-fill="structure" data-location="CT" />
-            <rect x="3.3199999" width="24.58" y="18.813999" height="5.4313002" data-fill="structure" data-location="CT" />
-            <rect x="2.78" width="25.66" y="23.5175" height="5.4313002" data-fill="structure" data-location="CT" />
-            <rect x="2.5" width="26.219999" y="28.221001" height="5.4313002" data-fill="structure" data-location="CT" />
-            <rect x="2.0899999" width="27.040001" y="32.9245" height="5.4313002" data-fill="structure" data-location="CT" />
+          <path data-fill="structure" data-location="CT" d="M 456.26 418.95 L 486.18 418.95 L 485.76 423.08 L 483.27 437.19 L 483.13 442.47 L 483.88 451.88 L 484.09 456.01 L 458.35 456.01 L 458.56 451.88 L 459.31 442.47 L 459.17 437.19 L 456.68 423.08 Z" style="fill: none; stroke: rgb(0, 0, 255); stroke-width: 0.83; stroke-dasharray: 1.66;"/>
+          <g data-rail="structure" data-location="CT">
+            <path d="M 459.12 421.28 L 481.12 421.28" style="fill: none; stroke: rgb(0, 255, 0); stroke-width: 0.83; stroke-linecap: round; stroke-dasharray: 1.66;" data-rail-capacity="5" data-rail-index="1"/>
+            <path d="M 459.12 430.08 L 481.12 430.08" style="fill: none; stroke: rgb(0, 255, 0); stroke-width: 0.83; stroke-linecap: round; stroke-dasharray: 1.66;" data-rail-capacity="5" data-rail-index="2"/>
+            <path d="M 459.12 438.88 L 481.12 438.88" style="fill: none; stroke: rgb(0, 255, 0); stroke-width: 0.83; stroke-linecap: round; stroke-dasharray: 1.66;" data-rail-capacity="5" data-rail-index="3"/>
+            <path d="M 459.12 444.4 L 481.12 444.4" style="fill: none; stroke: rgb(0, 255, 0); stroke-width: 0.83; stroke-linecap: round; stroke-dasharray: 1.66;" data-rail-capacity="5" data-rail-index="4"/>
+            <path d="M 459.12 453.2 L 481.12 453.2" style="fill: none; stroke: rgb(0, 255, 0); stroke-width: 0.83; stroke-linecap: round; stroke-dasharray: 1.66;" data-rail-capacity="5" data-rail-index="5"/>
+            <path d="M 461.32 425.68 L 483.32 425.68" style="fill: none; stroke: rgb(0, 255, 0); stroke-width: 0.83; stroke-linecap: round; stroke-dasharray: 1.66;" data-rail-capacity="5" data-rail-index="6"/>
+            <path d="M 461.32 434.48 L 483.32 434.48" style="fill: none; stroke: rgb(0, 255, 0); stroke-width: 0.83; stroke-linecap: round; stroke-dasharray: 1.66;" data-rail-capacity="5" data-rail-index="7"/>
           </g>
-          <g fill="none" transform="translate(486.24,402.5437)" class="paperdoll-pip-profile">
-            <rect x="20.33" width="15.52" y="0" height="5.4313002" data-fill="structure" data-location="RT" />
-            <rect x="6.1999998" width="32.5" y="4.7034998" height="5.4313002" data-fill="structure" data-location="RT" />
-            <rect x="5.21" width="33.400002" y="9.4069996" height="5.4313002" data-fill="structure" data-location="RT" />
-            <rect x="4.21" width="34.299999" y="14.1105" height="5.4313002" data-fill="structure" data-location="RT" />
-            <rect x="3.22" width="36" y="18.813999" height="5.4313002" data-fill="structure" data-location="RT" />
-            <rect x="2.23" width="14.31" y="23.5175" height="5.4313002" data-fill="structure" data-location="RT" />
-            <rect x="1.23" width="13.1" y="28.221001" height="5.4313002" data-fill="structure" data-location="RT" />
-            <rect x="0.23999999" width="12.52" y="32.9245" height="5.4313002" data-fill="structure" data-location="RT" />
-            <rect x="0" width="10.4" y="37.627998" height="5.4313002" data-fill="structure" data-location="RT" />
-            <rect x="0" width="9.6099997" y="42.3316" height="5.4313002" data-fill="structure" data-location="RT" />
-            <rect x="0.93000001" width="13.6" y="48.881699" height="5.4313002" data-fill="structure" data-location="RT" />
+          <path data-fill="structure" data-location="RT" d="M 507.22 403.2 L 521.44 403.2 L 524.24 412.03 L 524.15 416.73 L 524.81 426.14 L 502.13 426.14 L 501.02 430.84 L 497.17 440.25 L 495.59 444.95 L 495.2 449.66 L 486.89 449.66 L 486.89 440.82 L 487.13 440.82 L 487.63 436.12 L 492.6 412.6 L 493.09 407.9 L 507.22 407.9 Z" style="fill: none; stroke: rgb(0, 0, 255); stroke-width: 0.83; stroke-dasharray: 1.66;"/>
+          <g data-rail="structure" data-location="RT">
+            <path d="M 513.11 405.23 L 513.11 424.23" style="fill: none; stroke: rgb(0, 255, 0); stroke-width: 0.83; stroke-linecap: round; stroke-dasharray: 1.66;" data-rail-capacity="5" data-rail-index="1"/>
+            <path d="M 520.71 405.23 L 520.71 424.23" style="fill: none; stroke: rgb(0, 255, 0); stroke-width: 0.83; stroke-linecap: round; stroke-dasharray: 1.66;" data-rail-capacity="5" data-rail-index="2"/>
+            <path d="M 492 428.51 L 492 447.51" style="fill: none; stroke: rgb(0, 255, 0); stroke-width: 0.83; stroke-linecap: round; stroke-dasharray: 1.66;" data-rail-capacity="5" data-rail-index="3"/>
+            <path d="M 516.91 407.13 L 516.91 426.13" style="fill: none; stroke: rgb(0, 255, 0); stroke-width: 0.83; stroke-linecap: round; stroke-dasharray: 1.66;" data-rail-capacity="5" data-rail-index="4"/>
+            <path d="M 509.31 407.13 L 509.31 426.13" style="fill: none; stroke: rgb(0, 255, 0); stroke-width: 0.83; stroke-linecap: round; stroke-dasharray: 1.66;" data-rail-capacity="5" data-rail-index="5"/>
           </g>
-          <g fill="none" transform="matrix(-1,0,0,1,456.2,402.13)" class="paperdoll-pip-profile">
-            <rect x="20.33" width="15.52" y="0" height="5.4313002" data-fill="structure" data-location="LT" />
-            <rect x="6.1999998" width="32.5" y="4.7034998" height="5.4313002" data-fill="structure" data-location="LT" />
-            <rect x="5.21" width="33.400002" y="9.4069996" height="5.4313002" data-fill="structure" data-location="LT" />
-            <rect x="4.21" width="34.299999" y="14.1105" height="5.4313002" data-fill="structure" data-location="LT" />
-            <rect x="3.22" width="36" y="18.813999" height="5.4313002" data-fill="structure" data-location="LT" />
-            <rect x="2.23" width="14.31" y="23.5175" height="5.4313002" data-fill="structure" data-location="LT" />
-            <rect x="1.23" width="13.1" y="28.221001" height="5.4313002" data-fill="structure" data-location="LT" />
-            <rect x="0.23999999" width="12.52" y="32.9245" height="5.4313002" data-fill="structure" data-location="LT" />
-            <rect x="0" width="10.4" y="37.627998" height="5.4313002" data-fill="structure" data-location="LT" />
-            <rect x="0" width="9.6099997" y="42.3316" height="5.4313002" data-fill="structure" data-location="LT" />
-            <rect x="0.93000001" width="13.6" y="48.881699" height="5.4313002" data-fill="structure" data-location="LT" />
+          <path data-fill="structure" data-location="LT" d="M 421 402.78 L 435.22 402.78 L 435.22 407.49 L 449.35 407.49 L 449.84 412.19 L 454.81 435.71 L 455.31 440.41 L 455.55 440.41 L 455.55 449.24 L 447.24 449.24 L 446.85 444.54 L 445.27 439.83 L 441.42 430.43 L 440.31 425.72 L 417.63 425.72 L 418.29 416.32 L 418.2 411.61 Z" style="fill: none; stroke: rgb(0, 0, 255); stroke-width: 0.83; stroke-dasharray: 1.66;"/>
+          <g data-rail="structure" data-location="LT">
+            <path d="M 425.53 404.82 L 425.53 423.82" style="fill: none; stroke: rgb(0, 255, 0); stroke-width: 0.83; stroke-linecap: round; stroke-dasharray: 1.66;" data-rail-capacity="5" data-rail-index="1"/>
+            <path d="M 433.13 404.82 L 433.13 423.82" style="fill: none; stroke: rgb(0, 255, 0); stroke-width: 0.83; stroke-linecap: round; stroke-dasharray: 1.66;" data-rail-capacity="5" data-rail-index="2"/>
+            <path d="M 450.44 428.09 L 450.44 447.09" style="fill: none; stroke: rgb(0, 255, 0); stroke-width: 0.83; stroke-linecap: round; stroke-dasharray: 1.66;" data-rail-capacity="5" data-rail-index="3"/>
+            <path d="M 429.33 406.72 L 429.33 425.72" style="fill: none; stroke: rgb(0, 255, 0); stroke-width: 0.83; stroke-linecap: round; stroke-dasharray: 1.66;" data-rail-capacity="5" data-rail-index="4"/>
+            <path d="M 421.73 406.72 L 421.73 425.72" style="fill: none; stroke: rgb(0, 255, 0); stroke-width: 0.83; stroke-linecap: round; stroke-dasharray: 1.66;" data-rail-capacity="5" data-rail-index="5"/>
           </g>
         </g>
         <g id="structurePipsGrouped" transform="translate(300,400)" fill="none">
-          <g transform="rotate(84.000027,66.655104,146.61538)" class="paperdoll-pip-profile">
-            <rect x="0" y="0" height="5" width="82.5" data-fill="structure" data-location="FRL" />
-            <rect x="-14" y="-5" height="5" width="97" data-fill="structure" data-location="FRL" />
+          <path data-fill="structure" data-location="FRL" d="M -13.4 -4.4 L 82.4 -4.4 L 81.9 4.4 L 0.6 4.4 L 0.6 -0.6 L -13.4 -0.6 Z" transform="matrix(0.104528 0.994522 -0.994522 0.104528 205.499992 65.000005)" style="fill: none; stroke: rgb(0, 0, 255); stroke-width: 0.83; stroke-dasharray: 1.66;"/>
+          <g data-rail="structure" data-location="FRL">
+            <path d="M 207.82 65.98 L 210.12 87.86" style="fill: none; stroke: rgb(0, 255, 0); stroke-width: 0.83; stroke-linecap: round; stroke-dasharray: 1.66;" data-rail-capacity="5" data-rail-index="1"/>
+            <path d="M 210.48 91.28 L 212.78 113.16" style="fill: none; stroke: rgb(0, 255, 0); stroke-width: 0.83; stroke-linecap: round; stroke-dasharray: 1.66;" data-rail-capacity="5" data-rail-index="2"/>
+            <path d="M 213.14 116.58 L 215.44 138.46" style="fill: none; stroke: rgb(0, 255, 0); stroke-width: 0.83; stroke-linecap: round; stroke-dasharray: 1.66;" data-rail-capacity="5" data-rail-index="3"/>
+            <path d="M 203.63 68.16 L 205.93 90.04" style="fill: none; stroke: rgb(0, 255, 0); stroke-width: 0.83; stroke-linecap: round; stroke-dasharray: 1.66;" data-rail-capacity="5" data-rail-index="4"/>
+            <path d="M 206.29 93.46 L 208.58 115.34" style="fill: none; stroke: rgb(0, 255, 0); stroke-width: 0.83; stroke-linecap: round; stroke-dasharray: 1.66;" data-rail-capacity="5" data-rail-index="5"/>
           </g>
-          <g transform="matrix(-0.104528,0.994522,0.994522,0.104528,137,65)" class="paperdoll-pip-profile">
-            <rect x="0" y="0" height="5" width="82.5" data-fill="structure" data-location="FLL" />
-            <rect x="-14" y="-5" height="5" width="97" data-fill="structure" data-location="FLL" />
+          <path data-fill="structure" data-location="FLL" d="M -13.4 -4.4 L 82.4 -4.4 L 81.9 4.4 L 0.6 4.4 L 0.6 -0.6 L -13.4 -0.6 Z" transform="matrix(-0.104528 0.994522 0.994522 0.104528 137 65)" style="fill: none; stroke: rgb(0, 0, 255); stroke-width: 0.83; stroke-dasharray: 1.66;"/>
+          <g data-rail="structure" data-location="FLL">
+            <path d="M 134.68 65.98 L 132.38 87.86" style="fill: none; stroke: rgb(0, 255, 0); stroke-width: 0.83; stroke-linecap: round; stroke-dasharray: 1.66;" data-rail-capacity="5" data-rail-index="1"/>
+            <path d="M 132.02 91.28 L 129.72 113.16" style="fill: none; stroke: rgb(0, 255, 0); stroke-width: 0.83; stroke-linecap: round; stroke-dasharray: 1.66;" data-rail-capacity="5" data-rail-index="2"/>
+            <path d="M 129.36 116.58 L 127.06 138.46" style="fill: none; stroke: rgb(0, 255, 0); stroke-width: 0.83; stroke-linecap: round; stroke-dasharray: 1.66;" data-rail-capacity="5" data-rail-index="3"/>
+            <path d="M 138.87 68.16 L 136.57 90.04" style="fill: none; stroke: rgb(0, 255, 0); stroke-width: 0.83; stroke-linecap: round; stroke-dasharray: 1.66;" data-rail-capacity="5" data-rail-index="4"/>
+            <path d="M 136.21 93.46 L 133.92 115.34" style="fill: none; stroke: rgb(0, 255, 0); stroke-width: 0.83; stroke-linecap: round; stroke-dasharray: 1.66;" data-rail-capacity="5" data-rail-index="5"/>
           </g>
-          <g transform="rotate(89.000001,62.940936,128.67709)" class="paperdoll-pip-profile">
-            <rect x="0" y="0" height="5" width="76" data-fill="structure" data-location="RRL" />
-            <rect x="-3.5" y="-5" height="5" width="80" data-fill="structure" data-location="RRL" />
+          <path data-fill="structure" data-location="RRL" d="M -2.9 -4.4 L 75.9 -4.4 L 75.4 4.4 L 0.6 4.4 L -1.15 -0.6 Z" transform="matrix(0.017452 0.999848 -0.999848 0.017452 190.499958 63.500018)" style="fill: none; stroke: rgb(0, 0, 255); stroke-width: 0.83; stroke-dasharray: 1.66;"/>
+          <g data-rail="structure" data-location="RRL">
+            <path d="M 188.54 63.45 L 188.54 85.45" style="fill: none; stroke: rgb(0, 255, 0); stroke-width: 0.83; stroke-linecap: round; stroke-dasharray: 1.66;" data-rail-capacity="5" data-rail-index="1"/>
+            <path d="M 188.99 88.75 L 188.99 110.75" style="fill: none; stroke: rgb(0, 255, 0); stroke-width: 0.83; stroke-linecap: round; stroke-dasharray: 1.66;" data-rail-capacity="5" data-rail-index="2"/>
+            <path d="M 189.43 114.05 L 189.43 136.05" style="fill: none; stroke: rgb(0, 255, 0); stroke-width: 0.83; stroke-linecap: round; stroke-dasharray: 1.66;" data-rail-capacity="5" data-rail-index="3"/>
+            <path d="M 192.88 65.65 L 192.88 87.65" style="fill: none; stroke: rgb(0, 255, 0); stroke-width: 0.83; stroke-linecap: round; stroke-dasharray: 1.66;" data-rail-capacity="5" data-rail-index="4"/>
+            <path d="M 193.32 90.95 L 193.32 112.95" style="fill: none; stroke: rgb(0, 255, 0); stroke-width: 0.83; stroke-linecap: round; stroke-dasharray: 1.66;" data-rail-capacity="5" data-rail-index="5"/>
           </g>
-          <g transform="matrix(-0.0174524,0.999848,0.999848,0.0174524,152,63.5)" class="paperdoll-pip-profile">
-            <rect x="0" y="0" height="5" width="76" data-fill="structure" data-location="RLL" />
-            <rect x="-3.5" y="-5" height="5" width="80" data-fill="structure" data-location="RLL" />
+          <path data-fill="structure" data-location="RLL" d="M -2.9 -4.4 L 75.9 -4.4 L 75.4 4.4 L 0.6 4.4 L -1.15 -0.6 Z" transform="matrix(-0.017452 0.999848 0.999848 0.017452 152 63.5)" style="fill: none; stroke: rgb(0, 0, 255); stroke-width: 0.83; stroke-dasharray: 1.66;"/>
+          <g data-rail="structure" data-location="RLL">
+            <path d="M 153.96 63.45 L 153.96 85.45" style="fill: none; stroke: rgb(0, 255, 0); stroke-width: 0.83; stroke-linecap: round; stroke-dasharray: 1.66;" data-rail-capacity="5" data-rail-index="1"/>
+            <path d="M 153.51 88.75 L 153.51 110.75" style="fill: none; stroke: rgb(0, 255, 0); stroke-width: 0.83; stroke-linecap: round; stroke-dasharray: 1.66;" data-rail-capacity="5" data-rail-index="2"/>
+            <path d="M 153.07 114.05 L 153.07 136.05" style="fill: none; stroke: rgb(0, 255, 0); stroke-width: 0.83; stroke-linecap: round; stroke-dasharray: 1.66;" data-rail-capacity="5" data-rail-index="3"/>
+            <path d="M 149.62 65.65 L 149.62 87.65" style="fill: none; stroke: rgb(0, 255, 0); stroke-width: 0.83; stroke-linecap: round; stroke-dasharray: 1.66;" data-rail-capacity="5" data-rail-index="4"/>
+            <path d="M 149.18 90.95 L 149.18 112.95" style="fill: none; stroke: rgb(0, 255, 0); stroke-width: 0.83; stroke-linecap: round; stroke-dasharray: 1.66;" data-rail-capacity="5" data-rail-index="5"/>
           </g>
         </g>
       </g>

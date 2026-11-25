@@ -338,6 +338,29 @@ describe('MekPaperdollGenerator', () => {
         }
     });
 
+    it('gives the fill areas of one location one pip size', async () => {
+        const source = encodeURIComponent(`
+            <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 120 50">
+                <g id="paperdoll-art-armor">
+                    <path data-fill="armor" data-location="CT" d="M 0 0 H 80 V 50 H 0 Z" />
+                    <path data-fill="armor" data-location="CT" d="M 90 0 H 95 V 50 H 90 Z" />
+                </g>
+            </svg>
+        `);
+        const armorLayer = await MekPaperdollGenerator.createArmorPaperdoll(120, 50, { CT: 9 }, {
+            assetUrl: `data:image/svg+xml,${source}`,
+            pipLayout: 'distributed',
+            scale: false,
+        });
+
+        const pips = Array.from(armorLayer.querySelectorAll<SVGCircleElement>('[data-location="CT"] circle'));
+        expect(pips.length).toBe(9);
+        expect(pips.some(pip => pip.cx.baseVal.value > 90)).toBeTrue();
+        // The narrow strip alone caps its pip below the default radius of the wide area.
+        expect(new Set(pips.map(pip => pip.getAttribute('r'))).size).toBe(1);
+        expect(pips[0].r.baseVal.value).toBeLessThan(3);
+    });
+
     it('allocates authored multisection pips proportionally like MegaMekLab', async () => {
         const source = encodeURIComponent(`
             <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 60 50">

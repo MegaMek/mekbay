@@ -118,6 +118,12 @@ export class DistributedPipRenderer {
         for (let rowCount = 1; rowCount <= pipCount; rowCount++) {
             const columnCount = Math.max(1, Math.ceil(pipCount / rowCount));
             let spacing = availableHeight / rowCount;
+            // Neighbouring pips sit at most a staggered diagonal apart, so more rows cannot beat the best radius.
+            if (bestLayout
+                && (Math.SQRT2 * spacing - pipGap) / (2 * PipRendererShared.getPipFootprintFactor(strokeWidthRatio))
+                    < bestLayout.maximumRadius) {
+                break;
+            }
             const staggered = spacing < averageHeight;
 
             const layoutRows: DistributedPipRow[] = [];
