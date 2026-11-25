@@ -533,10 +533,12 @@ ${indent}`);
       // Preview the hand-made rails as they are.
       continue;
     } else {
-      const indent = indentOf(source, location.replace.start);
+      // Replace the group's whole line, indented like its closing tag, so reruns leave the file unchanged.
+      const indent = indentOf(source, location.replace.end - '</g>'.length);
+      const replace = { start: source.lastIndexOf('\n', location.replace.start - 1) + 1, end: location.replace.end };
       const text = railMarkup(location.location, location.type, result.rails, indent, digits, strokeWidth);
-      edits.push({ ...location.replace, text });
-      previewEdits.push({ ...location.replace, text: `${text}\n${previewPips(result.rails, metrics.radius, Infinity)}` });
+      edits.push({ ...replace, text });
+      previewEdits.push({ ...replace, text: `${text}\n${previewPips(result.rails, metrics.radius, Infinity)}` });
     }
   }
   const apply = (list) => [...list].sort((a, b) => b.start - a.start)
