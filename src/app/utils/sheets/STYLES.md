@@ -10,6 +10,8 @@ header transforms or text coordinates.
 The default `panel` variant uses the standard 1.932-point black border and grey
 shadow. The `nested` variant uses a 0.966-point border without a shadow for
 internal content boxes. Stroke widths are fixed by the utility, not by callers.
+A title tab sits 3 points inside a panel's border and 1.5 points inside a nested
+one: the tab keeps its place and the nested border moves in around it.
 Use `showHeader: false` for an untitled frame and `fullWidthHeader: true` for a
 header spanning the panel.
 Use `maxHeaderWidth` to let a tab grow with its title up to a layout limit, then

@@ -45,6 +45,10 @@ interface SVGFrameGeometry {
     headerTextLength: number;
     headerOffsetX: number;
     headerCut: SVGFrameCornerCut;
+    /** Perpendicular gap between the header tab and the border around it. */
+    headerGap: number;
+    /** Y of the border above the header tab. */
+    topY: number;
     bottomLeftNotchWidth: number;
     cornerAngles: Record<SVGFrameCorner, number>;
     cornerCuts: Record<SVGFrameCorner, SVGFrameCornerCut>;
@@ -67,9 +71,13 @@ export class SvgFrameUtil {
     // The outer grey frame is drawn a little inward so its thick stroke does not
     // spill outside the requested frame box.
     private static readonly framePathInset = 2.5;
-    // Gap between the black frame border and the black header tab. The x offset
-    // is adjusted for sloped borders so this is a real visual gap, not just +3px.
+    // Y of the header tab's top, and a panel's gap between its border and that
+    // tab. The x offset is adjusted for sloped borders so this is a real visual
+    // gap, not just +3px.
     private static readonly headerBorderInset = 3;
+    // A nested panel's thin border hugs its tab: the tab keeps its height and the
+    // border above and beside it moves in.
+    private static readonly nestedHeaderBorderGap = 1.5;
     // Beside a title tab the top border runs this far below the tab's top, whatever
     // the title size, so neighbouring panels align and large captions rise above
     // the border. It is the centreline of the standard 11.25-high table tab.
@@ -96,7 +104,7 @@ export class SvgFrameUtil {
         const geometry = this.createFrameGeometry(title, width, options);
         // Controls that straddle the top border (e.g. unit condition buttons)
         // centre on this line; beside a title tab it runs through the tab's middle.
-        const topBorderY = geometry.showHeader && !geometry.fullWidthHeader ? geometry.cornerCuts.topLeft.y : 0;
+        const topBorderY = geometry.topY + (geometry.showHeader && !geometry.fullWidthHeader ? geometry.cornerCuts.topLeft.y : 0);
         group.setAttribute('data-mekbay-frame-top', String(topBorderY));
         // Where that border stops: the start of a cut top-right corner, or the right border.
         group.setAttribute('data-mekbay-frame-top-end', String(width - geometry.frameContract - geometry.cornerCuts.topRight.x));
@@ -159,7 +167,7 @@ export class SvgFrameUtil {
         // path has the actual black border and uses the caller's box directly.
         const xOffset = outer ? this.framePathInset : 0;
         const yOffset = outer ? this.framePathInset : 0;
-        const topY = yOffset;
+        const topY = yOffset + geometry.topY;
         const rightX = width;
         const bottomY = height;
         const { topLeft, topRight, bottomRight, bottomLeft } = geometry.cornerCuts;
@@ -170,7 +178,7 @@ export class SvgFrameUtil {
         const headerRightCut = geometry.headerCut;
         // The tab joins the frame path, so its right sloped side needs the same
         // border gap math as the real header geometry.
-        const headerRightInset = this.createParallelInsetX(headerRightCut, this.headerBorderInset);
+        const headerRightInset = this.createParallelInsetX(headerRightCut, geometry.headerGap);
         // Tab width is measured from the frame path's current x, not from the
         // header group's x. This keeps the frame outline aligned with the header.
         const tabWidth = Math.max(geometry.headerOffsetX + geometry.headerWidth - headerRightCut.x + headerRightInset - topLeft.x, 1);
@@ -278,12 +286,16 @@ export class SvgFrameUtil {
     private static createFrameGeometry(title: string, width: number, options: SVGFrameOptions): SVGFrameGeometry {
         // Resolve every user option into plain numbers once. Drawing code below
         // should not need to know which values came from defaults or options.
+        const nested = options.variant === 'nested';
         const cornerAngles = this.createCornerAngles(options.cornerAngleDegrees);
         const cornerCuts = this.createCornerCuts(cornerAngles,
-            options.variant === 'nested' ? this.nestedCornerCutBaseline : this.cornerCutBaseline);
+            nested ? this.nestedCornerCutBaseline : this.cornerCutBaseline);
         const fullWidthHeader = options.fullWidthHeader ?? false;
         const showHeader = options.showHeader ?? true;
-        const frameContract = options.variant === 'nested' ? 0 : this.innerFrameContract;
+        const frameContract = nested ? 0 : this.innerFrameContract;
+        // An outline lip has no tab to hug and keeps the standard gap.
+        const headerGap = nested && options.headerStyle !== 'outline' ? this.nestedHeaderBorderGap : this.headerBorderInset;
+        const topY = showHeader ? this.headerBorderInset - headerGap : 0;
         const headerFontSize = this.createHeaderFontSize(options.headerFontSize);
         const headerHeight = this.createHeaderHeight(options.headerHeight, headerFontSize);
         const headerAngle = this.createCornerAngle(options.headerAngleDegrees ?? cornerAngles.topLeft);
@@ -291,18 +303,19 @@ export class SvgFrameUtil {
         // Both sides use the same cut, with at least a 1px flat top and bottom.
         const headerMinWidth = 2 * headerCut.x + 1;
         const headerTextLength = showHeader ? this.measureHeaderTextLength(title, headerFontSize) : 0;
-        // The border slopes stay parallel to the header's upper edges. They reach
-        // the header's centerline for full-width headers and the fixed top border
-        // beside a tab. Unrelated frame corners retain their own cuts.
+        // The border slopes stay parallel to the header's upper edges. They run
+        // from the border above the header down to the header's centerline for
+        // full-width headers and to the fixed top border beside a tab. Unrelated
+        // frame corners retain their own cuts.
         const headerTipY = this.headerBorderInset + headerHeight / 2;
         const borderSlopeY = showHeader && !fullWidthHeader ? this.tabbedTopBorderY : headerTipY;
         if (showHeader) {
-            cornerCuts.topLeft = this.createHeaderCut(headerAngle, 2 * borderSlopeY);
+            cornerCuts.topLeft = this.createHeaderCut(headerAngle, 2 * (borderSlopeY - topY));
             if (fullWidthHeader) cornerCuts.topRight = cornerCuts.topLeft;
         }
         // At a common height, a perpendicular inset becomes the first x gap; the
         // second moves the tip along the slope from that height to its own.
-        const headerOffsetX = this.headerBorderInset * Math.hypot(headerCut.x, headerCut.y) / headerCut.y
+        const headerOffsetX = headerGap * Math.hypot(headerCut.x, headerCut.y) / headerCut.y
             + (borderSlopeY - headerTipY) * headerCut.x / headerCut.y;
         const fullWidthHeaderWidth = Math.max(width - frameContract - 2 * headerOffsetX, headerMinWidth);
         // Auto width means text width plus padding. Numeric width means caller is
@@ -322,6 +335,8 @@ export class SvgFrameUtil {
             headerTextLength,
             headerOffsetX,
             headerCut,
+            headerGap,
+            topY,
             bottomLeftNotchWidth: Math.max(options.bottomLeftNotchWidth ?? 0, 0),
             cornerAngles,
             cornerCuts,
