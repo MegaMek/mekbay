@@ -14,7 +14,6 @@ import {
     MEGAMEK_AVAILABILITY_UNKNOWN,
     MEGAMEK_AVAILABILITY_NOT_AVAILABLE,
     getMegaMekAvailabilityRarityForScore,
-    getMegaMekAvailabilityValueForSource,
     type MegaMekAvailabilityFrom,
     type MegaMekAvailabilityRarity,
 } from '../models/megamek/availability.model';
@@ -280,23 +279,17 @@ export class UnitSearchAvailabilityService {
         ));
     }
 
+    /**
+     * The era or faction ids that still have a candidate unit, found in one pass
+     * over the units with the candidate rules of getCandidateUnitIds.
+     */
     collectAvailableOptionIds(
         contextUnits: readonly UnitSummary[],
         scope: AvailabilityFilterScope,
         target: 'era' | 'faction',
         useAllScopedOptions: boolean,
-    ): ReadonlySet<number> | null {
+    ): ReadonlySet<number> {
         const { eraNames = [], factionNames = [], availabilityFromNames = [], availabilityRarityNames = [] } = scope;
-        const includesUnknownAvailabilityFrom = availabilityFromNames.includes(MEGAMEK_AVAILABILITY_UNKNOWN);
-        const includesUnknownRarity = availabilityRarityNames.includes(MEGAMEK_AVAILABILITY_UNKNOWN);
-        const includesNotAvailable = availabilityRarityNames.includes(MEGAMEK_AVAILABILITY_NOT_AVAILABLE);
-        if (includesNotAvailable) {
-            return null;
-        }
-
-        const selectedSources = availabilityFromNames.filter((value): value is MegaMekAvailabilityFrom => (
-            value === 'Requisition' || value === 'Salvage'
-        ));
         const useMegaMekAvailability = this.unitAvailabilitySource.useMegaMekAvailability();
         const selectedEraIds = target === 'faction'
             ? this.resolveAvailabilityScopeIds(eraNames, 'era')
@@ -304,125 +297,90 @@ export class UnitSearchAvailabilityService {
         const selectedFactionIds = target === 'era'
             ? this.resolveAvailabilityScopeIds(factionNames, 'faction')
             : undefined;
+        const hasSourceFilter = availabilityFromNames.length > 0;
+        const hasRarityFilter = availabilityRarityNames.length > 0;
 
-        const pureUnknownAvailabilityFrom = includesUnknownAvailabilityFrom
-            && availabilityFromNames.length === 1
-            && availabilityRarityNames.length === 0;
-        const pureUnknownRarity = includesUnknownRarity
-            && availabilityRarityNames.length === 1
-            && availabilityFromNames.length === 0;
-        if (!useMegaMekAvailability && (pureUnknownAvailabilityFrom || pureUnknownRarity)) {
-            return this.unitAvailabilitySource.collectFastMulUnknownOptionIds(contextUnits, target, selectedEraIds, selectedFactionIds);
-        }
-
-        if (includesUnknownAvailabilityFrom || includesUnknownRarity) {
-            return null;
-        }
-
-        const activeSources = selectedSources.length > 0
-            ? selectedSources
-            : [...MEGAMEK_AVAILABILITY_FROM_OPTIONS];
-        const selectedRarityNames = availabilityRarityNames as ReadonlyArray<Exclude<MegaMekAvailabilityRarity, typeof MEGAMEK_AVAILABILITY_UNKNOWN | typeof MEGAMEK_AVAILABILITY_NOT_AVAILABLE>>;
-        const selectedRarities = selectedRarityNames.length > 0
-            ? new Set(selectedRarityNames)
-            : null;
-
-        if (!useMegaMekAvailability && selectedSources.length === 0 && !selectedRarities) {
+        if (!useMegaMekAvailability && !hasSourceFilter && !hasRarityFilter) {
             return this.collectMulMembershipOptionIds(contextUnits, target, selectedEraIds, selectedFactionIds);
         }
 
+        const selectedSources = availabilityFromNames.filter((value): value is MegaMekAvailabilityFrom => (
+            value === 'Requisition' || value === 'Salvage'
+        ));
+        const activeSources = hasSourceFilter ? selectedSources : MEGAMEK_AVAILABILITY_FROM_OPTIONS;
+        const selectedRarities = new Set<string>(availabilityRarityNames.filter((rarity) => (
+            rarity !== MEGAMEK_AVAILABILITY_UNKNOWN && rarity !== MEGAMEK_AVAILABILITY_NOT_AVAILABLE
+        )));
+        const includesUnknownSource = availabilityFromNames.includes(MEGAMEK_AVAILABILITY_UNKNOWN);
+        const includesUnknownRarity = availabilityRarityNames.includes(MEGAMEK_AVAILABILITY_UNKNOWN);
+        // A scoped option is only ever Unknown through MUL membership that MegaMek has no entry for.
+        const matchesUnknown = !useMegaMekAvailability && (hasSourceFilter && hasRarityFilter
+            ? includesUnknownSource && includesUnknownRarity
+            : includesUnknownSource || includesUnknownRarity);
+        const matchesNotAvailable = availabilityRarityNames.includes(MEGAMEK_AVAILABILITY_NOT_AVAILABLE);
+        const matchesEachScopedValue = useAllScopedOptions && selectedRarities.size > 0;
+        const matchesEntries = activeSources.length > 0
+            && (!hasRarityFilter || matchesNotAvailable || selectedRarities.size > 0);
+        const tracksMaxScores = !hasRarityFilter || matchesNotAvailable || !matchesEachScopedValue;
+        const context: MegaMekAvailabilityFilterContext = { bridgeThroughMulMembership: !useMegaMekAvailability };
+        const isInScope = (pair: { eraId: number; factionId: number }): boolean => (
+            (!selectedEraIds || selectedEraIds.has(pair.eraId))
+            && (!selectedFactionIds || selectedFactionIds.has(pair.factionId))
+        );
+        const matchesSelectedRarity = (score: number): boolean => (
+            selectedRarities.has(getMegaMekAvailabilityRarityForScore(score))
+        );
         const availableIds = new Set<number>();
-        const useAllScopedAvailabilityOptions = useAllScopedOptions && selectedRarities !== null;
 
         for (const unit of contextUnits) {
-            const availabilityRecord = this.dataService.getMegaMekAvailabilityRecordForUnit(unit);
-            if (!availabilityRecord) {
+            if (matchesUnknown) {
+                for (const pair of this.unitAvailabilitySource.getUnknownMulPairs(unit)) {
+                    if (isInScope(pair)) {
+                        availableIds.add(target === 'faction' ? pair.factionId : pair.eraId);
+                    }
+                }
+            }
+
+            if (!matchesEntries) {
                 continue;
             }
 
-            const maxScoresByOptionId = useAllScopedAvailabilityOptions
-                ? null
-                : new Map<number, Record<MegaMekAvailabilityFrom, number>>();
-
-            for (const eraIdText in availabilityRecord.e) {
-                const eraId = Number(eraIdText);
-                if (Number.isNaN(eraId) || (selectedEraIds && !selectedEraIds.has(eraId))) {
+            const maxScoresByOptionId = tracksMaxScores
+                ? new Map<number, Record<MegaMekAvailabilityFrom, number>>()
+                : null;
+            for (const entry of this.unitAvailabilitySource.getMegaMekAvailabilityEntries(unit, context)) {
+                if (!isInScope(entry)) {
                     continue;
                 }
 
-                const eraAvailability = availabilityRecord.e[eraIdText];
-                for (const factionIdText in eraAvailability) {
-                    const factionId = Number(factionIdText);
-                    if (Number.isNaN(factionId) || (selectedFactionIds && !selectedFactionIds.has(factionId))) {
-                        continue;
-                    }
-
-                    if (!useMegaMekAvailability && !this.unitBelongsToMulFactionInEra(unit, factionId, eraId)) {
-                        continue;
-                    }
-
-                    const candidateId = target === 'faction' ? factionId : eraId;
-                    const value = eraAvailability[factionIdText];
-                    for (const source of activeSources) {
-                        const score = getMegaMekAvailabilityValueForSource(value, source);
-                        if (useAllScopedAvailabilityOptions) {
-                            if (score <= 0) {
-                                continue;
-                            }
-
-                            const rarity = getMegaMekAvailabilityRarityForScore(score);
-                            if (rarity !== MEGAMEK_AVAILABILITY_NOT_AVAILABLE && selectedRarities.has(rarity)) {
-                                availableIds.add(candidateId);
-                            }
-                            continue;
-                        }
-
-                        let maxScores = maxScoresByOptionId?.get(candidateId);
-                        if (!maxScores) {
-                            maxScores = {
-                                Requisition: 0,
-                                Salvage: 0,
-                            };
-                            maxScoresByOptionId?.set(candidateId, maxScores);
-                        }
-
-                        if (score > maxScores[source]) {
-                            maxScores[source] = score;
-                        }
-                    }
+                const optionId = target === 'faction' ? entry.factionId : entry.eraId;
+                let maxScores = maxScoresByOptionId?.get(optionId);
+                if (maxScoresByOptionId && !maxScores) {
+                    maxScores = { Requisition: 0, Salvage: 0 };
+                    maxScoresByOptionId.set(optionId, maxScores);
                 }
-            }
 
-            if (useAllScopedAvailabilityOptions) {
-                continue;
-            }
-
-            const scopedMaxScoresByOptionId = maxScoresByOptionId;
-            if (!scopedMaxScoresByOptionId) {
-                continue;
-            }
-
-            if (!selectedRarities) {
-                for (const [optionId, maxScores] of scopedMaxScoresByOptionId.entries()) {
-                    if (activeSources.some((source) => maxScores[source] > 0)) {
+                for (const source of activeSources) {
+                    const score = source === 'Requisition' ? entry.requisition : entry.salvage;
+                    if (maxScores && score > maxScores[source]) {
+                        maxScores[source] = score;
+                    }
+                    if (matchesEachScopedValue && matchesSelectedRarity(score)) {
                         availableIds.add(optionId);
                     }
                 }
+            }
+
+            if (!maxScoresByOptionId) {
                 continue;
             }
 
-            for (const [optionId, maxScores] of scopedMaxScoresByOptionId.entries()) {
-                const matchesSelectedRarity = activeSources.some((source) => {
-                    const maxScore = maxScores[source];
-                    if (maxScore <= 0) {
-                        return false;
-                    }
-
-                    const rarity = getMegaMekAvailabilityRarityForScore(maxScore);
-                    return rarity !== MEGAMEK_AVAILABILITY_NOT_AVAILABLE && selectedRarities.has(rarity);
-                });
-
-                if (matchesSelectedRarity) {
+            for (const [optionId, maxScores] of maxScoresByOptionId) {
+                const isAvailable = activeSources.some((source) => maxScores[source] > 0);
+                if (!hasRarityFilter
+                    ? isAvailable
+                    : (matchesNotAvailable && !isAvailable)
+                        || (!matchesEachScopedValue && activeSources.some((source) => matchesSelectedRarity(maxScores[source])))) {
                     availableIds.add(optionId);
                 }
             }
@@ -470,10 +428,6 @@ export class UnitSearchAvailabilityService {
             }
         }
         return availableIds;
-    }
-
-    private unitBelongsToMulFactionInEra(unit: Pick<UnitSummary, 'uuid'>, factionId: number, eraId: number): boolean {
-        return this.dataService.getMulAvailabilityIndex().getFactionEraUnitUuids(factionId, eraId).has(unit.uuid);
     }
 
     public unitBelongsToEra(unit: UnitSummary, eraName: string, scope?: AvailabilityFilterScope): boolean {

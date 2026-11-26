@@ -7,7 +7,7 @@ import { TestBed } from '@angular/core/testing';
 import type { Era } from '../models/eras.model';
 import type { Faction } from '../models/factions.model';
 import type { AvailabilitySource } from '../models/options.model';
-import type { AvailabilityFilterScope, MegaMekWeightedAvailabilityRecord } from '../models/megamek/availability.model';
+import type { AvailabilityFilterScope, MegaMekAvailabilityRarity, MegaMekWeightedAvailabilityRecord } from '../models/megamek/availability.model';
 import { createEmptyUnit } from '../testing/unit-test-helpers';
 import { MulAvailabilityIndex } from '../utils/mul-availability-index';
 import { DataService } from './data.service';
@@ -120,6 +120,43 @@ describe('UnitSearchAvailabilityService', () => {
         const scope = { factionNames: ['First', 'Second'], availabilityRarityNames: ['Very Rare'] };
         expect(service.collectAvailableOptionIds(units, scope, 'era', false)).toEqual(new Set<number>());
         expect(service.collectAvailableOptionIds(units, scope, 'era', true)).toEqual(new Set([100]));
+    });
+
+    it('enumerates era and faction options in one pass with the per-option candidate rules', () => {
+        const raritySelections: MegaMekAvailabilityRarity[][] = [
+            [], ['Unknown'], ['Not Available'], ['Very Rare'], ['Unknown', 'Very Rare'], ['Not Available', 'Common'],
+        ];
+        const sourceSelections = [[], ['Unknown'], ['Salvage'], ['Unknown', 'Requisition']];
+        const hasCandidate = (scope: AvailabilityFilterScope, from: string[], rarity: MegaMekAvailabilityRarity[]) => {
+            const candidates = service.getCandidateUnitIds(scope, from, rarity);
+            return units.some(unit => candidates.has(unit.uuid));
+        };
+
+        for (const availabilitySource of ['megamek', 'mul'] as const) {
+            for (const useAllScopedOptions of [false, true]) {
+                options.set({ availabilitySource, megaMekAvailabilityFiltersUseAllScopedOptions: useAllScopedOptions });
+                for (const availabilityRarityNames of raritySelections) {
+                    for (const availabilityFromNames of sourceSelections) {
+                        const selection = { availabilityFromNames, availabilityRarityNames };
+                        const label = JSON.stringify({ availabilitySource, useAllScopedOptions, ...selection });
+                        for (const eraNames of [undefined, ['Early'], ['Late']]) {
+                            expect(service.collectAvailableOptionIds(units, { ...selection, eraNames }, 'faction', useAllScopedOptions))
+                                .withContext(`${label} eras ${eraNames}`)
+                                .toEqual(new Set(factions
+                                    .filter(faction => hasCandidate({ eraNames, factionNames: [faction.name] }, availabilityFromNames, availabilityRarityNames))
+                                    .map(faction => faction.id)));
+                        }
+                        for (const factionNames of [undefined, ['First'], ['Second']]) {
+                            expect(service.collectAvailableOptionIds(units, { ...selection, factionNames }, 'era', useAllScopedOptions))
+                                .withContext(`${label} factions ${factionNames}`)
+                                .toEqual(new Set(eras
+                                    .filter(era => hasCandidate({ eraNames: [era.name], factionNames }, availabilityFromNames, availabilityRarityNames))
+                                    .map(era => era.id)));
+                        }
+                    }
+                }
+            }
+        }
     });
 
     it('keeps Unknown and Not Available separate when enumerating source/rarity facets', () => {

@@ -1007,17 +1007,16 @@ export class UnitSearchFiltersService {
         const { factionNames } = this.getAvailabilitySelectionScopeParts(availabilityState);
         const extinctFactionName = this.dataService.getFactionById(MULFACTION_EXTINCT)?.name;
         if (!extinctFactionName || !factionNames.includes(extinctFactionName)) {
-            const optimizedAvailableEraIds = this.availabilityQueries.collectAvailableOptionIds(contextUnits, this.getAvailabilitySelectionScopeParts(availabilityState), 'era', this.useAllScopedMegaMekAvailabilityOptions());
-            if (optimizedAvailableEraIds) {
-                const options = this.searchIndex.getDropdownOptionUniverse(conf.key).map((option) => ({
-                    name: option.name,
-                    ...(option.img ? { img: option.img } : {}),
-                    available: optimizedAvailableEraIds.has(this.dataService.getEraByName(option.name)?.id ?? -1),
-                }));
+            const availableEraIds = this.availabilityQueries.collectAvailableOptionIds(contextUnits, this.getAvailabilitySelectionScopeParts(availabilityState), 'era', this.useAllScopedMegaMekAvailabilityOptions());
+            const options = this.searchIndex.getDropdownOptionUniverse(conf.key).map((option) => ({
+                name: option.name,
+                ...(option.img ? { img: option.img } : {}),
+                available: availableEraIds.has(this.dataService.getEraByName(option.name)?.id ?? -1),
+            }));
 
-                return sortDropdownOptionObjects(options, conf.sortOptions);
-            }
+            return sortDropdownOptionObjects(options, conf.sortOptions);
         }
+        // The Extinct faction is derived per era, not from availability entries.
         const { availabilityFromNames } = this.getAvailabilitySelectionScopeParts(availabilityState);
         const contextUnitIds = new Set(contextUnits.map((unit) => unit.uuid));
 
@@ -1059,45 +1058,23 @@ export class UnitSearchFiltersService {
             return sortDropdownOptionObjects(options, conf.sortOptions);
         }
 
-        const optimizedAvailableFactionIds = this.availabilityQueries.collectAvailableOptionIds(contextUnits, this.getAvailabilitySelectionScopeParts(state), 'faction', this.useAllScopedMegaMekAvailabilityOptions());
-        if (optimizedAvailableFactionIds) {
-            const { eraNames, availabilityFromNames } = this.getAvailabilitySelectionScopeParts(state);
-            const contextUnitIds = new Set(contextUnits.map((unit) => unit.uuid));
-            const extinctFactionName = this.dataService.getFactionById(MULFACTION_EXTINCT)?.name;
-            const options = this.searchIndex.getDropdownOptionUniverse(conf.key).map((option) => ({
-                name: option.name,
-                ...(option.img ? { img: option.img } : {}),
-                available: this.isFormationAvailableForAnyFaction(activeFormation, [option.name]) && (
-                    extinctFactionName && option.name === extinctFactionName
-                        ? setHasAny(contextUnitIds, this.getMegaMekOptionScopeUnitIds({
-                            ...(eraNames.length > 0 ? { eraNames } : {}),
-                            factionNames: [option.name],
-                            ...(availabilityFromNames.length > 0 ? { availabilityFromNames } : {}),
-                        }, state))
-                        : optimizedAvailableFactionIds.has(this.dataService.getFactionByName(option.name)?.id ?? -1)
-                ),
-            }));
-
-            return sortDropdownOptionObjects(options, conf.sortOptions);
-        }
-
+        const availableFactionIds = this.availabilityQueries.collectAvailableOptionIds(contextUnits, this.getAvailabilitySelectionScopeParts(state), 'faction', this.useAllScopedMegaMekAvailabilityOptions());
         const { eraNames, availabilityFromNames } = this.getAvailabilitySelectionScopeParts(state);
         const contextUnitIds = new Set(contextUnits.map((unit) => unit.uuid));
-
-        const options = this.searchIndex.getDropdownOptionUniverse(conf.key).map((option) => {
-            const candidateScope: AvailabilityFilterScope = {
-                ...(eraNames.length > 0 ? { eraNames } : {}),
-                factionNames: [option.name],
-                ...(availabilityFromNames.length > 0 ? { availabilityFromNames } : {}),
-            };
-
-            return {
-                name: option.name,
-                ...(option.img ? { img: option.img } : {}),
-                available: this.isFormationAvailableForAnyFaction(activeFormation, [option.name])
-                    && setHasAny(contextUnitIds, this.getMegaMekOptionScopeUnitIds(candidateScope, state)),
-            };
-        });
+        const extinctFactionName = this.dataService.getFactionById(MULFACTION_EXTINCT)?.name;
+        const options = this.searchIndex.getDropdownOptionUniverse(conf.key).map((option) => ({
+            name: option.name,
+            ...(option.img ? { img: option.img } : {}),
+            available: this.isFormationAvailableForAnyFaction(activeFormation, [option.name]) && (
+                extinctFactionName && option.name === extinctFactionName
+                    ? setHasAny(contextUnitIds, this.getMegaMekOptionScopeUnitIds({
+                        ...(eraNames.length > 0 ? { eraNames } : {}),
+                        factionNames: [option.name],
+                        ...(availabilityFromNames.length > 0 ? { availabilityFromNames } : {}),
+                    }, state))
+                    : availableFactionIds.has(this.dataService.getFactionByName(option.name)?.id ?? -1)
+            ),
+        }));
 
         return sortDropdownOptionObjects(options, conf.sortOptions);
     }

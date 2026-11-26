@@ -101,7 +101,6 @@ export class UnitAvailabilitySourceService {
     private readonly dataService = inject(DataService);
     private readonly optionsService = inject(OptionsService);
 
-    private mulMembershipPairsByUnitId = new Map<string, readonly MulMembershipPair[]>();
     private mulCacheVersion = -1;
 
     private megaMekIndexVersion = '';
@@ -116,6 +115,10 @@ export class UnitAvailabilitySourceService {
     private megaMekExtinctAllUnitIds = new Set<AvailabilityUnitKey>();
     private megaMekScopedUnitIdCache = new Map<string, ReadonlySet<AvailabilityUnitKey>>();
     private megaMekScopedUnitScoreCache = new Map<string, Map<AvailabilityUnitKey, number>>();
+    /** MUL bridge, resolved once on the first bridged query and never in MegaMek mode. */
+    private mulBridgeReady = false;
+    private megaMekEntriesInMulByUnitKey = new Map<AvailabilityUnitKey, readonly MegaMekUnitAvailabilityEntry[]>();
+    private unknownMulPairsByUnitKey = new Map<AvailabilityUnitKey, MulMembershipPair[]>();
 
     public getVisibleEraUnitIds(era: Era, availabilitySource?: AvailabilitySource): Set<string> {
         this.ensureMulCacheVersion();
@@ -601,46 +604,24 @@ export class UnitAvailabilitySourceService {
         );
     }
 
-    public collectFastMulUnknownOptionIds(
-        contextUnits: readonly Pick<UnitSummary, 'uuid' | 'name' | 'isCustom'>[],
-        target: 'era' | 'faction',
-        selectedEraIds?: ReadonlySet<number>,
-        selectedFactionIds?: ReadonlySet<number>,
-    ): ReadonlySet<number> {
+    /** The unit's MegaMek entries; with the MUL bridge, only those inside its MUL faction-era membership. */
+    public getMegaMekAvailabilityEntries(
+        unit: Pick<UnitSummary, 'uuid'>,
+        context?: MegaMekAvailabilityFilterContext,
+    ): readonly MegaMekUnitAvailabilityEntry[] {
         this.ensureMulCacheVersion();
         this.ensureMegaMekIndexes();
 
-        const availableIds = new Set<number>();
-        const maxAvailableIds = target === 'era'
-            ? selectedEraIds?.size ?? this.dataService.getEras().length
-            : selectedFactionIds?.size
-                ?? this.dataService.getFactions().filter((faction) => faction.id !== MULFACTION_EXTINCT).length;
+        return this.getMegaMekEntries(unit.uuid, context);
+    }
 
-        for (const unit of contextUnits) {
-            const availabilityEntriesByEra = this.dataService.getMegaMekAvailabilityRecordForUnit(unit)?.e;
+    /** The unit's MUL faction-era memberships that MegaMek has no entry for. */
+    public getUnknownMulPairs(unit: Pick<UnitSummary, 'uuid'>): readonly MulMembershipPair[] {
+        this.ensureMulCacheVersion();
+        this.ensureMegaMekIndexes();
+        this.ensureMulBridge();
 
-            for (const membershipPair of this.getMulMembershipPairsByUnitId(unit.uuid)) {
-                if (selectedEraIds && !selectedEraIds.has(membershipPair.eraId)) {
-                    continue;
-                }
-
-                if (selectedFactionIds && !selectedFactionIds.has(membershipPair.factionId)) {
-                    continue;
-                }
-
-                const eraAvailability = availabilityEntriesByEra?.[membershipPair.eraId];
-                if (eraAvailability?.[membershipPair.factionId] !== undefined) {
-                    continue;
-                }
-
-                availableIds.add(target === 'era' ? membershipPair.eraId : membershipPair.factionId);
-                if (availableIds.size === maxAvailableIds) {
-                    return availableIds;
-                }
-            }
-        }
-
-        return availableIds;
+        return this.unknownMulPairsByUnitKey.get(unit.uuid) ?? [];
     }
 
     public useMegaMekAvailability(availabilitySource?: AvailabilitySource): boolean {
@@ -658,7 +639,6 @@ export class UnitAvailabilitySourceService {
         }
 
         this.mulCacheVersion = nextVersion;
-        this.mulMembershipPairsByUnitId.clear();
         this.megaMekIndexVersion = '';
         this.resetMegaMekIndexes();
     }
@@ -791,66 +771,28 @@ export class UnitAvailabilitySourceService {
     }
 
     private hasScopedMegaMekEntries(
-        unitId: string | null | undefined,
-        entries: readonly MegaMekUnitAvailabilityEntry[],
+        unitKey: AvailabilityUnitKey,
         context?: MegaMekAvailabilityFilterContext,
     ): boolean {
-        return entries.some((entry) => this.entryMatchesMegaMekScopeForUnit(unitId, entry, context));
+        return this.getMegaMekEntries(unitKey, context).some((entry) => this.pairMatchesMegaMekScope(entry, context));
     }
 
     private hasUnknownMulAvailabilityInScope(
-        unitId: string | null | undefined,
-        entries: readonly MegaMekUnitAvailabilityEntry[],
+        unitKey: AvailabilityUnitKey,
         context?: MegaMekAvailabilityFilterContext,
     ): boolean {
-        if (unitId == null) {
-            return false;
-        }
+        this.ensureMulBridge();
 
-        const scopedEntryKeys = new Set<string>();
-        for (const entry of entries) {
-            if (!this.entryMatchesMegaMekScopeForUnit(unitId, entry, context)) {
-                continue;
-            }
-
-            scopedEntryKeys.add(`${entry.eraId}:${entry.factionId}`);
-        }
-
-        for (const membershipPair of this.getMulMembershipPairsByUnitId(unitId)) {
-            if (context?.eraIds && !context.eraIds.has(membershipPair.eraId)) {
-                continue;
-            }
-
-            if (context?.factionIds && !context.factionIds.has(membershipPair.factionId)) {
-                continue;
-            }
-
-            if (!scopedEntryKeys.has(`${membershipPair.eraId}:${membershipPair.factionId}`)) {
-                return true;
-            }
-        }
-
-        return false;
+        return this.unknownMulPairsByUnitKey.get(unitKey)
+            ?.some((pair) => this.pairMatchesMegaMekScope(pair, context)) ?? false;
     }
 
-    private entryMatchesMegaMekScopeForUnit(
-        unitId: string | null | undefined,
-        entry: MegaMekUnitAvailabilityEntry,
+    private pairMatchesMegaMekScope(
+        pair: MulMembershipPair,
         context?: MegaMekAvailabilityFilterContext,
     ): boolean {
-        if (context?.eraIds && !context.eraIds.has(entry.eraId)) {
-            return false;
-        }
-
-        if (context?.bridgeThroughMulMembership) {
-            if (unitId == null || !this.matchesMulFactionMembershipInEra(unitId, entry.factionId, entry.eraId)) {
-                return false;
-            }
-
-            return !context.factionIds || context.factionIds.has(entry.factionId);
-        }
-
-        return !context?.factionIds || context.factionIds.has(entry.factionId);
+        return (!context?.eraIds || context.eraIds.has(pair.eraId))
+            && (!context?.factionIds || context.factionIds.has(pair.factionId));
     }
 
     private matchesMulMembershipScope(
@@ -868,10 +810,6 @@ export class UnitAvailabilitySourceService {
             faction: (factionId) => this.getMulFactionUnitIdsById(factionId).has(unitKey),
             any: () => true,
         });
-    }
-
-    private matchesMulFactionMembershipInEra(unitId: string, factionId: number, eraId: number): boolean {
-        return this.getMulFactionEraUnitIdsById(factionId, eraId).has(unitId);
     }
 
     private getMulVisibleEraUnitIdsById(eraId: number): ReadonlySet<string> {
@@ -908,22 +846,40 @@ export class UnitAvailabilitySourceService {
         return faction ? this.getMulFactionUnitIds(faction) : new Set<string>();
     }
 
-    private getMulMembershipPairsByUnitId(unitId: string): readonly MulMembershipPair[] {
-        const cached = this.mulMembershipPairsByUnitId.get(unitId);
-        if (cached) return cached;
-        const pairs: MulMembershipPair[] = [];
+    /**
+     * Resolves, once per catalog, which MegaMek entries MUL membership keeps
+     * and which MUL memberships MegaMek has no entry for.
+     */
+    private ensureMulBridge(): void {
+        if (this.mulBridgeReady) {
+            return;
+        }
+
+        this.mulBridgeReady = true;
+        for (const [unitKey, entries] of this.megaMekAvailabilityEntriesByUnitKey) {
+            const entriesInMul = entries.filter((entry) => (
+                this.getMulFactionEraUnitIdsById(entry.factionId, entry.eraId).has(unitKey)
+            ));
+            if (entriesInMul.length > 0) {
+                this.megaMekEntriesInMulByUnitKey.set(unitKey, entriesInMul);
+            }
+        }
+
         const index = this.dataService.getMulAvailabilityIndex();
+        const eras = this.dataService.getEras();
         for (const faction of this.dataService.getFactions()) {
             if (faction.id === MULFACTION_EXTINCT) continue;
-            for (const era of this.dataService.getEras()) {
-                const members: ReadonlySet<string> = index.getFactionEraUnitUuids(faction.id, era.id);
-                if (members.has(unitId)) {
-                    pairs.push({ eraId: era.id, factionId: faction.id });
+            for (const era of eras) {
+                for (const unitKey of index.getFactionEraUnitUuids(faction.id, era.id)) {
+                    const hasEntry = this.megaMekEntriesInMulByUnitKey.get(unitKey)
+                        ?.some((entry) => entry.eraId === era.id && entry.factionId === faction.id);
+                    if (!hasEntry) {
+                        getOrCreateMapValue(this.unknownMulPairsByUnitKey, unitKey, () => [])
+                            .push({ eraId: era.id, factionId: faction.id });
+                    }
                 }
             }
         }
-        this.mulMembershipPairsByUnitId.set(unitId, pairs);
-        return pairs;
     }
 
     private buildMegaMekScopedCacheKey(
@@ -998,11 +954,10 @@ export class UnitAvailabilitySourceService {
                 && !this.unitHasSelectedAvailabilityInScope(unitKey, context, availabilityFrom);
         }
 
-        const entries = this.getMegaMekEntries(unitKey);
-        const unitId = unitKey;
+        const entries = this.getMegaMekEntries(unitKey, context);
         if (this.useAllScopedMegaMekAvailabilityOptions()) {
             return entries.some(entry => (
-                this.entryMatchesMegaMekScopeForUnit(unitId, entry, context)
+                this.pairMatchesMegaMekScope(entry, context)
                 && this.entryMatchesSelectedRarity(entry, rarity, availabilityFrom)
             ));
         }
@@ -1010,7 +965,7 @@ export class UnitAvailabilitySourceService {
         for (const source of availabilityFrom) {
             let maxScore = 0;
             for (const entry of entries) {
-                if (!this.entryMatchesMegaMekScopeForUnit(unitId, entry, context)) {
+                if (!this.pairMatchesMegaMekScope(entry, context)) {
                     continue;
                 }
 
@@ -1033,9 +988,8 @@ export class UnitAvailabilitySourceService {
         context: MegaMekAvailabilityFilterContext | undefined,
         availabilityFrom: readonly MegaMekAvailabilityFrom[],
     ): boolean {
-        const unitId = unitKey;
-        return this.getMegaMekEntries(unitKey).some(entry => (
-            this.entryMatchesMegaMekScopeForUnit(unitId, entry, context)
+        return this.getMegaMekEntries(unitKey, context).some(entry => (
+            this.pairMatchesMegaMekScope(entry, context)
             && this.entryHasSelectedAvailability(entry, availabilityFrom)
         ));
     }
@@ -1048,15 +1002,13 @@ export class UnitAvailabilitySourceService {
             return false;
         }
 
-        const entries = this.getMegaMekEntries(unitKey);
-        const unitId = unitKey;
         if (context?.bridgeThroughMulMembership) {
-            return this.matchesMulMembershipScope(unitId, context)
-                && this.hasScopedMegaMekEntries(unitId, entries, context);
+            return this.matchesMulMembershipScope(unitKey, context)
+                && this.hasScopedMegaMekEntries(unitKey, context);
         }
 
         const hasScopedMembershipFilters = context?.eraIds !== undefined || context?.factionIds !== undefined;
-        return !hasScopedMembershipFilters || this.hasScopedMegaMekEntries(unitId, entries, context);
+        return !hasScopedMembershipFilters || this.hasScopedMegaMekEntries(unitKey, context);
     }
 
     private isMegaMekUnitUnknownInScope(
@@ -1069,16 +1021,14 @@ export class UnitAvailabilitySourceService {
             return !hasScopedMembershipFilters && !hasMegaMekRecord;
         }
 
-        const unitId = unitKey;
-        if (!this.matchesMulMembershipScope(unitId, context)) {
+        if (!this.matchesMulMembershipScope(unitKey, context)) {
             return false;
         }
         if (!hasMegaMekRecord) {
             return true;
         }
 
-        return hasScopedMembershipFilters
-            && this.hasUnknownMulAvailabilityInScope(unitId, this.getMegaMekEntries(unitKey), context);
+        return hasScopedMembershipFilters && this.hasUnknownMulAvailabilityInScope(unitKey, context);
     }
 
     private resetMegaMekIndexes(): void {
@@ -1093,9 +1043,20 @@ export class UnitAvailabilitySourceService {
         this.megaMekExtinctAllUnitIds.clear();
         this.megaMekScopedUnitIdCache.clear();
         this.megaMekScopedUnitScoreCache.clear();
+        this.mulBridgeReady = false;
+        this.megaMekEntriesInMulByUnitKey.clear();
+        this.unknownMulPairsByUnitKey.clear();
     }
 
-    private getMegaMekEntries(unitKey: AvailabilityUnitKey): readonly MegaMekUnitAvailabilityEntry[] {
+    private getMegaMekEntries(
+        unitKey: AvailabilityUnitKey,
+        context?: MegaMekAvailabilityFilterContext,
+    ): readonly MegaMekUnitAvailabilityEntry[] {
+        if (context?.bridgeThroughMulMembership) {
+            this.ensureMulBridge();
+            return this.megaMekEntriesInMulByUnitKey.get(unitKey) ?? [];
+        }
+
         return this.megaMekAvailabilityEntriesByUnitKey.get(unitKey) ?? [];
     }
 
@@ -1134,11 +1095,10 @@ export class UnitAvailabilitySourceService {
             return MEGAMEK_AVAILABILITY_UNKNOWN_SCORE;
         }
 
-        const unitId = unitUuid;
         let maxScore = 0;
 
-        for (const entry of entries) {
-            if (!this.entryMatchesMegaMekScopeForUnit(unitId, entry, context)) {
+        for (const entry of this.getMegaMekEntries(unitUuid, context)) {
+            if (!this.pairMatchesMegaMekScope(entry, context)) {
                 continue;
             }
 
