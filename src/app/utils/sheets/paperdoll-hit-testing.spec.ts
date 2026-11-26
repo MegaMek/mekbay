@@ -164,7 +164,7 @@ describe('generated paperdoll pointer targets', () => {
     }
 
     for (const chassis of ['biped', 'glider'] as const) {
-        it(`keeps ${chassis} ProtoMek head armor out of the structure band at every legal count`, async () => {
+        it(`keeps ${chassis} ProtoMek head armor out of the structure sub-area at every legal count`, async () => {
             // TechManual p. 82: a nine-ton ProtoMek has two head structure points and up to six armor.
             for (const pipLayout of ['classic', 'distributed'] as const) {
                 for (let headArmor = 1; headArmor <= 6; headArmor++) {

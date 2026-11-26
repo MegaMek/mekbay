@@ -2190,9 +2190,13 @@ export function svgElement<K extends keyof SVGElementTagNameMap>(name: K): SVGEl
 
 export function optimizeGeneratedSvg(svg: SVGSVGElement): SVGSVGElement {
   svg.querySelectorAll<SVGElement>('.pip').forEach((pip) => {
-    pip.removeAttribute('fill');
-    pip.removeAttribute('stroke');
-    pip.removeAttribute('stroke-width');
+    // The stylesheet owns pip paint, including the inline style of authored canon pips.
+    for (const name of ['fill', 'stroke', 'stroke-width']) {
+      pip.removeAttribute(name);
+      pip.style.removeProperty(name);
+    }
+    // Screen rings (fresh damage, pending repair) are a share of this, so small and large pips match.
+    pip.style.setProperty('--pip-r', formatNumber(pipRadius(pip)));
   });
   svg
     .querySelectorAll<SVGElement>('[data-pip-type], [data-pip-location], [data-pip-value], [data-pip-layout]')
@@ -2210,6 +2214,18 @@ export function optimizeGeneratedSvg(svg: SVGSVGElement): SVGSVGElement {
     normalizePaperdollPathStyle(path);
   });
   return svg;
+}
+
+/**
+ * A pip's radius in its own units: a circle's r, an authored circle path's (canon art), half a square's side,
+ * or half a diamond or pentagon's width. Sheets are still detached here, where only paths can be measured.
+ */
+function pipRadius(pip: SVGElement): number {
+  if (pip instanceof SVGCircleElement) return pip.r.baseVal.value;
+  if (pip instanceof SVGPathElement) return pip.getTotalLength() / (2 * Math.PI);
+  if (pip instanceof SVGRectElement) return Math.min(pip.width.baseVal.value, pip.height.baseVal.value) / 2;
+  const xs = Array.from((pip as SVGPolygonElement).points, (point) => point.x);
+  return (Math.max(...xs) - Math.min(...xs)) / 2;
 }
 
 function normalizePaperdollPathStyle(path: SVGPathElement): void {

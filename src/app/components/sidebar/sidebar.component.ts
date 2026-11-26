@@ -91,6 +91,11 @@ export class SidebarComponent {
         return !this.isPhone() && !this.drawerOpenState();
     });
 
+    /** Nothing but the page background is behind the sidebar: docked on desktop, or collapsed on tablet. */
+    public solid = computed(() => {
+        return this.isDesktop() || this.tinyMode();
+    });
+
     constructor() {
         window.addEventListener('pointerdown', this.onEdgePointerDown, true);
 

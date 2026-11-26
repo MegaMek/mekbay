@@ -514,7 +514,9 @@ export function drawCompactVehicleCrewPanel(
     drawVehicleDamageCheckbox(group, isVtol ? 'copilot_hit' : 'commander_hit', 57.52, 58, '+1');
     // Captions keep their natural spacing; each fits before the next column.
     addText(group, isVtol ? 'Co-Pilot Hit' : 'Commander Hit', 3, 64.4, { size: RECORD_SHEET_FONT.inventory });
-    drawVehicleDamageCheckbox(group, isVtol ? 'pilot_hit' : 'driver_hit', 130.32, 58, '+2');
+    // Anchored to the border: A4 narrows the frame, and the box keeps Letter's 4.814 gap (x 130.32).
+    drawVehicleDamageCheckbox(group, isVtol ? 'pilot_hit' : 'driver_hit',
+        SvgFrameUtil.innerRight(box.width) - 4.814 - 8, 58, '+2');
     addText(group, isVtol ? 'Pilot Hit' : 'Driver Hit', 75.8, 64.4, { size: RECORD_SHEET_FONT.inventory });
     addText(group, isVtol ? 'Modifier to all to-hit rolls' : 'Modifier to all skill rolls', 3, 72.4, { size: 4.83 });
     addText(group, 'Modifier to Driving skill rolls', 75.8, 72.4, { size: 4.83 });
@@ -688,10 +690,10 @@ export async function drawCompactVehicleDiagram(
         { subtitleId: 'armorType' },
     );
     const catalystY = presentation.catalystY ?? box.height - 24.413;
-    const armorValues: Record<string, number> = {};
-    const structureValues: Record<string, number> = {};
     // Under the Catalyst logo, at the diagram's right edge.
     addIssuesNote(group, entity, box.width, presentation.issuesNoteY ?? catalystY + 2 * CATALYST_LOGO_MIDDLE + 7.3);
+    const armorValues: Record<string, number> = {};
+    const structureValues: Record<string, number> = {};
     for (const location of entity.damageLocations()) {
         const code = location.sheetCode ?? location.code;
         armorValues[code] = location.armor.front;

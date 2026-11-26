@@ -339,26 +339,34 @@ describe('MekPaperdollGenerator', () => {
     });
 
     it('gives the fill areas of one location one pip size', async () => {
-        const source = encodeURIComponent(`
-            <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 120 50">
-                <g id="paperdoll-art-armor">
-                    <path data-fill="armor" data-location="CT" d="M 0 0 H 80 V 50 H 0 Z" />
-                    <path data-fill="armor" data-location="CT" d="M 90 0 H 95 V 50 H 90 Z" />
-                </g>
-            </svg>
-        `);
-        const armorLayer = await MekPaperdollGenerator.createArmorPaperdoll(120, 50, { CT: 9 }, {
-            assetUrl: `data:image/svg+xml,${source}`,
-            pipLayout: 'distributed',
-            scale: false,
-        });
+        const pipsOf = async (second: string, count: number): Promise<SVGCircleElement[]> => {
+            const source = encodeURIComponent(`
+                <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 120 50">
+                    <g id="paperdoll-art-armor">
+                        <path data-fill="armor" data-location="CT" d="M 0 0 H 80 V 50 H 0 Z" />
+                        <path data-fill="armor" data-location="CT" d="${second}" />
+                    </g>
+                </svg>
+            `);
+            const armorLayer = await MekPaperdollGenerator.createArmorPaperdoll(120, 50, { CT: count }, {
+                assetUrl: `data:image/svg+xml,${source}`,
+                pipLayout: 'distributed',
+                scale: false,
+            });
+            return Array.from(armorLayer.querySelectorAll<SVGCircleElement>('[data-location="CT"] circle'));
+        };
 
-        const pips = Array.from(armorLayer.querySelectorAll<SVGCircleElement>('[data-location="CT"] circle'));
-        expect(pips.length).toBe(9);
-        expect(pips.some(pip => pip.cx.baseVal.value > 90)).toBeTrue();
-        // The narrow strip alone caps its pip below the default radius of the wide area.
-        expect(new Set(pips.map(pip => pip.getAttribute('r'))).size).toBe(1);
-        expect(pips[0].r.baseVal.value).toBeLessThan(3);
+        // Two areas that both take pips show the smaller of their radii.
+        const shared = await pipsOf('M 90 0 H 120 V 50 H 90 Z', 150);
+        expect(shared.length).toBe(150);
+        expect(shared.some(pip => pip.cx.baseVal.value > 90)).toBeTrue();
+        expect(new Set(shared.map(pip => pip.getAttribute('r'))).size).toBe(1);
+
+        // A narrow strip that would shrink every pip of the location is left out.
+        const wide = await pipsOf('M 90 0 H 95 V 50 H 90 Z', 9);
+        expect(wide.length).toBe(9);
+        expect(wide.every(pip => pip.cx.baseVal.value < 90)).toBeTrue();
+        expect(wide[0].r.baseVal.value).toBeCloseTo(3, 5);
     });
 
     it('allocates authored multisection pips proportionally like MegaMekLab', async () => {
@@ -493,6 +501,32 @@ describe('MekPaperdollGenerator', () => {
         expect(zones.length).toBe(2);
         expect(zones[0].querySelectorAll('circle').length).toBe(3);
         expect(zones[1].querySelectorAll('circle').length).toBe(1);
+    });
+
+    it('renders the first rail set that holds the count', async () => {
+        const source = encodeURIComponent(`
+            <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 20">
+                <g id="paperdoll-art-armor">
+                    <g data-rail="armor" data-location="CT" data-rail-set="2">
+                        <path data-rail-capacity="5" d="M 0 4 L 20 4" />
+                        <path data-rail-capacity="5" d="M 0 16 L 20 16" />
+                    </g>
+                    <g data-rail="armor" data-location="CT">
+                        <path data-rail-capacity="5" d="M 0 10 L 50 10" />
+                    </g>
+                </g>
+            </svg>
+        `);
+        const pipsPerRail = async (count: number) => {
+            const layer = await MekPaperdollGenerator.createArmorPaperdoll(100, 20, { CT: count }, {
+                assetUrl: `data:image/svg+xml,${source}`,
+                pipLayout: 'rail',
+            });
+            return Array.from(layer.querySelectorAll('[data-layout="rail"]'), (zone) => zone.querySelectorAll('circle').length);
+        };
+
+        expect(await pipsPerRail(5)).toEqual([5]);
+        expect(await pipsPerRail(8)).toEqual([5, 3]);
     });
 
     it('shows generated fill rows as outlined placeholders when requested', async () => {

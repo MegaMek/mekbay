@@ -65,6 +65,9 @@ uses `CT_R`, `LT_R`, `RT_R`. The editable geometry declares these contracts:
   outlines can be authored directly in a drawing program.
 - `data-canon` supplies the classic biped placement bounds.
 - `data-rail` supplies authored rails for rail placement.
+  A location may carry several rail groups as alternatives, numbered by
+  `data-rail-set` (default 1) with the largest pips first: the first set that
+  holds the count renders, so light units keep large pips.
 - `.unitLocation.armor` / `.unitLocation.structure` with `data-loc` defines each
   location's silhouette hit region. A location may have multiple path fragments;
   bind and highlight all of them. Rear Mek armor also has `data-rear="1"`.

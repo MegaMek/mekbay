@@ -146,10 +146,19 @@
     flex-direction: column;
     align-items: flex-end;
     
-    &.desktop {
-        background-color: rgba(45, 45, 45, 0.8);
+    .drawer-surface {
+        position: absolute;
+        inset: 0;
+        z-index: -1;
     }
-    
+
+    &.solid {
+        .drawer-surface,
+        .burger-lip-btn {
+            background-color: var(--background-color-menu);
+        }
+    }
+
     &.open {
         transition: transform 200ms cubic-bezier(.2, .9, .2, 1);
         align-items: unset;

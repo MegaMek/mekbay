@@ -21,7 +21,7 @@
         <div class="footer">
             <sidebar-footer #footer [singleButton]="tinyMode()"></sidebar-footer>
         </div>
-        <button #burgerLipBtn class="burger-lip-btn glass" (click)="onLipButtonClick()" 
+        <button #burgerLipBtn class="burger-lip-btn" [class.glass]="!solid()" (click)="onLipButtonClick()"
             (pointerdown)="onLipPointerDown($event)" aria-label="Toggle sidebar"
             [style.--top]="lipButtonTop()"
             [style.bottom]="lipButtonTop() ? 'auto' : null">
@@ -38,11 +38,11 @@
     </div>
 }
 
-<div class="drawer glass" role="navigation"
+<div class="drawer" role="navigation"
     [class.desktop]="isDesktop()"
     [class.phone]="isPhone()"
     [class.tablet]="isTablet()"
-    [class.glass]="!isDesktop()"
+    [class.solid]="solid()"
     [style.transform]="drawerTransform()"
     [class.open]="drawerOpenState()"
     swipe
@@ -54,5 +54,7 @@
     (swipeend)="onSwipeEnd($event)"
     (swipecancel)="onSwipeCancel()"
     >
+    <!-- The glass lives on its own layer: a blurred drawer would keep the lip from blurring the page -->
+    <div class="drawer-surface" [class.glass]="!solid()"></div>
     <ng-container [ngTemplateOutlet]="sidebarContent"></ng-container>
 </div>

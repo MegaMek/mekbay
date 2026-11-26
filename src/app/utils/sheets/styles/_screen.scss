@@ -253,15 +253,19 @@
       fill: var(--damage-color) !important;
     }
 
+    // A share of each pip's radius (--pip-r, set by the generator): every pip size and zoom looks alike.
+    .pip.fresh {
+      stroke-width: calc(var(--pip-r) * 0.4);
+      vector-effect: none;
+    }
+
     .pip.fresh:not(.damaged) {
       stroke: var(--pip-pending-repair-color) !important;
-      stroke-width: 1.5px;
     }
 
     .pip.damaged.fresh {
       fill: var(--pip-fresh-damage-color) !important;
       stroke: var(--damage-color) !important;
-      stroke-width: 1.5px;
       paint-order: fill stroke;
     }
 

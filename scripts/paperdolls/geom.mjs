@@ -369,3 +369,161 @@ export function erodeRects(rects, amount) {
   }
   return result;
 }
+
+/**
+ * The part of the loops that keeps `clearance` from everything that is not free, sampled on a grid of
+ * `cell`: its outline follows the real border at an even distance, around every bump of it, instead
+ * of the stair steps of the rows it was made from. Whatever is narrower than `minWidth` (a wedge
+ * running into a corner, a neck between two drawn lines) is left out: no pip fits there. Returns outer
+ * loops (positive area) and holes.
+ */
+export function fitToFree(loops, free, clearance, cell, tolerance, minArea, minWidth = 0) {
+  const bounds = loopsBounds(loops);
+  const reach = Math.ceil(clearance / cell) + 2;
+  const x0 = (Math.floor(bounds.x0 / cell) - reach - 1) * cell, y0 = (Math.floor(bounds.y0 / cell) - reach - 1) * cell;
+  const width = Math.ceil((bounds.x1 - x0) / cell) + reach + 2, height = Math.ceil((bounds.y1 - y0) / cell) + reach + 2;
+  const far = (reach + 1) * cell;
+  // Distance, in cells, of every grid point from the nearest marked one, up to `limit` + 1.
+  const distance = (marked, limit) => {
+    const column = new Float32Array(width * height), result = new Float32Array(width * height);
+    for (let i = 0; i < width; i++) {
+      let run = limit + 1;
+      for (let j = 0; j < height; j++) {
+        run = marked[j * width + i] ? 0 : Math.min(run + 1, limit + 1);
+        column[j * width + i] = run;
+      }
+      run = limit + 1;
+      for (let j = height - 1; j >= 0; j--) {
+        run = marked[j * width + i] ? 0 : Math.min(run + 1, limit + 1);
+        column[j * width + i] = Math.min(column[j * width + i], run);
+      }
+    }
+    for (let j = 0; j < height; j++) {
+      for (let i = 0; i < width; i++) {
+        let best = (limit + 1) * (limit + 1);
+        for (let other = Math.max(0, i - limit); other <= Math.min(width - 1, i + limit); other++) {
+          const down = column[j * width + other], value = (i - other) * (i - other) + down * down;
+          if (value < best) best = value;
+        }
+        result[j * width + i] = Math.sqrt(best);
+      }
+    }
+    return result;
+  };
+  const taken = new Uint8Array(width * height);
+  for (let j = 0; j < height; j++) {
+    for (let i = 0; i < width; i++) taken[j * width + i] = free(x0 + i * cell, y0 + j * cell) ? 0 : 1;
+  }
+  const depth = distance(taken, reach);
+  // Signed distance from the loops themselves, exact only next to their outline.
+  const inside = new Uint8Array(width * height);
+  for (let j = 0; j < height; j++) {
+    // Even-odd along the grid line, as insideLoops counts: a point is inside with an odd number of crossings to its right.
+    const y = y0 + j * cell, crossings = [];
+    for (const loop of loops) {
+      for (let index = 0, previous = loop.length - 1; index < loop.length; previous = index++) {
+        const [ax, ay] = loop[index], [bx, by] = loop[previous];
+        if ((ay > y) !== (by > y)) crossings.push((bx - ax) * (y - ay) / (by - ay) + ax);
+      }
+    }
+    crossings.sort((a, b) => a - b);
+    let passed = 0;
+    for (let i = 0; i < width; i++) {
+      const x = x0 + i * cell;
+      while (passed < crossings.length && crossings[passed] <= x) passed++;
+      inside[j * width + i] = (crossings.length - passed) % 2;
+    }
+  }
+  const field = new Float32Array(width * height);
+  for (let j = 0; j < height; j++) {
+    for (let i = 0; i < width; i++) {
+      const index = j * width + i, here = inside[index];
+      const edge = (i > 0 && inside[index - 1] !== here) || (i < width - 1 && inside[index + 1] !== here)
+        || (j > 0 && inside[index - width] !== here) || (j < height - 1 && inside[index + width] !== here);
+      const own = edge ? boundaryDistance([x0 + i * cell, y0 + j * cell], loops) * (here ? 1 : -1) : here ? far : -far;
+      field[index] = Math.min(Math.min(far, depth[index] * cell) - clearance, own);
+    }
+  }
+  if (minWidth > 0) {
+    // Shrunk by half that width and grown back: what is narrower does not come back.
+    const half = minWidth / 2, limit = Math.ceil(half / cell) + 2;
+    const outside = new Uint8Array(width * height);
+    for (let index = 0; index < outside.length; index++) outside[index] = field[index] > 0 ? 0 : 1;
+    const core = distance(outside, limit);
+    for (let index = 0; index < core.length; index++) core[index] = core[index] * cell >= half ? 1 : 0;
+    const back = distance(core, limit);
+    for (let index = 0; index < field.length; index++) field[index] = Math.min(field[index], half + cell / 2 - back[index] * cell);
+  }
+  // Marching squares, the crossings interpolated.
+  const value = (i, j) => (i < 0 || j < 0 || i >= width || j >= height ? -far : field[j * width + i]);
+  const nodes = new Map(), links = new Map();
+  const cross = (i0, j0, i1, j1) => {
+    const key = `${i0},${j0},${i1},${j1}`;
+    if (!nodes.has(key)) {
+      const a = value(i0, j0), b = value(i1, j1), t = a / (a - b);
+      nodes.set(key, [x0 + (i0 + (i1 - i0) * t) * cell, y0 + (j0 + (j1 - j0) * t) * cell]);
+      links.set(key, []);
+    }
+    return key;
+  };
+  const link = (a, b) => { links.get(a).push(b); links.get(b).push(a); };
+  for (let j = 0; j < height - 1; j++) {
+    for (let i = 0; i < width - 1; i++) {
+      const code = (value(i, j) > 0 ? 1 : 0) | (value(i + 1, j) > 0 ? 2 : 0) | (value(i + 1, j + 1) > 0 ? 4 : 0) | (value(i, j + 1) > 0 ? 8 : 0);
+      if (code === 0 || code === 15) continue;
+      const top = () => cross(i, j, i + 1, j), right = () => cross(i + 1, j, i + 1, j + 1);
+      const bottom = () => cross(i, j + 1, i + 1, j + 1), left = () => cross(i, j, i, j + 1);
+      if (code === 1 || code === 14) link(left(), top());
+      else if (code === 2 || code === 13) link(top(), right());
+      else if (code === 4 || code === 11) link(right(), bottom());
+      else if (code === 8 || code === 7) link(left(), bottom());
+      else if (code === 3 || code === 12) link(left(), right());
+      else if (code === 6 || code === 9) link(top(), bottom());
+      else if (code === 5) { link(left(), top()); link(right(), bottom()); } else { link(top(), right()); link(left(), bottom()); }
+    }
+  }
+  const traced = [];
+  const used = new Set();
+  for (const start of links.keys()) {
+    if (used.has(start)) continue;
+    const loop = [];
+    let current = start, previous = null;
+    do {
+      used.add(current);
+      loop.push(nodes.get(current));
+      const [first, second] = links.get(current);
+      const next = first !== previous ? first : second;
+      previous = current;
+      current = next;
+    } while (current !== undefined && current !== start);
+    traced.push(loop);
+  }
+  // Douglas-Peucker on each closed loop, split at its two points farthest apart.
+  const reduce = (points) => {
+    const keep = new Uint8Array(points.length);
+    keep[0] = keep[points.length - 1] = 1;
+    const stack = [[0, points.length - 1]];
+    while (stack.length) {
+      const [from, to] = stack.pop();
+      let worst = 0, at = -1;
+      for (let index = from + 1; index < to; index++) {
+        const gap = pointSegmentDistance(points[index], points[from], points[to]);
+        if (gap > worst) { worst = gap; at = index; }
+      }
+      if (worst > tolerance) { keep[at] = 1; stack.push([from, at], [at, to]); }
+    }
+    return points.filter((_, index) => keep[index]);
+  };
+  const simplified = traced.filter((loop) => loop.length >= 4 && Math.abs(signedArea(loop)) >= minArea).map((loop) => {
+    let apart = 0;
+    loop.forEach((point, index) => {
+      if (Math.hypot(point[0] - loop[0][0], point[1] - loop[0][1]) > Math.hypot(loop[apart][0] - loop[0][0], loop[apart][1] - loop[0][1])) apart = index;
+    });
+    return [...reduce(loop.slice(0, apart + 1)), ...reduce([...loop.slice(apart), loop[0]]).slice(1, -1)];
+  }).filter((loop) => loop.length >= 3);
+  // Outer loops run one way and holes the other, as rectUnionLoops gives them.
+  return simplified.map((loop, index) => {
+    const hole = simplified.filter((other, otherIndex) => otherIndex !== index && insideLoops(loop[0], [other])).length % 2 === 1;
+    return (signedArea(loop) > 0) === hole ? loop.slice().reverse() : loop;
+  });
+}

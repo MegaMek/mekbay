@@ -10,28 +10,44 @@
 
       <g transform="matrix(1,0,0,-1,0,765)">
         <g id="armorPips-rear">
-          <path data-fill="armor" data-location="CT_R" d="M 471.56 305.22 L 499.26 305.22 L 499.26 351.78 L 471.56 351.78 Z" style="fill: none; stroke: rgb(0, 0, 255); stroke-width: 1; stroke-dasharray: 2;"/>
+          <path data-fill="armor" data-location="CT_R" d="M 498.4 302.32 L 499.2 302.7 L 499.76 303.4 L 499.88 352.6 L 499.5 353.4 L 498.8 353.96 L 472.4 354.03 L 471.24 353 L 471.12 303.8 L 471.5 303 L 472.4 302.35 Z" style="fill: none; stroke: rgb(0, 0, 255); stroke-width: 1; stroke-dasharray: 2;"/>
           <g data-rail="armor" data-location="CT_R">
-            <path d="M 472.87 308.18 L 495.67 308.18" style="fill: none; stroke: rgb(0, 255, 0); stroke-width: 1; stroke-linecap: round; stroke-dasharray: 2;" data-rail-capacity="5" data-rail-index="1"/>
-            <path d="M 472.87 317.21 L 495.67 317.21" style="fill: none; stroke: rgb(0, 255, 0); stroke-width: 1; stroke-linecap: round; stroke-dasharray: 2;" data-rail-capacity="5" data-rail-index="2"/>
-            <path d="M 472.87 326.24 L 495.67 326.24" style="fill: none; stroke: rgb(0, 255, 0); stroke-width: 1; stroke-linecap: round; stroke-dasharray: 2;" data-rail-capacity="5" data-rail-index="3"/>
-            <path d="M 472.87 335.27 L 495.67 335.27" style="fill: none; stroke: rgb(0, 255, 0); stroke-width: 1; stroke-linecap: round; stroke-dasharray: 2;" data-rail-capacity="5" data-rail-index="4"/>
-            <path d="M 472.87 344.3 L 495.67 344.3" style="fill: none; stroke: rgb(0, 255, 0); stroke-width: 1; stroke-linecap: round; stroke-dasharray: 2;" data-rail-capacity="5" data-rail-index="5"/>
-            <path d="M 475.15 312.7 L 497.95 312.7" style="fill: none; stroke: rgb(0, 255, 0); stroke-width: 1; stroke-linecap: round; stroke-dasharray: 2;" data-rail-capacity="5" data-rail-index="6"/>
+            <path d="M 477.08 311.43 L 477.08 341.43" style="fill: none; stroke: rgb(0, 255, 0); stroke-width: 1; stroke-linecap: round; stroke-dasharray: 2;" data-rail-capacity="5" data-rail-index="1"/>
+            <path d="M 493.92 311.43 L 493.92 341.43" style="fill: none; stroke: rgb(0, 255, 0); stroke-width: 1; stroke-linecap: round; stroke-dasharray: 2;" data-rail-capacity="5" data-rail-index="2"/>
+            <path d="M 482.69 314.43 L 482.69 344.43" style="fill: none; stroke: rgb(0, 255, 0); stroke-width: 1; stroke-linecap: round; stroke-dasharray: 2;" data-rail-capacity="5" data-rail-index="3"/>
+            <path d="M 488.31 314.43 L 488.31 344.43" style="fill: none; stroke: rgb(0, 255, 0); stroke-width: 1; stroke-linecap: round; stroke-dasharray: 2;" data-rail-capacity="5" data-rail-index="4"/>
           </g>
-          <path data-fill="armor" data-location="RT_R" d="M 502.72 306.72 L 513.15 306.72 L 518.28 318.72 L 524.28 318.72 L 524.28 324.72 L 530.28 324.72 L 530.28 335.28 L 526.28 335.28 L 521.28 347.28 L 502.72 347.28 Z" style="fill: none; stroke: rgb(0, 0, 255); stroke-width: 1; stroke-dasharray: 2;"/>
+          <g data-rail="armor" data-location="CT_R" data-rail-set="2">
+            <path d="M 476.52 303.29 L 476.52 326.09" style="fill: none; stroke: rgb(0, 255, 0); stroke-width: 1; stroke-linecap: round; stroke-dasharray: 2;" data-rail-capacity="5" data-rail-index="1"/>
+            <path d="M 494.48 303.29 L 494.48 326.09" style="fill: none; stroke: rgb(0, 255, 0); stroke-width: 1; stroke-linecap: round; stroke-dasharray: 2;" data-rail-capacity="5" data-rail-index="2"/>
+            <path d="M 476.52 330.08 L 476.52 352.88" style="fill: none; stroke: rgb(0, 255, 0); stroke-width: 1; stroke-linecap: round; stroke-dasharray: 2;" data-rail-capacity="5" data-rail-index="3"/>
+            <path d="M 494.48 330.08 L 494.48 352.88" style="fill: none; stroke: rgb(0, 255, 0); stroke-width: 1; stroke-linecap: round; stroke-dasharray: 2;" data-rail-capacity="5" data-rail-index="4"/>
+            <path d="M 485.5 305.57 L 485.5 328.37" style="fill: none; stroke: rgb(0, 255, 0); stroke-width: 1; stroke-linecap: round; stroke-dasharray: 2;" data-rail-capacity="5" data-rail-index="5"/>
+            <path d="M 485.5 330.08 L 485.5 352.88" style="fill: none; stroke: rgb(0, 255, 0); stroke-width: 1; stroke-linecap: round; stroke-dasharray: 2;" data-rail-capacity="5" data-rail-index="6"/>
+          </g>
+          <path data-fill="armor" data-location="RT_R" d="M 513.8 306.75 L 521.31 314.4 L 528 321.8 L 531.6 325.2 L 531.8 325.8 L 534.2 328.2 L 534.36 329.6 L 522.4 347.16 L 504 347.25 L 503.1 346.6 L 502.72 345.8 L 502.75 308 L 503.4 307.1 L 504.2 306.72 Z" style="fill: none; stroke: rgb(0, 0, 255); stroke-width: 1; stroke-dasharray: 2;"/>
           <g data-rail="armor" data-location="RT_R">
-            <path d="M 515.39 317.95 L 515.39 340.75" style="fill: none; stroke: rgb(0, 255, 0); stroke-width: 1; stroke-linecap: round; stroke-dasharray: 2;" data-rail-capacity="5" data-rail-index="1"/>
-            <path d="M 506.27 317.95 L 506.27 340.75" style="fill: none; stroke: rgb(0, 255, 0); stroke-width: 1; stroke-linecap: round; stroke-dasharray: 2;" data-rail-capacity="5" data-rail-index="2"/>
-            <path d="M 510.83 320.23 L 510.83 343.03" style="fill: none; stroke: rgb(0, 255, 0); stroke-width: 1; stroke-linecap: round; stroke-dasharray: 2;" data-rail-capacity="5" data-rail-index="3"/>
-            <path d="M 519.95 320.23 L 519.95 343.03" style="fill: none; stroke: rgb(0, 255, 0); stroke-width: 1; stroke-linecap: round; stroke-dasharray: 2;" data-rail-capacity="5" data-rail-index="4"/>
+            <path d="M 512.16 310.21 L 512.16 340.21" style="fill: none; stroke: rgb(0, 255, 0); stroke-width: 1; stroke-linecap: round; stroke-dasharray: 2;" data-rail-capacity="5" data-rail-index="1"/>
+            <path d="M 517.78 313.21 L 517.78 343.21" style="fill: none; stroke: rgb(0, 255, 0); stroke-width: 1; stroke-linecap: round; stroke-dasharray: 2;" data-rail-capacity="5" data-rail-index="2"/>
+            <path d="M 506.55 313.21 L 506.55 343.21" style="fill: none; stroke: rgb(0, 255, 0); stroke-width: 1; stroke-linecap: round; stroke-dasharray: 2;" data-rail-capacity="5" data-rail-index="3"/>
           </g>
-          <path data-fill="armor" data-location="LT_R" d="M 457.85 306.72 L 468.28 306.72 L 468.28 347.28 L 449.72 347.28 L 444.72 335.28 L 440.72 335.28 L 440.72 324.72 L 446.72 324.72 L 446.72 318.72 L 452.72 318.72 Z" style="fill: none; stroke: rgb(0, 0, 255); stroke-width: 1; stroke-dasharray: 2;"/>
+          <g data-rail="armor" data-location="RT_R" data-rail-set="2">
+            <path d="M 516.73 314.01 L 516.73 342.21" style="fill: none; stroke: rgb(0, 255, 0); stroke-width: 1; stroke-linecap: round; stroke-dasharray: 2;" data-rail-capacity="5" data-rail-index="1"/>
+            <path d="M 505.51 314.01 L 505.51 342.21" style="fill: none; stroke: rgb(0, 255, 0); stroke-width: 1; stroke-linecap: round; stroke-dasharray: 2;" data-rail-capacity="5" data-rail-index="2"/>
+            <path d="M 511.12 316.83 L 511.12 345.03" style="fill: none; stroke: rgb(0, 255, 0); stroke-width: 1; stroke-linecap: round; stroke-dasharray: 2;" data-rail-capacity="5" data-rail-index="3"/>
+            <path d="M 522.35 316.83 L 522.35 345.03" style="fill: none; stroke: rgb(0, 255, 0); stroke-width: 1; stroke-linecap: round; stroke-dasharray: 2;" data-rail-capacity="5" data-rail-index="4"/>
+          </g>
+          <path data-fill="armor" data-location="LT_R" d="M 466.8 306.72 L 467.6 307.1 L 468.25 308 L 468.28 345.8 L 467.9 346.6 L 467 347.25 L 448.6 347.16 L 436.64 329.6 L 436.8 328.2 L 439.2 325.8 L 439.4 325.2 L 443 321.8 L 449.69 314.4 L 457.2 306.75 Z" style="fill: none; stroke: rgb(0, 0, 255); stroke-width: 1; stroke-dasharray: 2;"/>
           <g data-rail="armor" data-location="LT_R">
-            <path d="M 455.61 317.95 L 455.61 340.75" style="fill: none; stroke: rgb(0, 255, 0); stroke-width: 1; stroke-linecap: round; stroke-dasharray: 2;" data-rail-capacity="5" data-rail-index="1"/>
-            <path d="M 464.73 317.95 L 464.73 340.75" style="fill: none; stroke: rgb(0, 255, 0); stroke-width: 1; stroke-linecap: round; stroke-dasharray: 2;" data-rail-capacity="5" data-rail-index="2"/>
-            <path d="M 460.17 320.23 L 460.17 343.03" style="fill: none; stroke: rgb(0, 255, 0); stroke-width: 1; stroke-linecap: round; stroke-dasharray: 2;" data-rail-capacity="5" data-rail-index="3"/>
-            <path d="M 451.05 320.23 L 451.05 343.03" style="fill: none; stroke: rgb(0, 255, 0); stroke-width: 1; stroke-linecap: round; stroke-dasharray: 2;" data-rail-capacity="5" data-rail-index="4"/>
+            <path d="M 458.84 310.21 L 458.84 340.21" style="fill: none; stroke: rgb(0, 255, 0); stroke-width: 1; stroke-linecap: round; stroke-dasharray: 2;" data-rail-capacity="5" data-rail-index="1"/>
+            <path d="M 453.22 313.21 L 453.22 343.21" style="fill: none; stroke: rgb(0, 255, 0); stroke-width: 1; stroke-linecap: round; stroke-dasharray: 2;" data-rail-capacity="5" data-rail-index="2"/>
+            <path d="M 464.45 313.21 L 464.45 343.21" style="fill: none; stroke: rgb(0, 255, 0); stroke-width: 1; stroke-linecap: round; stroke-dasharray: 2;" data-rail-capacity="5" data-rail-index="3"/>
+          </g>
+          <g data-rail="armor" data-location="LT_R" data-rail-set="2">
+            <path d="M 454.27 314.01 L 454.27 342.21" style="fill: none; stroke: rgb(0, 255, 0); stroke-width: 1; stroke-linecap: round; stroke-dasharray: 2;" data-rail-capacity="5" data-rail-index="1"/>
+            <path d="M 465.49 314.01 L 465.49 342.21" style="fill: none; stroke: rgb(0, 255, 0); stroke-width: 1; stroke-linecap: round; stroke-dasharray: 2;" data-rail-capacity="5" data-rail-index="2"/>
+            <path d="M 459.88 316.83 L 459.88 345.03" style="fill: none; stroke: rgb(0, 255, 0); stroke-width: 1; stroke-linecap: round; stroke-dasharray: 2;" data-rail-capacity="5" data-rail-index="3"/>
+            <path d="M 448.65 316.83 L 448.65 345.03" style="fill: none; stroke: rgb(0, 255, 0); stroke-width: 1; stroke-linecap: round; stroke-dasharray: 2;" data-rail-capacity="5" data-rail-index="4"/>
           </g>
         </g>
       </g>

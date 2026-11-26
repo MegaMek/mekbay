@@ -118,6 +118,8 @@ interface RailDefinition {
 interface RailGroup {
   type: PaperdollPlaceholderType;
   location: string;
+  /** Alternative rail sets of one location, largest pips first; the first that holds the count renders. */
+  set: number;
   rails: RailDefinition[];
   elements: SVGElement[];
 }
@@ -605,11 +607,15 @@ export class PaperdollGenerator {
       return;
     }
 
-    let group = groups.find((candidate) => candidate.type === context.type && candidate.location === context.location);
+    const set = this.parsePositiveInteger(element.getAttribute('data-rail-set')) ?? 1;
+    let group = groups.find(
+      (candidate) => candidate.type === context.type && candidate.location === context.location && candidate.set === set,
+    );
     if (!group) {
       const createdGroup: RailGroup = {
         type: context.type,
         location: context.location,
+        set,
         rails: [],
         elements: [],
       };
@@ -722,7 +728,7 @@ export class PaperdollGenerator {
     if (requestedLayout !== 'rail') {
       return;
     }
-    for (const group of groups) {
+    for (const group of [...groups].sort((first, second) => first.set - second.set)) {
       const key = this.getPlaceholderKey(group.type, group.location);
       if (blockedKeys.has(key)) {
         continue;
@@ -960,8 +966,8 @@ export class PaperdollGenerator {
       );
     }
 
-    const allocations = this.allocateFillAreaPips(group, count);
-    const renderAreas = (areaOptions: PaperdollOptions): SVGGElement[] | null => {
+    const weights = this.fillAreaWeights(group, options.generateFillRows !== false, pipOptions.rowHeight);
+    const renderAreas = (allocations: number[], areaOptions: PaperdollOptions): SVGGElement[] | null => {
       const areas: SVGGElement[] = [];
       for (let index = 0; index < group.areas.length; index++) {
         const areaCount = allocations[index];
@@ -983,18 +989,65 @@ export class PaperdollGenerator {
       }
       return areas;
     };
-    let rendered = renderAreas(options);
-    if (!rendered || rendered.length === 0) {
+    // One location shows one pip size: its areas share the smallest radius any of them needs.
+    const smallestRadius = (areas: SVGGElement[]): number =>
+      Math.min(
+        ...areas.flatMap((pips) => Array.from(pips.querySelectorAll('circle'), (pip) => pip.r.baseVal.value)),
+      );
+    // Every area takes its share, unless leaving some out lets the pips grow: a narrow corner must not
+    // shrink the pips of the whole location. Areas with the same room (a mirrored pair) stay together.
+    const bySize = weights.map((_, index) => index).sort((left, right) => weights[right] - weights[left]);
+    const sets: number[][] = [];
+    for (const index of bySize) {
+      const last = sets[sets.length - 1];
+      if (last && weights[last[0]] - weights[index] <= weights[last[0]] * 0.02) {
+        last.push(index);
+      } else {
+        sets.push([index]);
+      }
+    }
+    // Every choice of sets while they are few, most areas first; otherwise only the largest ones.
+    const choices =
+      sets.length <= 4
+        ? Array.from({ length: 2 ** sets.length - 1 }, (_, mask) => sets.filter((_set, bit) => !((mask >> bit) & 1)))
+        : sets.map((_set, dropped) => sets.slice(0, sets.length - dropped));
+    choices.sort((left, right) => right.flat().length - left.flat().length);
+    let chosen: { allocations: number[]; rendered: SVGGElement[]; radius: number } | null = null;
+    for (const choice of choices) {
+      const active = new Set(choice.flat());
+      const allocations = this.allocateFillAreaPips(
+        weights.map((weight, index) => (active.has(index) ? weight : 0)),
+        count,
+      );
+      // A mirrored pair takes the same count on each side: what is left over goes to the largest
+      // area that stands alone (on the axis), if there is one.
+      const alone = choice.find((set) => set.length === 1)?.[0];
+      for (const set of choice) {
+        const total = set.reduce((sum, index) => sum + allocations[index], 0);
+        if (set.length === 1 || alone === undefined || total % set.length === 0) {
+          continue;
+        }
+        const each = Math.floor(total / set.length);
+        set.forEach((index) => (allocations[index] = each));
+        allocations[alone] += total - each * set.length;
+      }
+      const areas = renderAreas(allocations, options);
+      if (!areas || areas.length === 0) {
+        continue;
+      }
+      const radius = smallestRadius(areas);
+      if (!chosen || radius > chosen.radius + 1e-6) {
+        chosen = { allocations, rendered: areas, radius };
+      }
+    }
+    if (!chosen) {
       return null;
     }
-    // One location shows one pip size: its areas share the smallest radius any of them needs.
-    const radii = rendered.flatMap((pips) =>
-      Array.from(pips.querySelectorAll('circle'), (pip) => pip.r.baseVal.value),
-    );
-    const pipRadius = Math.min(...radii);
-    if (radii.some((radius) => radius > pipRadius + 1e-6)) {
+    let { rendered } = chosen;
+    const pipRadius = chosen.radius;
+    if (rendered.some((pips) => smallestRadius([pips]) > pipRadius + 1e-6)) {
       rendered =
-        renderAreas({
+        renderAreas(chosen.allocations, {
           ...options,
           pipOptions: { ...options.pipOptions, pipRadius },
           structurePipOptions: options.structurePipOptions && { ...options.structurePipOptions, pipRadius },
@@ -1216,9 +1269,16 @@ export class PaperdollGenerator {
     }
   }
 
-  private static allocateFillAreaPips(group: FillPlaceholderGroup, count: number): number[] {
-    const pipCount = Math.floor(count);
-    const areas = group.areas.map((area) => {
+  /**
+   * The room each area of a location really has: the rows of its outline, not its bounding box, which
+   * would give a slanted or tapering area far more pips than fit in it.
+   */
+  private static fillAreaWeights(group: FillPlaceholderGroup, generateRows: boolean, rowHeight?: number): number[] {
+    return group.areas.map((area) => {
+      const profile = generateRows ? PipShapeProfileGenerator.createProfile(area.geometry, rowHeight)?.profile : null;
+      if (profile) {
+        return profile.spans.reduce((sum, span) => sum + span.width * span.height, 0);
+      }
       try {
         const bounds = area.geometry.getBBox();
         return bounds.width > 0 && bounds.height > 0 ? bounds.width * bounds.height : 0;
@@ -1226,6 +1286,11 @@ export class PaperdollGenerator {
         return 0;
       }
     });
+  }
+
+  /** Shares pips among areas in proportion to their weights; an area of no weight gets none. */
+  private static allocateFillAreaPips(areas: number[], count: number): number[] {
+    const pipCount = Math.floor(count);
     const totalArea = areas.reduce((sum, area) => sum + area, 0);
     const weights = totalArea > 0 ? areas : areas.map(() => 1);
     const weightTotal = weights.reduce((sum, area) => sum + area, 0);
@@ -1334,6 +1399,7 @@ export class PaperdollGenerator {
   private static clearPlaceholderAttributes(element: SVGElement): void {
     element.removeAttribute('data-canon');
     element.removeAttribute('data-rail');
+    element.removeAttribute('data-rail-set');
     element.removeAttribute('data-fill');
     element.removeAttribute('data-location');
     element.removeAttribute('data-rail-index');

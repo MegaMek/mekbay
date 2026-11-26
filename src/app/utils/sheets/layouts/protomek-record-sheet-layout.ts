@@ -615,7 +615,8 @@ async function drawCompactProtoMekDiagram(
                     ...paperdollPipOptions(pipLayout, 3, 0.62),
                     strokeWidth: 0.5,
                 },
-                structurePipOptions: { pipRadius: 1, minPipRadius: 1, fill: '#c7c7c7' },
+                // Internal structure pips share the armor's size; their grey fill and drawn sub-area tell them apart.
+                structurePipOptions: { fill: '#c7c7c7' },
             },
         );
         if (!entity.hasMainGun()) {

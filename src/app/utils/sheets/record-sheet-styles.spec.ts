@@ -158,6 +158,23 @@ describe('generated record-sheet styles', () => {
         }
     });
 
+    it('rings fresh damage and repair with the same share of every pip, small or large', async () => {
+        const sheets = await Promise.all([new TestProtoMekEntity(), new TestQuadMekEntity()]
+            .map(entity => RecordSheetSvgGenerator.generate(entity, { ruleset: 'total-warfare' })));
+        stage.append(...sheets);
+        const pips = sheets.flatMap(svg => [...svg.querySelectorAll<SVGGraphicsElement>('.pip.armor, .pip.structure')]);
+        expect(pips.some(pip => pip instanceof SVGPathElement)).withContext('authored canon pips').toBeTrue();
+        for (const pip of pips.filter(pip => pip.getBBox().height > 0)) {
+            const radius = pip.getBBox().height / 2;
+            for (const state of ['damaged fresh', 'fresh']) {
+                pip.classList.add(...state.split(' '));
+                const width = Number(/[\d.]+/u.exec(getComputedStyle(pip).strokeWidth)![0]);
+                expect(width / radius).withContext(`${state} ${pip.outerHTML.slice(0, 80)}`).toBeCloseTo(0.4, 2);
+                pip.classList.remove(...state.split(' '));
+            }
+        }
+    });
+
     it('distinguishes custom ammo while keeping damage color dominant', async () => {
         const svg = await RecordSheetSvgGenerator.generate(new TestBipedMekEntity(), { ruleset: 'total-warfare' });
         stage.appendChild(svg);
