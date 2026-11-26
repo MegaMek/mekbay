@@ -106,6 +106,17 @@
   background: #888;
 }
 
+/* Firefox has no ::-webkit-scrollbar; Chromium drops the rules above wherever these properties are set. */
+@supports not selector(::-webkit-scrollbar) {
+  html {
+    scrollbar-color: #666 transparent;
+  }
+
+  * {
+    scrollbar-width: thin;
+  }
+}
+
 .customAmmoLoadout {
   color: var(--primary-focus-color);
 }
@@ -1522,6 +1533,7 @@ span {
   font-size: 0.6rem;
   font-weight: 600;
   line-height: 0;
+  letter-spacing: normal;
   text-transform: none;
 }
 

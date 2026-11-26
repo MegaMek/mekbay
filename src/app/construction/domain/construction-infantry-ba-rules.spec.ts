@@ -10,7 +10,7 @@ import { encodeNativeEntity } from '../../models/entity/write-entity';
 import { parseEntity } from '../../models/entity/parse-entity';
 import { PREDEFINED_INFANTRY_MOUNTS } from '../../models/entity/types/infantry';
 import { createConstructionEntity } from './construction-factory';
-import { constructionInfantryBaMessages } from './construction-infantry-ba-rules';
+import { battleArmorPropulsionMount, constructionInfantryBaMessages, syncBattleArmorPropulsionEquipment } from './construction-infantry-ba-rules';
 import { constructionEquipmentConflictMessages } from './construction-equipment-conflicts';
 
 const misc = (id: string, flags: EquipmentFlag[]) => new MiscEquipment({ id, name: id, type: 'misc', flags: ['F_BA_EQUIPMENT', ...flags], stats: { criticalSlots: 0, tonnage: 0.01 } });
@@ -27,7 +27,9 @@ const wing = misc('TestWing', ['F_PARTIAL_WING']);
 const booster = misc('TestBooster', ['F_JUMP_BOOSTER']);
 const mechanical = misc('TestMechanical', ['F_MECHANICAL_JUMP_BOOSTER']);
 const myomer = misc('TestMyomer', ['F_MASC']);
-const registry = createTestEquipmentRegistry(Object.fromEntries([rifle, support, gun, ammo, ap, glove, pack, paired, adapter, wing, booster, mechanical, myomer].map(eq => [eq.id, eq])));
+const jumpJet = misc('BAJumpJet', ['F_JUMP_JET']);
+const vtol = misc('BAVTOL', ['F_BA_VTOL']);
+const registry = createTestEquipmentRegistry(Object.fromEntries([rifle, support, gun, ammo, ap, glove, pack, paired, adapter, wing, booster, mechanical, myomer, jumpJet, vtol].map(eq => [eq.id, eq])));
 const ba = () => createConstructionEntity('BattleArmor', registry) as BattleArmorEntity;
 const infantry = () => createConstructionEntity('Infantry', registry) as InfantryEntity;
 const codes = (entity: BattleArmorEntity | InfantryEntity) => [...constructionInfantryBaMessages(entity), ...constructionEquipmentConflictMessages(entity)].map(message => message.code);
@@ -37,6 +39,18 @@ const add = (entity: BattleArmorEntity, equipment: Equipment, values: Partial<En
 });
 
 describe('battle armor attachment and infantry construction predicates', () => {
+    it('keeps one slotless propulsion item matching the movement system', () => {
+        const unit = ba();
+        const propulsion = () => unit.equipment().map(mount => mount.equipmentId).filter(id => [jumpJet.id, vtol.id].includes(id));
+        unit.motiveType.set('Jump'); syncBattleArmorPropulsionEquipment(unit);
+        expect(propulsion()).toEqual([jumpJet.id]);
+        expect(battleArmorPropulsionMount(unit)?.location).toBe('None');
+        unit.motiveType.set('VTOL'); syncBattleArmorPropulsionEquipment(unit); syncBattleArmorPropulsionEquipment(unit);
+        expect(propulsion()).toEqual([vtol.id]);
+        unit.motiveType.set('Leg'); syncBattleArmorPropulsionEquipment(unit);
+        expect(propulsion()).toEqual([]);
+    });
+
     it('uses motive, specialist and beast squad/platoon ceilings', () => {
         const unit = infantry();
         unit.motiveType.set('VTOL'); unit.isMicrolite.set(true); unit.squadSize.set(3); unit.squadCount.set(4);

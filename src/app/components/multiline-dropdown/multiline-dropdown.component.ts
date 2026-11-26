@@ -83,6 +83,8 @@ interface MultilineDropdownPointerHoverEvent {
             width: max-content;
             min-width: 100%;
             max-width: calc(100dvw - 8px);
+            /* max-content ignores an auto scrollbar, which would then cover the labels. */
+            scrollbar-gutter: stable;
         }
 
         .multiline-dropdown-options {

@@ -52,6 +52,16 @@ export function isParafoilEquipment(equipment: Equipment | null | undefined): bo
   return equipment?.hasFlag('F_PARAFOIL') === true;
 }
 
+/**
+ * The item a suit carries for its movement system. MegaMek keeps it at no location and takes no slot for it
+ * (BLKBattleArmorFile); the movement system decides it, so it is never picked or placed.
+ */
+export const BATTLE_ARMOR_PROPULSION_EQUIPMENT: Readonly<Record<string, string>> = Object.freeze({
+  Jump: 'BAJumpJet',
+  VTOL: 'BAVTOL',
+  UMU: 'BAUMU',
+});
+
 export function isBattleArmorVtolEquipment(equipment: Equipment | null | undefined): boolean {
   return equipment?.hasFlag('F_BA_VTOL') === true;
 }

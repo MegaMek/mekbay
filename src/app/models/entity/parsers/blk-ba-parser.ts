@@ -26,6 +26,7 @@ import { parseBaseBlk } from './blk-base-parser';
 import { parseEquipmentLine } from './equipment-resolver';
 import { installedMaterialSlotName } from './material-slot-name';
 import { ParseContext } from './parse-context';
+import { BATTLE_ARMOR_PROPULSION_EQUIPMENT } from '../../battle-armor-equipment.model';
 
 // ============================================================================
 // Public API
@@ -124,11 +125,7 @@ export function parseBlkBA(bb: BuildingBlock, ctx: ParseContext): BattleArmorEnt
 
 // Fallback from BLKBattleArmorFile.java:168 to add slotless equipment for movement
 function addMissingMovementEquipment(entity: BattleArmorEntity, ctx: ParseContext): void {
-  const equipmentId = new Map([
-    ['Jump', 'BAJumpJet'],
-    ['VTOL', 'BAVTOL'],
-    ['UMU', 'BAUMU'],
-  ]).get(entity.motiveType());
+  const equipmentId = BATTLE_ARMOR_PROPULSION_EQUIPMENT[entity.motiveType()];
   if (!equipmentId) return;
 
   const resolved = ctx.resolveEquipment(equipmentId, 'motion_type');

@@ -318,6 +318,11 @@ describe('construction system choices', () => {
     const support = createConstructionEntity('SupportTank', registry);
     field(support, 'tonnage').set(2.5);
     expect(support.tonnage()).toBe(2.5);
+    expect([field(support, 'tonnage').min, field(support, 'tonnage').step]).toEqual([0.001, 0.001]);
+    field(support, 'tonnage').set(20);
+    expect([field(support, 'tonnage').min, field(support, 'tonnage').step]).toEqual([0.5, 0.5]);
+    field(support, 'tonnage').set(0.1);
+    expect(support.tonnage()).toBe(0.1);
   });
 
   it('does not let removable loadout mass or an absent engine hide movement choices', () => {

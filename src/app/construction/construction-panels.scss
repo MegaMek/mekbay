@@ -156,7 +156,12 @@
 }
 .design-picker {
   position: absolute;
-  inset: 8% max(20px, calc((100% - 760px) / 2));
+  /* As tall as its content, centred, and never taller than the space between the block insets. */
+  --picker-inset-block: 8%;
+  inset: var(--picker-inset-block) max(20px, calc((100% - 760px) / 2));
+  height: fit-content;
+  max-height: calc(100% - 2 * var(--picker-inset-block));
+  margin-block: auto;
   z-index: 11;
   display: flex;
   flex-direction: column;
@@ -617,6 +622,7 @@
     display: none;
   }
   .design-picker {
+    --picker-inset-block: 14px;
     inset: 14px;
     --picker-padding: 18px;
   }
@@ -631,6 +637,9 @@
   }
   .validation-panel {
     max-height: 180px;
+  }
+  .save-button {
+    width: 100%;
   }
 }
 

@@ -32,6 +32,7 @@ describe('building map elevator doors', () => {
 
   it('scrolls a zoomed map on both axes and supports switching back to wheel zoom', () => {
     const component = fixture.componentInstance;
+    component.optionsService.options.update(value => ({ ...value, mouseWheelAction: 'scroll' }));
     component.zoom.set(400);
     fixture.detectChanges();
     const svg = fixture.nativeElement.querySelector('svg.map-svg, svg') as SVGSVGElement;

@@ -28,19 +28,19 @@ describe('OptionsService theme migration', () => {
 
     afterEach(() => TestBed.resetTestingModule());
 
-    it('defaults old saves to scrolling and persists the wheel zoom preference across reloads', async () => {
+    it('defaults old saves to wheel zoom and persists the scrolling preference across reloads', async () => {
         savedOptions = {};
         let service = await createService();
-        expect(service.options().mouseWheelAction).toBe('scroll');
-        await service.setOption('mouseWheelAction', 'zoom');
+        expect(service.options().mouseWheelAction).toBe('zoom');
+        await service.setOption('mouseWheelAction', 'scroll');
         savedOptions = dbService.saveOptions.calls.mostRecent().args[0];
         TestBed.resetTestingModule();
         service = await createService();
-        expect(service.options().mouseWheelAction).toBe('zoom');
+        expect(service.options().mouseWheelAction).toBe('scroll');
         TestBed.resetTestingModule();
         savedOptions = { mouseWheelAction: 'invalid' };
         service = await createService();
-        expect(service.options().mouseWheelAction).toBe('scroll');
+        expect(service.options().mouseWheelAction).toBe('zoom');
     });
 
     it('updates paper size immediately, preserves the other print settings, and reloads it from storage', async () => {

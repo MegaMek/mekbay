@@ -121,7 +121,7 @@ describe('construction system technology', () => {
     expect(technologyIssues().map(message => [message.code, message.location])).toEqual([
       ['MATERIAL_TECH_LEVEL', undefined], ['TECH_LEVEL_EXCEEDED', 'LT'], ['TECH_LEVEL_EXCEEDED', 'RT'],
     ]);
-    expect(equipmentPlacementIssues(entity, caseEquipment, 'LA')).toContain('Requires a torso.');
+    expect(equipmentPlacementIssues(entity, caseEquipment, 'LA')).toContain('Requires a torso location.');
     expect(equipmentPlacementIssues(entity, caseEquipment, 'LA')).toContain('Exceeds the selected rules level.');
   });
 

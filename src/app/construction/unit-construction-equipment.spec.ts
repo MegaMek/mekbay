@@ -575,11 +575,11 @@ describe('construction equipment warehouse', () => {
     await fixture.whenStable();
     const root = fixture.nativeElement as HTMLElement;
     const line = root.querySelector<HTMLElement>('.bv-line')!;
-    expect(line.textContent!.replace(/\s/g, '')).toBe('(+250)750/1,730BV');
+    expect(line.textContent!.replace(/\s/g, '')).toBe('(+250)750/1,730BVi');
     expect(line.firstElementChild!.classList.contains('repair-gain')).toBeTrue();
     expect(line.querySelector('.pristine-bv')?.parentElement?.classList.contains('bv-total')).toBeTrue();
     const costs = root.querySelector<HTMLElement>('.cost-line')!;
-    expect(costs.textContent!.replace(/\s/g, '')).toBe('1,000C-Bills(+20repair)·55SP');
+    expect(costs.textContent!.replace(/\s/g, '')).toBe('1,000C-Billsi(+20repair)·55SP');
     effectiveBV.and.returnValue(1730);
     fixture.detectChanges();
     expect(root.querySelector('.pristine-bv')).toBeNull();

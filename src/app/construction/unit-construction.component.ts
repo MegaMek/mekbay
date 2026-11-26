@@ -92,6 +92,7 @@ import {
 import { gameRulesFor } from '../models/rules/game-rules';
 import { formatWeaponDamage } from '../utils/weapon-damage.util';
 import { constructionEngineTechnology } from './domain/construction-technology-rules';
+import { battleArmorPropulsionMount, syncBattleArmorPropulsionEquipment } from './domain/construction-infantry-ba-rules';
 import { ToastService } from '../services/toast.service';
 import { shareUrlWithClipboardFallback } from '../utils/clipboard.util';
 import { StatBarSpecsPipe } from '../pipes/stat-bar-specs.pipe';
@@ -857,14 +858,45 @@ export class UnitConstructionComponent {
   requiredMount(mount: EntityMountedEquipment): boolean {
     return isRequiredConstructionEquipment(this.entity(), mount);
   }
-  isMountUnallocated(mount: EntityMountedEquipment): boolean {
-    if (mount.allocation.kind === 'engine') return false;
-    if (this.locationCase().get(mount.location)?.slotlessMounts.includes(mount)) return false;
-    return !this.locations().some((location) => location.slots.some((slot) =>
+  private mountInSlot(mount: EntityMountedEquipment): boolean {
+    return this.locations().some((location) => location.slots.some((slot) =>
       slot.mount?.mountId === mount.mountId || slot.sharedMount?.mountId === mount.mountId));
   }
+  /** A placed mount that needs no slot is drawn in no slot grid, yet it is placed: MegaMekLab lists it nowhere as unallocated. */
+  private mountSlotless(mount: EntityMountedEquipment): boolean {
+    return mount.allocation.kind === 'location' && mount.getNumCriticalSlots(this.entity()) === 0 && !this.mountInSlot(mount);
+  }
+  isMountUnallocated(mount: EntityMountedEquipment): boolean {
+    return mount.allocation.kind !== 'engine' && !this.mountInSlot(mount) && !this.mountSlotless(mount);
+  }
+  /**
+   * Slotless mounts by the location card that lists them. A location-less one is listed with the cockpit on a Mek
+   * (MegaMek names the cockpit slot after a robotic control system) and in the body of a vehicle. Platoon weapons and
+   * battle armor propulsion are edited through their own fields.
+   */
+  readonly slotlessMounts = computed(() => {
+    const locations = this.locations();
+    const home = (
+      locations.find((location) => location.slots.some((slot) => slot.system === 'Cockpit')) ??
+      locations.find((location) => location.id === 'Body') ??
+      locations[0]
+    )?.id;
+    const propulsion = battleArmorPropulsionMount(this.entity());
+    const byLocation = new Map<string, EntityMountedEquipment[]>();
+    for (const mount of this.entity().equipment()) {
+      if (mount === propulsion || mount.platoonWeapon || !this.mountSlotless(mount)) continue;
+      const card = locations.some((location) => location.id === mount.location) ? mount.location : home;
+      if (card) byLocation.set(card, [...(byLocation.get(card) ?? []), mount]);
+    }
+    return byLocation;
+  });
   canUninstallMount(mount: EntityMountedEquipment): boolean {
-    return mount.allocation.kind !== 'engine' && !this.isMountUnallocated(mount) && this.canEditMount(mount);
+    return (
+      mount.allocation.kind !== 'engine' &&
+      !this.isMountUnallocated(mount) &&
+      !this.mountSlotless(mount) &&
+      this.canEditMount(mount)
+    );
   }
   canRemoveMount(mount: EntityMountedEquipment): boolean {
     return mount.allocation.kind !== 'engine' && !this.requiredMount(mount) && this.canEditMount(mount);
@@ -1288,7 +1320,6 @@ export class UnitConstructionComponent {
             supportsAutomatic,
             hasExplosives,
             warning: warnings.get(location.id),
-            slotlessMounts: protection.filter((mount) => mount.getNumCriticalSlots(entity) === 0),
             selection: installed.includes('case-ii')
               ? 'case-ii'
               : installed.includes('case')
@@ -2038,6 +2069,7 @@ export class UnitConstructionComponent {
         reconcileConstructionSystemSlots(entity, systemSlots);
         packConstructionMekLocations(entity);
         ensureConstructionMaterialEquipment(entity);
+        syncBattleArmorPropulsionEquipment(entity);
         reconcileConstructionEquipmentRelationships(entity);
       });
       // A chassis or clan-name edit pulls the matching BattleMech Manual rows; suppression keeps the
@@ -2763,9 +2795,12 @@ export class UnitConstructionComponent {
       .find((item) => item.mountId === event.item.data?.mountId);
     if (mount) this.remove(mount);
   }
-  /** Holding Ctrl (⌘ on macOS) turns the loadout uninstall button into a direct removal. */
+  /**
+   * Holding Ctrl (⌘ on macOS) turns the loadout uninstall button into a direct removal. A slotless mount has no slot to
+   * be uninstalled from, so its button always removes it.
+   */
   directRemoveActive(mount: EntityMountedEquipment): boolean {
-    return this.removeModifierHeld() && this.canRemoveMount(mount);
+    return (this.removeModifierHeld() || this.mountSlotless(mount)) && this.canRemoveMount(mount);
   }
   uninstallOrRemove(
     mount: EntityMountedEquipment,

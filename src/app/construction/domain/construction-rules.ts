@@ -1130,7 +1130,11 @@ export function installConstructionEquipment(
       ? constructionEquipmentEligibilityIssues(entity, equipment)
       : equipmentPlacementIssues(entity, equipment, location);
   if (issues.length) throw new Error(issues.join(' '));
-  let allocation: EntityMountedEquipment['allocation'] = { kind: 'unallocated' };
+  // An item that needs no slot has nothing to wait for: added without a location, it is installed location-less.
+  let allocation: EntityMountedEquipment['allocation'] =
+    equipmentLocationIssues(entity, equipment, 'None').length === 0
+      ? { kind: 'location', location: 'None' }
+      : { kind: 'unallocated' };
   if (location !== undefined) {
     const placements = allocationPlacements(entity, equipment, location, slotIndex);
     const primary =

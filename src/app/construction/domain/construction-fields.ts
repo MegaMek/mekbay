@@ -50,6 +50,7 @@ import {
   calculateMekStructureWeight,
 } from '../../models/entity/utils/weight/mek-weight';
 import {
+  battleArmorPropulsionMount,
   constructionInfantryPrimaryApplies,
   constructionInfantrySecondaryLimit,
 } from './construction-infantry-ba-rules';
@@ -135,7 +136,8 @@ export function getConstructionFields(entity: BaseEntity, showIncompatible = fal
         if (Number.isInteger(step) && !Number.isInteger(numeric)) throw new Error(`${label} must be a whole number.`);
         set(numeric);
       },
-      min,
+      // A number input counts its spinner steps from its minimum, so it gets the lowest value on the step grid.
+      min: Math.ceil(min / step) * step,
       max,
       step,
     });
@@ -415,16 +417,24 @@ export function getConstructionFields(entity: BaseEntity, showIncompatible = fal
         'Chassis',
         wholeTons ? 1 : 0.001,
         undefined,
-        wholeTons ? 1 : 0.5,
+        wholeTons ? 1 : entity.weightClass() === 'Small Support' ? 0.001 : 0.5,
       );
     }
   }
 
   const modes = constructionMotiveTypes(entity);
-  if (modes.length > 1)
+  if (modes.length > 1) {
     select('motiveType', 'Movement system', entity.motiveType, entity.motiveType.set, modes, 'Movement', (value) =>
       constructionMotiveCompatible(entity, value),
     );
+    // The propulsion item is part of the movement system: named here, never placed or picked.
+    const propulsion = battleArmorPropulsionMount(entity);
+    if (propulsion)
+      fields[fields.length - 1] = {
+        ...fields[fields.length - 1],
+        hint: `Includes ${propulsion.displayName()}, which needs no slot.`,
+      };
+  }
   if (
     !(entity instanceof MekEntity || entity instanceof StaticEmplacementEntity) &&
     entity.entityType !== 'HandheldWeapon'

@@ -62,6 +62,16 @@
       </svg>
     }
   </ng-template>
+  <ng-template #slotlessMount let-mount let-location="location">
+    <div class="slot-target single-slot slotless-mount" aria-label="Installed equipment without critical slots">
+      <div class="installed-equipment" [class]="equipmentClass(mount.equipment)" [attr.data-mount-id]="mount.mountId">
+        <ng-container
+          [ngTemplateOutlet]="equipmentBlockContent"
+          [ngTemplateOutletContext]="{ equipment: mount.equipment, mount, span: 0, location }"
+        />
+      </div>
+    </div>
+  </ng-template>
   <ng-template
     #equipmentBlockContent
     let-equipment="equipment"
@@ -127,7 +137,7 @@
         <span class="condition-label">{{ condition }}</span>
       }
     </button>
-    @if (mount && canUninstallMount(mount)) {
+    @if (mount && (canUninstallMount(mount) || directRemoveActive(mount))) {
       <button
         class="uninstall-mount"
         [class.direct-remove]="directRemoveActive(mount)"
@@ -399,7 +409,7 @@
           @if (effectiveBV() !== unitBV() && unitBV() !== null) {
             <small class="pristine-bv">/{{ unitBV() | number: '1.0-0' }}</small>
           }
-          <small>BV</small>
+          <small>BV <span class="info-notice" aria-hidden="true">i</span></small>
         </button>
       </div>
       <div class="cost-line">
@@ -410,8 +420,10 @@
           aria-label="Show C-Bill cost breakdown"
           [attr.aria-expanded]="detailsView() === 'cost'"
           aria-controls="construction-details"
+          title="C-Bill cost breakdown"
         >
           {{ unitCost() === null ? '—' : (unitCost() | number: '1.0-0') }} C-Bills
+          <span class="info-notice" aria-hidden="true">i</span>
         </button>
         @if (pendingRepairQuote(); as quote) {
           <span class="repair-cost" [title]="quote.basis"
@@ -831,8 +843,7 @@
           }
         </div>
         <div class="mass-summary" [class.overweight]="mass() !== null && mass()! > massCapacity()">
-          <span class="eyebrow"
-            >TONNAGE
+          <span class="eyebrow">
             <button
               type="button"
               class="info-notice-button"
@@ -843,12 +854,20 @@
               [attr.aria-expanded]="detailsView() === 'weight'"
               aria-controls="construction-details"
             >
+              TONNAGE
               <span class="info-notice" aria-hidden="true">i</span>
-            </button></span
-          >
+            </button>
+          </span>
           <span class="mass-value"
-            >{{ mass() === null ? '—' : (mass() | number: '1.0-3')
-            }}<small>
+            ><button
+              type="button"
+              class="mass-total"
+              (click)="showBreakdown('weight', $event)"
+              [disabled]="mass() === null"
+              title="Weight breakdown"
+            >
+              {{ mass() === null ? '—' : (mass() | number: '1.0-3') }}</button
+            ><small>
               /
               @if (tonnageField(); as field) {
                 @if (canEditField(field) && tonnageOptions(); as options) {
@@ -1940,27 +1959,15 @@
                             </p>
                           }
                         }
-                        @for (mount of caseState?.slotlessMounts; track mount.mountId) {
-                          <div
-                            class="slot-target single-slot slotless-case"
-                            aria-label="Installed CASE without critical slots"
-                          >
-                            <div
-                              class="installed-equipment"
-                              [class]="equipmentClass(mount.equipment)"
-                              [attr.data-mount-id]="mount.mountId"
-                            >
-                              <ng-container
-                                [ngTemplateOutlet]="equipmentBlockContent"
-                                [ngTemplateOutletContext]="{
-                                  equipment: mount.equipment,
-                                  mount,
-                                  span: 0,
-                                  location: location.id,
-                                }"
-                              />
-                            </div>
-                          </div>
+                      </div>
+                    }
+                    @if (slotlessMounts().get(location.id); as mounts) {
+                      <div class="slotless-mounts">
+                        @for (mount of mounts; track mount.mountId) {
+                          <ng-container
+                            [ngTemplateOutlet]="slotlessMount"
+                            [ngTemplateOutletContext]="{ $implicit: mount, location: location.id }"
+                          />
                         }
                       </div>
                     }

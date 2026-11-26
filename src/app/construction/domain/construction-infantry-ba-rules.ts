@@ -8,6 +8,7 @@ import type { EquipmentFlag } from '../../models/equipment-flags.type';
 import { AmmoEquipment, WeaponEquipment, ammoMatchesWeapon } from '../../models/equipment.model';
 import { getNumCriticalSlots } from '../../models/entity/utils/equipment-helpers';
 import { isSimpleCamoEquipment } from '../../models/stealth-equipment.model';
+import { BATTLE_ARMOR_PROPULSION_EQUIPMENT } from '../../models/battle-armor-equipment.model';
 
 const PAIRED_MANIPULATORS = new Set(['BABasicManipulatorMineClearance', 'BABattleClawMagnets', 'BAHeavyBattleClawMagnets', 'BACargoLifter']);
 const AUGMENTATION_EXCLUSIONS = [
@@ -19,6 +20,36 @@ const AUGMENTATION_EXCLUSIONS = [
 export function constructionBattleArmorCamoCount(entity: BattleArmorEntity, location: string, ignore?: EntityMountedEquipment): number {
     return entity.equipment().filter(m => m.mountId !== ignore?.mountId && m.equipment && isSimpleCamoEquipment(m.equipment)
         && (location === 'Squad' || m.location === 'Squad' || m.location === location)).length;
+}
+
+const mountEquipmentId = (mount: EntityMountedEquipment) => mount.equipment?.id ?? mount.equipmentId;
+
+/** The propulsion item a battle armor design carries for its movement system, if any. */
+export function battleArmorPropulsionMount(entity: BaseEntity): EntityMountedEquipment | undefined {
+    if (!(entity instanceof BattleArmorEntity)) return undefined;
+    const id = BATTLE_ARMOR_PROPULSION_EQUIPMENT[entity.motiveType()];
+    return id ? entity.equipment().find(mount => mountEquipmentId(mount) === id) : undefined;
+}
+
+/** MegaMekLab BAStructureTab: the propulsion item follows the movement system, replacing any other. */
+export function syncBattleArmorPropulsionEquipment(entity: BaseEntity): void {
+    if (!(entity instanceof BattleArmorEntity)) return;
+    const wanted = BATTLE_ARMOR_PROPULSION_EQUIPMENT[entity.motiveType()];
+    const propulsion = Object.values(BATTLE_ARMOR_PROPULSION_EQUIPMENT);
+    for (const mount of entity.equipment()) {
+        const id = mountEquipmentId(mount);
+        if (id !== wanted && propulsion.includes(id)) entity.removeEquipment(mount);
+    }
+    if (!wanted || battleArmorPropulsionMount(entity)) return;
+    entity.addEquipment({
+        equipmentId: wanted,
+        equipment: entity.getEquipmentRegistry().findEquipment(wanted) ?? undefined,
+        allocation: { kind: 'location', location: 'None' },
+        rearMounted: false,
+        turretMounted: false,
+        omniPodMounted: false,
+        armored: false,
+    });
 }
 
 /** Last-selected augmentation wins; imported combinations are still diagnosed below. */

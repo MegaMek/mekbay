@@ -150,6 +150,19 @@ h2 {
   color: var(--text-color-secondary);
   font-size: inherit;
 }
+.construction-value .info-notice {
+  margin-left: 2px;
+  vertical-align: middle;
+  color: var(--text-color-secondary);
+}
+.construction-value button:hover:not(:disabled) .info-notice,
+.construction-value button:focus-visible .info-notice,
+.construction-value button[aria-expanded='true'] .info-notice {
+  color: var(--bt-yellow);
+}
+.construction-value button:disabled .info-notice {
+  opacity: 0.4;
+}
 .bv-line {
   display: flex;
   align-items: baseline;
@@ -510,17 +523,20 @@ h2 {
 }
 .info-notice-button {
   display: inline-flex;
-  vertical-align: middle;
-  margin-left: 4px;
-  padding: 2px;
+  align-items: center;
+  gap: 4px;
+  padding: 2px 0;
   border: 0;
   background: none;
   color: var(--text-color-secondary);
+  font: inherit;
+  letter-spacing: inherit;
   cursor: pointer;
 
   &:hover:not(:disabled),
   &:focus-visible,
   &[aria-expanded='true'] {
+    background: none;
     color: var(--bt-yellow);
   }
 
@@ -579,6 +595,11 @@ h2 {
   font-variant-numeric: tabular-nums;
   white-space: nowrap;
   line-height: 1;
+}
+.mass-value .mass-total {
+  padding: 0;
+  border: 0;
+  background: none;
 }
 .mass-value small {
   font-size: 16px;

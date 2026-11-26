@@ -814,8 +814,15 @@ tech-base-badge {
   color: var(--bt-yellow);
 }
 
-.slotless-case .installed-equipment {
+.slotless-mount .installed-equipment {
   cursor: default;
+}
+
+.slotless-mounts {
+  display: flex;
+  flex-direction: column;
+  gap: var(--slot-gap);
+  padding: 0 8px 4px;
 }
 
 .critical-grid {
