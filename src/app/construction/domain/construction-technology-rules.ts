@@ -3,7 +3,7 @@
 
 import type { BaseEntity } from '../../models/entity/base-entity';
 import { AeroEntity, DropShipEntity, InfantryEntity, MekEntity, VehicleEntity } from '../../models/entity/entities';
-import { DROPSHIP_COLLAR_TECH, getEngineTechAdvancement, getSupportComponentTech } from '../../models/entity/components';
+import { DROPSHIP_COLLAR_TECH, getEngineTechAdvancement } from '../../models/entity/components';
 import { MIXED_TECH, OMNI_TECH, OMNI_VEHICLE_TECH, PATCHWORK_ARMOR_TECH } from '../../models/entity/components/entity-system-tech-data';
 import { compareTechLevels, getTechIntroductionYear, getTechMilestoneYear, isTechExtinct, type ComponentTechLevel,
   type EngineType, type EntityTechBase, type EntityValidationMessage, type TechFactions, type TechRatingSource } from '../../models/entity/types';
@@ -77,8 +77,6 @@ export function constructionTechnologyMessages(entity: BaseEntity): EntityValida
       .map(source => ({ name: source === (entity instanceof AeroEntity ? entity.mountedCockpitTech() : null)
         ? 'Cockpit' : 'Chassis systems', source }));
   const engine = entity.mountedEngine();
-  if (entity.isSupportVehicle()) sources.push({ name: 'Structure tech rating', source: getSupportComponentTech(entity.structuralTechRating()) },
-    { name: 'Engine tech rating', source: getSupportComponentTech(entity.engineTechRating()) });
   if (entity instanceof DropShipEntity && ['Standard', 'Prototype'].includes(entity.collarType())) sources.push({ name: 'Docking collar', source: DROPSHIP_COLLAR_TECH });
   if (!(entity instanceof MekEntity) && engine.installed) sources.push({ name: 'Engine', base: entity.isSupportVehicle() ? undefined : engine.techBase,
     source: constructionEngineTechnology(entity, engine.type(), engine.techBase) });

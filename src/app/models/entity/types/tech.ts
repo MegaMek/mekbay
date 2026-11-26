@@ -80,7 +80,8 @@ export interface EntityTechnology {
     entityTechAdvancements(): readonly TechRatingSource[];
 }
 
-const TECH_RATING_ORDER: readonly TechRating[] = ['A', 'B', 'C', 'D', 'E', 'F'];
+/** Tech ratings in ascending order; the index is the native BLK rating code. */
+export const TECH_RATINGS: readonly TechRating[] = ['A', 'B', 'C', 'D', 'E', 'F'];
 const COMPOSITE_AVAILABILITY_ORDER: readonly CompositeAvailabilityCode[] =
     ['A', 'B', 'C', 'D', 'E', 'F', 'F*', 'X'];
 
@@ -173,7 +174,7 @@ export function calculateCompositeTechRating(
     let firstExtinction = firstObsoleteYear(context);
 
     for (const source of sources) {
-        if (TECH_RATING_ORDER.indexOf(source.rating) > TECH_RATING_ORDER.indexOf(rating)) {
+        if (TECH_RATINGS.indexOf(source.rating) > TECH_RATINGS.indexOf(rating)) {
             rating = source.rating;
         }
         availabilityTuple(source).forEach((value, era) => {

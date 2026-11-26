@@ -12,6 +12,7 @@ import { SupportVtolEntity } from '../entities/vehicle/support-vtol-entity';
 import { LargeSupportTankEntity } from '../entities/vehicle/large-support-tank-entity';
 import {
   LocationArmor,
+  ICE_FUEL_TYPES,
   VALID_FUEL_TYPES,
   VALID_VEHICLE_MOTIVE_TYPES,
   locationArmor,
@@ -123,9 +124,9 @@ export function parseBlkVehicle(bb: BuildingBlock, ctx: ParseContext): VehicleEn
 
   // ── Fuel ──
   if (bb.exists('fuelType')) {
+    // BLKTankFile: a fuel name MegaMek does not know is read as petrochemicals.
     const fuelType = bb.getFirstString('fuelType');
-    ctx.validateEnum('fuelType', fuelType, VALID_FUEL_TYPES, 'fuel type');
-    entity.fuelType.set(fuelType);
+    entity.fuelType.set(ctx.validateEnum('fuelType', fuelType, VALID_FUEL_TYPES, 'fuel type') ? fuelType : ICE_FUEL_TYPES[0]);
   }
 
   // ── Trailer / No Control Systems ──

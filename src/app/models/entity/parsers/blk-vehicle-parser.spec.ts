@@ -47,6 +47,18 @@ describe('BLK vehicle parser', () => {
     expect(writeBlkVehicle(entity)).toContain('<extra_seats>\n3\n</extra_seats>');
   });
 
+  it('reads a fuel name MegaMek does not know as petrochemicals and reports it', () => {
+    const known = new ParseContext('alcohol.blk', registry);
+    const fuel = (name: string) => new BuildingBlock(vehicleBlk(`<fuelType>\n${name}\n</fuelType>`));
+    expect(parseBlkVehicle(fuel('ALCOHOL'), known).fuelType()).toBe('ALCOHOL');
+    expect(known.diagnostics.filter((issue) => issue.field === 'fuelType')).toEqual([]);
+
+    const unknown = new ParseContext('coal.blk', registry);
+    const entity = parseBlkVehicle(fuel('COAL'), unknown);
+    expect(entity.fuelType()).toBe('PETROCHEMICALS');
+    expect(unknown.diagnostics.filter((issue) => issue.field === 'fuelType').length).toBe(1);
+  });
+
   it('accepts the historical camel-case alias but canonicalizes it on write', () => {
     const entity = parseBlkVehicle(
       new BuildingBlock(vehicleBlk('<extraSeats>\n2\n</extraSeats>')),

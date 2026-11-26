@@ -41,7 +41,6 @@ export {
 
 export {
   DROPSHIP_COLLAR_TECH,
-  getSupportComponentTech,
   getAerospaceFighterConstructionTech,
   getBattleArmorConstructionTech,
   getCombatVehicleConstructionTech,

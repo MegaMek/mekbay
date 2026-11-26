@@ -6,7 +6,7 @@ import { MekEntity } from '../../models/entity/entities';
 import { createTestEquipmentRegistry } from '../../models/entity/testing/test-equipment-registry';
 import { createConstructionEntity } from './construction-factory';
 import { constructionMaterialMessages, getConstructionArmorOptions, getConstructionStructureOptions } from './construction-material-rules';
-import { setConstructionArmorMaterial, setConstructionStructure, validateConstruction } from './construction-rules';
+import { setConstructionArmorMaterial, setConstructionArmorTechRating, setConstructionStructure, validateConstruction } from './construction-rules';
 import { CONSTRUCTION_VALIDATE_EXTINCTION } from './construction-config';
 
 describe('construction material eligibility', () => {
@@ -106,6 +106,27 @@ describe('construction material eligibility', () => {
     expect(constructionMaterialMessages(entity, armor).some(issue => issue.code === 'SUPPORT_ARMORED_CHASSIS_REQUIRED')).toBeTrue();
     entity.setUniformArmor(new MountedArmor({ armor, techRating: 'F' }));
     expect(validateConstruction(entity).messages.some(issue => issue.code === 'SUPPORT_ARMORED_CHASSIS_REQUIRED')).toBeFalse();
+  });
+
+  it('edits the support armor rating independently of the chassis rating and the design year', () => {
+    const armor = new ArmorEquipment({ type: 'armor', id: 'Rated BAR', name: 'Rated BAR', tech,
+      flags: ['F_SUPPORT_TANK_EQUIPMENT', 'F_SUPPORT_VEE_BAR_ARMOR'],
+      armor: { type: 'SV_BAR_6', bar: 6, weightPerPointSV: { C: 0.04, D: 0.03 } } });
+    const entity = createConstructionEntity('SupportTank', registry);
+    entity.year.set(2317);
+    entity.setUniformArmor(new MountedArmor({ armor, techRating: 'C' }));
+    const ratingIssues = () => constructionMaterialMessages(entity, armor).map(issue => issue.code)
+      .filter(code => code.startsWith('SUPPORT_'));
+    setConstructionArmorTechRating(entity, 'D');
+    expect(entity.uniformArmor()?.techRating).toBe('D');
+    expect(entity.uniformArmor()?.armor).toBe(armor);
+    expect(ratingIssues()).toEqual([]);
+    // TM p. 134: NA on the Support Vehicle Armor Table — this BAR does not exist at rating A.
+    setConstructionArmorTechRating(entity, 'A');
+    expect(ratingIssues()).toEqual(['SUPPORT_BAR_TECH']);
+    setConstructionArmorTechRating(entity, 'D', entity.armorLocations[0]);
+    expect(entity.armorAt(entity.armorLocations[0]).techRating).toBe('D');
+    expect(entity.armorAt(entity.armorLocations[1]).techRating).toBe('A');
   });
 
   it('allows an independent donor-tonnage correction while preserving an incompatible installed material', () => {

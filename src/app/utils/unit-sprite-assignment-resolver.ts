@@ -217,7 +217,7 @@ export function getUnitSpriteTypes(entityType: string): readonly string[] {
 function defaultMekKey(facts: UnitSpriteAssignmentFacts): string {
   if (facts.chassisConfig === 'Tripod') return 'default_tripod';
   if (facts.chassisConfig === 'QuadVee') return 'default_quadvee';
-  if (facts.chassisConfig === 'LAM') return 'default_lam_mek';
+  if (facts.chassisConfig === 'LAM') return 'default_lam';
   if (facts.chassisConfig === 'Quad') return 'default_quad';
 
   switch (facts.weightClass) {
@@ -225,7 +225,7 @@ function defaultMekKey(facts: UnitSpriteAssignmentFacts): string {
     case 'Light': return 'default_light';
     case 'Medium': return 'default_medium';
     case 'Heavy': return 'default_heavy';
-    case 'Super Heavy': return 'default_super_heavy_mek';
+    case 'Super Heavy': return 'default_super_heavy';
     default: return 'default_assault';
   }
 }

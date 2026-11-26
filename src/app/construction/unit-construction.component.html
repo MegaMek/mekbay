@@ -1431,6 +1431,7 @@
                               [min]="field.min ?? 0"
                               [attr.max]="field.max"
                               [step]="field.step ?? 1"
+                              [placeholder]="field.placeholder ?? ''"
                               [ngModel]="field.get()"
                               (ngModelChange)="setField(field, $event, numberControl)"
                               [disabled]="!canEditField(field)"
@@ -1489,7 +1490,7 @@
                   <h2>Materials</h2>
                   <div class="system-fields">
                     @if (armorOptions().length) {
-                      <label [class.full-row]="!structureOptions().length"
+                      <label [class.full-row]="!structureOptions().length && !armorTechRating()"
                         >Armor<select
                           class="bt-select"
                           aria-label="Armor material"
@@ -1506,6 +1507,21 @@
                             <option [value]="armor.id" [disabled]="materialInvalid(armor)">
                               {{ materialLabel(armor) }}
                             </option>
+                          }
+                        </select></label
+                      >
+                    }
+                    @if (armorTechRating(); as rating) {
+                      <label
+                        >Armor tech rating<select
+                          class="bt-select"
+                          aria-label="Armor tech rating"
+                          [ngModel]="rating"
+                          (ngModelChange)="setArmorTechRating($event)"
+                          [disabled]="!designEditing()"
+                        >
+                          @for (option of techRatings; track option) {
+                            <option [value]="option">{{ option }}</option>
                           }
                         </select></label
                       >
@@ -1778,6 +1794,21 @@
                                     }
                                   </select></label
                                 >
+                                @if (armorTechRating(location.id); as rating) {
+                                  <label
+                                    >Armor tech rating<select
+                                      class="bt-select"
+                                      [attr.aria-label]="location.label + ' armor tech rating'"
+                                      [ngModel]="rating"
+                                      (ngModelChange)="setArmorTechRating($event, location.id)"
+                                      [disabled]="!designEditing()"
+                                    >
+                                      @for (option of techRatings; track option) {
+                                        <option [value]="option">{{ option }}</option>
+                                      }
+                                    </select></label
+                                  >
+                                }
                               }
                               @if (
                                 structureOptions(location.id).length && entity().structureByLocation().has(location.id)
@@ -2864,7 +2895,7 @@
   @if (picker()) {
     <div class="picker-backdrop" (click)="picker.set(null)"></div>
     <section
-      class="design-picker"
+      class="design-picker glass framed-borders has-shadow"
       role="dialog"
       aria-modal="true"
       cdkTrapFocus
@@ -2876,19 +2907,17 @@
           <span class="eyebrow">UNIT CONSTRUCTION</span>
           <h2>Start a new design</h2>
         </div>
-        <button class="bt-button icon-button" (click)="picker.set(null)" aria-label="Close unit picker">✕</button>
+        <button type="button" class="close-button" (click)="picker.set(null)" aria-label="Close unit picker"></button>
       </header>
-      <p class="muted">
-        Choose a chassis family. Configure its systems and build a loadout from the equipment warehouse.
-      </p>
       <div class="new-type-grid">
-        @for (type of unitTypes; track type.id) {
+        @for (type of unitTypes(); track type.id) {
           <button
             class="bt-button"
             [class.active]="newType() === type.id"
             [attr.aria-pressed]="newType() === type.id"
             (click)="newType.set(type.id)"
           >
+            <unit-icon [unit]="type.design" aria-hidden="true" [width]="42" [height]="36" />
             {{ type.label }}
           </button>
         }

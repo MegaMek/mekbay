@@ -2,8 +2,8 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 
 import { computed } from '@angular/core';
-import { MountedEngine, getSupportComponentTech } from '../../models/entity/components';
-import { InfantryEntity, MekEntity } from '../../models/entity/entities';
+import { MountedEngine } from '../../models/entity/components';
+import { InfantryEntity, MekEntity, VehicleEntity } from '../../models/entity/entities';
 import { MiscEquipment, WeaponEquipment } from '../../models/equipment.model';
 import { createTestEquipmentRegistry } from '../../models/entity/testing/test-equipment-registry';
 import { createConstructionEntity } from './construction-factory';
@@ -11,7 +11,7 @@ import { getConstructionFields } from './construction-fields';
 import { validateConstruction } from './construction-rules';
 import { addTestEquipmentWithFlags } from '../../models/entity/testing/test-mounted-equipment';
 import { constructionAdvancedMekMessages } from './construction-advanced-mek-rules';
-import { constructionTechnologyEligibility, constructionTechnologyMessages } from './construction-technology-rules';
+import { constructionTechnologyMessages } from './construction-technology-rules';
 import { constructionInfantryBaMessages } from './construction-infantry-ba-rules';
 import { PREDEFINED_INFANTRY_MOUNTS } from '../../models/entity/types/infantry';
 import { CONSTRUCTION_VALIDATE_EXTINCTION } from './construction-config';
@@ -367,14 +367,19 @@ describe('construction system choices', () => {
     expect(allowed(entity, 'engineType')).not.toContain('Solar');
   });
 
-  it('checks support component histories and engine-rating availability', () => {
+  it('offers every support tech rating by letter at any date and limits engine ratings to the engine type', () => {
     const entity = createConstructionEntity('SupportTank', registry);
-    entity.year.set(3000);
+    // TM p. 122: the Technology Rating Table is a general guide; a 2317 design may be built at rating D or higher.
+    entity.year.set(2317);
     entity.rulesLevel.set(2);
-    expect(allowed(entity, 'structuralTechRating')).not.toContain(5);
-    expect(constructionTechnologyEligibility(entity, getSupportComponentTech(5)).available).toBeFalse();
-    entity.techBase.set('Clan');
-    expect(allowed(entity, 'structuralTechRating')).toContain(5);
+    if (entity.isSupportVehicle()) {
+      entity.structuralTechRating.set(3);
+      entity.engineTechRating.set(3);
+    }
+    expect(allowed(entity, 'structuralTechRating')).toEqual([0, 1, 2, 3, 4, 5]);
+    expect(field(entity, 'structuralTechRating').options!.map((option) => option.label)).toEqual(['A', 'B', 'C', 'D', 'E', 'F']);
+    expect(field(entity, 'structuralTechRating').invalid).toBeFalse();
+    expect(constructionTechnologyMessages(entity).filter((message) => message.message.includes('tech rating'))).toEqual([]);
     entity.mountedEngine.set(new MountedEngine({ type: 'Fusion', rating: 100, techBase: 'Clan' }));
     expect(allowed(entity, 'engineTechRating')).not.toContain(0);
     expect(allowed(entity, 'engineTechRating')).not.toContain(1);
@@ -382,6 +387,62 @@ describe('construction system choices', () => {
     expect(getConstructionFields(entity).some((item) => item.id === 'engineTechBase')).toBeFalse();
     field(entity, 'engineTechRating').set(2);
     expect(allowed(entity, 'engineType')).toContain('Fission');
+  });
+
+  it('offers the three ICE fuels only for an ICE and names factions in the faction list', () => {
+    const entity = createConstructionEntity('Tank', registry);
+    entity.mountedEngine.set(new MountedEngine({ type: 'Fusion', rating: 100, techBase: 'IS' }));
+    expect(getConstructionFields(entity).some((item) => item.id === 'fuelType')).toBeFalse();
+    entity.mountedEngine.set(new MountedEngine({ type: 'ICE', rating: 100, techBase: 'IS' }));
+    // TM p. 127: an ICE burns petrochemicals unless it is built for alcohol or natural gas.
+    expect(field(entity, 'fuelType').get()).toBe('PETROCHEMICALS');
+    expect(field(entity, 'fuelType').options!.map((option) => option.label)).toEqual([
+      'Petrochemicals',
+      'Alcohol',
+      'Natural gas',
+    ]);
+    field(entity, 'fuelType').set('NATURAL_GAS');
+    expect((entity as VehicleEntity).fuelType()).toBe('NATURAL_GAS');
+    const factions = field(entity, 'faction').options!;
+    expect(factions[0]).toEqual(jasmine.objectContaining({ value: 'None', label: 'None' }));
+    expect(factions.find((option) => option.value === 'DC')!.label).toBe('Draconis Combine');
+  });
+
+  it('shows the support vehicle fuel allocation only for engines that carry fuel', () => {
+    const entity = createConstructionEntity('SupportTank', registry);
+    if (!entity.isSupportVehicle()) throw new Error('Fixture must be a support vehicle.');
+    const shown = () => getConstructionFields(entity).some((item) => item.id === 'fuel');
+    // TM p. 127: Steam, ICE, Battery and Fuel Cell list a fuel percentage; Solar, Fission and Fusion list NA.
+    for (const type of ['Steam', 'ICE', 'Battery', 'Fuel Cell'] as const) {
+      entity.mountedEngine.set(new MountedEngine({ type, rating: 100, techBase: 'IS' }));
+      expect(shown()).withContext(type).toBeTrue();
+    }
+    entity.fuel.set(0);
+    for (const type of ['Solar', 'Fission', 'Fusion'] as const) {
+      entity.mountedEngine.set(new MountedEngine({ type, rating: 100, techBase: 'IS' }));
+      expect(shown()).withContext(type).toBeFalse();
+    }
+    entity.fuel.set(0.5);
+    expect(shown()).toBeTrue();
+  });
+
+  it('shows a base chassis sponson or pintle weight only on an Omni with that mount, empty meaning automatic', () => {
+    const entity = createConstructionEntity('Tank', registry) as VehicleEntity;
+    const shown = () => getConstructionFields(entity).some((item) => item.id === 'baseSponsonMass');
+    expect(shown()).toBeFalse();
+    addTestEquipmentWithFlags(entity, 'F_SPONSON_TURRET', { location: 'Left' });
+    // TM p. 137: only an OmniVehicle fixes its turret weights in the base chassis.
+    expect(shown()).toBeFalse();
+    entity.omni.set(true);
+    const sponson = () => field(entity, 'baseSponsonMass');
+    expect(sponson().label).toBe('Base sponson tons');
+    expect(sponson().placeholder).toBe('Automatic');
+    expect(sponson().get()).toBeNull();
+    sponson().set(1.5);
+    expect(entity.baseChassisSponsonPintleWeight()).toBe(1.5);
+    expect(sponson().get()).toBe(1.5);
+    sponson().set(null);
+    expect(entity.baseChassisSponsonPintleWeight()).toBe(-1);
   });
 
   it('uses aerospace engine technology while still enforcing the selected engine introduction date', () => {

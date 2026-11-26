@@ -15,7 +15,7 @@ import { isQuartersBay } from '../../models/entity/bays/bay-definitions';
 import { calculateSpacecraftEquipmentCrew, calculateSpacecraftRequiredGunners, calculateTransportBayPersonnel } from '../../models/entity/utils/crew-requirements';
 import { calculateSmallCraftMinimumHeatSinks } from '../../models/entity/utils/weight/small-craft-weight';
 import { calculateAdvancedAerospaceMinimumHeatSinks } from '../../models/entity/utils/weight/advanced-aerospace-weight';
-import { constructionSupportEngineApplies } from './construction-system-rules';
+import { constructionSupportEngineApplies, constructionSupportEngineBurnsFuel } from './construction-system-rules';
 
 type Support = BaseEntity & { structuralTechRating(): number; fuel(): number };
 const has = (entity: BaseEntity, flag: EquipmentFlag) => entity.equipment().some(mount => mount.equipment?.hasFlag(flag));
@@ -109,7 +109,7 @@ export function constructionSupportVesselMessages(entity: BaseEntity): EntityVal
     if (engine === 'None' && entity.originalWalkMP() !== 0) add('SUPPORT_UNPOWERED_MOVEMENT', 'An unpowered vehicle must have zero cruise MP.', 'movement');
     const requiresFuel = entity instanceof AeroEntity
       ? !((mods.has('propeller') || mode === 'Airship') && ['Fusion', 'Fission', 'Solar'].includes(engine))
-      : ['Steam', 'ICE', 'Battery', 'Fuel Cell'].includes(engine);
+      : constructionSupportEngineBurnsFuel(engine);
     if (requiresFuel && engine !== 'None' && entity.fuel() <= 0) add('SUPPORT_FUEL_REQUIRED', 'This powered support vehicle requires fuel allocation.', 'engine');
     if (['armored-chassis', 'amphibious', 'environmental-sealing', 'submersible'].some(mod => mods.has(mod as ChassisEquipmentKind))) {
       if (entity.armorLocations.some(location => (entity.armorValues().get(location)?.front ?? 0) < 1)) add('SUPPORT_SEALED_ARMOR', 'This chassis modification requires armor on every armored facing.', 'armor');

@@ -15,13 +15,13 @@ import type { BaseEntity } from '../../models/entity/base-entity';
 import { MekWithArmsEntity } from '../../models/entity/entities/mek/mek-entity';
 import { FACTION_DATA, type FactionCode } from '../../models/entity/types/faction';
 import { MiscEquipment, WeaponEquipment } from '../../models/equipment.model';
+import { turretEquipmentKind } from '../../models/turret-equipment.model';
 import { COCKPIT_DATA } from '../../models/entity/components/cockpit-data';
 import { GYRO_DATA } from '../../models/entity/components/gyro-data';
 import {
   ENGINE_DATA,
   MountedEngine,
   DROPSHIP_COLLAR_TECH,
-  getSupportComponentTech,
   getAeroCockpitTechAdvancement,
   getAerospaceFighterConstructionTech,
   getBattleArmorConstructionTech,
@@ -30,7 +30,7 @@ import {
   getMekConstructionTech,
   getRiscHeatSinkOverrideKitTech,
 } from '../../models/entity/components';
-import type { CockpitType, EngineType, MotiveType, TechRatingSource } from '../../models/entity/types';
+import { ICE_FUEL_TYPES, TECH_RATINGS, type CockpitType, type EngineType, type MotiveType, type TechRatingSource } from '../../models/entity/types';
 import {
   constructionEquipmentEligibilityIssues,
   constructionEquipmentPlatformIssues,
@@ -63,6 +63,7 @@ import {
   constructionGyroApplies,
   constructionGyroTechnology,
   constructionMotiveCompatible,
+  constructionSupportEngineBurnsFuel,
   constructionSupportEngineRatingApplies,
   constructionOmniApplies,
   constructionFullHeadEjectionApplies,
@@ -97,6 +98,8 @@ export interface ConstructionField {
   readonly max?: number;
   readonly step?: number;
   readonly hint?: string;
+  /** Shown while a number field is empty; the field then accepts null as its unset value. */
+  readonly placeholder?: string;
   readonly invalid?: boolean;
   readonly disabled?: boolean;
 }
@@ -130,8 +133,6 @@ export function getConstructionFields(entity: BaseEntity, showIncompatible = fal
           throw new Error(`${label} must be between ${min} and ${max ?? 'the available capacity'}.`);
         }
         if (Number.isInteger(step) && !Number.isInteger(numeric)) throw new Error(`${label} must be a whole number.`);
-        if (min === -1 && numeric < 0 && numeric !== -1)
-          throw new Error(`${label} must be -1 for automatic calculation or zero or greater.`);
         set(numeric);
       },
       min,
@@ -161,6 +162,25 @@ export function getConstructionFields(entity: BaseEntity, showIncompatible = fal
         if (enabled && !compatible()) throw new Error(options.hint ?? `${label} is incompatible with this design.`);
         (options.set ?? input.set)(enabled);
       },
+    });
+  };
+  /** TM p. 137: an OmniVehicle fixes these weights in its base chassis; unset (-1), they follow the mounted equipment. */
+  const baseChassisMass = (id: string, label: string, input: WritableSignal<number>) => {
+    fields.push({
+      id,
+      label,
+      group: 'Systems',
+      kind: 'number',
+      get: () => (input() < 0 ? null : input()),
+      set: (value) => {
+        const tons = value === null ? -1 : Number(value);
+        if (!Number.isFinite(tons) || (tons < 0 && value !== null))
+          throw new Error(`${label} must be zero or greater, or empty for automatic calculation.`);
+        input.set(tons);
+      },
+      min: 0,
+      step: 0.01,
+      placeholder: 'Automatic',
     });
   };
   const technologyAllowed = (source: TechRatingSource) => {
@@ -241,6 +261,7 @@ export function getConstructionFields(entity: BaseEntity, showIncompatible = fal
     Object.keys(FACTION_DATA) as FactionCode[],
     'Chassis',
     undefined,
+    (code) => (code === 'None' ? 'None' : FACTION_DATA[code].name),
   );
   number(
     'year',
@@ -643,43 +664,40 @@ export function getConstructionFields(entity: BaseEntity, showIncompatible = fal
       hint: 'Only trailers may omit control systems.',
     });
     number('extraSeats', 'Extra seats', entity.extraSeats, entity.extraSeats.set, 'Crew');
-    text('fuelType', 'Fuel type', entity.fuelType, 'Systems');
-    if (entity.omni() && entity.hasTurret())
-      number(
-        'baseTurretMass',
-        'Base chassis turret tons',
-        entity.baseChassisTurretWeight,
-        entity.baseChassisTurretWeight.set,
+    if (entity.mountedEngine().type() === 'ICE')
+      select(
+        'fuelType',
+        'Fuel type',
+        () => entity.fuelType() || ICE_FUEL_TYPES[0],
+        entity.fuelType.set,
+        ICE_FUEL_TYPES,
         'Systems',
-        -1,
         undefined,
-        0.01,
+        (value) => value.charAt(0) + value.slice(1).toLowerCase().replace('_', ' '),
       );
-    if (entity.omni() && entity.hasDualTurret())
-      number(
-        'baseTurret2Mass',
-        'Base chassis second turret tons',
-        entity.baseChassisTurret2Weight,
-        entity.baseChassisTurret2Weight.set,
-        'Systems',
-        -1,
-        undefined,
-        0.01,
+    if (entity.omni()) {
+      if (entity.hasTurret()) baseChassisMass('baseTurretMass', 'Base turret tons', entity.baseChassisTurretWeight);
+      if (entity.hasDualTurret())
+        baseChassisMass('baseTurret2Mass', 'Base second turret tons', entity.baseChassisTurret2Weight);
+      const sideMounts = new Set(
+        entity
+          .equipment()
+          .map((mount) => turretEquipmentKind(mount.equipment))
+          .filter((kind) => kind === 'sponson' || kind === 'pintle'),
       );
-    number(
-      'baseSponsonMass',
-      'Base chassis sponson / pintle tons',
-      entity.baseChassisSponsonPintleWeight,
-      entity.baseChassisSponsonPintleWeight.set,
-      'Systems',
-      -1,
-      undefined,
-      0.01,
-    );
+      if (sideMounts.size)
+        baseChassisMass(
+          'baseSponsonMass',
+          `Base ${[...sideMounts].join(' / ')} tons`,
+          entity.baseChassisSponsonPintleWeight,
+        );
+    }
   }
   if (entity.isSupportVehicle()) {
     // The existing type guard narrows all five support-family classes.
     const support = entity;
+    // TM p. 122: the Technology Rating Table is a general guide, so ratings carry no introduction dates.
+    const ratingLetter = (value: number) => TECH_RATINGS[value];
     select(
       'structuralTechRating',
       'Structure tech rating',
@@ -687,7 +705,8 @@ export function getConstructionFields(entity: BaseEntity, showIncompatible = fal
       support.structuralTechRating.set,
       [0, 1, 2, 3, 4, 5],
       'Systems',
-      (value) => technologyAllowed(getSupportComponentTech(value)),
+      undefined,
+      ratingLetter,
     );
     select(
       'engineTechRating',
@@ -696,23 +715,18 @@ export function getConstructionFields(entity: BaseEntity, showIncompatible = fal
       support.engineTechRating.set,
       [0, 1, 2, 3, 4, 5],
       'Systems',
-      (value) =>
-        constructionSupportEngineRatingApplies(entity.mountedEngine().type(), value) &&
-        technologyAllowed(getSupportComponentTech(value)),
+      (value) => constructionSupportEngineRatingApplies(entity.mountedEngine().type(), value),
+      ratingLetter,
     );
     if (entity.omni())
-      number(
-        'baseFireControlMass',
-        'Base chassis fire-control tons',
-        entity.baseChassisFireConWeight,
-        entity.baseChassisFireConWeight.set,
-        'Systems',
-        -1,
-        undefined,
-        0.01,
-      );
+      baseChassisMass('baseFireControlMass', 'Base fire-control tons', entity.baseChassisFireConWeight);
     // BAR comes from the selected BAR armor material. Independent overrides are not a durable design fact.
-    if (!(entity instanceof AeroEntity)) number('fuel', 'Fuel', support.fuel, support.fuel.set);
+    // Fuel already allocated stays editable, so it can be removed after a change to an engine that carries none.
+    if (
+      !(entity instanceof AeroEntity) &&
+      (constructionSupportEngineBurnsFuel(entity.mountedEngine().type()) || support.fuel() > 0)
+    )
+      number('fuel', 'Fuel', support.fuel, support.fuel.set);
   }
   if (entity instanceof AeroEntity) {
     if (!(entity instanceof SmallCraftEntity || entity instanceof JumpShipEntity))

@@ -51,9 +51,11 @@ describe('framework-free unit sprite assignment resolver', () => {
     expect(getDefaultSpriteAssignmentKeyForFacts({ ...facts, chassisConfig: 'Tripod' }))
       .toBe('default_tripod');
     expect(getDefaultSpriteAssignmentKeyForFacts({ ...facts, chassisConfig: 'LAM' }))
-      .toBe('default_lam_mek');
+      .toBe('default_lam');
     expect(getDefaultSpriteAssignmentKeyForFacts({ ...facts, chassisConfig: 'QuadVee' }))
       .toBe('default_quadvee');
+    expect(getDefaultSpriteAssignmentKeyForFacts({ ...facts, weightClass: 'Super Heavy' }))
+      .toBe('default_super_heavy');
   });
 
   it('skips another unit type at both exact-name and chassis-name precedence levels', () => {

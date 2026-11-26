@@ -20,7 +20,7 @@ import {
   getSupportTankConstructionTech,
 } from '../../models/entity/components';
 import type { GyroType } from '../../models/entity/components/gyro-data';
-import type { CockpitType, EngineType, EntityMountedEquipment, EntityTechBase, MekSystemType, MotiveType, TechRating } from '../../models/entity/types';
+import { TECH_RATINGS, type CockpitType, type EngineType, type EntityMountedEquipment, type EntityTechBase, type MekSystemType, type MotiveType } from '../../models/entity/types';
 import { mekLocationId, mekSystemComponentId } from '../../models/entity/mek-entity-conventions';
 import { constructionEngineTechnology, constructionTechnologyEligibility } from './construction-technology-rules';
 import { WeaponEquipment, type Equipment } from '../../models/equipment.model';
@@ -230,10 +230,15 @@ export function constructionEngineCompatible(entity: BaseEntity, type: EngineTyp
   );
 }
 
+/** TM p. 127: Steam, ICE, Battery and Fuel Cell engines carry fuel by weight; Solar, Fission and Fusion list none. */
+export function constructionSupportEngineBurnsFuel(type: EngineType): boolean {
+  return (['Steam', 'ICE', 'Battery', 'Fuel Cell'] as readonly EngineType[]).includes(type);
+}
+
 export function constructionSupportEngineRatingApplies(type: EngineType, rating: number): boolean {
   return (
     type === 'None' ||
-    ENGINE_DATA[type].svWeightMultipliers[(['A', 'B', 'C', 'D', 'E', 'F'] as const)[rating] as TechRating] > 0
+    ENGINE_DATA[type].svWeightMultipliers[TECH_RATINGS[rating]] > 0
   );
 }
 

@@ -5,10 +5,9 @@ import type { BaseEntity } from '../../models/entity/base-entity';
 import { JumpShipEntity, MekEntity, VehicleEntity } from '../../models/entity/entities';
 import { ArmorEquipment, StructureEquipment } from '../../models/equipment.model';
 import { isSupportVehicleBarArmor, structureConstructionKind } from '../../models/construction-equipment.model';
-import { rulesLevelOfTechLevel, STRUCTURE_TYPE, type EntityValidationMessage, type TechRating } from '../../models/entity/types';
+import { rulesLevelOfTechLevel, STRUCTURE_TYPE, TECH_RATINGS, type EntityValidationMessage, type TechRating } from '../../models/entity/types';
 import { getNumCriticalSlots } from '../../models/entity/utils/equipment-helpers';
 import { getStructureTechAdvancement, STANDARD_STRUCTURE_EQUIPMENT } from '../../models/entity/components/structure';
-import { getSupportComponentTech } from '../../models/entity/components/construction-tech-data';
 import { constructionEquipmentPlatformFlag } from './construction-family-rules';
 import { constructionTechnologyEligibility, constructionTechnologyYearLabel } from './construction-technology-rules';
 import { constructionEquipmentConflictMessages } from './construction-equipment-conflicts';
@@ -16,7 +15,7 @@ import { constructionEquipmentConflictMessages } from './construction-equipment-
 /** Armor rating is an installed design choice, not the catalog's minimum technology rating. */
 export function constructionArmorTechRating(entity: BaseEntity, location?: string): TechRating {
   const mounted = location ? entity.armorByLocation().get(location) : entity.uniformArmor() ?? entity.armorByLocation().values().next().value;
-  return mounted?.techRating ?? (entity.isSupportVehicle() ? (['A', 'B', 'C', 'D', 'E', 'F'] as const)[entity.structuralTechRating()] : 'D');
+  return mounted?.techRating ?? (entity.isSupportVehicle() ? TECH_RATINGS[entity.structuralTechRating()] : 'D');
 }
 
 /** MML legalArmorsFor / BMChassisView candidate rules, shared by selectors and validation. */
@@ -56,8 +55,6 @@ export function constructionMaterialMessages(entity: BaseEntity, material: Armor
       add('PRIMITIVE_CAPITAL_ARMOR', 'Primitive JumpShips require primitive aerospace armor.');
     }
     if (entity.isSupportVehicle()) {
-      const ratingTech = constructionTechnologyEligibility(entity, getSupportComponentTech(['A', 'B', 'C', 'D', 'E', 'F'].indexOf(armorRating)));
-      if (!ratingTech.available || !ratingTech.rulesLevel) add('SUPPORT_ARMOR_RATING_TECH', `Armor tech rating ${armorRating} is unavailable at the selected dates and rules level.`);
       const bar = isSupportVehicleBarArmor(material);
       const perPoint = material.weightPerPointSV[armorRating] ?? material.weightPerPoint;
       if (entity.rulesLevel() < rulesLevelOfTechLevel(entity.armorRulesLevel(material))) add('SUPPORT_ADVANCED_ARMOR', 'Non-BAR support vehicle armor requires advanced construction rules.');

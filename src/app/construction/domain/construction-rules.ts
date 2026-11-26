@@ -38,6 +38,7 @@ import {
   type EntityValidationResult,
   type MekSystemType,
   type MountPlacement,
+  TECH_RATINGS,
   type TechRating,
 } from '../../models/entity/types';
 import { getNumCriticalSlots } from '../../models/entity/utils/equipment-helpers';
@@ -439,6 +440,13 @@ export function setConstructionArmorMaterial(entity: BaseEntity, equipment: Armo
   else entity.setUniformArmor(armor);
   if (entity.isSupportVehicle()) entity.barRating.set(entity.armorAt(entity.armorLocations[0]).armor.bar);
   if (entity instanceof MekEntity) reconcileConstructionMaterialSlots(entity, 'armor');
+}
+
+/** TM p. 134: support vehicle armor carries its own Tech Rating, which may differ from the chassis. */
+export function setConstructionArmorTechRating(entity: BaseEntity, rating: TechRating, location?: string): void {
+  if (!entity.isSupportVehicle()) throw new Error('Only support vehicle armor has a tech rating.');
+  if (location) entity.setArmorAt(location, new MountedArmor({ ...entity.armorAt(location), techRating: rating }));
+  else entity.setUniformArmor(new MountedArmor({ ...entity.armorAt(entity.armorLocations[0]), techRating: rating }));
 }
 
 /** The chassis and CT controls edit the same tonnage. A hybrid's donors keep theirs; its other locations follow. */
@@ -1699,7 +1707,7 @@ export function validateConstruction(entity: BaseEntity): EntityValidationResult
         [...entity.armorByLocation().values()]
           .filter((mounted) => mounted.armor.id === material.id)
           .map(
-            (mounted) => mounted.techRating ?? (['A', 'B', 'C', 'D', 'E', 'F'] as const)[entity.structuralTechRating()],
+            (mounted) => mounted.techRating ?? TECH_RATINGS[entity.structuralTechRating()],
           ),
       );
       for (const rating of ratings) messages.push(...constructionMaterialMessages(entity, material, rating));

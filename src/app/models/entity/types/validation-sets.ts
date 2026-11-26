@@ -9,11 +9,11 @@
 // signals. Keeps parser validation separate from entity domain types.
 // ============================================================================
 
+/** TM p. 127: an ICE burns petrochemicals unless it is built for alcohol or natural gas. */
+export const ICE_FUEL_TYPES = ['PETROCHEMICALS', 'ALCOHOL', 'NATURAL_GAS'] as const;
+
 /** Valid fuel types for vehicles */
-export const VALID_FUEL_TYPES = new Set([
-  'PETROCHEMICALS', 'ALCOHOL', 'NATURAL_GAS', 'COAL', 'WOOD',
-  'METHANE', 'KEROSENE', 'DIESEL', 'GASOLINE',
-]);
+export const VALID_FUEL_TYPES = new Set<string>(ICE_FUEL_TYPES);
 
 /** Canonical system manufacturer/model keys (from MegaMek's System enum) */
 export type SystemManufacturerKey = 'CHASSIS' | 'ENGINE' | 'ARMOR' | 'JUMP_JET' | 'COMMUNICATIONS' | 'TARGETING';

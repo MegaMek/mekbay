@@ -51,7 +51,7 @@ import { BaseEntity } from '../models/entity/base-entity';
 import { asComponentId, type ComponentId } from '../models/entity/entity-identifiers';
 import { EntityMountedEquipment, type EntityMountedEquipmentInit } from '../models/entity/types/equipment';
 import { MekEntity, type MekStructureDonor } from '../models/entity/entities/mek/mek-entity';
-import { isMekLocation, type EntityValidationMessage } from '../models/entity/types';
+import { isMekLocation, TECH_RATINGS, type EntityValidationMessage, type TechRating } from '../models/entity/types';
 import { BattleArmorEntity } from '../models/entity/entities/infantry/battle-armor-entity';
 import { VehicleEntity } from '../models/entity/entities/vehicle/vehicle-entity';
 import {
@@ -210,6 +210,7 @@ import {
   getConstructionArmorOptions,
   getConstructionStructureOptions,
   setConstructionArmorMaterial,
+  setConstructionArmorTechRating,
   setConstructionStructure,
   constructionSupportsAmmoQuantity,
   constructionSupportsPatchwork,
@@ -389,7 +390,12 @@ export class UnitConstructionComponent {
   private readonly quirksCatalog = inject(QuirksCatalogService);
   private readonly forceConstruction = inject(ConstructionForceService);
 
-  readonly unitTypes = CONSTRUCTION_UNIT_TYPES;
+  /** Each family with a fresh design of it, so the picker shows the icon that design starts with. */
+  readonly unitTypes = computed(() =>
+    untracked(() =>
+      CONSTRUCTION_UNIT_TYPES.map(type => ({ ...type, design: createConstructionEntity(type.id, this.registry) })),
+    ),
+  );
   readonly entity = signal<BaseEntity>(createConstructionEntity('Biped', this.registry));
   readonly savedUuid = signal<UnitUuid | undefined>(undefined);
   readonly foreignDesign = signal(false);
@@ -1398,6 +1404,14 @@ export class UnitConstructionComponent {
     }
     return !!material && !!this.materialErrors().get(material.id)?.length;
   }
+  readonly techRatings = TECH_RATINGS;
+  /** Uniform support vehicle armor has one rating; patchwork armor has one per location. */
+  armorTechRating(location?: string): TechRating | null {
+    const entity = this.entity();
+    return entity.isSupportVehicle() && !!location === entity.hasPatchworkArmor()
+      ? constructionArmorTechRating(entity, location)
+      : null;
+  }
   readonly supportsPatchwork = computed(() => constructionSupportsPatchwork(this.entity()));
   readonly hybridStructure = computed(() => {
     const entity = this.entity();
@@ -2067,7 +2081,9 @@ export class UnitConstructionComponent {
   }
 
   setField(field: ConstructionField, value: string | number | boolean | null, control?: NgModel): void {
+    const cleared = field.placeholder !== undefined && (value == null || value === '');
     if (
+      !cleared &&
       field.id !== 'mulId' &&
       field.id !== 'manualBV' &&
       field.kind === 'number' &&
@@ -2075,7 +2091,10 @@ export class UnitConstructionComponent {
     )
       return;
     if (field.id === 'year' && this.oemYearVisible()) this.oemYearExpanded.set(true);
-    this.change(() => field.set(field.kind === 'number' ? Number(value) : value), this.canEditField(field));
+    this.change(
+      () => field.set(cleared ? null : field.kind === 'number' ? Number(value) : value),
+      this.canEditField(field),
+    );
     if (field.id === 'manualBV' && field.get() === null) {
       control?.control.setValue(null, { emitEvent: false, emitViewToModelChange: false });
     }
@@ -2186,6 +2205,9 @@ export class UnitConstructionComponent {
     }
     const armor = this.armorOptions(location).find((eq) => eq.id === id);
     if (armor) this.change(() => setConstructionArmorMaterial(this.entity(), armor, location));
+  }
+  setArmorTechRating(rating: TechRating, location?: string): void {
+    this.change(() => setConstructionArmorTechRating(this.entity(), rating, location));
   }
   setClanCaseOptOut(location: string, optedOut: boolean): void {
     const entity = this.entity();

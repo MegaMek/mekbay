@@ -50,6 +50,10 @@
   color: #bbb;
   min-width: 0;
 }
+/* A wrapped caption must not push its control out of line with its neighbour's. A hint below a control would. */
+.system-fields:not(:has(label:not(.checkbox-field) > small)) label {
+  justify-content: flex-end;
+}
 .system-fields .full-row {
   grid-column: 1 / -1;
 }
@@ -154,18 +158,16 @@
   position: absolute;
   inset: 8% max(20px, calc((100% - 760px) / 2));
   z-index: 11;
-  border: 1px solid #ffffff4d;
-  background: var(--background-color-menu);
   display: flex;
   flex-direction: column;
-  padding: 24px;
-  box-shadow: 0 20px 80px #000b;
-  clip-path: polygon(0 0, calc(100% - 22px) 0, 100% 22px, 100% 100%, 0 100%);
+  /* The frame has no padding; its parts carry it, so the list's scrollbar sits on the frame's edge. */
+  --picker-padding: 24px;
 }
 .design-picker header {
   display: flex;
   align-items: start;
   justify-content: space-between;
+  padding: var(--picker-padding) var(--picker-padding) 0;
   margin-bottom: 18px;
 }
 .design-picker header h2 {
@@ -174,22 +176,32 @@
 }
 .design-picker > p {
   line-height: 1.6;
+  padding: 0 var(--picker-padding);
 }
 .design-picker footer {
   margin-top: auto;
-  padding-top: 16px;
+  padding: 16px var(--picker-padding) var(--picker-padding);
 }
 .new-type-grid {
   display: grid;
   grid-template-columns: repeat(3, 1fr);
   gap: 8px;
-  overflow: auto;
-  padding: 18px 0;
+  overflow-y: auto;
+  padding: 0px var(--picker-padding);
 }
 .new-type-grid button {
-  padding: 12px 8px;
+  justify-content: flex-start;
+  gap: 10px;
+  /* Columns share the width evenly; a long label wraps instead of widening its column. */
+  min-width: 0;
+  padding: 8px 12px;
   text-align: left;
+  white-space: normal;
+  overflow-wrap: anywhere;
   font-size: 12px;
+}
+.new-type-grid unit-icon {
+  flex-shrink: 0;
 }
 
 .cdk-drag-preview {
@@ -606,7 +618,7 @@
   }
   .design-picker {
     inset: 14px;
-    padding: 18px;
+    --picker-padding: 18px;
   }
   .new-type-grid,
   .system-fields {
@@ -614,6 +626,7 @@
   }
   .new-type-grid button {
     font-size: 10px;
+    gap: 6px;
     padding: 10px 6px;
   }
   .validation-panel {
