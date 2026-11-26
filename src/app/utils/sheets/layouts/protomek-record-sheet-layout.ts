@@ -36,6 +36,7 @@ addCrewSkillValue,
 drawCrewHitGrid,
 drawElevationTracker,
 addFrame,
+addIssuesNote,
 addLine,
 addText,
 condenseDataPanelCaption,
@@ -203,13 +204,15 @@ export class ProtoMekRecordSheetLayout extends CompactRecordSheetLayout {
         size: 6.2 * footerScale,
         maxWidth: 108 * footerScale,
     });
+    // The footer's right end, clear of the frame's cut corner; quirks stop short of the note.
+    const issuesNote = addIssuesNote(svg, entity, at({ x: 562, y: 0, width: 1, height: 1 }).x, footerY, 5.7 * footerScale);
     const quirks = recordSheetQuirksText(entity, request.showQuirks);
     if (quirks) {
         const group = svgElement('g');
         group.classList.add('unitQuirks');
         // The compact footer has one line, so quirks condense to it; italic like MegaMekLab's quirk block.
         addText(group, quirks, at({ x: 295, y: 0, width: 1, height: 1 }).x, footerY, {
-            size: 6.084 * footerScale, maxWidth: 274 * footerScale,
+            size: 6.084 * footerScale, maxWidth: (issuesNote ? 225 : 274) * footerScale,
         }).setAttribute('font-style', 'italic');
         svg.appendChild(group);
     }

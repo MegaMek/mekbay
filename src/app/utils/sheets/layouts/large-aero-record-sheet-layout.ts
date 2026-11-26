@@ -45,6 +45,7 @@ type RecordSheetPageFormat,
 import {
 drawCrewHitGrid,
 addFrame,
+addIssuesNote,
 addLine,
 addText,
 condenseDataPanelCaption,
@@ -203,7 +204,10 @@ export abstract class LargeAeroRecordSheetLayout implements RecordSheetLayout {
             drawAeroVelocityPanel(svg, at(AERO_LOWER_PANEL_BOX));
         }
         drawLargeAeroPilotPanel(svg, entity, at({ x: 252.366, y: 509.4, width: 142.6, height: 93.934 }));
-        drawLargeAeroCriticalPanel(svg, entity, at({ x: 405.966, y: 509.4, width: 180.5, height: 166.104 }));
+        const criticalBox = at({ x: 405.966, y: 509.4, width: 180.5, height: 166.104 });
+        drawLargeAeroCriticalPanel(svg, entity, criticalBox);
+        // Under the armor diagram, over the critical damage panel's right edge.
+        addIssuesNote(svg, entity, criticalBox.x + criticalBox.width, criticalBox.y - 4);
         drawLargeAeroHeatPanel(svg, entity, at({ x: 405.966, y: 675.29, width: 180.5, height: 79.71 }));
         if (entity.tracksHeat()) {
             drawHeatScale(svg, at({ x: 574, y: 388.911, width: 19.454, height: 366 }), 'aero');

@@ -32,6 +32,7 @@ import {
     type Box,
     addCrewSkillValue,
     addFrame,
+    addIssuesNote,
     addReferenceShade,
     addText,
     appendBattleValue,
@@ -198,6 +199,8 @@ export class BattleArmorRecordSheetLayout extends CompactRecordSheetLayout {
     appendBattleValue(group, adjustEntityBattleValueForSkills(entity, entity.battleValue(request.ruleset), 4, 5), {
         x: x(332.966), valueX: x(346.209), y: y(129.166), size: font(RECORD_SHEET_FONT.inventory), maxWidth: x(31),
     }, `/${formatWholeNumber(new BattleArmorBVCalculator(entity).singleTrooperBattleValue())}`);
+    // The block's footer row is full, so the note takes the notch under the frame's lower left.
+    addIssuesNote(group, entity, x(140), y(133.5), font(5.7));
         await appendRecordSheetEraIcon(svg, group, entity.year(), {
             x: x(165.966), y: y(11.752), width: x(20), height: y(20),
         });

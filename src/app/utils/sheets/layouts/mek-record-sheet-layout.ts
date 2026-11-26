@@ -89,6 +89,7 @@ type DataPanelFact,
 formatRecordSheetTonnage,
 appendHeatEffectRows,
 appendHeatSinkData,
+addPageIssuesNote,
 drawAdvancedMovementCompass,
 drawCrewHitGrid,
 drawGeneratedFooter,
@@ -145,6 +146,7 @@ export class MekRecordSheetLayout implements RecordSheetLayout {
         const at = (box: { readonly x: number; readonly y: number; readonly width: number; readonly height: number }) =>
             ({ ...box, x: box.x + widthDelta });
         drawPageChrome(svg, mekRecordSheetTitle(entity), page, false);
+        addPageIssuesNote(svg, entity, page);
 
         drawMekDataPanel(svg, entity, { x: 18.966, y: 87.857, width: 220.4 + widthDelta, height: 301.5 }, request.ruleset, request.showQuirks,
             request.groupWeapons);

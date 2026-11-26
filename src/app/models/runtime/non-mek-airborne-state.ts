@@ -2,7 +2,8 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 
 import type { BaseEntity } from '../entity/base-entity';
-import { isAeroEntity } from '../entity/utils/entity-type-guards';
+import type { MotiveType } from '../entity/types/motive';
+import { isAeroEntity, isInfantryEntity } from '../entity/utils/entity-type-guards';
 
 export type NonMekAirGroundCapability = 'only-airborne' | 'switchable' | 'only-grounded';
 
@@ -20,17 +21,23 @@ export function isOnlyAirborne(entity: BaseEntity): boolean {
         || isSatelliteEntity(entity);
 }
 
+/** The motive type a unit moves by: a beast-mounted platoon moves as its creature does (TO:AUE p. 107). */
+export function nonMekMotiveType(entity: BaseEntity): MotiveType {
+    return (isInfantryEntity(entity) ? entity.mount()?.movementMode : undefined) ?? entity.motiveType();
+}
+
 /** One canonical classification for storage, controls, movement, and presentation. */
 export function nonMekAirGroundCapability(entity: BaseEntity): NonMekAirGroundCapability {
     if (isOnlyAirborne(entity)) return 'only-airborne';
+    const motive = nonMekMotiveType(entity);
     const switchable = entity.entityType === 'Aero'
         || entity.entityType === 'ConvFighter'
         || entity.entityType === 'FixedWingSupport'
         || entity.entityType === 'SmallCraft'
         || entity.entityType === 'DropShip'
         || entity.unitType() === 'VTOL'
-        || entity.motiveType() === 'VTOL'
-        || entity.motiveType() === 'WiGE';
+        || motive === 'VTOL'
+        || motive === 'WiGE';
     return switchable ? 'switchable' : 'only-grounded';
 }
 

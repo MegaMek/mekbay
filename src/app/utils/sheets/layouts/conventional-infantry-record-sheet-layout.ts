@@ -5,6 +5,7 @@ import type { BaseEntity } from '../../../models/entity/base-entity';
 import type { InfantryEntity } from '../../../models/entity/entities/infantry/infantry-entity';
 import { isInfantryEntity } from '../../../models/entity/utils/entity-type-guards';
 import { infantryDamageDivisor } from '../../../models/entity/utils/battle-value/infantry-rules';
+import { nonMekFliesAtElevation, nonMekMotiveType } from '../../../models/runtime/non-mek-airborne-state';
 import {
   adjustEntityBattleValueForSkills,
   effectiveEntityPilotingSkill,
@@ -26,6 +27,7 @@ import {
   type Box,
   addCrewSkillValue,
   addFrame,
+  addIssuesNote,
   addLine,
   addReferenceShade,
   addText,
@@ -46,11 +48,18 @@ import {
   canonicalReferenceContent,
 } from './record-sheet-reference-table-components';
 
+/**
+ * The block's Letter height. ISO A4 scales the whole block with its narrower page: stretching it to the taller page
+ * only opened gaps between its rows. The next block's title tab nests under its notch.
+ */
+const BLOCK_HEIGHT = 169.4;
+
 export class ConventionalInfantryRecordSheetLayout extends CompactRecordSheetLayout {
   public constructor() {
-    super('conventional-infantry', 'infantry', 'CONVENTIONAL INFANTRY RECORD SHEET', (page) =>
-      page.format === 'a4' ? { height: 186.5, stride: 180.285 } : { height: 174, stride: 167.411 },
-    );
+    super('conventional-infantry', 'infantry', 'CONVENTIONAL INFANTRY RECORD SHEET', (page) => {
+      const height = BLOCK_HEIGHT * page.horizontalScale;
+      return { height, stride: height - (page.format === 'a4' ? 6.215 : 6.589) };
+    });
   }
 
   public matches(entity: BaseEntity): boolean {
@@ -74,8 +83,9 @@ export class ConventionalInfantryRecordSheetLayout extends CompactRecordSheetLay
     page.setAttribute('data-mekbay-reference-family', 'infantry');
     const catalyst = scalePageBox(profile, { x: 533.966, y: 719.587, width: 0, height: 0 });
     const limitY = blocks.length <= 3 ? drawInfantryReferenceTables(page, profile) : catalyst.y;
+    // The table follows the last block.
     drawCompactPageClusterTable(page, blocks, scalePageBox(profile, {
-      x: 18.9, y: 255.768, width: 576.149, height: 180,
+      x: 18.9, y: 18, width: 576.149, height: 180,
     }), nextY, limitY - profile.compactGap);
     drawGeneratedFooter(page, profile, {
       catalystX: catalyst.x,
@@ -87,8 +97,8 @@ export class ConventionalInfantryRecordSheetLayout extends CompactRecordSheetLay
   protected async drawCompact(svg: SVGSVGElement, entity: BaseEntity, request: RecordSheetLayoutRequest): Promise<void> {
     if (!isInfantryEntity(entity)) throw new Error('Infantry layout requires a conventional Infantry entity');
     await appendEmbeddedSvgDefinition(svg, '/images/record-sheet-art/infantry.svg', 'mekbay-infantry-masthead-art');
-    const at = (box: Box): Box => scaleCompactBox(svg, box, 174);
-    const frameBox = at({ x: 0, y: 0, width: 576, height: 174 });
+    const at = (box: Box): Box => scaleCompactBox(svg, box, BLOCK_HEIGHT);
+    const frameBox = at({ x: 0, y: 0, width: 576, height: BLOCK_HEIGHT });
     const group = addFrame(svg, entity.displayName(), frameBox, {
       // Leave room for the Armor Type label to the right of the title lip.
       maxHeaderWidth: (270 * frameBox.width) / 576,
@@ -97,7 +107,7 @@ export class ConventionalInfantryRecordSheetLayout extends CompactRecordSheetLay
     });
     group.setAttribute('class', `${group.getAttribute('class') ?? ''} compact-infantry-frame`.trim());
     const sx = frameBox.width / 576;
-    const sy = frameBox.height / 174;
+    const sy = frameBox.height / BLOCK_HEIGHT;
     const fontScale = Math.min(sx, sy);
     const x = (value: number): number => value * sx;
     const y = (value: number): number => value * sy;
@@ -153,33 +163,39 @@ export class ConventionalInfantryRecordSheetLayout extends CompactRecordSheetLay
         ? { text: `Disposable Weapon: ${disposable.name}.`, componentIds: [disposableMount.mountId] }
         : null,
       infantryNotes(entity),
-      { x: x(3.46), y: y(100.441), width: x(108), height: y(64) },
+      { x: x(3.46), y: y(100.441), width: x(108), height: y(59.4) },
       fontScale,
       sy,
     );
 
     drawCompactInfantryTrack(svg, group, entity, { x, y, font });
+    // The closing line right under the trooper box, in the Armor Type line's size.
+    const size = font(8.6);
+    const rowY = 150;
     appendBattleValue(group, adjustEntityBattleValueForSkills(entity, entity.battleValue(request.ruleset), 4, 5), {
       x: x(116.6),
-      valueX: x(130.701),
-      y: y(154.786),
-      size: font(7.2),
+      valueX: x(133.5),
+      y: y(rowY),
+      size,
     });
-    addText(group, 'Transport Wt:', x(173.4), y(154.786), { size: font(7.2), weight: 700 });
-    addText(group, `${entity.tonnage().toFixed(1)} tons`, x(221.502), y(154.786), { size: font(7.2) });
-    addText(group, '', x(387), y(154.786), { size: font(7.2), weight: 700 }).id = 'movementPointsLabel';
+    addText(group, 'Transport Wt:', x(178), y(rowY), { size, weight: 700 });
+    addText(group, `${entity.tonnage().toFixed(1)} tons`, x(235.5), y(rowY), { size });
+    // The runtime "Stationary" mode opens the first movement row. The movement points sit beside their types, so a
+    // second row and its modifier badge stay clear of the frame's raised notch.
+    addText(group, '', x(292), y(rowY), { size, weight: 700 }).id = 'movementPointsLabel';
     group.setAttribute('data-mekbay-movement-badge-scale', formatNumber(fontScale));
-    addText(group, 'Movement MP:', x(315.4), y(154.786), { size: font(7.2), weight: 700 });
     infantryMovementRows(entity).forEach((movement, index) => {
-      const baseline = 154.786 + index * 11.777;
-      if (index > 0) addText(group, 'Movement MP:', x(315.4), y(baseline), { size: font(7.2), weight: 700 });
-      const mp = addText(group, String(movement.value), x(366.183), y(baseline), { size: font(7.2) });
+      const baseline = rowY + index * 12;
+      addText(group, 'Movement MP:', x(350), y(baseline), { size, weight: 700 });
+      const mp = addText(group, String(movement.value), x(410.6), y(baseline), { size });
       mp.id = movement.id;
-      addText(group, 'Type:', x(429), y(baseline), { size: font(7.2), weight: 700 });
-      addText(group, movement.label, x(448.523), y(baseline), { size: font(7.2), maxWidth: x(120) });
+      addText(group, 'Type:', x(427), y(baseline), { size, weight: 700 });
+      addText(group, movement.label, x(450.3), y(baseline), { size, maxWidth: x(115.7) });
     });
     // VTOL infantry's Elevation tracker, beside its movement type under the trooper box, clear of the frame's corner.
-    drawElevationTracker(group, entity, x(538), y(143), { width: 36, height: 20 });
+    drawElevationTracker(group, entity, x(551), y(141.6), { width: 34, height: 20 });
+    // The frame's lower right corner, level with a second movement row; left of an Elevation tracker.
+    addIssuesNote(group, entity, x(nonMekFliesAtElevation(entity) ? 528 : 566), y(rowY + 12), font(5.7));
   }
 }
 
@@ -420,7 +436,7 @@ function infantryNotes(entity: InfantryEntity): string {
 
 function infantryMovementRows(entity: InfantryEntity): readonly { id: string; value: number; label: string }[] {
   const mount = entity.mount();
-  const motive = mount?.movementMode ?? entity.motiveType();
+  const motive = nonMekMotiveType(entity);
   const ground = { id: 'mpWalk', value: entity.walkMP(), label: 'Ground' };
   let rows: { id: string; value: number; label: string }[];
   if (motive === 'Jump') rows = [{ id: 'mpJump', value: entity.jumpMP(), label: 'Jump' }, ground];
@@ -429,7 +445,8 @@ function infantryMovementRows(entity: InfantryEntity): readonly { id: string; va
       {
         id: 'mpJump',
         value: entity.jumpMP(),
-        label: entity.isMicrolite() ? 'VTOL (Microlite)' : 'VTOL (Micro-copter)',
+        // A flying creature is neither aircraft.
+        label: mount ? 'VTOL' : entity.isMicrolite() ? 'VTOL (Microlite)' : 'VTOL (Micro-copter)',
       },
     ];
   else if (motive === 'UMU' || motive === 'Submarine') {

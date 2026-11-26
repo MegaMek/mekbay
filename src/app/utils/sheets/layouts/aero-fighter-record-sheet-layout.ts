@@ -14,6 +14,7 @@ type RecordSheetPageFormat,
 } from '../record-sheet-layout';
 import {
 addFrame,
+addPageIssuesNote,
 addReferenceShade,
 addText,
 type Box,
@@ -79,6 +80,7 @@ export class AeroFighterRecordSheetLayout implements RecordSheetLayout {
             aeroPageBox(page, box);
 
         drawPageChrome(svg, this.sheetTitle(entity), page, false);
+        addPageIssuesNote(svg, entity, page);
         const dataBox = at({ x: 18.966, y: 87.857, width: 222.4, height: 308.357 });
         drawAeroDataPanel(
             svg,

@@ -13,7 +13,7 @@ import {
     type RecordSheetPageFormat,
 } from '../record-sheet-layout';
 import {
-    addFrame, addLine, addText, appendBattleValue, appendDataPanelFacts, condenseDataPanelCaption, createRoot, drawCheckbox,
+    addFrame, addLine, addPageIssuesNote, addText, appendBattleValue, appendDataPanelFacts, condenseDataPanelCaption, createRoot, drawCheckbox,
     drawGeneratedFooter, drawPageChrome, formatNumber,
     scalePageBox,
     setAttributes, svgElement, transparentRect, valueXAfterCaptions, type Box,
@@ -71,6 +71,7 @@ function drawBuildingSheet(svg: SVGSVGElement, entity: StaticEmplacementEntity, 
     const locations = new Map(grid.hexes.flatMap(cell => Array.from({ length: floors }, (_, floor) =>
         [buildingLocationName(cell.hex, floor), entity.displayLocation(buildingLocationName(cell.hex, floor), true)] as const)));
     drawPageChrome(svg, 'STRUCTURE RECORD SHEET', page, false);
+    addPageIssuesNote(svg, entity, page);
     drawBuildingData(svg, entity, at({ x: 18, y: 94, width: 224, height: 347 }), inventoryPage, request.ruleset);
     drawBuildingProtection(svg, entity, at({ x: 18, y: 449, width: 224, height: 266 }), locations, pageIndex);
     const crew = addFrame(svg, 'CREW DATA', at({ x: 18, y: 723, width: 224, height: 33 }), {

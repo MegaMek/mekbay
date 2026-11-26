@@ -34,6 +34,7 @@ import { applyRecordSheetPipMaterials } from './record-sheet-pip-materials';
 import { recordSheetBadgeSize } from './inventory-text-layout';
 import { INVENTORY_BADGE, RECORD_SHEET_CAP_HEIGHT, RECORD_SHEET_FONT } from './record-sheet-typography';
 import type { MotiveModes } from '../../models/motiveModes.model';
+import { nonMekMotiveType } from '../../models/runtime/non-mek-airborne-state';
 
 export interface GeneratedRecordSheetControlOptions {
   readonly ruleset: CBTRuleset;
@@ -258,7 +259,7 @@ export const CONVERSION_MODE_ATTRIBUTE = 'data-mekbay-conversion-mode';
 function appendMovementPresentation(svg: SVGSVGElement, entity: BaseEntity): void {
   const lam = isMekEntity(entity) && entity.chassisConfig === 'LAM';
   const secondaryMode: MotiveModes =
-    entity.umuMP() > 0 ? 'UMU' : entity.motiveType() === 'VTOL' && entity.unitType() !== 'VTOL' ? 'VTOL' : 'jump';
+    entity.umuMP() > 0 ? 'UMU' : nonMekMotiveType(entity) === 'VTOL' && entity.unitType() !== 'VTOL' ? 'VTOL' : 'jump';
   // A LAM's or QuadVee's own walk, run and jump belong to its BattleMech mode.
   const battleMek = isMekEntity(entity) && mekConversionModes(entity).length > 0 ? { conversion: 'mek' as const } : {};
   // A Glider ProtoMek prints its landed Ground MP beside the Cruise and Flank MP it flies on.
@@ -301,10 +302,14 @@ function appendMovementPresentation(svg: SVGSVGElement, entity: BaseEntity): voi
     // It takes the place of the heading, so it condenses as the heading does.
     const headingLength = Number(caption.getAttribute('textLength'));
     if (headingLength) condenseDataPanelCaption(stationary, headingLength / measureSvgTextCanvas(caption as SVGTextElement, caption.textContent ?? ''));
-    // Over a column of modes it lines up with them, not with the heading; a heading on the modes' own row keeps its spot.
+    // Over a column of modes it lines up with them, not with the heading; a heading on a mode's own row keeps its spot.
     const walkLabel = svg.getElementById('mpWalk')?.previousElementSibling;
+    const firstModeY = Math.min(...movements.flatMap(movement => {
+      const node = svg.getElementById(movement.id);
+      return node?.parentNode === caption.parentNode ? [Number(node.getAttribute('y'))] : [];
+    }));
     if (walkLabel?.tagName === 'text' && walkLabel.parentNode === caption.parentNode
-      && Number(walkLabel.getAttribute('y')) > Number(caption.getAttribute('y'))) {
+      && firstModeY > Number(caption.getAttribute('y'))) {
       stationary.setAttribute('x', walkLabel.getAttribute('x') ?? '0');
     }
     stationary.setAttribute('class', 'movementStationary screen-only');

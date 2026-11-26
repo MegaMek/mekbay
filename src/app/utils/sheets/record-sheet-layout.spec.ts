@@ -87,7 +87,7 @@ describe('record-sheet page layout', () => {
         expect(page.height).toBe(841.89);
         expect(page.contentWidth).not.toBe(recordSheetPageProfile('letter').contentWidth);
         expect(recordSheetLayoutProfile(new TestBattleArmorEntity(), 'a4').height).toBe(146.2);
-        expect(recordSheetLayoutProfile(new TestInfantryEntity(), 'a4').height).toBe(186.5);
+        expect(recordSheetLayoutProfile(new TestInfantryEntity(), 'a4').height).toBeCloseTo(164.48, 2);
         expect(recordSheetLayoutProfile(new TestProtoMekEntity(), 'a4').height).toBe(149.2);
         expect(recordSheetLayoutProfile(new TestTankEntity(), 'a4').height).toBe(400);
         expect(planRecordSheetPages(

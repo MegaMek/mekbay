@@ -6,7 +6,7 @@ import type { AeroEntity } from '../../../models/entity/entities/aero/aero-entit
 import { isAeroEntity } from '../../../models/entity/utils/entity-type-guards';
 import { fullRecordSheetLayoutProfile, type RecordSheetLayoutProfile, type RecordSheetPageFormat } from '../record-sheet-layout';
 import { type InventoryWeaponStateKey } from '../record-sheet-weapon-grouping';
-import { createRoot, drawGeneratedFooter, drawHeatScale, drawPageChrome, type Box } from '../record-sheet-svg-rendering';
+import { addPageIssuesNote, createRoot, drawGeneratedFooter, drawHeatScale, drawPageChrome, type Box } from '../record-sheet-svg-rendering';
 import { drawFighterCriticalPanel, drawFighterPilotPanel } from './aero-fighter-record-sheet-controls';
 import type { EntityMountedEquipment } from '../../../models/entity/types';
 import { recordSheetFeatures } from '../record-sheet-features';
@@ -33,6 +33,7 @@ export class SmallCraftRecordSheetLayout implements RecordSheetLayout {
         const at = (box: Box): Box => aeroPageBox(page, box);
         const motive = entity.getMotiveTypeAsString()?.toUpperCase() ?? 'AERODYNE';
         drawPageChrome(svg, `${motive} SMALL CRAFT RECORD SHEET`, page, false);
+        addPageIssuesNote(svg, entity, page);
         const dataBox = at({ x: 18.966, y: 87.857, width: 222.4, height: 310.143 });
         drawAeroDataPanel(svg, entity, dataBox, 310.143, {
             panelTitle: 'CRAFT DATA', identity: 'small-craft',

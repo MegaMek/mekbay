@@ -20,7 +20,7 @@ import {
     type RecordSheetPageProfile,
 } from '../record-sheet-layout';
 import {
-    type Box, addText, appendBattleValue, drawCompactPageClusterTable, drawGeneratedFooter,
+    type Box, addIssuesNote, addText, appendBattleValue, drawCompactPageClusterTable, drawGeneratedFooter,
     formatNumber, makeDistributedPips, recordSheetInventoryWeapons, scalePageBox, setAttributes, setCompactClusterRacks,
     setInventoryComponentIds, svgElement,
 } from '../record-sheet-svg-rendering';
@@ -119,6 +119,8 @@ export class HandheldWeaponRecordSheetLayout extends CompactRecordSheetLayout {
         addText(group, entity.uniformArmor()?.armor.shortName ?? 'Standard', 251.3, 38.968,
             { size: 8.2, anchor: 'middle', maxWidth: 41 }).id = 'armorType';
         appendBattleValue(group, entity.battleValue(request.ruleset), { x: 530.06, valueX: 545.836, y: 19.491, size: 8.2 });
+        // Over the strip's lowered top edge, right of the title.
+        addIssuesNote(group, entity, BLOCK_WIDTH - 4, 4.3, 5);
 
         // This strip has no authored rails; every non-canonical mode uses its rectangular fill.
         const armor = makeDistributedPips(entity.getArmorValue('Gun'), 160, 34.94 + extra, 'armor', 'GUN');

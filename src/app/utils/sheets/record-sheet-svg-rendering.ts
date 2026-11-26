@@ -48,6 +48,7 @@ import { SvgFrameUtil } from './svg-frame.util';
 import { adoptRecordSheetInventoryBlocks, recordSheetWeaponMountKey } from './record-sheet-weapon-grouping';
 import { recordSheetInventoryMountName } from './record-sheet-inventory-equipment';
 import { measureSvgTextCanvas } from '../svg-text.util';
+import { buildUnitIssues } from '../unit-summary-builder';
 import recordSheetIntrinsicStyle from './styles/record-sheet-intrinsic.css' with { loader: 'text' };
 
 const SVG_NS = 'http://www.w3.org/2000/svg';
@@ -1603,6 +1604,26 @@ function clusterHitsReferenceProfile(
     rowHeight: 5.932,
     firstShadeY: 1.333,
   };
+}
+
+/**
+ * Flags a unit that has source or construction issues, right-aligned at a spot its family picks: in sight, out of
+ * the way. The unit's details list the issues themselves. Returns the note, when drawn.
+ */
+export function addIssuesNote(
+  parent: SVGElement,
+  entity: BaseEntity,
+  right: number,
+  baseline: number,
+  size = 5.7,
+): SVGTextElement | null {
+  if (buildUnitIssues(entity).length === 0) return null;
+  return addText(parent, 'Invalid design', right, baseline, { size, weight: 700, fill: 'red', anchor: 'end', class: 'record-sheet-issues-note' });
+}
+
+/** A full-page sheet flags its unit's issues in the page's top right corner, above the content. */
+export function addPageIssuesNote(svg: SVGSVGElement, entity: BaseEntity, page: RecordSheetPageProfile): void {
+  addIssuesNote(svg, entity, page.width - page.margin, page.margin - 3);
 }
 
 /** Footer text and optional logo, with logo coordinates supplied in physical page space. */

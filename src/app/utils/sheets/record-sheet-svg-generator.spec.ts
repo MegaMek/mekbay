@@ -62,6 +62,20 @@ describe('RecordSheetSvgGenerator', () => {
         }
     });
 
+    it('marks a unit with issues as an invalid design once on every family\'s sheet', async () => {
+        const issue = { code: 'SOURCE_WARNING', severity: 'warning', field: 'source', message: 'Source parsing warning' } as const;
+        for (const entity of [new TestBipedMekEntity(), new TestTankEntity(), new TestSupportNavalEntity(),
+            new TestProtoMekEntity(), new TestBattleArmorEntity(), new TestInfantryEntity(), new TestHandheldWeaponEntity(),
+            new TestAeroSpaceFighterEntity(), new TestSmallCraftEntity(), new TestDropShipEntity(), new TestWarShipEntity()]) {
+            entity.setLoadIssues([issue]);
+            const svg = await RecordSheetSvgGenerator.generate(entity, { ruleset: 'total-warfare' });
+            const notes = svg.querySelectorAll('.record-sheet-issues-note');
+            expect(notes.length).withContext(entity.entityType).toBe(1);
+            expect(notes[0]?.textContent).withContext(entity.entityType).toBe('Invalid design');
+            expect(notes[0]?.getAttribute('fill')).withContext(entity.entityType).toBe('red');
+        }
+    });
+
     it('generates a compact vehicle sheet directly from an Entity', async () => {
         const entity = new TestTankEntity();
         entity.chassis.set('Vedette');

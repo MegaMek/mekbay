@@ -39,6 +39,7 @@ addCrewSkillButton,
 addCrewSkillValue,
 addDiagramHeading,
 addFrame,
+addIssuesNote,
 addLine,
 addText,
 addWrappedText,
@@ -96,6 +97,8 @@ export interface CompactVehicleDiagramPresentation {
     /** Replaces the source artwork's authored root transform for a template variant. */
     readonly authoredRootTransform?: string;
     readonly catalystY?: number;
+    /** The issues note's baseline where the strip under the Catalyst logo is taken. */
+    readonly issuesNoteY?: number;
     /** Where the random hit button's square starts when the logo's row at the lower left is taken by a label. */
     readonly randomHitAt?: { readonly x: number; readonly y: number };
 }
@@ -687,6 +690,8 @@ export async function drawCompactVehicleDiagram(
     const catalystY = presentation.catalystY ?? box.height - 24.413;
     const armorValues: Record<string, number> = {};
     const structureValues: Record<string, number> = {};
+    // Under the Catalyst logo, at the diagram's right edge.
+    addIssuesNote(group, entity, box.width, presentation.issuesNoteY ?? catalystY + 2 * CATALYST_LOGO_MIDDLE + 7.3);
     for (const location of entity.damageLocations()) {
         const code = location.sheetCode ?? location.code;
         armorValues[code] = location.armor.front;

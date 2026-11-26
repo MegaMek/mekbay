@@ -39,6 +39,12 @@ same vessel panel arrangement. Small Craft have an independent composition and
 mount inventory. Fighter and vessel drawing primitives live beside their family
 owners; unrelated family decisions do not belong in a shared rendering helper.
 
+A unit with source or construction issues (`buildUnitIssues`) prints a red
+"Invalid design" note. `addIssuesNote` draws it; each family picks the spot:
+the page's top right corner on full-page sheets (`addPageIssuesNote`), over
+the critical damage panel on large craft, and inside each compact block, so
+it repeats with the block.
+
 `record-sheet-svg-rendering.ts` supplies drawing primitives and shared panels.
 `SvgFrameUtil` generates the frame contours and headings. Headerless frames skip
 text measurement; frames with headings measure the actual font to preserve fit.

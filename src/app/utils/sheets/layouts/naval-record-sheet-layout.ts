@@ -137,10 +137,11 @@ export class NavalRecordSheetLayout extends CompactRecordSheetLayout {
             {
                 pipLayout: request.pipLayout,
                 assetUrl: navalPaperdollAsset(entity),
+                // A surface vessel's logo sits right over the page footer, so its issues note goes over the logo.
                 ...(submarine ? {
                     authoredRootTransform: 'matrix(0.95 0 0 0.95 9 35)',
                     catalystY: 610.907,
-                } : {}),
+                } : { issuesNoteY: diagramBox.height - 24.413 - 3.5 }),
             },
         );
         this.drawDiagramLabels(diagram, entity, diagramBox, submarine);
