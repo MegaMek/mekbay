@@ -698,7 +698,7 @@ export class UnitAvailabilitySourceService {
 
                 for (const [factionIdText, weights] of Object.entries(eraAvailability)) {
                     const factionId = Number(factionIdText);
-                    if (Number.isNaN(factionId)) {
+                    if (Number.isNaN(factionId) || factionId === MULFACTION_EXTINCT) {
                         continue;
                     }
 
@@ -1052,6 +1052,11 @@ export class UnitAvailabilitySourceService {
         unitKey: AvailabilityUnitKey,
         context?: MegaMekAvailabilityFilterContext,
     ): readonly MegaMekUnitAvailabilityEntry[] {
+        // Extinct is derived from era gaps, so a scope of only Extinct has no entries.
+        if (context?.factionIds?.size === 1 && context.factionIds.has(MULFACTION_EXTINCT)) {
+            return [];
+        }
+
         if (context?.bridgeThroughMulMembership) {
             this.ensureMulBridge();
             return this.megaMekEntriesInMulByUnitKey.get(unitKey) ?? [];
