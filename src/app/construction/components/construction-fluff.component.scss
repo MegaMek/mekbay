@@ -68,9 +68,6 @@ fieldset label {
 legend {
   font-size: 12px;
 }
-.muted {
-  color: var(--text-color-secondary);
-}
 @media (max-width: 850px) {
   .fluff-grid {
     grid-template-columns: 1fr;
@@ -95,15 +92,18 @@ legend {
   display: flex;
   gap: 8px;
   flex-wrap: wrap;
+  align-items: center;
   margin-top: 12px;
 }
-.muted,
 .image-error {
   font-size: 12px;
   line-height: 1.5;
-}
-.image-error {
   color: var(--bt-red);
+}
+.muted {
+  margin-left: auto;
+  font-size: 10px;
+  color: var(--text-color-tertiary);
 }
 .design-locked {
   opacity: 0.65;

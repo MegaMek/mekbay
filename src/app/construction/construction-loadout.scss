@@ -911,6 +911,12 @@ tech-base-badge {
   flex: 1;
 }
 
+/* A one-slot row reads tick, name, ARMORED, as an equipment row does. */
+.system-slot.single-slot .armored-badge {
+  order: 1;
+  align-self: center;
+}
+
 .system-slot.single-slot .condition-label {
   margin-left: auto;
 }

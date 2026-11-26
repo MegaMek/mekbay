@@ -561,7 +561,7 @@
               <div class="system-content">
                 @if (armoredSystemCount(location.id, row); as count) {
                   <span class="armored-badge" [title]="count + ' armored critical slots'"
-                    >ARMORED {{ count }}/{{ row.span }}</span
+                    >ARMORED{{ row.span > 1 ? ' ' + count + '/' + row.span : '' }}</span
                   >
                 }
                 <span class="critical-ticks">
