@@ -331,7 +331,6 @@ export function executeUnitSearch(request: UnitSearchExecutionRequest): UnitSear
     };
     let relevanceScores: Float64Array | null = null;
     let unindexedRelevanceScores: Map<UnitSummary, number> | null = null;
-    let megaMekRarityScores: WeakMap<UnitSummary, number> | null = null;
     if (request.sortKey === '' && hasTextSearch) {
         relevanceScores = measureStage(
             telemetryStages,
@@ -386,18 +385,29 @@ export function executeUnitSearch(request: UnitSearchExecutionRequest): UnitSear
             : unindexedRelevanceScores?.get(unit) ?? 0;
     };
 
-    if (isMegaMekRaritySortKey(request.sortKey) && request.getMegaMekRaritySortScore) {
-        megaMekRarityScores = new WeakMap<UnitSummary, number>();
-        for (const unit of sorted) {
-            megaMekRarityScores.set(unit, request.getMegaMekRaritySortScore(unit, request.availabilitySortScope));
-        }
-    }
+    const readSortValue: ((unit: UnitSummary) => unknown) | null = request.sortKey === '' || request.sortKey === 'name'
+        ? null
+        : request.sortKey === 'bv'
+            ? getContextualAdjustedBV
+            : request.sortKey === 'as.PV'
+                ? getContextualAdjustedPV
+                : isMegaMekRaritySortKey(request.sortKey)
+                    ? unit => request.getMegaMekRaritySortScore?.(unit, request.availabilitySortScope) ?? 0
+                    : unit => getProperty(unit, request.sortKey);
 
     measureStage(
         telemetryStages,
         'sort',
         sorted.length,
         () => {
+            // Each unit's sort value is read once, not once per comparison.
+            const sortValues = new Map<UnitSummary, unknown>();
+            if (readSortValue) {
+                for (const unit of sorted) {
+                    sortValues.set(unit, readSortValue(unit));
+                }
+            }
+
             sorted.sort((a, b) => {
                 let comparison = 0;
 
@@ -410,18 +420,9 @@ export function executeUnitSearch(request: UnitSearchExecutionRequest): UnitSear
                     }
                 } else if (request.sortKey === 'name') {
                     comparison = compareUnitsByPreparedName(a, b);
-                } else if (request.sortKey === 'bv') {
-                    comparison = getContextualAdjustedBV(a) - getContextualAdjustedBV(b);
-                } else if (request.sortKey === 'as.PV') {
-                    comparison = getContextualAdjustedPV(a) - getContextualAdjustedPV(b);
-                } else if (isMegaMekRaritySortKey(request.sortKey)) {
-                    comparison = (megaMekRarityScores?.get(a) ?? 0) - (megaMekRarityScores?.get(b) ?? 0);
-                    if (comparison === 0) {
-                        comparison = compareUnitsByPreparedName(a, b);
-                    }
                 } else {
-                    const aValue = getProperty(a, request.sortKey);
-                    const bValue = getProperty(b, request.sortKey);
+                    const aValue = sortValues.get(a);
+                    const bValue = sortValues.get(b);
                     if (typeof aValue === 'string' && typeof bValue === 'string') {
                         comparison = naturalCompare(aValue, bValue);
                     } else if (typeof aValue === 'number' && typeof bValue === 'number') {

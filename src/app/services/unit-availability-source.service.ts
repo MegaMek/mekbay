@@ -562,22 +562,7 @@ export class UnitAvailabilitySourceService {
         availabilityFromName: string,
         context?: MegaMekAvailabilityFilterContext,
     ): boolean {
-        this.ensureMulCacheVersion();
-        this.ensureMegaMekIndexes();
-        if (this.hasEmptyMegaMekScope(context)) {
-            return false;
-        }
-
-        if (availabilityFromName.trim().toLowerCase() === MEGAMEK_AVAILABILITY_UNKNOWN.toLowerCase()) {
-            return this.isMegaMekUnitUnknownInScope(unit.uuid, context);
-        }
-
-        const availabilityFrom = this.resolveMegaMekAvailabilityFrom(availabilityFromName);
-        if (!availabilityFrom) {
-            return false;
-        }
-
-        return this.unitHasSelectedAvailabilityInScope(unit.uuid, context, [availabilityFrom]);
+        return this.getAvailabilityFromMatcher(availabilityFromName, context)(unit);
     }
 
     public unitMatchesAvailabilityRarity(
@@ -585,23 +570,51 @@ export class UnitAvailabilitySourceService {
         rarityName: string,
         context?: MegaMekAvailabilityFilterContext,
     ): boolean {
+        return this.getAvailabilityRarityMatcher(rarityName, context)(unit);
+    }
+
+    /** Resolves the name and scope once, for a pass over many units. */
+    public getAvailabilityFromMatcher(
+        availabilityFromName: string,
+        context?: MegaMekAvailabilityFilterContext,
+    ): (unit: Pick<UnitSummary, 'uuid'>) => boolean {
         this.ensureMulCacheVersion();
         this.ensureMegaMekIndexes();
         if (this.hasEmptyMegaMekScope(context)) {
-            return false;
+            return () => false;
+        }
+
+        if (availabilityFromName.trim().toLowerCase() === MEGAMEK_AVAILABILITY_UNKNOWN.toLowerCase()) {
+            return (unit) => this.isMegaMekUnitUnknownInScope(unit.uuid, context);
+        }
+
+        const availabilityFrom = this.resolveMegaMekAvailabilityFrom(availabilityFromName);
+        if (!availabilityFrom) {
+            return () => false;
+        }
+
+        const sources = [availabilityFrom];
+        return (unit) => this.unitHasSelectedAvailabilityInScope(unit.uuid, context, sources);
+    }
+
+    /** Resolves the name and scope once, for a pass over many units. */
+    public getAvailabilityRarityMatcher(
+        rarityName: string,
+        context?: MegaMekAvailabilityFilterContext,
+    ): (unit: Pick<UnitSummary, 'uuid'>) => boolean {
+        this.ensureMulCacheVersion();
+        this.ensureMegaMekIndexes();
+        if (this.hasEmptyMegaMekScope(context)) {
+            return () => false;
         }
 
         const rarity = this.resolveMegaMekAvailabilityRarity(rarityName);
         if (!rarity) {
-            return false;
+            return () => false;
         }
 
-        return this.unitMatchesResolvedAvailabilityRarity(
-            unit.uuid,
-            rarity,
-            context,
-            this.getRequestedAvailabilitySources(context),
-        );
+        const sources = this.getRequestedAvailabilitySources(context);
+        return (unit) => this.unitMatchesResolvedAvailabilityRarity(unit.uuid, rarity, context, sources);
     }
 
     /** The unit's MegaMek entries; with the MUL bridge, only those inside its MUL faction-era membership. */

@@ -1808,7 +1808,7 @@ export class UnitSearchFiltersService {
     private getUnitIdsForExternalFilters(
         eraFilterState?: FilterState[string],
         factionFilterState?: FilterState[string],
-    ): Set<string> | null {
+    ): ReadonlySet<string> | null {
         const resolvedEras = this.resolveEraNamesFromFilter(eraFilterState);
         const resolvedFactions = resolveDropdownNamesFromFilter(
             normalizeMultiStateSelection(factionFilterState?.value),

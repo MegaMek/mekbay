@@ -41,7 +41,7 @@ export interface UnitFilterKernelDependencies {
     getUnitIdsForExternalFilters: (
         eraFilterState?: FilterState[string],
         factionFilterState?: FilterState[string],
-    ) => Set<string> | null;
+    ) => ReadonlySet<string> | null;
     getPositiveFactionNames: (
         selectedFactionEntries: MultiStateSelection,
         wildcardPatterns?: WildcardPattern[],
@@ -232,7 +232,7 @@ export function applyFilterStateToUnits(request: ApplyUnitFilterStateRequest): U
     const selectedAvailabilityFromNames = getSelectedPositiveDropdownNames(activeFilters['availabilityFrom']);
     const selectedAvailabilityRarityNames = getSelectedPositiveDropdownNames(activeFilters['availabilityRarity']);
 
-    let externalUnitIds: Set<string> | null = null;
+    let externalUnitIds: ReadonlySet<string> | null = null;
     const eraFilterState = skipKey === 'era' ? undefined : state['era'];
     const factionFilterState = skipKey === 'faction' ? undefined : state['faction'];
     const factionWildcardPatterns = factionFilterState?.wildcardPatterns;

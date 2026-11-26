@@ -236,47 +236,32 @@ export class UnitSearchAvailabilityService {
             return contextUnits.some(unit => membershipUnitIds.has(unit.uuid));
         }
 
+        // Names and scope are resolved once per option, not once per unit.
+        const source = this.unitAvailabilitySource;
+        const unknownMatcher = () => source.getAvailabilityFromMatcher(MEGAMEK_AVAILABILITY_UNKNOWN, baseContext);
+        let matchers: Array<(unit: UnitSummary) => boolean>;
         if (!hasRarityFilter) {
-            return contextUnits.some(unit => (
-                includesUnknownSource
-                    && this.unitAvailabilitySource.unitMatchesAvailabilityFrom(
-                        unit,
-                        MEGAMEK_AVAILABILITY_UNKNOWN,
-                        baseContext,
-                    )
-            ) || selectedPositiveSources.some(source => (
-                this.unitAvailabilitySource.unitMatchesAvailabilityFrom(unit, source, baseContext)
-            )));
+            matchers = [
+                ...(includesUnknownSource ? [unknownMatcher()] : []),
+                ...selectedPositiveSources.map(name => source.getAvailabilityFromMatcher(name, baseContext)),
+            ];
+        } else if (!hasSourceFilter) {
+            matchers = availabilityRarityNames.map(name => source.getAvailabilityRarityMatcher(name, baseContext));
+        } else {
+            const sourceContext = { ...baseContext, availabilityFrom: new Set(selectedPositiveSources) };
+            matchers = [
+                ...(includesUnknownSource && availabilityRarityNames.includes(MEGAMEK_AVAILABILITY_UNKNOWN)
+                    ? [unknownMatcher()]
+                    : []),
+                ...(selectedPositiveSources.length > 0
+                    ? availabilityRarityNames
+                        .filter(name => name !== MEGAMEK_AVAILABILITY_UNKNOWN)
+                        .map(name => source.getAvailabilityRarityMatcher(name, sourceContext))
+                    : []),
+            ];
         }
 
-        if (!hasSourceFilter) {
-            return contextUnits.some(unit => availabilityRarityNames.some(rarityName => (
-                this.unitAvailabilitySource.unitMatchesAvailabilityRarity(unit, rarityName, baseContext)
-            )));
-        }
-
-        const includesUnknownCandidate = includesUnknownSource
-            && availabilityRarityNames.includes(MEGAMEK_AVAILABILITY_UNKNOWN);
-        const positiveRarityNames = availabilityRarityNames.filter(
-            rarityName => rarityName !== MEGAMEK_AVAILABILITY_UNKNOWN,
-        );
-        const sourceContext = selectedPositiveSources.length > 0
-            ? { ...baseContext, availabilityFrom: new Set(selectedPositiveSources) }
-            : null;
-
-        return contextUnits.some(unit => (
-            includesUnknownCandidate
-                && this.unitAvailabilitySource.unitMatchesAvailabilityFrom(
-                    unit,
-                    MEGAMEK_AVAILABILITY_UNKNOWN,
-                    baseContext,
-                )
-        ) || (
-            sourceContext !== null
-                && positiveRarityNames.some(rarityName => (
-                    this.unitAvailabilitySource.unitMatchesAvailabilityRarity(unit, rarityName, sourceContext)
-                ))
-        ));
+        return contextUnits.some(unit => matchers.some(matches => matches(unit)));
     }
 
     /**
@@ -497,9 +482,14 @@ export class UnitSearchAvailabilityService {
         resolved: ResolvedDropdownNames,
         getUnitIds: (name: string) => ReadonlySet<string>,
         createBaseUnitIds: () => Set<string>,
-    ): Set<string> | null {
+    ): ReadonlySet<string> | null {
         if (!hasResolvedDropdownNames(resolved)) {
             return null;
+        }
+
+        // A single included name needs no combining: share its set instead of copying it.
+        if (resolved.or.length + resolved.and.length === 1 && resolved.not.length === 0) {
+            return getUnitIds(resolved.or[0] ?? resolved.and[0]);
         }
 
         let resultSet: Set<string> | null = null;
@@ -549,30 +539,44 @@ export class UnitSearchAvailabilityService {
         for (const eraName of selectedEraNames) {
             const era = this.dataService.getEraByName(eraName);
             if (era) {
-                this.unitAvailabilitySource.getVisibleEraUnitIds(era).forEach((id) => unitIds.add(id));
+                this.getUnitIdsForEra(era).forEach((id) => unitIds.add(id));
             }
         }
         return unitIds;
     }
 
-    private getUnitIdsForSelectedEras(resolvedEras: ResolvedDropdownNames): Set<string> | null {
+    private getUnitIdsForSelectedEras(resolvedEras: ResolvedDropdownNames): ReadonlySet<string> | null {
         return this.combineResolvedUnitIds(
             resolvedEras,
             (eraName) => {
                 const era = this.dataService.getEraByName(eraName);
                 return era
-                    ? this.unitAvailabilitySource.getVisibleEraUnitIds(era)
+                    ? this.getUnitIdsForEra(era)
                     : new Set<string>();
             },
             () => this.getAllUnitIdsInContext(),
         );
     }
 
-    private getUnitIdsForFaction(factionName: string, contextEraIds?: Set<number>): Set<string> {
+    // Shared read-only memberships: the availability source's own getters hand out caller-owned copies.
+    private getUnitIdsForEra(era: Era): ReadonlySet<string> {
+        return this.unitAvailabilitySource.useMegaMekAvailability()
+            ? this.unitAvailabilitySource.getMegaMekMembershipUnitIds({ eraIds: new Set([era.id]) })
+            : this.dataService.getMulAvailabilityIndex().getEraUnitUuids(era.id);
+    }
+
+    private getUnitIdsForFaction(factionName: string, contextEraIds?: Set<number>): ReadonlySet<string> {
         const faction = this.dataService.getFactionByName(factionName);
-        return faction
-            ? this.unitAvailabilitySource.getFactionUnitIds(faction, contextEraIds)
-            : new Set<string>();
+        if (!faction) {
+            return new Set<string>();
+        }
+
+        return this.unitAvailabilitySource.useMegaMekAvailability()
+            ? this.unitAvailabilitySource.getMegaMekMembershipUnitIds({
+                ...(contextEraIds ? { eraIds: contextEraIds } : {}),
+                factionIds: new Set([faction.id]),
+            })
+            : this.dataService.getMulAvailabilityIndex().getFactionUnitUuids(faction.id, contextEraIds);
     }
 
     getIndexedUnitIds(
@@ -717,7 +721,7 @@ export class UnitSearchAvailabilityService {
         return this.getUnitIdsForEraNames(contextEraNames) || new Set<string>();
     }
 
-    private getUnitIdsForSelectedFactions(resolved: ResolvedDropdownNames, contextEraNames?: string[]): Set<string> | null {
+    private getUnitIdsForSelectedFactions(resolved: ResolvedDropdownNames, contextEraNames?: string[]): ReadonlySet<string> | null {
         const contextEraIds = contextEraNames && contextEraNames.length > 0
             ? new Set(contextEraNames
                 .map(name => this.dataService.getEraByName(name)?.id)
@@ -733,7 +737,7 @@ export class UnitSearchAvailabilityService {
     getUnitIdsForSelection(
         resolvedEras: ResolvedDropdownNames,
         resolvedFactions: ResolvedDropdownNames,
-    ): Set<string> | null {
+    ): ReadonlySet<string> | null {
         const hasEraFilter = hasResolvedDropdownNames(resolvedEras);
         const hasFactionFilter = hasResolvedDropdownNames(resolvedFactions);
 
@@ -753,7 +757,7 @@ export class UnitSearchAvailabilityService {
         const relevantEraNames = positiveEraNames.length > 0
             ? Array.from(new Set([...positiveEraNames, ...resolvedEras.not]))
             : this.dataService.getEras().map((era) => era.name);
-        const perEraFactionUnitIds = new Map<string, Set<string>>();
+        const perEraFactionUnitIds = new Map<string, ReadonlySet<string>>();
 
         for (const eraName of relevantEraNames) {
             perEraFactionUnitIds.set(
