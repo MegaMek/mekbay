@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 
 import { asUnitProviderId } from '../unit-catalog/unit-catalog.types';
-import { CatalogStorage, fluffImageCatalogKey } from './catalog-storage.service';
+import { ASSET_CATALOG_DATABASE_NAME, CatalogStorage, fluffImageCatalogKey } from './catalog-storage.service';
 
 describe('CatalogStorage', () => {
   const hash = 'AAAAAAAAAAAAAAAAAAAAAAAAAAA';
@@ -11,6 +11,32 @@ describe('CatalogStorage', () => {
   beforeEach(async () => {
     storage = new CatalogStorage();
     await storage.clear();
+  });
+
+  function settled<T>(request: IDBRequest<T>): Promise<T> {
+    return new Promise((resolve, reject) => {
+      request.onsuccess = () => resolve(request.result);
+      request.onerror = () => reject(request.error);
+    });
+  }
+
+  /** The unit-icon storage used this database name up to version 2 and never deleted it. */
+  async function createRetiredUnitIconDatabase(): Promise<void> {
+    await settled(indexedDB.deleteDatabase(ASSET_CATALOG_DATABASE_NAME));
+    const request = indexedDB.open(ASSET_CATALOG_DATABASE_NAME, 2);
+    request.onupgradeneeded = () => {
+      request.result.createObjectStore('unitIcons');
+      request.result.createObjectStore('metadata');
+    };
+    (await settled(request)).close();
+  }
+
+  it('takes over the database name from the retired unit-icon storage', async () => {
+    await createRetiredUnitIconDatabase();
+    storage = new CatalogStorage();
+
+    await storage.put('equipment', hash, { value: 1 });
+    expect(await storage.get('equipment')).toEqual({ value: 1 });
   });
 
   it('stores repository catalogs by their SHA-1 asset hash', async () => {

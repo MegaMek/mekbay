@@ -27,7 +27,8 @@ interface StoredAssetsManifest {
 }
 
 export const ASSET_CATALOG_DATABASE_NAME = 'mekbay-assets';
-export const ASSET_CATALOG_DATABASE_VERSION = 1;
+// The retired unit-icon storage used this name up to version 2 and never deleted its database.
+export const ASSET_CATALOG_DATABASE_VERSION = 3;
 export const ASSET_CATALOG_STORE = 'assets';
 export const ASSETS_MANIFEST_KEY = 'assets-manifest';
 
@@ -166,6 +167,9 @@ function openDatabase(onVersionChange: () => void): Promise<IDBDatabase | undefi
     const request = indexedDB.open(ASSET_CATALOG_DATABASE_NAME, ASSET_CATALOG_DATABASE_VERSION);
     request.onupgradeneeded = () => {
       const database = request.result;
+      for (const name of Array.from(database.objectStoreNames)) {
+        if (name !== ASSET_CATALOG_STORE) database.deleteObjectStore(name);
+      }
       if (!database.objectStoreNames.contains(ASSET_CATALOG_STORE)) {
         database.createObjectStore(ASSET_CATALOG_STORE, { keyPath: 'key' });
       }
