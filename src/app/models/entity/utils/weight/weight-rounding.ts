@@ -11,3 +11,8 @@ export function ceilToHalfTon(value: number): number {
 export function ceilToWholeTon(value: number): number {
   return Math.ceil(Math.round(value * 1000) / 1000);
 }
+
+/** Round construction mass upward to the nearest kilogram after removing FP noise. */
+export function ceilToKilogram(value: number): number {
+  return Math.ceil(Math.round(value * 1_000_000) / 1000) / 1000;
+}

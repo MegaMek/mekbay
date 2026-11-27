@@ -1,0 +1,493 @@
+// Copyright (C) 2026 The MegaMek Team
+// SPDX-License-Identifier: GPL-3.0-or-later
+
+import { ImmutableIndex } from '../entity/immutable-collections';
+import { freezeRuntimeState } from './runtime-state';
+import { canonicalizeMekTurnStateV2 } from './mek-turn-state-v2';
+import { rekeyMekHeatSourceMap } from './mek-heat-state-v2';
+import { createSavedTargetRef } from './persistence-v2';
+import {
+restoreSerializedCBTUnitV2,
+serializeCBTUnitStateV2,
+} from './runtime-state-codec-v2';
+import {
+createDirectBoobyTrapRuntimeFixture,
+createDirectEscalatingFailureRuntimeFixture,
+createDirectMekRuntimeFixture,
+createDirectModularArmorRuntimeFixture,
+createDirectShieldRuntimeFixture,
+} from './testing/direct-mek-runtime-fixture';
+
+describe('heat source re-keying', () => {
+    const rekey = (sources: [string, number][], ids: Record<string, string>) => {
+        const rekeyed = rekeyMekHeatSourceMap(new Map(sources), id => ids[id] ?? id);
+        return rekeyed && [...rekeyed].sort(([left], [right]) => left.localeCompare(right));
+    };
+
+    it('follows swapped and shifted component ids, never displacing a source that keeps its id', () => {
+        expect(rekey([['equipment:A', 1], ['equipment:B', 2]], { A: 'B', B: 'A' }))
+            .toEqual([['equipment:A', 2], ['equipment:B', 1]]);
+        expect(rekey([['equipment:A', 1], ['equipment:B', 2]], { A: 'B', B: 'C' }))
+            .toEqual([['equipment:B', 1], ['equipment:C', 2]]);
+        // Two sources on one id: the one keeping its id stays, the moved one keeps its saved id.
+        expect(rekey([['equipment:A', 1], ['equipment:X', 5]], { A: 'X' }))
+            .toEqual([['equipment:A', 1], ['equipment:X', 5]]);
+        expect(rekey([['weapons', 3], ['equipment:A', 1]], {})).toBeNull();
+    });
+});
+
+describe('direct Mek V2 state codec', () => {
+    it('persists only an explicit destruction override, not derived destruction', () => {
+        const fixture = createDirectBoobyTrapRuntimeFixture();
+        const trap = fixture.equipmentComponent('Test Booby Trap');
+
+        expect(fixture.instance.dispatch({
+            type: 'detonate-booby-trap',
+            componentId: trap.id,
+        })).toEqual(jasmine.objectContaining({ accepted: true, changed: true }));
+        expect(fixture.instance.query().destroyed()).toBeTrue();
+        expect(serialize(fixture).destroyed).toBeUndefined();
+
+        const explicit = freezeRuntimeState({
+            ...fixture.instance.snapshot(),
+            explicitlyDestroyed: true,
+            destroyed: true,
+        });
+        expect(serialize(fixture, explicit).destroyed).toBeTrue();
+    });
+
+    it('keeps the witness of the component a settled heat source names', async () => {
+        const fixture = createDirectBoobyTrapRuntimeFixture();
+        const trap = fixture.equipmentComponent('Test Booby Trap');
+        for (const sourceId of [`equipment:${trap.id}`, `radical-heat-sink:${trap.id}:weapons`]) {
+            const pristine = fixture.instance.snapshot();
+            const state = freezeRuntimeState({ ...pristine, turn: canonicalizeMekTurnStateV2({
+                ...pristine.turn, settledHeat: new ImmutableIndex([[sourceId, 3]]), heatDissipationConsumed: 0,
+            }) });
+            const saved = serialize(fixture, state);
+            expect(Object.values(saved.blueprintReferences.targets))
+                .toContain(jasmine.objectContaining({ kind: 'component', savedComponentId: trap.id }));
+            const restored = await restoreSerializedCBTUnitV2(saved, fixture.entity, fixture.index, fixture.initialized);
+            expect([...restored.state.turn.settledHeat]).toEqual([[sourceId, 3]]);
+        }
+    });
+
+    it('round-trips only sparse runtime deviations over the entity baseline', async () => {
+        const fixture = createDirectMekRuntimeFixture();
+        const face = [...fixture.index.armorFaces.values()].find(candidate => candidate.maximumPoints > 2)!;
+        const ammo = [...fixture.index.components.values()].find(component =>
+            component.kind === 'equipment' && component.mount.equipmentId === 'Test Ammo')!;
+        if (ammo.kind !== 'equipment') throw new Error('Fixture ammo is missing');
+
+        expect(fixture.instance.dispatch({
+            type: 'damage-armor',
+            faceId: face.id, amount: 2, target: 'committed',
+        }).accepted).toBeTrue();
+        expect(fixture.instance.dispatch({
+            type: 'spend-ammo',
+            componentId: ammo.id, amount: 4,
+        }).accepted).toBeTrue();
+
+        const saved = serialize(fixture);
+        expect(Object.prototype.hasOwnProperty.call(saved, 'index')).toBeFalse();
+        expect(saved.baselineRefAtSave.entity).toEqual(fixture.identity);
+        expect(Object.prototype.hasOwnProperty.call(saved.baselineRefAtSave, 'published')).toBeFalse();
+        expect(saved.locationState?.length).toBe(1);
+        expect(saved.ammoState?.length).toBe(1);
+
+        const wire = JSON.parse(JSON.stringify(saved));
+        const restored = await restoreSerializedCBTUnitV2(wire, fixture.entity, fixture.index, fixture.initialized);
+        const replay = fixture.createInstance('unit:codec-replay');
+        expect(restored.state.locations.size).toBe(1);
+        expect(restored.state.ammo.size).toBe(1);
+        expect('unresolved' in restored).toBeFalse();
+        expect(replay.snapshot().locations.size).toBe(0);
+
+        // Force storage omits the derived witness table. Restore those same deviations
+        // directly against the current native blueprint, without a caller-built index.
+        const compact = { ...wire, blueprintReferences: { targets: {} } };
+        const fromNative = await restoreSerializedCBTUnitV2(
+            compact, fixture.entity, fixture.index, fixture.initialized, 'current',
+        );
+        expect(serialize(fixture, fromNative.state)).toEqual(serialize(fixture, restored.state));
+        expect(fromNative.warnings).toEqual(restored.warnings);
+    });
+
+    it('skips compact slot damage whose slot the loaded design no longer fills', async () => {
+        const fixture = createDirectMekRuntimeFixture();
+        // A design re-read with its rows packed upward can leave a saved coordinate empty.
+        const occupied = new Set([...fixture.index.slots.values()].map(slot =>
+            `${fixture.index.locations.get(slot.locationId)!.code.toLowerCase()}:${slot.slotIndex}`));
+        const empty = Array.from({ length: 12 }, (_, index) => `lt:${index}`).find(key => !occupied.has(key))!;
+        const target = createSavedTargetRef('slot', empty);
+        // Merged or renumbered mounts can also leave a component or ammunition bin the design no longer numbers.
+        const bin = createSavedTargetRef('ammo', 'm999');
+        const component = createSavedTargetRef('component', 'm998');
+        const shield = createSavedTargetRef('component', 'm997');
+        const modular = createSavedTargetRef('component', 'm996');
+        const compact = {
+            ...JSON.parse(JSON.stringify(serialize(fixture))),
+            slotState: [{ target, hits: 1 }],
+            ammoState: [{ target: bin, shotsSpent: 1 }],
+            componentState: [{ target: component, status: 'destroyed' }],
+            pendingCombat: {
+                shieldDamage: [{ target: shield, absorptionDamage: 1 }],
+                modularArmorDamage: [{ target: modular, damage: 1 }],
+            },
+            blueprintReferences: { targets: {} },
+        };
+        const restored = await restoreSerializedCBTUnitV2(compact, fixture.entity, fixture.index, fixture.initialized, 'current');
+        expect(restored.state.slots.size).toBe(0);
+        expect(restored.state.ammo.size).toBe(0);
+        for (const ref of [target, bin, component, shield, modular]) {
+            expect(restored.warnings).toContain(jasmine.objectContaining({ code: 'STATE_SKIPPED', sourceTargetRef: ref }));
+        }
+        // A full save carries its own witness table, so the same gap there is still a corrupt save.
+        await expectAsync(restoreSerializedCBTUnitV2({ ...compact, blueprintReferences: serialize(fixture).blueprintReferences },
+            fixture.entity, fixture.index, fixture.initialized)).toBeRejectedWithError(/missing witness/);
+    });
+
+    it('restores under the current application rules without persisting a ruleset', async () => {
+        const fixture = createDirectMekRuntimeFixture();
+        const saved = serialize(fixture);
+        const initialized = {
+            ...fixture.initialized,
+            baselineRef: Object.freeze({
+                ...fixture.initialized.baselineRef,
+                ruleset: 'total-warfare' as const,
+            }),
+        };
+
+        const restored = await restoreSerializedCBTUnitV2(
+            saved,
+            fixture.entity,
+            fixture.index,
+            initialized,
+        );
+
+        expect('ruleset' in saved.baselineRefAtSave).toBeFalse();
+        expect(restored.warnings).toEqual([]);
+    });
+
+    it('round-trips pending and committed crew death distinctly', async () => {
+        const fixture = createDirectMekRuntimeFixture();
+        const positionId = [...fixture.index.crewPositions.keys()][0]!;
+        expect(fixture.instance.dispatch({
+            type: 'set-crew-state',
+            positionId,
+            wounds: 6,
+            unconscious: false,
+            ejected: false,
+        })).toEqual(jasmine.objectContaining({ accepted: true, changed: true }));
+
+        const pendingSave = serialize(fixture);
+        expect(pendingSave.crew.positions[0]?.dead).toBeUndefined();
+        const pendingRestore = await restoreSerializedCBTUnitV2(
+            pendingSave,
+            fixture.entity,
+            fixture.index,
+            fixture.initialized,
+        );
+        expect(pendingRestore.state.crew.get(positionId)?.dead).toBeUndefined();
+
+        expect(fixture.instance.dispatch({ type: 'end-phase' }))
+            .toEqual(jasmine.objectContaining({ accepted: true, changed: true }));
+        const committedSave = serialize(fixture);
+        expect(committedSave.crew.positions[0]?.dead).toBeTrue();
+        const committedRestore = await restoreSerializedCBTUnitV2(
+            committedSave,
+            fixture.entity,
+            fixture.index,
+            fixture.initialized,
+        );
+        expect(committedRestore.state.crew.get(positionId)?.dead).toBeTrue();
+    });
+
+    it('round-trips an automatic fall as sparse phase state', async () => {
+        const fixture = createDirectMekRuntimeFixture();
+        const leg = [...fixture.index.locations.values()].find(location => location.code === 'LL')!;
+
+        expect(fixture.instance.dispatch({
+            type: 'damage-internal',
+            locationId: leg.id,
+            amount: leg.internalPoints, target: 'committed',
+        }).accepted).toBeTrue();
+
+        const saved = serialize(fixture);
+        expect(saved.movementPsr).toEqual(jasmine.objectContaining({
+            automaticFalls: [{
+                triggerKind: 'leg-destroyed-auto-fall',
+                locationIds: [leg.id],
+            }],
+        }));
+
+        const restored = await restoreSerializedCBTUnitV2(saved, fixture.entity, fixture.index, fixture.initialized);
+        expect(restored.state.movementPsr.automaticFalls).toEqual([{
+            triggerKind: 'leg-destroyed-auto-fall',
+            locationIds: [leg.id],
+        }]);
+    });
+
+    it('round-trips the unit turn counter and critical destruction turn', async () => {
+        const fixture = createDirectMekRuntimeFixture('total-warfare');
+        const hip = [...fixture.index.slots.values()].find(slot =>
+            fixture.index.locations.get(slot.locationId)?.code === 'LL'
+            && slot.componentIds.some(componentId => {
+                const component = fixture.index.components.get(componentId);
+                return component?.kind === 'system' && component.systemType === 'Hip';
+            }))!;
+
+        expect(fixture.instance.dispatch({
+            type: 'end-turn',
+
+            policy: 'automatic',
+        }).accepted).toBeTrue();
+        expect(fixture.instance.dispatch({
+            type: 'hit-critical',
+
+            slotId: hip.id,
+            hits: 1,
+            target: 'committed',
+        }).accepted).toBeTrue();
+
+        const saved = serialize(fixture);
+        const savedHip = saved.slotState?.find(entry => {
+            const target = saved.blueprintReferences.targets[entry.target];
+            return target?.kind === 'critical-slot' && target.savedSlotId === hip.id;
+        });
+        expect(saved.turn.turnCounter).toBe(1);
+        expect(savedHip?.destroyedTurn).toBe(1);
+
+        const restored = await restoreSerializedCBTUnitV2(saved, fixture.entity, fixture.index, fixture.initialized);
+        expect(restored.state.turn.turnCounter).toBe(1);
+        expect(restored.state.slots.get(hip.id)?.destroyedTurn).toBe(1);
+    });
+
+    it('round-trips independent HAG mode and sparse Gauss power state', async () => {
+        const fixture = createDirectMekRuntimeFixture();
+        const hag = fixture.equipmentComponent('Test HAG');
+        expect(fixture.instance.dispatch({
+            type: 'set-component-mode',
+
+            componentId: hag.id, mode: 'Flak',
+        }).accepted).toBeTrue();
+        expect(fixture.instance.dispatch({
+            type: 'toggle-gauss-power',
+
+            componentId: hag.id,
+        }).accepted).toBeTrue();
+        expect(fixture.instance.dispatch({
+            type: 'end-turn',
+
+            policy: 'automatic',
+        }).accepted).toBeTrue();
+
+        const saved = serialize(fixture);
+        const componentState = saved.componentState?.find(entry => {
+            const target = saved.blueprintReferences.targets[entry.target];
+            return target?.kind === 'component' && target.savedComponentId === hag.id;
+        });
+        expect(componentState).toEqual(jasmine.objectContaining({
+            mode: 'Flak',
+            gaussPower: 'Powered Down',
+        }));
+
+        const restored = await restoreSerializedCBTUnitV2(saved, fixture.entity, fixture.index, fixture.initialized);
+        expect('unresolved' in restored).toBeFalse();
+        expect(restored.state.components.get(hag.id)).toEqual(jasmine.objectContaining({
+            mode: 'Flak',
+            gaussPower: 'Powered Down',
+        }));
+    });
+
+    it('round-trips a pending Stealth Armor End Turn transition as one sparse mode', async () => {
+        const fixture = createDirectMekRuntimeFixture();
+        const stealth = fixture.equipmentComponent('Test Stealth');
+        expect(fixture.instance.dispatch({
+            type: 'set-stealth-state',
+
+            componentId: stealth.id,
+            state: 'enabling',
+        }).accepted).toBeTrue();
+
+        const saved = serialize(fixture);
+        const componentState = saved.componentState?.find(entry => {
+            const target = saved.blueprintReferences.targets[entry.target];
+            return target?.kind === 'component' && target.savedComponentId === stealth.id;
+        });
+        expect(componentState).toEqual(jasmine.objectContaining({ mode: 'Enabling' }));
+
+        const restored = await restoreSerializedCBTUnitV2(saved, fixture.entity, fixture.index, fixture.initialized);
+        expect('unresolved' in restored).toBeFalse();
+        expect(restored.state.components.get(stealth.id)?.mode).toBe('Enabling');
+    });
+
+    it('round-trips a rules-sized escalating sequence beyond the old MASC limit', async () => {
+        const fixture = createDirectEscalatingFailureRuntimeFixture('total-warfare');
+        const blueShield = fixture.equipmentComponent('Test Blue Shield');
+        for (let index = 0; index < 14; index += 1) {
+            expect(fixture.instance.dispatch({
+                type: 'edit-escalating-failure',
+
+                componentId: blueShield.id,
+                edit: { kind: 'select-sequence', index },
+            }).accepted).toBeTrue();
+        }
+
+        const saved = serialize(fixture);
+        const restored = await restoreSerializedCBTUnitV2(saved, fixture.entity, fixture.index, fixture.initialized);
+        expect('unresolved' in restored).toBeFalse();
+        expect(restored.state.components.get(blueShield.id)?.escalatingFailure)
+            .toEqual({ sequence: 14, active: true });
+    });
+
+    it('round-trips committed and pending physical-shield track damage', async () => {
+        const fixture = createDirectShieldRuntimeFixture();
+        const shield = fixture.equipmentComponent('Test Medium Shield');
+        expect(fixture.instance.dispatch({
+            type: 'damage-shield',
+
+            componentId: shield.id, track: 'absorption', amount: 2, target: 'committed',
+        }).accepted).toBeTrue();
+        expect(fixture.instance.dispatch({
+            type: 'damage-shield',
+
+            componentId: shield.id, track: 'capacity', amount: 4, target: 'pending',
+        }).accepted).toBeTrue();
+
+        const saved = serialize(fixture);
+        expect(saved.componentState?.[0]?.shieldDamage).toEqual({
+            absorptionDamage: 2,
+            capacityDamage: 0,
+        });
+        expect(saved.pendingCombat?.shieldDamage?.[0]).toEqual(jasmine.objectContaining({
+            absorptionDamage: 0,
+            capacityDamage: 4,
+        }));
+
+        const restored = await restoreSerializedCBTUnitV2(saved, fixture.entity, fixture.index, fixture.initialized);
+        expect('unresolved' in restored).toBeFalse();
+        expect(restored.state.components.get(shield.id)?.shieldDamage).toEqual({
+            absorptionDamage: 2,
+            capacityDamage: 0,
+        });
+        expect(restored.state.pendingCombat.shieldDamage.get(shield.id)).toEqual({
+            absorptionDamage: 0,
+            capacityDamage: 4,
+        });
+    });
+
+    it('round-trips committed and pending Modular Armor damage', async () => {
+        const fixture = createDirectModularArmorRuntimeFixture();
+        const panel = [...fixture.index.components.values()].find(component =>
+            component.kind === 'equipment'
+            && component.mount.equipment?.hasFlag('F_MODULAR_ARMOR') === true)!;
+        const slot = [...fixture.index.slots.values()].find(candidate =>
+            candidate.componentIds.includes(panel.id))!;
+        const face = [...fixture.index.armorFaces.values()].find(candidate =>
+            candidate.locationId === slot.locationId && candidate.face === 'front')!;
+        expect(fixture.instance.dispatch({
+            type: 'damage-armor',
+
+            faceId: face.id, amount: 6, target: 'committed',
+        }).accepted).toBeTrue();
+        expect(fixture.instance.dispatch({
+            type: 'damage-armor',
+
+            faceId: face.id, amount: 3, target: 'pending',
+        }).accepted).toBeTrue();
+
+        const saved = serialize(fixture);
+        expect(saved.componentState?.find(entry => {
+            const target = saved.blueprintReferences.targets[entry.target];
+            return target?.kind === 'component' && target.savedComponentId === panel.id;
+        })?.modularArmorDamage).toBe(6);
+        expect(saved.pendingCombat?.modularArmorDamage?.[0]).toEqual(jasmine.objectContaining({
+            damage: 3,
+        }));
+
+        const restored = await restoreSerializedCBTUnitV2(saved, fixture.entity, fixture.index, fixture.initialized);
+        expect('unresolved' in restored).toBeFalse();
+        expect(restored.state.components.get(panel.id)?.modularArmorDamage).toBe(6);
+        expect(restored.state.pendingCombat.modularArmorDamage.get(panel.id)).toBe(3);
+    });
+
+    it('rejects impossible live shield damage and clamps stale saved damage for recovery', async () => {
+        const fixture = createDirectShieldRuntimeFixture();
+        const shield = fixture.equipmentComponent('Test Medium Shield');
+        const impossibleState = {
+            ...fixture.instance.snapshot(),
+            components: new ImmutableIndex([[
+                shield.id,
+                Object.freeze({ shieldDamage: Object.freeze({ absorptionDamage: 6, capacityDamage: 19 }) }),
+            ]]),
+        };
+        expect(() => serialize(fixture, impossibleState)).toThrowError(/shield damage exceeds its track bounds/u);
+
+        expect(fixture.instance.dispatch({
+            type: 'damage-shield',
+
+            componentId: shield.id, track: 'absorption', amount: 1, target: 'committed',
+        }).accepted).toBeTrue();
+        const stale = serialize(fixture);
+        const shieldState = stale.componentState?.find(entry => {
+            const target = stale.blueprintReferences.targets[entry.target];
+            return target?.kind === 'component' && target.savedComponentId === shield.id;
+        });
+        if (!shieldState) throw new Error('Serialized shield state is missing');
+        (shieldState as { shieldDamage: { absorptionDamage: number; capacityDamage: number } }).shieldDamage = {
+            absorptionDamage: 6,
+            capacityDamage: 19,
+        };
+
+        const restored = await restoreSerializedCBTUnitV2(stale, fixture.entity, fixture.index, fixture.initialized);
+        expect(restored.state.components.get(shield.id)?.shieldDamage).toEqual({
+            absorptionDamage: 5,
+            capacityDamage: 18,
+        });
+        expect(restored.warnings).toContain(jasmine.objectContaining({ code: 'DAMAGE_CLAMPED' }));
+        expect('unresolved' in restored).toBeFalse();
+        expect(restored.warnings).toContain(jasmine.objectContaining({
+            code: 'STATE_SKIPPED', message: 'Saved state was skipped: shield damage exceeds current capacity.',
+        }));
+    });
+
+    it('rejects a conversion mode the unit does not convert to', async () => {
+        const fixture = createDirectMekRuntimeFixture();
+        const saved = { ...serialize(fixture), conversionMode: 'airmek' as const };
+        await expectAsync(restoreSerializedCBTUnitV2(saved, fixture.entity, fixture.index, fixture.initialized))
+            .toBeRejectedWithError(/does not convert to this mode/u);
+    });
+
+    it('rejects a snapshot for another unit UUID', async () => {
+        const fixture = createDirectMekRuntimeFixture();
+        const original = serialize(fixture);
+        const changedIdentity = '019f6767-0dcb-7bb8-992f-aef08202f5e2' as typeof original.entity;
+        const saved = {
+            ...original,
+            entity: changedIdentity,
+            baselineRefAtSave: {
+                ...original.baselineRefAtSave,
+                entity: changedIdentity,
+            },
+        };
+        await expectAsync(restoreSerializedCBTUnitV2(saved, fixture.entity, fixture.index, fixture.initialized))
+            .toBeRejectedWithError(/UUID/u);
+    });
+});
+
+function serialize(
+    fixture: ReturnType<typeof createDirectMekRuntimeFixture>,
+    state = fixture.instance.snapshot(),
+) {
+    return structuredClone(serializeCBTUnitStateV2({
+        entity: fixture.entity,
+        index: fixture.index,
+        instanceId: fixture.instance.instanceId,
+        baselineRef: fixture.instance.baselineRef,
+        state,
+        deployment: {
+            values: fixture.initialized.deployment,
+        },
+    }));
+}

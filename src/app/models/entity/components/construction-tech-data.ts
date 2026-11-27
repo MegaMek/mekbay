@@ -17,6 +17,12 @@ function advancement(
   return data;
 }
 
+/** Dropship.getCollarTA; prototypes and ordinary collars share this progression. */
+export const DROPSHIP_COLLAR_TECH: TechAdvancement = {
+  techBase: 'All', rating: 'C', level: 'Standard', availability: ['C', 'C', 'C', 'C'],
+  dates: { prototype: 2458, production: 2470, common: 2500 }, factions: { prototype: ['TH'], production: ['TH'] },
+};
+
 const MEK_CONSTRUCTION_TECH = {
   standard: advancement({
     techBase: 'All', rating: 'D', availability: ['C', 'E', 'D', 'C'], level: 'Introductory',

@@ -5,38 +5,46 @@
 import { Component, computed, signal, inject, effect, ChangeDetectionStrategy, viewChild, type ElementRef, afterNextRender, Injector, DestroyRef } from '@angular/core';
 
 import { UnitSearchComponent } from './components/unit-search/unit-search.component';
+import { CustomUnitSyncService } from './services/custom-unit-sync.service';
+import { asUnitUuid } from './services/unit-catalog/unit-catalog.types';
 import { PageViewerComponent } from './components/page-viewer/page-viewer.component';
+import { TacticalViewComponent } from './components/tactical-view/tactical-view.component';
 import { AlphaStrikeViewerComponent } from './components/alpha-strike-viewer/alpha-strike-viewer.component';
 import { DataService } from './services/data.service';
-import { ForceBuilderService } from './services/force-builder.service';
+import { ForcePersistenceService } from './services/force-persistence.service';
+import { ForceWorkspaceStateService } from './services/force-workspace-state.service';
+import { ForceDialogsService } from './services/force-dialogs.service';
+import { ForceImportService } from './services/force-import.service';
 import type { UnitSummary } from './models/unit-summary.model';
 import { LayoutService } from './services/layout.service';
 import { LayoutModule } from '@angular/cdk/layout';
-import { UnitDetailsDialogComponent, type UnitDetailsDialogData } from './components/unit-details-dialog/unit-details-dialog.component';
+import type { UnitDetailsDialogData } from './components/unit-details-dialog/unit-details-dialog.component';
 import { OptionsService } from './services/options.service';
-import { OptionsDialogComponent } from './components/options-dialog/options-dialog.component';
 import { SidebarComponent } from './components/sidebar/sidebar.component';
 import { ConnectionStatusBadgeComponent } from './components/connection-status-badge/connection-status-badge.component';
 import { ModeSwitchComponent } from './components/mode-switch/mode-switch.component';
-import { LicenseDialogComponent } from './components/license-dialog/license-dialog.component';
+import { GameTurnTrackerComponent } from './components/game-turn-tracker/game-turn-tracker.component';
+import { GameTurnService } from './services/game-turn.service';
+import { AttackResolutionService } from './services/attack-resolution.service';
 import { ToastsComponent } from './components/toasts/toasts.component';
 import { SavedSearchesService } from './services/saved-searches.service';
 import { WsService } from './services/ws.service';
 import { ToastService } from './services/toast.service';
 import { DialogsService } from './services/dialogs.service';
-import { BetaDialogComponent } from './components/beta-dialog/beta-dialog.component';
 import { UnitSearchFiltersService } from './services/unit-search-filters.service';
 import { DomPortal, PortalModule } from '@angular/cdk/portal';
-import { OverlayModule } from '@angular/cdk/overlay';
-import { APP_VERSION_STRING, BUILD_BRANCH } from './build-meta';
+import { OverlayContainer, OverlayModule } from '@angular/cdk/overlay';
+import { APP_VERSION_STRING, BUILD_BADGE_LABEL } from './build-meta';
 import { LoggerService } from './services/logger.service';
 import { isAndroid, isIOS, isRunningStandalone } from './utils/platform.util';
 import { GameService } from './services/game.service';
 import { AccountAuthService } from './services/account-auth.service';
 import { AccountProtectionService } from './services/account-protection.service';
 import { AppUpdateService } from './services/app-update.service';
-import { LoadingSpinnerComponent } from './components/loading-spinner/loading-spinner.component';
 import { LobbyService } from './services/lobby.service';
+import { LoadingSpinnerComponent } from './components/loading-spinner/loading-spinner.component';
+import { CatalogRefreshStatusComponent } from './components/catalog-refresh-status/catalog-refresh-status.component';
+import { projectBackgroundCatalogProgress } from './models/startup-progress.model';
 
 import { GameSystem } from './models/common.model';
 import { Router, RouterLink, RouterOutlet } from '@angular/router';
@@ -47,13 +55,26 @@ const ANDROID_PWA_BACK_EXIT_HISTORY_STATE_KEY = 'mekbayAndroidPwaBackExit';
 const ANDROID_PWA_BACK_RESTORE_GUARD_MS = 1000;
 const PENDING_UPDATE_RELOAD_AFTER_NO_FOCUS_MS = 6 * 60 * 60 * 1000; // 6 hours
 
+interface BeforeInstallPromptEvent extends Event {
+    readonly userChoice: Promise<Readonly<{ outcome: 'accepted' | 'dismissed' }>>;
+    prompt(): Promise<void>;
+}
+
+declare global {
+    interface WindowEventMap {
+        beforeinstallprompt: BeforeInstallPromptEvent;
+    }
+}
+
 
 @Component({
     selector: 'app-root',
     changeDetection: ChangeDetectionStrategy.OnPush,
     imports: [
     ToastsComponent,
+    GameTurnTrackerComponent,
     PageViewerComponent,
+    TacticalViewComponent,
     AlphaStrikeViewerComponent,
     LayoutModule,
     SidebarComponent,
@@ -63,8 +84,9 @@ const PENDING_UPDATE_RELOAD_AFTER_NO_FOCUS_MS = 6 * 60 * 60 * 1000; // 6 hours
     OverlayModule,
     PortalModule,
     LoadingSpinnerComponent,
-    RouterLink,
-    RouterOutlet
+    CatalogRefreshStatusComponent,
+    RouterOutlet,
+    RouterLink
 ],
     templateUrl: './app.html',
     styleUrl: './app.scss',
@@ -75,38 +97,52 @@ const PENDING_UPDATE_RELOAD_AFTER_NO_FOCUS_MS = 6 * 60 * 60 * 1000; // 6 hours
     }
 })
 export class App {
+    private readonly customUnitSync = inject(CustomUnitSyncService);
     logger = inject(LoggerService);
     protected dataService = inject(DataService);
-    forceBuilderService = inject(ForceBuilderService);
+    private readonly forcePersistence = inject(ForcePersistenceService);
+    private readonly forceWorkspace = inject(ForceWorkspaceStateService);
+    private readonly forceDialogs = inject(ForceDialogsService);
+    private readonly forceImport = inject(ForceImportService);
     protected layoutService = inject(LayoutService);
     protected appUpdateService = inject(AppUpdateService);
     protected lobbyService = inject(LobbyService);
     private wsService = inject(WsService);
     private dialogService = inject(DialogsService);
     private toastService = inject(ToastService);
-    private seoService = inject(SeoService);
     protected optionsService = inject(OptionsService);
     public unitSearchFiltersService = inject(UnitSearchFiltersService);
     public injector = inject(Injector);
     public gameService = inject(GameService);
+    protected readonly gameTurn = inject(GameTurnService);
+    /** Created at start so attacks sent to this player's units are always heard. */
+    private readonly attackResolution = inject(AttackResolutionService);
     private accountAuthService = inject(AccountAuthService);
     private accountProtectionService = inject(AccountProtectionService);
     private router = inject(Router);
     private urlService = inject(UrlService);
+    private readonly seoService = inject(SeoService);
     private savedSearchesService = inject(SavedSearchesService);
     private destroyRef = inject(DestroyRef);
+    private overlayContainer = inject(OverlayContainer);
+    private overlayViewportObserver: ResizeObserver | null = null;
+
+    protected readonly backgroundCatalogProgress = computed(() => projectBackgroundCatalogProgress({
+        dataReady: this.dataService.isDataReady(),
+        coreCatalog: this.dataService.unitCatalogState(),
+        runtimeCatalog: this.dataService.runtimeCatalogProgress(),
+        auxiliaryCatalog: this.dataService.auxiliaryCatalogProgress(),
+    }));
 
     protected GameSystem = GameSystem;
     protected buildInfo = APP_VERSION_STRING;
-    protected isMainBuild = BUILD_BRANCH === 'main';
+    protected readonly buildBadgeLabel = BUILD_BADGE_LABEL;
     private updateCheckTimeoutId: number | null = null;
+    private initialServicesFrameId: number | null = null;
+    private initialServicesTimeoutId: number | null = null;
     protected showInstallButton = signal(false);
     protected homeActionsPanelOpen = signal(false);
-    private deferredPrompt: any;
-    private urlAtLastBlur = this.getCurrentAppUrl();
-    private lastHandledCapturedUrl: string | null = null;
-    private lastHandledCapturedUrlAt = 0;
-    private readonly capturedUrlDedupWindowMs = 2000;
+    private deferredPrompt: BeforeInstallPromptEvent | null = null;
     private focusLostAt: number | null = document.visibilityState === 'hidden' ? Date.now() : null;
     private androidPwaBackExitEnabled = false;
     private androidPwaBackRestoring = false;
@@ -124,28 +160,32 @@ export class App {
     ]);
 
 
-    private readonly unitSearchContainer = viewChild.required<ElementRef>('unitSearchContainer');
+    private readonly applicationViewport = viewChild.required<ElementRef<HTMLElement>>('applicationViewport');
+    private readonly unitSearchContainer = viewChild.required<ElementRef<HTMLElement>>('unitSearchContainer');
     public readonly unitSearchComponentRef = viewChild(UnitSearchComponent);
-    protected unitSearchPortal: DomPortal<ElementRef> | null = null;
+    protected unitSearchPortal: DomPortal<HTMLElement> | null = null;
     private currentPortalOutlet: 'extended' | 'forceBuilder' | 'main' | null = null;
-    protected unitSearchPortalMain = signal<DomPortal<any> | undefined>(undefined);
-    protected unitSearchPortalExtended = signal<DomPortal<any> | undefined>(undefined);
-    protected unitSearchPortalForceBuilder = signal<DomPortal<any> | undefined>(undefined);
+    protected unitSearchPortalMain = signal<DomPortal<HTMLElement> | undefined>(undefined);
+    protected unitSearchPortalExtended = signal<DomPortal<HTMLElement> | undefined>(undefined);
+    protected unitSearchPortalForceBuilder = signal<DomPortal<HTMLElement> | undefined>(undefined);
 
     constructor() {
         this.seoService.initialize();
-        // if ("virtualKeyboard" in navigator) {
-        //     (navigator as any).virtualKeyboard.overlaysContent = true; // Opt out of the automatic handling.
-        // }
+        afterNextRender(() => {
+            const viewport = this.applicationViewport().nativeElement;
+            const container = this.overlayContainer.getContainerElement();
+            viewport.append(container);
+            this.syncOverlayViewport(container, viewport);
+            this.overlayViewportObserver = new ResizeObserver(() => this.syncOverlayViewport(container, viewport));
+            this.overlayViewportObserver.observe(viewport);
+            this.scheduleInitialServicesAfterFirstPaint();
+        }, { injector: this.injector });
+
         void this.accountProtectionService;
-        this.dataService.initialize();
-        this.savedSearchesService.initialize();
-        this.savedSearchesService.registerWsHandlers();
-        void this.accountAuthService.handleOAuthRedirectReturn();
         
         // Set up foreign tag import dialog callback
         this.unitSearchFiltersService.setForeignTagDialogCallback(
-            (publicId, tagNames) => this.showForeignTagImportDialog(tagNames)
+            (_publicId, tagNames) => this.showForeignTagImportDialog(tagNames)
         );
 
         // iOS doesn't fire beforeinstallprompt, so we check manually
@@ -255,16 +295,13 @@ export class App {
                 // are handled here, based on the initial URL captured at startup.
                 const onHomePage = this.urlService.initialPathname.replace(/\/+$/, '') === '';
                 const organizationId = this.urlService.getInitialParam('toe');
-                const sharedUnitName = this.urlService.getInitialParam('shareUnit');
+                const sharedUnitIdentifier = this.urlService.getInitialParam('shareUnit');
                 const tab = this.urlService.getInitialParam('tab') ?? undefined;
                 if (onHomePage && organizationId) {
                     // Legacy ?toe=... link on the home page: open the TO&E page
-                    void this.forceBuilderService.showForceOrgDialog(organizationId);
-                } else if (onHomePage && sharedUnitName) {
-                    const unit = this.dataService.getUnitByName(sharedUnitName);
-                    if (unit) {
-                        this.showSingleUnitDetails(unit, tab);
-                    }
+                    void this.forceDialogs.showForceOrgDialog(organizationId);
+                } else if (onHomePage && sharedUnitIdentifier) {
+                    void this.openSharedUnit(sharedUnitIdentifier, tab);
                 } else if (onHomePage) {
                     afterNextRender(() => {
                         // Don't focus if loading forces
@@ -278,6 +315,9 @@ export class App {
             }
         });
         this.destroyRef.onDestroy(() => {
+            this.overlayViewportObserver?.disconnect();
+            this.overlayViewportObserver = null;
+            this.cancelInitialServicesStart();
             this.clearUpdateCheckTimer();
             this.removeBeforeUnloadHandler();
             window.removeEventListener('beforeinstallprompt', this.beforeInstallPromptHandler);
@@ -297,7 +337,9 @@ export class App {
         });
     }
 
-    hasForces = this.forceBuilderService.hasForces;
+    hasForces = this.forceWorkspace.hasForces;
+    hasForceUnits = computed(() => this.forceWorkspace.loadedForces()
+        .some(slot => slot.force.members().length > 0));
 
     private readonly keyboardNavigationHandler = (event: KeyboardEvent) => {
         if (event.metaKey || event.ctrlKey || event.altKey) {
@@ -355,13 +397,6 @@ export class App {
         }
     }
 
-    private replaceCurrentHistoryState(url: string): void {
-        const state = this.androidPwaBackExitEnabled
-            ? this.withAndroidPwaBackExitState(window.history.state)
-            : null;
-        window.history.replaceState(state, '', url);
-    }
-
     private withAndroidPwaBackExitState(state: unknown): Record<string, unknown> {
         const stateObject = state && typeof state === 'object' && !Array.isArray(state)
             ? state as Record<string, unknown>
@@ -415,7 +450,7 @@ export class App {
         window.close();
     }
 
-    isCloudForceLoading = computed(() => this.dataService.isCloudForceLoading());
+    isCloudForceLoading = computed(() => this.forcePersistence.isCloudForceLoading());
 
     onOnline() {
         void this.checkForUpdateAfterFocusAndRestartTimer();
@@ -426,7 +461,6 @@ export class App {
     }
 
     private onBlur = () => {
-        this.urlAtLastBlur = this.getCurrentAppUrl();
         this.markFocusLost();
     };
 
@@ -459,20 +493,40 @@ export class App {
         this.focusLostAt ??= Date.now();
     }
 
-    private getCurrentAppUrl(): string {
-        return `${window.location.pathname}${window.location.search}`;
+    private scheduleInitialServicesAfterFirstPaint(): void {
+        this.initialServicesFrameId = window.requestAnimationFrame(() => {
+            this.initialServicesFrameId = null;
+            this.initialServicesTimeoutId = window.setTimeout(() => {
+                this.initialServicesTimeoutId = null;
+                if (this.destroyRef.destroyed) {
+                    return;
+                }
+
+                void this.dataService.initialize();
+                void this.savedSearchesService.initialize();
+                this.savedSearchesService.registerWsHandlers();
+                void this.accountAuthService.handleOAuthRedirectReturn();
+            }, 0);
+        });
     }
 
-    private shouldSkipDuplicateCapturedUrl(parsed: URL): boolean {
-        const normalizedUrl = `${parsed.pathname}${parsed.search}`;
-        const now = Date.now();
-        if (this.lastHandledCapturedUrl === normalizedUrl && (now - this.lastHandledCapturedUrlAt) < this.capturedUrlDedupWindowMs) {
-            this.logger.info('[PWA] Skipping duplicate captured URL: ' + normalizedUrl);
-            return true;
+    private syncOverlayViewport(container: HTMLElement, viewport: HTMLElement): void {
+        const bounds = viewport.getBoundingClientRect();
+        container.style.setProperty('--mekbay-overlay-left', `${bounds.left}px`);
+        container.style.setProperty('--mekbay-overlay-top', `${bounds.top}px`);
+        container.style.setProperty('--mekbay-overlay-width', `${bounds.width}px`);
+        container.style.setProperty('--mekbay-overlay-height', `${bounds.height}px`);
+    }
+
+    private cancelInitialServicesStart(): void {
+        if (this.initialServicesFrameId !== null) {
+            window.cancelAnimationFrame(this.initialServicesFrameId);
+            this.initialServicesFrameId = null;
         }
-        this.lastHandledCapturedUrl = normalizedUrl;
-        this.lastHandledCapturedUrlAt = now;
-        return false;
+        if (this.initialServicesTimeoutId !== null) {
+            window.clearTimeout(this.initialServicesTimeoutId);
+            this.initialServicesTimeoutId = null;
+        }
     }
 
     private scheduleUpdateCheckTimer(): void {
@@ -497,9 +551,9 @@ export class App {
         }
     }
 
-    private beforeInstallPromptHandler = (e: any) => {
-        e.preventDefault();
-        this.deferredPrompt = e;
+    private beforeInstallPromptHandler = (event: BeforeInstallPromptEvent) => {
+        event.preventDefault();
+        this.deferredPrompt = event;
         this.showInstallButton.set(true);
     };
 
@@ -552,24 +606,28 @@ export class App {
     };
 
     private hasBlockingUnsavedWork(): boolean {
-        if (this.dataService.hasPendingCloudSaves()) {
+        if (this.forcePersistence.hasPendingForceSaves()) {
             return true;
         }
 
-        const loadedForces = this.forceBuilderService.loadedForces();
-        return loadedForces.some(forceSlot => forceSlot.force.units().length > 0 && !forceSlot.force.instanceId());
+        const loadedForces = this.forceWorkspace.loadedForces();
+        return loadedForces.some(forceSlot => forceSlot.force.members().length > 0
+            && !forceSlot.force.instanceId());
     }
 
 
-    showLicenseDialog(): void {
+    async showLicenseDialog(): Promise<void> {
+        const { LicenseDialogComponent } = await import('./components/license-dialog/license-dialog.component');
         this.dialogService.createDialog(LicenseDialogComponent);
     }
 
-    showOptionsDialog(): void {
+    async showOptionsDialog(): Promise<void> {
+        const { OptionsDialogComponent } = await import('./components/options-dialog/options-dialog.component');
         this.dialogService.createDialog(OptionsDialogComponent);
     }
 
-    showBetaDialog(): void {
+    async showBetaDialog(): Promise<void> {
+        const { BetaDialogComponent } = await import('./components/beta-dialog/beta-dialog.component');
         this.dialogService.createDialog(BetaDialogComponent);
     }
 
@@ -578,15 +636,11 @@ export class App {
     }
 
     showLoadForceDialog(): void {
-        this.forceBuilderService.showLoadForceDialog();
+        void this.forceImport.showLoadForceDialog();
     }
 
     showCollectionDialog(): void {
         void this.router.navigate(['/collection'], { queryParamsHandling: 'preserve' });
-    }
-
-    showForceGeneratorDialog(): void {
-        void this.forceBuilderService.showForceGeneratorDialog();
     }
 
     joinLobby(): void {
@@ -609,7 +663,21 @@ export class App {
         this.homeActionsPanelOpen.set(false);
     }
 
-    showSingleUnitDetails(unit: UnitSummary, tab?: string) {
+    private async openSharedUnit(identifier: string, tab?: string): Promise<void> {
+        try {
+            let unit = this.dataService.getUnitByIdentifier(identifier);
+            if (!unit) {
+                const uuid = asUnitUuid(identifier);
+                await this.customUnitSync.openShared(uuid);
+                unit = this.dataService.getUnitByUuid(uuid);
+            }
+            if (!unit) throw new Error('This unit is no longer available.');
+            await this.showSingleUnitDetails(unit, tab);
+        } catch (error) { this.toastService.showToast(error instanceof Error ? error.message : 'This unit could not be opened.', 'error'); }
+    }
+
+    async showSingleUnitDetails(unit: UnitSummary, tab?: string): Promise<void> {
+        const { UnitDetailsDialogComponent } = await import('./components/unit-details-dialog/unit-details-dialog.component');
         const ref = this.dialogService.createDialog(UnitDetailsDialogComponent, {
             data: <UnitDetailsDialogData>{
                 unitList: [unit],

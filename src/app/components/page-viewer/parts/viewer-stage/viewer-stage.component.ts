@@ -6,7 +6,6 @@ import { ChangeDetectionStrategy, Component, ElementRef, input, viewChild } from
 
 @Component({
     selector: 'viewer-stage',
-    standalone: true,
     templateUrl: './viewer-stage.component.html',
     styleUrl: './viewer-stage.component.scss',
     changeDetection: ChangeDetectionStrategy.OnPush

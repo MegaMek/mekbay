@@ -2,8 +2,8 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 // Author: Drake
 
-import { Injectable, signal, Injector, inject, DestroyRef } from '@angular/core';
-import type { UnitSummary, UnitFluffCatalogEntry } from '../models/unit-summary.model';
+import { Injectable, signal, inject, DestroyRef, effect } from '@angular/core';
+import type { UnitSummary } from '../models/unit-summary.model';
 import type { Faction, FactionId } from '../models/factions.model';
 import type { Era } from '../models/eras.model';
 import { DbService, type TagData } from './db.service';
@@ -12,110 +12,68 @@ import { PublicTagsService } from './public-tags.service';
 
 import type { EquipmentRegistry } from '../models/equipment-lookup';
 import type { Quirk } from '../models/quirks.model';
-import { WsService } from './ws.service';
-import type { ForceUnit } from '../models/force-unit.model';
-import type { Force }    from '../models/force.model';
-import { sanitizeForceTags, type ASSerializedForce, type CBTSerializedForce, type SerializedForce } from '../models/force-serialization';
-import { UnitInitializerService } from './unit-initializer.service';
-import { UserStateService } from './userState.service';
-import {
-    createLoadForceEntry,
-    createLoadForceEntryFromSerializedForce,
-    LoadForceEntry,
-    type RemoteLoadForceEntry,
-} from '../models/load-force-entry.model';
+import type { SerializedUnit } from '../models/force-serialization';
 import { LoggerService } from './logger.service';
-import { type SerializedOperation, LoadOperationEntry, type OperationForceInfo } from '../models/operation.model';
-import { type LoadedOrganization, type SerializedOrganization, LoadOrganizationEntry } from '../models/organization.model';
-import { Subject } from 'rxjs';
-import { GameSystem } from '../models/common.model';
-import { CBTForce } from '../models/cbt-force.model';
-import { ASForce } from '../models/as-force.model';
 import type { Sourcebook } from '../models/sourcebook.model';
 import type { SarnaLookupUnit } from '../models/sarna-page-titles.model';
-import type { MegaMekFactionAffiliation, MegaMekFactionRecord, MegaMekFactions } from '../models/megamek/factions.model';
+import type { MegaMekFactionRecord } from '../models/megamek/factions.model';
 import type { MegaMekWeightedAvailabilityRecord } from '../models/megamek/availability.model';
 import type { MegaMekRulesetRecord } from '../models/megamek/rulesets.model';
 import type { ForceNameWords } from '../models/force-name-words.model';
-import { getForcePacks } from '../models/forcepacks.model';
-import type { UnitSearchWorkerFactionEraSnapshot, UnitSearchWorkerIndexSnapshot } from '../utils/unit-search-worker-protocol.util';
-import type { ParsedASSpecials } from '../utils/as-special-filter.util';
+import { getForcePacks, type ForcePack } from '../models/forcepacks.model';
 import { MegaMekAvailabilityCatalogService } from './catalogs/megamek-availability-catalog.service';
 import { MegaMekFactionsCatalogService } from './catalogs/megamek-factions-catalog.service';
 import { MegaMekRulesetsCatalogService } from './catalogs/megamek-rulesets-catalog.service';
-import { ErasCatalogService } from './catalogs/eras-catalog.service';
+import { EraIndexService } from './era-index.service';
 import { FactionsCatalogService } from './catalogs/mulfactions-catalog.service';
 import { QuirksCatalogService } from './catalogs/quirks-catalog.service';
 import { SarnaPageTitlesCatalogService } from './catalogs/sarna-page-titles-catalog.service';
 import { SourcebooksCatalogService } from './catalogs/sourcebooks-catalog.service';
-import { UnitSearchIndexService, type UnitSearchDropdownOption } from './unit-search-index.service';
-import { UnitRuntimeService } from './unit-runtime.service';
-import { UnitsCatalogService } from './catalogs/units-catalog.service';
-import { UnitsFluffCatalogService } from './catalogs/units-fluff-catalog.service';
+import {
+    UnitSearchIndexService,
+    type PreparedUnitSearchIndexes,
+} from './unit-search-index.service';
+import {
+    UnitRuntimeService,
+    type PreparedUnitRuntimeCatalog,
+} from './unit-runtime.service';
+import {
+    UnitsCatalogService,
+    type PreparedUnitsCatalogActivation,
+} from './catalogs/units-catalog.service';
 import { EquipmentCatalogService } from './catalogs/equipment-catalog.service';
 import { ForceNameWordsCatalogService } from './catalogs/force-name-words-catalog.service';
 import { CatalogDownloadTrackerService } from './catalogs/catalog-base.service';
-import { naturalCompare } from '../utils/sort.util';
 import { getUnitVariantGroupKey } from '../utils/unit-variant.util';
-import { uuidv7 } from '../utils/uuid.util';
+import type { RuntimeCatalogProgressState } from '../models/startup-progress.model';
+import {
+    DeferredUnitResolutionError,
+} from '../models/persisted-unit-state';
+import type { UnitReferenceResolution } from './unit-runtime.service';
+import type { UnitUuid } from './unit-catalog/unit-catalog.types';
+import { PresentationCatalogSyncService } from './catalogs/presentation-catalog-sync.service';
 
 
-export const DOES_NOT_TRACK = 999;
-
-export interface BucketStatSummary {
-    min: number;
-    max: number;
-    average: number;
-    /** Nearest-rank 95th percentile of supported measurements; max remains the absolute maximum. */
-    p95: number;
-    count: number;
-}
-
-export interface MinMaxStatsRange {
-    mobility: BucketStatSummary,
-    endurance: BucketStatSummary,
-    asEndurance: BucketStatSummary,
-    armor: BucketStatSummary,
-    internal: BucketStatSummary,
-    heat: BucketStatSummary,
-    dissipation: BucketStatSummary,
-    dissipationEfficiency: BucketStatSummary,
-    runMP: BucketStatSummary,
-    run2MP: BucketStatSummary,
-    umuMP: BucketStatSummary,
-    jumpMP: BucketStatSummary,
-    alphaNoPhysical: BucketStatSummary,
-    alphaNoPhysicalNoOneshots: BucketStatSummary,
-    maxRange: BucketStatSummary,
-    weightedMaxRange: BucketStatSummary,
-    dpt: BucketStatSummary,
-    asTmm: BucketStatSummary,
-    asArm: BucketStatSummary,
-    asStr: BucketStatSummary,
-    asDmgS: BucketStatSummary,
-    asDmgM: BucketStatSummary,
-    asDmgL: BucketStatSummary,
-
-    // Capital ships
-    dropshipCapacity: BucketStatSummary,
-    escapePods: BucketStatSummary,
-    lifeBoats: BucketStatSummary,
-    gravDecks: BucketStatSummary,
-    sailIntegrity: BucketStatSummary,
-    kfIntegrity: BucketStatSummary,
-}
-
-// Generic store update payload used for cross-tab notifications
+type TagRefreshOptions = Readonly<{ searchIndexChanged?: boolean }>;
+// Cross-tab message for the one store that currently needs live refresh.
 export type BroadcastPayload = {
-    source: 'mekbay';
-    action: 'update';   // e.g. 'update'
-    context?: string;     // e.g. 'tags'
-    meta?: any;         // optional misc info
+    readonly source: 'mekbay';
+    readonly action: 'update';
+    readonly context: 'tags';
+    readonly meta?: TagRefreshOptions;
 };
 
-export interface ForceTagsUpdateResult {
-    tags: string[];
-    timestamp: string | null;
+function isBroadcastPayload(value: unknown): value is BroadcastPayload {
+    if (value === null || typeof value !== 'object' || Array.isArray(value)) return false;
+    const message = value as Readonly<Record<string, unknown>>;
+    if (message['source'] !== 'mekbay'
+        || message['action'] !== 'update'
+        || message['context'] !== 'tags') return false;
+    const meta = message['meta'];
+    if (meta === undefined) return true;
+    if (meta === null || typeof meta !== 'object' || Array.isArray(meta)) return false;
+    const searchIndexChanged = (meta as Readonly<Record<string, unknown>>)['searchIndexChanged'];
+    return searchIndexChanged === undefined || typeof searchIndexChanged === 'boolean';
 }
 
 @Injectable({
@@ -124,21 +82,17 @@ export interface ForceTagsUpdateResult {
 export class DataService {
     private logger = inject(LoggerService);
     private broadcast?: BroadcastChannel;
-    private broadcastHandler?: (ev: MessageEvent) => void;
-    private injector = inject(Injector);
+    private broadcastHandler?: (ev: MessageEvent<unknown>) => void;
     private dbService = inject(DbService);
-    private wsService = inject(WsService);
-    private userStateService = inject(UserStateService);
-    private unitInitializer = inject(UnitInitializerService);
     private tagsService = inject(TagsService);
     private publicTagsService = inject(PublicTagsService);
     private destroyRef = inject(DestroyRef);
     private unitSearchIndexService = inject(UnitSearchIndexService);
     private unitRuntimeService = inject(UnitRuntimeService);
     private unitsCatalog = inject(UnitsCatalogService);
-    private unitsFluffCatalog = inject(UnitsFluffCatalogService);
+    private presentationCatalogs = inject(PresentationCatalogSyncService);
     private equipmentCatalog = inject(EquipmentCatalogService);
-    private erasCatalog = inject(ErasCatalogService);
+    private eraIndex = inject(EraIndexService);
     private factionsCatalog = inject(FactionsCatalogService);
     private megaMekAvailabilityCatalog = inject(MegaMekAvailabilityCatalogService);
     private megaMekFactionsCatalog = inject(MegaMekFactionsCatalogService);
@@ -151,29 +105,58 @@ export class DataService {
 
     isDataReady = signal(false);
     public readonly isDownloading = this.catalogDownloadTracker.isDownloading;
-    public isCloudForceLoading = signal(false);
-
-    /** Emits when a cloud save is rejected (not_owner) and the force needs adoption. */
-    public forceNeedsAdoption = new Subject<Force>();
+    public readonly unitCatalogState = this.unitsCatalog.coreState;
+    public readonly runtimeCatalogProgress = signal<RuntimeCatalogProgressState>({ status: 'idle' });
+    public readonly auxiliaryCatalogProgress = signal<RuntimeCatalogProgressState>({ status: 'idle' });
+    /** Exact gate: worker/search derivatives belong to the currently committed summary revision. */
+    public readonly runtimeSearchIndexesReady = signal(false);
 
     /** packName -> Set<chassis|as.TP|omni> for force pack membership checks */
     private forcePackToLookupKey: Map<string, Set<string>> | null = null;
     /** chassis|as.TP|omni -> sorted pack names[] for reverse lookups */
     private lookupKeyToForcePacks: Map<string, string[]> | null = null;
-    private cachedForceTagsByInstanceId = new Map<string, string[]>();
 
     public tagsVersion = signal(0);
     public searchCorpusVersion = signal(0);
     public megaMekAvailabilityVersion = signal(0);
     public sarnaPageTitlesVersion = signal(0);
+    private appliedUnitCatalogRevision = 0;
+    private queuedUnitCatalogRevision = 0;
+    private unitCatalogSettlement: Promise<void> = Promise.resolve();
+    private readonly dataReadyWaiters = new Set<() => void>();
+    private auxiliaryStartupSettlement: Promise<void> = Promise.resolve();
+    private localSearchCatalogHydration: Promise<void> = Promise.resolve();
+    private initialization?: Promise<void>;
+    private destroyed = false;
+    private catalogActivationFinalizing = false;
+    private hasLatestTagDataSnapshot = false;
+    private latestTagDataSnapshot: TagData | null = null;
+    private bufferedTagRefresh?: {
+        readonly data: TagData | null;
+        readonly searchIndexChanged: boolean;
+    };
+    private bufferedPublicTagRefresh = false;
+    /** Atomic derived membership projection paired with the visible Unit[] activation. */
+    private activeMemberships?: Readonly<{
+        eras: Era[];
+        factions: Faction[];
+        erasById: ReadonlyMap<number, Era>;
+        factionsById: ReadonlyMap<FactionId, Faction>;
+    }>;
 
 
     constructor() {
+        effect(() => {
+            const pending = this.unitsCatalog.pendingActivation();
+            if (!pending || pending.revision <= this.appliedUnitCatalogRevision) return;
+            this.queueUnitCatalogRevision(pending.revision);
+        });
+        this.destroyRef.onDestroy(() => { this.destroyed = true; });
         try {
             if (typeof BroadcastChannel !== 'undefined') {
                 this.broadcast = new BroadcastChannel('mekbay-updates');
-                this.broadcastHandler = (ev: MessageEvent) => {
-                    void this.handleStoreUpdate(ev.data as any);
+                this.broadcastHandler = (event: MessageEvent<unknown>) => {
+                    void this.handleStoreUpdate(event.data);
                 };
                 this.broadcast.addEventListener('message', this.broadcastHandler);
                 inject(DestroyRef).onDestroy(() => {
@@ -185,41 +168,14 @@ export class DataService {
             };
         } catch { /* best-effort */ }
         if (typeof window !== 'undefined') {
-            const flushOnUnload = () => {
-                try {
-                    this.flushAllPendingSavesOnUnload();
-                } catch { /* best-effort */ }
-            };
-            const onVisibility = () => {
-                if (document.visibilityState === 'hidden') {
-                    flushOnUnload();
-                }
-            };
             const onOnline = () => {
                 // Small delay to let WS reconnect first
                 setTimeout(() => this.tagsService.syncFromCloud(), 1000);
             };
-            
-            window.addEventListener('beforeunload', flushOnUnload);
-            window.addEventListener('pagehide', flushOnUnload);
-            document.addEventListener('visibilitychange', onVisibility);
             window.addEventListener('online', onOnline);
-            
+
             this.destroyRef.onDestroy(() => {
-                window.removeEventListener('beforeunload', flushOnUnload);
-                window.removeEventListener('pagehide', flushOnUnload);
-                document.removeEventListener('visibilitychange', onVisibility);
                 window.removeEventListener('online', onOnline);
-                this.broadcast?.close();
-                // Clear pending debounced saves and reject their promises to prevent memory leaks
-                for (const [, entry] of this.saveForceCloudDebounce) {
-                    clearTimeout(entry.timeout);
-                    // Reject pending promises to notify callers
-                    for (const { reject } of entry.resolvers) {
-                        reject(new Error('Service destroyed'));
-                    }
-                }
-                this.saveForceCloudDebounce.clear();
             });
         }
 
@@ -228,7 +184,7 @@ export class DataService {
             this.applyTagDataToUnits(tagData, options);
         });
         this.tagsService.setNotifyStoreUpdatedCallback((options) => {
-            this.notifyStoreUpdated('update', 'tags', options);
+            this.notifyTagStoreUpdated(options);
         });
 
         // Register WS message handlers for tag sync (handled by TagsService)
@@ -252,8 +208,14 @@ export class DataService {
      * 
      * Format: tags = { tagId: { label, units: {unitUuid: {}}, chassis: {chassisKey: {}} } }
      */
-    private applyTagDataToUnits(tagData: TagData | null, options?: { searchIndexChanged?: boolean }): void {
+    private applyTagDataToUnits(tagData: TagData | null, options?: TagRefreshOptions): void {
         const searchIndexChanged = options?.searchIndexChanged ?? true;
+        this.latestTagDataSnapshot = tagData;
+        this.hasLatestTagDataSnapshot = true;
+        if (this.catalogActivationFinalizing) {
+            this.bufferedTagRefresh = { data: tagData, searchIndexChanged: searchIndexChanged || !!this.bufferedTagRefresh?.searchIndexChanged };
+            return;
+        }
         this.unitRuntimeService.applyTagDataToUnits(this.getUnits(), tagData, { rebuildTagSearchIndex: searchIndexChanged });
         if (searchIndexChanged) {
             this.tagsVersion.update(v => v + 1);
@@ -264,61 +226,108 @@ export class DataService {
      * Apply public tags to all loaded units.
      * Called by PublicTagsService when public tags change (import/subscribe/update).
      */
-    private applyPublicTagsToUnits(): void {
-        this.unitRuntimeService.applyPublicTagsToUnits(this.getUnits());
+    private applyPublicTagsToUnits(
+        units: UnitSummary[] = this.getUnits(),
+        options: { readonly rebuildTagSearchIndex?: boolean } = {},
+    ): void {
+        if (this.catalogActivationFinalizing && units === this.getUnits()) {
+            this.bufferedPublicTagRefresh = true;
+            return;
+        }
+        this.unitRuntimeService.applyPublicTagsToUnits(units, options);
         this.tagsVersion.update(v => v + 1);
     }
 
-    public notifyStoreUpdated(action: BroadcastPayload['action'], store?: string, meta?: any) {
+    /** Flush callbacks that arrived while the fenced DB pointer was finalizing. */
+    private flushBufferedTagRefresh(): void {
+        const searchIndexChanged = this.applyBufferedTagRefreshToUnits(this.getUnits());
+        this.bufferedTagRefresh = undefined;
+        this.bufferedPublicTagRefresh = false;
+        if (!searchIndexChanged) return;
+        this.unitSearchIndexService.rebuildTagSearchIndex(this.getUnits());
+        this.tagsVersion.update(version => version + 1);
+        this.bumpSearchCorpusVersion();
+    }
+
+    /** Applies buffered tag state to one exact Unit[] without publishing an index. */
+    private applyBufferedTagRefreshToUnits(units: UnitSummary[]): boolean {
+        const local = this.bufferedTagRefresh;
+        const refreshPublic = this.bufferedPublicTagRefresh;
+        // Applying to a candidate does not consume callbacks: publication may still fail.
+        if (!local && !refreshPublic) return false;
+        if (local) {
+            this.unitRuntimeService.applyPreparedTagDataToUnits(
+                units,
+                local.data,
+                { rebuildTagSearchIndex: false },
+            );
+        }
+        if (refreshPublic) {
+            this.unitRuntimeService.applyPublicTagsToUnits(units, { rebuildTagSearchIndex: false });
+        }
+        return Boolean(local?.searchIndexChanged || refreshPublic);
+    }
+
+    private notifyTagStoreUpdated(meta?: TagRefreshOptions): void {
         if (!this.broadcast) return;
-        const payload: any = { source: 'mekbay', action, store, meta };
+        const payload: BroadcastPayload = { source: 'mekbay', action: 'update', context: 'tags', meta };
         try {
             this.broadcast?.postMessage(payload);
         } catch { /* best-effort */ }
     }
 
-    private async handleStoreUpdate(msg: BroadcastPayload): Promise<void> {
+    private async handleStoreUpdate(value: unknown): Promise<void> {
         try {
-            if (!msg || msg.source !== 'mekbay') return;
-            const action = msg.action;
-            const context = msg.context;
-            if (action === 'update' && context === 'tags') {
-                // Reload tag data from TagsService and apply to units
-                const tagData = await this.tagsService.getTagData();
-                this.applyTagDataToUnits(tagData, msg.meta);
-            }
+            if (!isBroadcastPayload(value)) return;
+            const tagData = await this.tagsService.getTagData();
+            this.applyTagDataToUnits(tagData, value.meta);
         } catch (err) {
             this.logger.error('Error handling store update broadcast: ' + err);
         }
-    }
-
-    /**
-     * Load tags from storage and apply them to units.
-     * Uses TagsService for cached data.
-     */
-    private async loadUnitTags(units: UnitSummary[]): Promise<void> {
-        await this.unitRuntimeService.loadUnitTags(units);
-        this.tagsVersion.update(v => v + 1);
     }
 
     public getUnits(): UnitSummary[] {
         return this.unitsCatalog.getUnits();
     }
 
-    public getUnitByName(name: string): UnitSummary | undefined {
-        return this.unitRuntimeService.getUnitByName(name);
+    public getUnitSummaries(): readonly UnitSummary[] {
+        return this.unitsCatalog.getSummaries();
+    }
+
+    /** Resolve only once a saved custom design and all its search indexes are visible together. */
+    public async refreshCustomUnits(): Promise<void> {
+        await this.requireApplicationCatalogReady();
+        const revision = await this.unitsCatalog.prepareCustomChanges();
+        if (revision === undefined) return;
+        this.queueUnitCatalogRevision(revision);
+        await this.unitCatalogSettlement;
+        if (this.appliedUnitCatalogRevision < revision) {
+            throw new Error('The custom unit is saved, but its search catalog could not be refreshed');
+        }
+    }
+
+    public getUnitByIdentifier(identifier: string): UnitSummary | undefined {
+        return this.unitRuntimeService.getUnitByIdentifier(identifier);
     }
 
     public getUnitsByName(name: string): readonly UnitSummary[] {
         return this.unitRuntimeService.getUnitsByName(name);
     }
 
-    public getUnitByUuid(uuid: string): UnitSummary | undefined {
+    public getUnitByUuid(uuid: UnitUuid): UnitSummary | undefined {
         return this.unitRuntimeService.getUnitByUuid(uuid);
     }
 
-    public getUnitFluff(unit: Pick<UnitSummary, 'name' | 'fluff' | 'serverHost'>): Promise<UnitFluffCatalogEntry | undefined> {
-        return this.unitsFluffCatalog.getUnitFluff(unit);
+    /** UUID is authoritative; name is accepted only for an unversioned unique legacy match. */
+    public resolveSerializedUnit(data: SerializedUnit): Extract<UnitReferenceResolution, { readonly kind: 'resolved' }> {
+        const resolution = this.unitRuntimeService.resolveUnitReference(
+            data,
+            this.isDataReady(),
+        );
+        if (resolution.kind === 'deferred') {
+            throw new DeferredUnitResolutionError(resolution.descriptor);
+        }
+        return resolution;
     }
 
     public getEquipmentRegistry(): EquipmentRegistry {
@@ -330,32 +339,53 @@ export class DataService {
         return this.getEquipmentRegistry().findEquipment(name) ?? undefined;
     }
 
+    /** Links equipment only on an explicitly detached mechanics/display unit. */
+    public linkEquipmentToUnit(unit: UnitSummary): void {
+        this.unitRuntimeService.linkEquipmentToUnit(unit, this.getEquipmentRegistry());
+    }
+
+    public getMulAvailabilityIndex() {
+        return this.unitSearchIndexService.getMulAvailabilityIndex();
+    }
+
     public getFactions(): Faction[] {
-        return this.factionsCatalog.getFactions();
+        return this.activeMemberships?.factions ?? this.factionsCatalog.getFactions();
     }
 
     public getFactionByName(name: string): Faction | undefined {
-        return this.factionsCatalog.getFactionByName(name);
+        const canonical = this.factionsCatalog.getFactionByName(name);
+        return canonical === undefined ? undefined : this.getFactionById(canonical.id);
     }
 
     public getFactionById(id: FactionId): Faction | undefined {
-        return this.factionsCatalog.getFactionById(id);
+        const active = this.activeMemberships;
+        return active === undefined
+            ? this.factionsCatalog.getFactionById(id)
+            : active.factionsById.get(id);
     }
 
     public getEras(): Era[] {
-        return this.erasCatalog.getEras();
+        return this.activeMemberships?.eras ?? this.eraIndex.getEras();
     }
 
     public getEraByName(name: string): Era | undefined {
-        return this.erasCatalog.getEraByName(name);
+        const canonical = this.eraIndex.getEraByName(name);
+        return canonical === undefined ? undefined : this.getEraById(canonical.id);
     }
 
     public getEraById(id: number): Era | undefined {
-        return this.erasCatalog.getEraById(id);
+        const active = this.activeMemberships;
+        return active === undefined
+            ? this.eraIndex.getEraById(id)
+            : active.erasById.get(id);
     }
 
     public getQuirkByName(name: string): Quirk | undefined {
         return this.quirksCatalog.getQuirkByName(name);
+    }
+
+    public getQuirkByKey(key: string): Quirk | undefined {
+        return this.quirksCatalog.getQuirkByKey(key);
     }
 
     public getSourcebookByAbbrev(abbrev: string): Sourcebook | undefined {
@@ -378,20 +408,12 @@ export class DataService {
         return this.forceNameWordsCatalog.getWords();
     }
 
-    public getMegaMekFactions(): MegaMekFactions {
-        return this.megaMekFactionsCatalog.getFactions();
-    }
-
     public getMegaMekFactionByKey(key: string): MegaMekFactionRecord | undefined {
         return this.megaMekFactionsCatalog.getFactionByKey(key);
     }
 
     public getMegaMekFactionsByMulId(mulId: number): MegaMekFactionRecord[] {
         return this.megaMekFactionsCatalog.getFactionsByMulId(mulId);
-    }
-
-    public getMegaMekRulesets(): readonly MegaMekRulesetRecord[] {
-        return this.megaMekRulesetsCatalog.getRulesets();
     }
 
     public getMegaMekRulesetByFactionKey(factionKey: string): MegaMekRulesetRecord | undefined {
@@ -404,11 +426,7 @@ export class DataService {
             .filter((ruleset): ruleset is MegaMekRulesetRecord => ruleset !== undefined);
     }
 
-    public getMegaMekAvailabilityRecords(): readonly MegaMekWeightedAvailabilityRecord[] {
-        return this.megaMekAvailabilityCatalog.getRecords();
-    }
-
-    public getMegaMekAvailabilityRecordForUnit(unit: Pick<UnitSummary, 'name'>): MegaMekWeightedAvailabilityRecord | undefined {
+    public getMegaMekAvailabilityRecordForUnit(unit: Pick<UnitSummary, 'name' | 'isCustom'>): MegaMekWeightedAvailabilityRecord | undefined {
         return this.megaMekAvailabilityCatalog.getRecordForUnit(unit);
     }
 
@@ -429,86 +447,272 @@ export class DataService {
         this.lookupKeyToForcePacks = null;
     }
 
-    private rebuildUnitCatalogIndexes(units: UnitSummary[]): void {
-        this.invalidateForcePackCaches();
-        this.unitRuntimeService.preprocessUnits(units);
+    private queueUnitCatalogRevision(revision: number): void {
+        if (revision <= this.appliedUnitCatalogRevision
+            || revision <= this.queuedUnitCatalogRevision) {
+            return;
+        }
+        this.queuedUnitCatalogRevision = revision;
+        this.unitCatalogSettlement = this.unitCatalogSettlement
+            .catch(() => undefined)
+            .then(() => this.applyUnitCatalogRevision(revision));
     }
 
-    public getIndexedUnitIds(filterKey: string, value: string): ReadonlySet<string> | undefined {
-        return this.unitSearchIndexService.getIndexedUnitIds(filterKey, value);
+    private async applyUnitCatalogRevision(revision: number): Promise<void> {
+        const pending = this.readExactPendingActivation(revision);
+        if (!pending || revision <= this.appliedUnitCatalogRevision) return;
+        const setProgress = (progress: RuntimeCatalogProgressState): void => {
+            // Keep the same visibility through summary preparation and indexing.
+            this.runtimeCatalogProgress.set(!pending.showProgress && progress.status === 'running'
+                ? { status: 'idle' } : progress);
+        };
+        const units = pending.snapshot.units;
+        const startedAt = Date.now();
+        const indexPreparationStartedAt = Date.now();
+        let backgroundYieldMs = 0;
+        const yieldForResponsiveness = async (): Promise<void> => {
+            const yieldStartedAt = Date.now();
+            await this.yieldBackgroundCatalogWork();
+            backgroundYieldMs += Math.max(0, Date.now() - yieldStartedAt);
+        };
+        let completed = false;
+        this.logger.info(
+            `[Background:runtime-unit-catalog] Started revision ${revision} for ${units.length.toLocaleString()} stored summaries.`,
+        );
+
+        this.catalogActivationFinalizing = true;
+        let summaryCommitted = false;
+        try {
+            const eras = pending.core.dependencies.eras.eras;
+            const factions = pending.core.dependencies.factions.factions;
+            const equipmentRegistry = pending.core.dependencies.equipment.registry;
+            const membershipState = this.cloneEraFactionMembershipState(eras, factions);
+
+            const runtimePreparationStartedAt = Date.now();
+            const runtimeCandidate: PreparedUnitRuntimeCatalog =
+                this.unitRuntimeService.prepareRuntimeCatalog(units);
+            const runtimePreparationMs = Math.max(0, Date.now() - runtimePreparationStartedAt);
+
+            setProgress({
+                status: 'running',
+                completed: 0,
+                total: 5,
+                detail: pending.customOnly ? 'Updating search indexes for custom designs'
+                    : `Preparing indexes from ${units.length.toLocaleString()} stored unit summaries`,
+            });
+
+            // Availability is a separate saved catalog. Its cache-only hydration
+            // starts alongside the core summary read and must settle before the
+            // first search corpus is published; remote revalidation stays in the
+            // auxiliary background phase.
+            const localCatalogHydrationStartedAt = Date.now();
+            await this.localSearchCatalogHydration;
+            const localCatalogHydrationMs = Math.max(0, Date.now() - localCatalogHydrationStartedAt);
+            await yieldForResponsiveness();
+            if (revision < this.queuedUnitCatalogRevision) return;
+            const tagPreparationStartedAt = Date.now();
+            const hydratedTagData = await this.unitRuntimeService.loadUnitTags(
+                units,
+                { rebuildTagSearchIndex: false },
+            );
+            if (revision < this.queuedUnitCatalogRevision) return;
+            this.unitRuntimeService.applyPreparedTagDataToUnits(
+                units,
+                this.hasLatestTagDataSnapshot ? this.latestTagDataSnapshot : hydratedTagData,
+                { rebuildTagSearchIndex: false },
+            );
+            const tagPreparationMs = Math.max(0, Date.now() - tagPreparationStartedAt);
+            setProgress({
+                status: 'running', completed: 1, total: 5,
+                detail: 'Loaded personal unit tags',
+            });
+
+            await yieldForResponsiveness();
+            if (revision < this.queuedUnitCatalogRevision) return;
+            const summaryFilterPreparationStartedAt = Date.now();
+            this.unitRuntimeService.postprocessUnits(units, membershipState.eras, { loadTags: false });
+            this.unitRuntimeService.applyPublicTagsToUnits(units, { rebuildTagSearchIndex: false });
+            this.applyBufferedTagRefreshToUnits(units);
+            const summaryFilterPreparationMs = Math.max(0, Date.now() - summaryFilterPreparationStartedAt);
+            setProgress({
+                status: 'running', completed: 2, total: 5,
+                detail: 'Prepared summary filters and availability memberships',
+            });
+
+            await yieldForResponsiveness();
+            if (revision < this.queuedUnitCatalogRevision) return;
+            const searchIndexPreparationStartedAt = Date.now();
+            const searchCandidate: PreparedUnitSearchIndexes =
+                this.unitSearchIndexService.prepareCatalogIndexes(
+                    units,
+                    membershipState.eras,
+                    membershipState.factions,
+                    equipmentRegistry,
+                    pending.customOnly ? this.unitsCatalog.getUnits() : undefined,
+                );
+            const searchIndexPreparationMs = Math.max(0, Date.now() - searchIndexPreparationStartedAt);
+            setProgress({
+                status: 'running', completed: 3, total: 5,
+                detail: pending.customOnly ? 'Updated search indexes for custom designs'
+                    : `Indexed ${units.length.toLocaleString()} unit summaries`,
+            });
+
+            setProgress({
+                status: 'running', completed: 4, total: 5,
+                detail: 'Finalizing the shared catalog publication',
+            });
+
+            const publicationStartedAt = Date.now();
+            if (!this.readExactPendingActivation(revision, pending)) return;
+            if (!await this.unitsCatalog.finalizePendingActivation(revision)
+                || !this.readExactPendingActivation(revision, pending)) return;
+            const committed = this.unitsCatalog.commitPendingActivation(revision);
+            if (!committed) {
+                throw new Error('The finalized application catalog activation was superseded before commit');
+            }
+            summaryCommitted = true;
+
+            // One synchronous publication boundary: consumers can never see a
+            // new summary paired with old memberships, derived fields, or indexes.
+            this.unitRuntimeService.commitPreparedRuntimeCatalog(runtimeCandidate);
+            this.activeMemberships = Object.freeze({
+                eras: membershipState.eras,
+                factions: membershipState.factions,
+                erasById: new Map(membershipState.eras.map(era => [era.id, era])),
+                factionsById: new Map(
+                    membershipState.factions.map(faction => [faction.id, faction]),
+                ),
+            });
+            this.unitSearchIndexService.commitPreparedCatalogIndexes(searchCandidate);
+            this.appliedUnitCatalogRevision = committed.revision;
+            this.invalidateForcePackCaches();
+            this.runtimeSearchIndexesReady.set(true);
+            this.tagsVersion.update(version => version + 1);
+            this.bumpSearchCorpusVersion();
+            this.markDataReady();
+
+            setProgress({
+                status: 'running', completed: 5, total: 5,
+                detail: 'Unit indexes and shared catalog publication are ready',
+            });
+            const publicationMs = Math.max(0, Date.now() - publicationStartedAt);
+            const indexPreparationMs = Math.max(0, Date.now() - indexPreparationStartedAt);
+            this.logger.info(
+                `[Background:runtime-unit-catalog] Prepared unit indexes in ${indexPreparationMs} ms `
+                + `[runtime=${runtimePreparationMs}ms, local-catalog=${localCatalogHydrationMs}ms, tags=${tagPreparationMs}ms, `
+                + `summary-filters=${summaryFilterPreparationMs}ms, search-indexes=${searchIndexPreparationMs}ms, `
+                + `unit-derivatives=${searchCandidate.preparationTimings.unitDerivativesMs}ms, `
+                + `filter-indexes=${searchCandidate.preparationTimings.filterIndexesMs}ms, `
+                + `component-indexes=${searchCandidate.preparationTimings.componentIndexesMs}ms, `
+                + `index-keys=${searchCandidate.indexStats.filterKeys.toLocaleString()}, `
+                + `index-values=${searchCandidate.indexStats.filterValues.toLocaleString()}, `
+                + `memberships=${searchCandidate.indexStats.memberships.toLocaleString()}, `
+                + `publication=${publicationMs}ms, yielding=${backgroundYieldMs}ms].`,
+            );
+            this.logger.info(
+                `[Background:runtime-unit-catalog] Search-index phases `
+                + `[identity-map=${searchCandidate.preparationTimings.identityMapMs}ms, `
+                + `unit-filters=${searchCandidate.preparationTimings.unitFiltersMs}ms, `
+                + `component-indexes=${searchCandidate.preparationTimings.componentIndexesMs}ms, `
+                + `era-memberships=${searchCandidate.preparationTimings.eraMembershipsMs}ms, `
+                + `faction-memberships=${searchCandidate.preparationTimings.factionMembershipsMs}ms, `
+                + `finalization=${searchCandidate.preparationTimings.finalizationMs}ms].`,
+            );
+            try {
+                await this.unitsCatalog.acknowledgeCatalogRevisionApplied(committed.revision);
+            } catch (error) {
+                this.logger.warn(`Catalog maintenance acknowledgement failed: ${this.describeError(error)}`);
+            }
+            await this.yieldBackgroundCatalogWork();
+            setProgress({ status: 'idle' });
+            completed = true;
+            this.logger.info(
+                `[Background:runtime-unit-catalog] Finished revision ${revision} in ${Math.max(0, Date.now() - startedAt)} ms.`,
+            );
+        } catch (error) {
+            if (!summaryCommitted && this.readExactPendingActivation(revision, pending)) {
+                this.unitsCatalog.rejectPendingActivation(revision, error);
+                setProgress({
+                    status: 'error',
+                    detail: this.describeError(error),
+                });
+                this.logger.error(`Failed to prepare application catalog activation: ${this.describeError(error)}`);
+            } else if (summaryCommitted) {
+                setProgress({
+                    status: 'error',
+                    detail: this.describeError(error),
+                });
+                this.logger.error(`Failed to build background unit indexes: ${this.describeError(error)}`);
+            }
+        } finally {
+            if (!completed && revision < this.queuedUnitCatalogRevision) {
+                this.logger.info(
+                    `[Background:runtime-unit-catalog] Superseded revision ${revision} after ${Math.max(0, Date.now() - startedAt)} ms.`,
+                );
+            }
+            if (this.catalogActivationFinalizing) {
+                this.catalogActivationFinalizing = false;
+                try {
+                    this.flushBufferedTagRefresh();
+                } catch (error) {
+                    this.logger.warn(`Buffered tag refresh failed: ${this.describeError(error)}`);
+                }
+            }
+        }
     }
 
-    public getIndexedFilterValues(filterKey: string): string[] {
-        return this.unitSearchIndexService.getIndexedFilterValues(filterKey);
+    private yieldBackgroundCatalogWork(): Promise<void> {
+        return new Promise(resolve => setTimeout(resolve, 0));
     }
 
-    public getIndexedASSpecials(unitUuid: string): ParsedASSpecials | undefined {
-        return this.unitSearchIndexService.getIndexedASSpecials(unitUuid);
+    private setAuxiliaryCatalogProgress(progress: RuntimeCatalogProgressState): void {
+        this.auxiliaryCatalogProgress.set(progress);
     }
 
-    public getSearchWorkerIndexSnapshot(): UnitSearchWorkerIndexSnapshot {
-        return this.unitSearchIndexService.getSearchWorkerIndexSnapshot();
-    }
-
-    public getSearchWorkerFactionEraSnapshot(): UnitSearchWorkerFactionEraSnapshot {
-        return this.unitSearchIndexService.getSearchWorkerFactionEraSnapshot();
-    }
-
-    public getMulAvailabilityIndex() {
-        return this.unitSearchIndexService.getMulAvailabilityIndex();
-    }
-
-    public getFactionEraUnitUuids(eraNames: readonly string[], factionNames: readonly string[]): ReadonlySet<string> {
-        return this.unitSearchIndexService.getFactionEraUnitUuids(eraNames, factionNames);
-    }
-
-    public getDropdownOptionUniverse(filterKey: string): UnitSearchDropdownOption[] {
-        return this.unitSearchIndexService.getDropdownOptionUniverse(filterKey);
-    }
-
-    public getIndexedComponentUnitCounts(name: string): ReadonlyMap<string, number> | undefined {
-        return this.unitSearchIndexService.getIndexedComponentUnitCounts(name);
-    }
-
-    public refreshSearchCorpus(): void {
-        this.rebuildUnitCatalogIndexes(this.getUnits());
-        this.postprocessData();
-        this.bumpSearchCorpusVersion();
-    }
-
-    private rebuildTagSearchIndex(): void {
-        this.unitSearchIndexService.rebuildTagSearchIndex(this.getUnits());
-    }
-
-    public getUnitStats(unit: UnitSummary): MinMaxStatsRange {
-        return this.unitSearchIndexService.getUnitStats(unit);
-    }
-
-    private postprocessData(): void {
-        this.unitRuntimeService.postprocessUnits(this.getUnits(), this.getEras());
-        this.unitRuntimeService.linkEquipmentToUnits(this.getUnits(), this.getEquipmentRegistry());
-        this.unitSearchIndexService.rebuildIndexes(this.getUnits(), this.getEras(), this.getFactions());
+    private readExactPendingActivation(
+        revision: number,
+        expected?: PreparedUnitsCatalogActivation,
+    ): PreparedUnitsCatalogActivation | undefined {
+        if (this.destroyed) return undefined;
+        const pending = this.unitsCatalog.pendingActivation();
+        if (!pending || pending.revision !== revision || (expected && pending !== expected)) return undefined;
+        return pending;
     }
 
     private async checkForUpdate(): Promise<void> {
-        const [, , , sourcebooksReady, quirksReady] = await Promise.all([
-            this.equipmentCatalog.initialize(),
-            this.erasCatalog.initialize(),
-            this.factionsCatalog.initialize(),
-            this.initializeCatalog('sourcebooks', () => this.sourcebooksCatalog.initialize()),
-            this.initializeCatalog('quirks', () => this.quirksCatalog.initialize()),
-        ]);
-        const missingUnitDependencies = [
-            sourcebooksReady ? null : 'sourcebooks',
-            quirksReady ? null : 'quirks',
-        ].filter((name): name is string => name !== null);
-        if (missingUnitDependencies.length > 0) {
-            throw new Error(`Cannot initialize units before required catalogs are ready: ${missingUnitDependencies.join(', ')}.`);
-        }
-
         await this.unitsCatalog.initialize();
-        this.postprocessData();
-        this.bumpSearchCorpusVersion();
+        const pending = this.unitsCatalog.pendingActivation();
+        if (pending) this.queueUnitCatalogRevision(pending.revision);
+        await this.waitForDataReadyOrCatalogSettlement();
+        if (!this.isDataReady()) {
+            throw new Error('The application catalog did not commit a complete activation');
+        }
+    }
+
+    private waitForDataReadyOrCatalogSettlement(): Promise<void> {
+        if (this.isDataReady()) return Promise.resolve();
+        return new Promise<void>((resolve, reject) => {
+            let settled = false;
+            const finish = (error?: Error): void => {
+                if (settled) return;
+                settled = true;
+                this.dataReadyWaiters.delete(onReady);
+                if (error) reject(error);
+                else resolve();
+            };
+            const onReady = (): void => finish();
+            this.dataReadyWaiters.add(onReady);
+            void this.unitCatalogSettlement.then(() => {
+                if (this.isDataReady()) finish();
+                else finish(new Error('The application catalog did not commit a complete activation'));
+            }, error => finish(error instanceof Error ? error : new Error(this.describeError(error))));
+        });
+    }
+
+    private markDataReady(): void {
+        this.isDataReady.set(true);
+        for (const resolve of this.dataReadyWaiters) resolve();
+        this.dataReadyWaiters.clear();
     }
 
     private describeError(error: unknown): string {
@@ -557,6 +761,13 @@ export class DataService {
     private initializeStartupCatalogs(): Promise<boolean> {
         return this.ensureCatalogGroupInitialized([
             {
+                name: 'fluff_images',
+                ensure: () => this.initializeCatalog(
+                    'fluff_images',
+                    () => this.presentationCatalogs.initializeFluffImages(),
+                ),
+            },
+            {
                 name: 'force_name_words',
                 ensure: () => this.initializeCatalog('force_name_words', () => this.forceNameWordsCatalog.initialize()),
             },
@@ -577,15 +788,28 @@ export class DataService {
     }
 
     public ensureMegaMekAvailabilityCatalogInitialized(): Promise<boolean> {
+        const previousRevision = this.megaMekAvailabilityCatalog.getCatalogRevision();
         return this.initializeCatalog(
             'megamek_availability',
             () => this.megaMekAvailabilityCatalog.initialize(),
             () => {
-                if (this.megaMekAvailabilityVersion() === 0) {
+                if (this.megaMekAvailabilityVersion() === 0
+                    || this.megaMekAvailabilityCatalog.getCatalogRevision() !== previousRevision) {
                     this.bumpMegaMekAvailabilityVersion();
                 }
             },
         );
+    }
+
+    private async hydrateSavedSearchCatalogs(): Promise<void> {
+        try {
+            if (await this.megaMekAvailabilityCatalog.hydrateFromCache()
+                && this.megaMekAvailabilityVersion() === 0) {
+                this.bumpMegaMekAvailabilityVersion();
+            }
+        } catch (error) {
+            this.logger.warn(`Saved availability catalog could not be loaded: ${this.describeError(error)}`);
+        }
     }
 
     public ensureMegaMekCatalogsInitialized(): Promise<boolean> {
@@ -602,1099 +826,116 @@ export class DataService {
         ]);
     }
 
-    public async initialize(): Promise<void> {
+    private startAuxiliaryStartupCatalogs(): Promise<void> {
+        const startedAt = Date.now();
+        this.logger.info('[Background:auxiliary-catalogs] Started.');
+        this.setAuxiliaryCatalogProgress({
+            status: 'running', completed: 0, total: 1,
+            detail: 'Loading optional presentation and rules catalogs',
+        });
+        return this.initializeStartupCatalogs()
+            .then(ready => {
+                if (ready) {
+                    this.logger.info(
+                        `[Background:auxiliary-catalogs] Finished in ${Math.max(0, Date.now() - startedAt)} ms.`,
+                    );
+                    this.setAuxiliaryCatalogProgress({ status: 'idle' });
+                    return;
+                }
+                this.setAuxiliaryCatalogProgress({
+                    status: 'error',
+                    detail: 'One or more optional startup catalogs could not be loaded',
+                });
+            })
+            .catch(error => {
+                this.setAuxiliaryCatalogProgress({ status: 'error', detail: this.describeError(error) });
+                this.logger.warn(
+                    `[Background:auxiliary-catalogs] Failed after ${Math.max(0, Date.now() - startedAt)} ms: ${this.describeError(error)}`,
+                );
+            });
+    }
+
+    /**
+     * Starts the single application-catalog bootstrap. Route-scoped services
+     * may join this promise, but must never initialize required CatalogBase
+     * services on their own: only the atomic bundle coordinator may publish
+     * equipment, quirks, sourcebooks, factions, and sprites.
+     */
+    public initialize(): Promise<void> {
+        if (this.isDataReady()) return Promise.resolve();
+        if (this.initialization) return this.initialization;
+        const startedAt = Date.now();
+        this.logger.info('[Startup] Loading local data.');
+        let initialization!: Promise<void>;
+        initialization = this.performInitialize()
+            .then(() => {
+                if (this.isDataReady()) {
+                    this.logger.info(
+                        `[Startup] Local data ready in ${Math.max(0, Date.now() - startedAt)} ms.`,
+                    );
+                }
+            })
+            .finally(() => {
+                if (this.initialization === initialization) this.initialization = undefined;
+            });
+        this.initialization = initialization;
+        return this.initialization;
+    }
+
+    /** Exact readiness gate for editor/mechanics routes entered during cold bootstrap. */
+    public async requireApplicationCatalogReady(): Promise<void> {
+        await this.initialize();
+        if (!this.isDataReady()) {
+            throw new Error('The complete application catalog is not ready');
+        }
+    }
+
+    private async performInitialize(): Promise<void> {
         this.isDataReady.set(false);
-        this.logger.info('Initializing data service...');
-        await this.dbService.waitForDbReady();
-        this.logger.info('Database is ready, checking for updates...');
+        const applicationDatabaseReady = this.dbService.waitForDbReady();
+        this.localSearchCatalogHydration = applicationDatabaseReady
+            .then(() => this.hydrateSavedSearchCatalogs());
         try {
-            await this.checkForUpdate();
-            await this.initializeStartupCatalogs();
-            this.logger.info('All data stores are ready.');
-            // Apply public tags to units now that data is ready
-            // (PublicTagsService.initialize() may have loaded cached tags before units were ready)
-            this.applyPublicTagsToUnits();
-            this.isDataReady.set(true);
+            await Promise.all([
+                applicationDatabaseReady,
+                this.localSearchCatalogHydration,
+                this.checkForUpdate(),
+            ]);
+            // These catalogs enable optional features only. A slow/unavailable
+            // request must never delay readiness after the exact core
+            // application bundle and all required derived state are committed.
+            this.auxiliaryStartupSettlement = this.startAuxiliaryStartupCatalogs();
+            void this.auxiliaryStartupSettlement;
         } catch (error) {
             this.logger.error(`Failed to initialize data: ${this.describeError(error)}`);
-            // Check if we have any data loaded despite the error
-            const hasData = this.getUnits().length > 0 && this.getEquipmentRegistry().size > 0;
-            if (hasData) {
-                // Apply public tags even on partial load
-                this.applyPublicTagsToUnits();
-            }
-            this.isDataReady.set(hasData);
+            // Never promote length-only or mixed legacy caches to readiness.
+            // A previously committed exact LKG remains interactive; a cold
+            // start remains unavailable until a complete activation wins.
+            if (this.appliedUnitCatalogRevision === 0) this.isDataReady.set(false);
         }
     }
 
-    private isCloudNewer(localRaw: any, cloudRaw: any): boolean {
-        const localTs = localRaw?.timestamp ? new Date(localRaw.timestamp).getTime() : 0;
-        const cloudTs = cloudRaw?.timestamp ? new Date(cloudRaw.timestamp).getTime() : 0;
-        return cloudTs > localTs;
-    }
-
-    public async getForce(
-        instanceId: string,
-        ownedOnly: boolean = false,
-        { skipLocal = false, showLoading = true }: { skipLocal?: boolean; showLoading?: boolean } = {},
-    ): Promise<Force | null> {
-        const localRaw = skipLocal ? null : await this.dbService.getForce(instanceId);
-        let cloudRaw: any | null = null;
-        let triedCloud = false;
-        if (showLoading) this.isCloudForceLoading.set(true);
-        try {
-            const ws = await this.canUseCloud();
-            if (ws) {
-                try {
-                    cloudRaw = await this.getForceCloud(instanceId, ownedOnly, !skipLocal);
-                    triedCloud = true;
-                } catch {
-                    cloudRaw = null;
-
-                }
-            }
-        } finally {
-            if (showLoading) this.isCloudForceLoading.set(false);
-        }
-        let local: Force | null = null;
-        let cloud: Force | null = null;
-        let result: Force | null = null;
-        if (localRaw) {
-            try {
-                if (localRaw.type === GameSystem.ALPHA_STRIKE) {
-                    local = ASForce.deserialize(localRaw as ASSerializedForce, this, this.unitInitializer, this.injector);
-                } else { // CBT
-                    local = CBTForce.deserialize(localRaw as CBTSerializedForce, this, this.unitInitializer, this.injector);
-                }
-            } catch (error) { 
-                this.logger.error((error as any)?.message ?? error);
-            }
-        }
-        if (cloudRaw) {
-            try {
-                if (cloudRaw.type === GameSystem.ALPHA_STRIKE) {
-                    cloud = ASForce.deserialize(cloudRaw as ASSerializedForce, this, this.unitInitializer, this.injector);
-                } else { // CBT
-                    cloud = CBTForce.deserialize(cloudRaw as CBTSerializedForce, this, this.unitInitializer, this.injector);
-                }
-            } catch (error) { 
-                this.logger.error((error as any)?.message ?? error);
-            }
-        }
-
-        let cloudIsNewer = false;
-        if (local && cloud) {
-            cloudIsNewer = this.isCloudNewer(localRaw, cloudRaw);
-            result = cloudIsNewer ? cloud : local;
-        } else if (!triedCloud && local) {
-            result = local;
-        } else {
-            result = cloud || local || null;
-        }
-
-        // If we reached cloud but the force only exists locally, push it up
-        if (triedCloud && local && !cloud) {
-            this.logger.info(`Force "${local.name}" exists locally but not in cloud: pushing to cloud.`);
-            void this.saveForceCloud(local).catch(error => {
-                this.logger.error(`Failed to save force ${local.instanceId()} to cloud: ${error}`);
-            });
-        } else 
-        if (triedCloud && (cloudIsNewer || !local) && cloud && cloud.owned()) {
-            if (!local) {
-                this.logger.info(`Force "${cloud.name}" exists in cloud but not locally: saving local copy.`);
-            } else {
-                this.logger.info(`Force "${cloud.name}" exists in cloud and is newer: updating local copy.`);
-            }
-            await this.dbService.saveForce(cloudRaw as SerializedForce);
-        }
-
-        // Fix any duplicate group/unit IDs that may have been persisted.
-        if (result && result.deduplicateIds()) {
-            this.logger.warn(`Force "${result.name}" had duplicate IDs — fixed and re-saving.`);
-            this.saveForce(result);
-        }
-
-        return result;
-    }
-
-    public async saveForce(force: Force, localOnly: boolean = false): Promise<void> {
-        if (!await this.saveForceLocally(force)) return;
-        if (!localOnly) {
-            void this.saveForceCloud(force).catch(error => {
-                this.logger.error(`Failed to save force ${force.instanceId()} to cloud: ${error}`);
-            });
-        }
-    }
-
-    public async saveForceAndWaitForCloud(force: Force): Promise<void> {
-        if (!await this.saveForceLocally(force)) return;
-        await this.saveForceCloudImmediately(force);
-    }
-
-    private async saveForceLocally(force: Force): Promise<boolean> {
-        if (force.readOnly()) {
-            this.logger.warn(`DataService.saveForce() blocked: force "${force.name}" is read-only.`);
-            return false;
-        }
-        if (!force.instanceId()) {
-            force.instanceId.set(uuidv7());
-        }
-        await this.dbService.saveForce(force.serialize());
-        return true;
-    }
-
-    public async updateForceTags(instanceId: string, tags: readonly string[], updateCloud: boolean = true): Promise<ForceTagsUpdateResult> {
-        const normalizedTags = sanitizeForceTags(tags);
-        const updatedLocalForce = await this.dbService.updateForceTags(instanceId, normalizedTags);
-        let updated = updatedLocalForce !== null;
-        let cloudUpdate: { updated: boolean; timestamp: string | null } | null = null;
-
-        if (updateCloud) {
-            cloudUpdate = await this.updateForceTagsCloud(instanceId, normalizedTags);
-            updated = cloudUpdate.updated || updated;
-        }
-
-        if (!updated) {
-            throw new Error('The selected force could not be updated.');
-        }
-
-        this.updateCachedForceTags(instanceId, normalizedTags);
-        const timestamp = cloudUpdate?.timestamp ?? updatedLocalForce?.timestamp ?? null;
-        if (updatedLocalForce && timestamp && updatedLocalForce.timestamp !== timestamp) {
-            updatedLocalForce.timestamp = timestamp;
-            await this.dbService.saveForce(updatedLocalForce);
-        }
-        return { tags: normalizedTags, timestamp };
-    }
-
-    public getCachedForceTagLabels(): string[] {
-        const labels = new Map<string, string>();
-        for (const tags of this.cachedForceTagsByInstanceId.values()) {
-            for (const tag of tags) {
-                const key = tag.toLocaleLowerCase();
-                if (!labels.has(key)) {
-                    labels.set(key, tag);
-                }
-            }
-        }
-
-        return Array.from(labels.values())
-            .sort(naturalCompare);
-    }
-
-    public updateCachedForceTags(instanceId: string, tags: readonly string[] | null | undefined): void {
-        if (!instanceId) {
-            return;
-        }
-
-        this.cachedForceTagsByInstanceId.set(instanceId, sanitizeForceTags(tags ?? []));
-    }
-
-    private refreshCachedForceTags(forces: readonly Pick<LoadForceEntry, 'instanceId' | 'tags'>[]): void {
-        const nextCache = new Map<string, string[]>();
-        for (const force of forces) {
-            if (!force.instanceId) {
-                continue;
-            }
-
-            nextCache.set(force.instanceId, sanitizeForceTags(force.tags ?? []));
-        }
-
-        this.cachedForceTagsByInstanceId = nextCache;
-    }
-
-
-
-    public async saveSerializedForceToLocalStorage(serialized: SerializedForce): Promise<void> {
-        await this.dbService.saveForce(serialized);
-    }
-
-    public async listForces(): Promise<LoadForceEntry[]> {
-        this.logger.info(`Retrieving local forces...`);
-        const localForces = await this.dbService.listForces(this);
-        this.logger.info(`Retrieving cloud forces...`);
-        const cloudForces = await this.listForcesCloud();
-        this.logger.info(`Found ${localForces.length} local forces and ${cloudForces.length} cloud forces.`);
-        const forceMap = new Map<string, LoadForceEntry>();
-        const getTimestamp = (f: any) => {
-            if (f && typeof f.timestamp === 'number') return f.timestamp;
-            if (f && f.timestamp) return new Date(f.timestamp).getTime();
-            return 0;
-        };
-        for (const force of localForces) {
-            if (!force) continue;
-            if (!force.instanceId) continue;
-            force.local = true;
-            forceMap.set(force.instanceId, force);
-        }
-        for (const cloudForce of cloudForces) {
-            if (!cloudForce) continue;
-            if (!cloudForce.instanceId) continue;
-            const localForce = forceMap.get(cloudForce.instanceId);
-            if (!localForce || getTimestamp(cloudForce) >= getTimestamp(localForce)) {
-                if (localForce) {
-                    cloudForce.local = true; // This force is both local and cloud
-                }
-                forceMap.set(cloudForce.instanceId, cloudForce);
-            }
-        }
-        const mergedForces = Array.from(forceMap.values()).sort((a, b) => getTimestamp(b) - getTimestamp(a));
-        this.refreshCachedForceTags(mergedForces);
-        this.logger.info(`Found ${mergedForces.length} unique forces.`);
-        return mergedForces;
-    }
-
-    private static readonly FORCE_BULK_CHUNK_SIZE = 100;
-
-    public async cacheForcesLocally(instanceIds: readonly string[]): Promise<number> {
-        const uniqueIds = Array.from(new Set(instanceIds.filter((instanceId): instanceId is string => !!instanceId)));
-        if (uniqueIds.length === 0) return 0;
-
-        const localRawForces = await Promise.all(uniqueIds.map((instanceId) => this.dbService.getForce(instanceId)));
-        const missingIds = uniqueIds.filter((instanceId, index) => !localRawForces[index]);
-        if (missingIds.length === 0) return 0;
-
-        const cloudForces = await this.getForcesCloudRawByIds(missingIds);
-        for (const force of cloudForces) {
-            await this.dbService.saveForce(force);
-        }
-
-        return cloudForces.length;
-    }
-
-    public async getLoadForceEntriesByIds(instanceIds: readonly string[]): Promise<LoadForceEntry[]> {
-        const orderedIds = Array.from(new Set(instanceIds.filter((instanceId): instanceId is string => !!instanceId)));
-        if (orderedIds.length === 0) return [];
-
-        const entryMap = new Map<string, LoadForceEntry>();
-        const localRawForces = await Promise.all(orderedIds.map(instanceId => this.dbService.getForce(instanceId)));
-
-        for (const localRaw of localRawForces) {
-            if (!localRaw?.instanceId) continue;
-            entryMap.set(localRaw.instanceId, createLoadForceEntryFromSerializedForce(localRaw, this, { local: true }));
-        }
-
-        const cloudForces = await this.getForcesBulkSummaries(orderedIds);
-        for (const raw of cloudForces) {
-            if (!raw?.instanceId) continue;
-            const cloudEntry = createLoadForceEntry(raw, this, { cloud: true });
-            const existing = entryMap.get(raw.instanceId);
-            if (!existing || this.getComparableTimestamp(raw.timestamp) >= this.getComparableTimestamp(existing.timestamp)) {
-                if (existing?.local) cloudEntry.local = true;
-                entryMap.set(raw.instanceId, cloudEntry);
-            }
-        }
-
-        return orderedIds
-            .map(instanceId => entryMap.get(instanceId))
-            .filter((entry): entry is LoadForceEntry => entry !== undefined);
-    }
-
-    private async getForcesBulkSummaries(instanceIds: readonly string[]): Promise<RemoteLoadForceEntry[]> {
-        const ws = await this.canUseCloud();
-        if (!ws) return [];
-
-        const orderedIds = Array.from(new Set(instanceIds.filter((instanceId): instanceId is string => !!instanceId)));
-        const result: RemoteLoadForceEntry[] = [];
-
-        for (let i = 0; i < orderedIds.length; i += DataService.FORCE_BULK_CHUNK_SIZE) {
-            const chunk = orderedIds.slice(i, i + DataService.FORCE_BULK_CHUNK_SIZE);
-            const response = await this.wsService.sendAndWaitForResponse({
-                action: 'getForcesBulk',
-                instanceIds: chunk,
-            });
-            if (!response?.data || !Array.isArray(response.data)) continue;
-            result.push(...response.data as RemoteLoadForceEntry[]);
-        }
-
-        return result;
-    }
-
-    private async getForcesCloudRawByIds(instanceIds: readonly string[]): Promise<SerializedForce[]> {
-        const ws = await this.canUseCloud();
-        if (!ws) return [];
-
-        const orderedIds = Array.from(new Set(instanceIds.filter((instanceId): instanceId is string => !!instanceId)));
-        const uuid = this.userStateService.uuid();
-        const result: SerializedForce[] = [];
-
-        for (const instanceId of orderedIds) {
-            const response = await this.wsService.sendAndWaitForResponse({
-                action: 'getForce',
-                uuid,
-                instanceId,
-                ownedOnly: false,
-            });
-            const raw = response?.data as SerializedForce | null | undefined;
-            if (raw?.instanceId) {
-                result.push(raw);
-            }
-        }
-
-        return result;
-    }
-
-    private _cloudReadyChecked = false;
-    private async canUseCloud(timeoutMs = 3000): Promise<WebSocket | null> {
-        if (!navigator.onLine) return null;
-        const ws = this.wsService.getWebSocket();
-        if (!ws) return null;
-        if (!this._cloudReadyChecked) {
-            try {
-                await Promise.race([
-                    this.wsService.getWsReady(),
-                    new Promise((_, reject) => setTimeout(() => reject('WebSocket connect timeout'), timeoutMs))
-                ]);
-            } catch {
-                this._cloudReadyChecked = true;
-                return null;
-            }
-        }
-        if (ws.readyState !== WebSocket.OPEN) return null;
-        return ws;
-    }
-
-    public async deleteForce(instanceId: string): Promise<void> {
-        // Delete from local IndexedDB
-        await this.dbService.deleteForce(instanceId);
-        // Delete from cloud
-        const ws = await this.canUseCloud();
-        if (ws) {
-            const uuid = this.userStateService.uuid();
-            const payload = {
-                action: 'delForce',
-                uuid,
-                instanceId
-            };
-            this.wsService.send(payload);
-        }
-    }
-
-    /** Delete a force from local storage only (no cloud request). */
-    public async deleteLocalForce(instanceId: string): Promise<void> {
-        await this.dbService.deleteForce(instanceId);
-    }
-
-    /* ----------------------------------------------------------
-     * Operations (multi-force compositions)
-     */
-
-    /**
-     * Save an operation locally and to the cloud.
-     */
-    public async saveOperation(op: SerializedOperation): Promise<void> {
-        await this.dbService.saveOperation(op);
-        this.saveOperationCloud(op);
-    }
-
-    /**
-     * Retrieve a single operation by ID.
-     * Fetches from both local storage and cloud in parallel, then keeps
-     * whichever is newer (mirroring `getForce()` behaviour).
-     * Returns a LoadOperationEntry enriched with force metadata, or null if not found.
-     */
-    public async getOperation(operationId: string): Promise<LoadOperationEntry | null> {
-        const localPromise = this.getOperationLocal(operationId);
-        let cloudEntry: LoadOperationEntry | null = null;
-        let triedCloud = false;
-
-        try {
-            const ws = await this.canUseCloud();
-            if (ws) {
-                try {
-                    cloudEntry = await this.getOperationCloud(operationId);
-                    triedCloud = true;
-                } catch {
-                    cloudEntry = null;
-                }
-            }
-        } catch {
-            // cloud unavailable
-        }
-
-        const localEntry = await localPromise;
-
-        // Pick the best result
-        let result: LoadOperationEntry | null;
-        if (localEntry && cloudEntry) {
-            result = cloudEntry.timestamp > localEntry.timestamp ? cloudEntry : localEntry;
-            result.owned = cloudEntry.owned;
-        } else if (!triedCloud && localEntry) {
-            result = localEntry;
-        } else {
-            result = cloudEntry || localEntry || null;
-        }
-
-        if (result) {
-            result.localTimestamp = localEntry?.timestamp ?? 0;
-            result.cloudTimestamp = triedCloud ? (cloudEntry?.timestamp ?? 0) : 0;
-
-            // Push to cloud when we reached it and local is newer (or cloud is missing)
-            if (triedCloud && result.localTimestamp > result.cloudTimestamp) {
-                const serialized = await this.dbService.getOperation(operationId);
-                if (serialized) {
-                    this.saveOperationCloud(serialized);
-                }
-            }
-        }
-
-        return result;
-    }
-
-    /**
-     * Retrieve a single operation from local IndexedDB.
-     * No force enrichment — callers that load the operation will fetch
-     * the actual forces via `getForce()` immediately after.
-     */
-    private async getOperationLocal(operationId: string): Promise<LoadOperationEntry | null> {
-        const serialized = await this.dbService.getOperation(operationId);
-        if (!serialized) return null;
-
-        return new LoadOperationEntry({
-            operationId: serialized.operationId,
-            name: serialized.name || '',
-            note: serialized.note || '',
-            timestamp: serialized.timestamp,
-            forces: serialized.forces.map(ref => ({
-                instanceId: ref.instanceId,
-                alignment: ref.alignment,
-                timestamp: ref.timestamp,
-                exists: false,
+    /** Build derived memberships without mutating a prepared or already-live catalog bundle. */
+    private cloneEraFactionMembershipState(
+        eras: readonly Era[],
+        factions: readonly Faction[],
+    ): { eras: Era[]; factions: Faction[] } {
+        return {
+            eras: eras.map(era => ({
+                ...era,
+                factions: new Set(era.factions),
+                units: new Set(era.units),
             })),
-            local: true,
-        });
-    }
-
-    /**
-     * Delete an operation locally and from the cloud.
-     */
-    public async deleteOperation(operationId: string): Promise<void> {
-        await this.dbService.deleteOperation(operationId);
-        const ws = await this.canUseCloud();
-        if (ws) {
-            this.wsService.send({
-                action: 'delOperation',
-                operationId,
-            });
-        }
-    }
-
-    /**
-     * List operations, merging local and cloud.
-     * Cloud entries include joined force metadata; local entries are enriched
-     * with locally available force data.
-     *
-     * After merging:
-     * - Cloud operations are saved locally for offline access.
-     * - Local-only operations are verified against the cloud to detect
-     *   ownership conflicts (e.g. user changed accounts). If a conflict is
-     *   found, the local operation gets a new operationId and is saved to cloud.
-     */
-    public async listOperations(): Promise<LoadOperationEntry[]> {
-        const [localOps, cloudOps] = await Promise.all([
-            this.listOperationsLocal(),
-            this.listOperationsCloud(),
-        ]);
-
-        // Merge: cloud wins for same operationId, but keep local-only entries
-        const opMap = new Map<string, LoadOperationEntry>();
-
-        for (const op of localOps) {
-            op.local = true;
-            opMap.set(op.operationId, op);
-        }
-
-        const cloudOnlyOps: LoadOperationEntry[] = [];
-        for (const cloudOp of cloudOps) {
-            const existing = opMap.get(cloudOp.operationId);
-            cloudOp.cloud = true;
-            if (existing) {
-                cloudOp.local = true;
-                // Merge: use cloud's enriched force data but update with any
-                // locally-fresher force info
-                this.mergeOperationForceInfo(cloudOp, existing);
-            } else {
-                cloudOnlyOps.push(cloudOp);
-            }
-            opMap.set(cloudOp.operationId, cloudOp);
-        }
-
-        // Save cloud operations locally for offline access and to sync name/note changes.
-        // Fire-and-forget to avoid blocking the UI.
-        this.saveCloudOperationsLocally(cloudOps);
-
-        // Identify local-only operations (not found on cloud) and verify them
-        const localOnlyOps = Array.from(opMap.values()).filter(op => op.local && !op.cloud);
-        if (localOnlyOps.length > 0) {
-            // Fire-and-forget: verify ownership in the background
-            this.verifyLocalOnlyOperations(localOnlyOps, opMap);
-        }
-
-        return Array.from(opMap.values()).sort((a, b) => b.timestamp - a.timestamp);
-    }
-
-    /**
-     * Save cloud operations to local IndexedDB for offline access.
-     * Uses the cloud data (which may have updated name/note) and writes them locally.
-     */
-    private async saveCloudOperationsLocally(cloudOps: LoadOperationEntry[]): Promise<void> {
-        for (const op of cloudOps) {
-            try {
-                const serialized: SerializedOperation = {
-                    operationId: op.operationId,
-                    name: op.name,
-                    note: op.note,
-                    timestamp: op.timestamp,
-                    forces: op.forces.map(f => ({
-                        instanceId: f.instanceId,
-                        alignment: f.alignment,
-                        timestamp: f.timestamp,
-                    })),
-                };
-                await this.dbService.saveOperation(serialized);
-            } catch (err) {
-                this.logger.error(`Failed to save cloud operation locally: ${err}`);
-            }
-        }
-    }
-
-    /**
-     * Verify local-only operations against the cloud to detect ownership conflicts.
-     * If a local operation exists on the cloud but isn't owned by us, we re-ID it
-     * locally and save the new copy to the cloud immediately.
-     * If it doesn't exist on the cloud, we leave it alone (user may have deleted it
-     * from another device).
-     *
-     * Sends requests in chunks of VERIFY_OPS_CHUNK_SIZE to stay within the server limit.
-     */
-    private static readonly VERIFY_OPS_CHUNK_SIZE = 100;
-
-    private async verifyLocalOnlyOperations(
-        localOnlyOps: LoadOperationEntry[],
-        opMap: Map<string, LoadOperationEntry>,
-    ): Promise<void> {
-        const ws = await this.canUseCloud();
-        if (!ws) return;
-
-        const allIds = localOnlyOps.map(op => op.operationId);
-
-        try {
-            // Process in chunks to respect server-side cap
-            for (let i = 0; i < allIds.length; i += DataService.VERIFY_OPS_CHUNK_SIZE) {
-                const chunk = allIds.slice(i, i + DataService.VERIFY_OPS_CHUNK_SIZE);
-                const response = await this.wsService.sendAndWaitForResponse({
-                    action: 'verifyOperations',
-                    operationIds: chunk,
-                });
-                if (!response?.data || !Array.isArray(response.data)) continue;
-
-                await this.processVerifyResults(response.data, localOnlyOps, opMap);
-            }
-        } catch (err) {
-            this.logger.error(`Failed to verify local-only operations: ${err}`);
-        }
-    }
-
-    /**
-     * Process verify results for a single chunk and handle conflicts.
-     */
-    private async processVerifyResults(
-        results: Array<{ operationId: string; exists: boolean; owned: boolean }>,
-        localOnlyOps: LoadOperationEntry[],
-        opMap: Map<string, LoadOperationEntry>,
-    ): Promise<void> {
-        for (const result of results) {
-            const { operationId, exists, owned } = result;
-
-            if (exists && !owned) {
-                // Conflict: the operationId is owned by another user.
-                // Generate a new operationId, update local, and save to cloud.
-                const conflictOp = localOnlyOps.find(op => op.operationId === operationId);
-                if (!conflictOp) continue;
-
-                const newOperationId = uuidv7();
-                this.logger.warn(
-                    `Operation "${conflictOp.name}" (${operationId}) is owned by another account. ` +
-                    `Re-assigning to new ID: ${newOperationId}`
-                );
-
-                // Delete old local entry
-                await this.dbService.deleteOperation(operationId);
-
-                // Build the serialized operation with the new ID
-                const serialized: SerializedOperation = {
-                    operationId: newOperationId,
-                    name: conflictOp.name,
-                    note: conflictOp.note,
-                    timestamp: conflictOp.timestamp,
-                    forces: conflictOp.forces.map(f => ({
-                        instanceId: f.instanceId,
-                        alignment: f.alignment,
-                        timestamp: f.timestamp,
-                    })),
-                };
-
-                // Save locally with new ID
-                await this.dbService.saveOperation(serialized);
-                // Save to cloud with new ID
-                await this.saveOperationCloud(serialized);
-
-                // Update the opMap entry so callers see the new ID
-                opMap.delete(operationId);
-                conflictOp.operationId = newOperationId;
-                conflictOp.cloud = true;
-                opMap.set(newOperationId, conflictOp);
-            }
-            // If !exists: the operation was deleted elsewhere, leave it local-only.
-            // It will be pushed to cloud if the user explicitly loads it.
-        }
-    }
-
-    /**
-     * Merge local force metadata into a cloud-enriched operation entry.
-     * If local has newer timestamps for any force, update the entry.
-     */
-    private mergeOperationForceInfo(target: LoadOperationEntry, localEntry: LoadOperationEntry): void {
-        for (const localForce of localEntry.forces) {
-            const cloudForce = target.forces.find(f => f.instanceId === localForce.instanceId);
-            if (!cloudForce) {
-                // Force exists locally but not in cloud response — add it
-                target.forces.push(localForce);
-            } else {
-                // If local force info is more recent, prefer it
-                const localTs = localForce.forceTimestamp ? new Date(localForce.forceTimestamp).getTime() : 0;
-                const cloudTs = cloudForce.forceTimestamp ? new Date(cloudForce.forceTimestamp).getTime() : 0;
-                if (localTs > cloudTs) {
-                    cloudForce.name = localForce.name ?? cloudForce.name;
-                    cloudForce.type = localForce.type ?? cloudForce.type;
-                    cloudForce.factionId = localForce.factionId ?? cloudForce.factionId;
-                    cloudForce.eraId = localForce.eraId ?? cloudForce.eraId;
-                    cloudForce.bv = localForce.bv ?? cloudForce.bv;
-                    cloudForce.pv = localForce.pv ?? cloudForce.pv;
-                    cloudForce.forceTimestamp = localForce.forceTimestamp;
-                }
-                // Mark force as existing if either source has it
-                if (localForce.exists) cloudForce.exists = true;
-            }
-        }
-    }
-
-    private async listOperationsLocal(): Promise<LoadOperationEntry[]> {
-        const serialized = await this.dbService.listOperations();
-        const entries: LoadOperationEntry[] = [];
-
-        for (const op of serialized) {
-            const forces: OperationForceInfo[] = [];
-            for (const ref of op.forces) {
-                // Try to enrich with local force metadata
-                const localForce = await this.dbService.getForce(ref.instanceId);
-                forces.push({
-                    instanceId: ref.instanceId,
-                    alignment: ref.alignment,
-                    timestamp: ref.timestamp,
-                    name: localForce?.name,
-                    type: localForce?.type as GameSystem | undefined,
-                    factionId: localForce?.factionId,
-                    eraId: localForce?.eraId,
-                    bv: localForce?.bv,
-                    pv: localForce?.pv,
-                    forceTimestamp: localForce?.timestamp,
-                    exists: !!localForce,
-                });
-            }
-            entries.push(new LoadOperationEntry({
-                operationId: op.operationId,
-                name: op.name || '',
-                note: op.note || '',
-                timestamp: op.timestamp,
-                forces,
-                local: true,
-            }));
-        }
-        return entries;
-    }
-
-    private async listOperationsCloud(): Promise<LoadOperationEntry[]> {
-        const ws = await this.canUseCloud();
-        if (!ws) return [];
-
-        const response = await this.wsService.sendAndWaitForResponse({
-            action: 'listOperations',
-        });
-        if (!response?.data || !Array.isArray(response.data)) return [];
-
-        return response.data.map((raw: any) => new LoadOperationEntry({
-            operationId: raw.operationId,
-            name: raw.name || '',
-            note: raw.note || '',
-            timestamp: raw.timestamp,
-            owned: raw.owned ?? true,
-            forces: (raw.forces || []).map((f: any) => ({
-                instanceId: f.instanceId,
-                alignment: f.alignment,
-                timestamp: f.timestamp,
-                name: f.name,
-                type: f.type,
-                factionId: f.factionId,
-                eraId: f.eraId,
-                bv: f.bv,
-                pv: f.pv,
-                forceTimestamp: f.forceTimestamp,
-                exists: f.exists ?? false,
-            } as OperationForceInfo)),
-            cloud: true,
-        }));
-    }
-
-    private async getOperationCloud(operationId: string): Promise<LoadOperationEntry | null> {
-        const ws = await this.canUseCloud();
-        if (!ws) return null;
-
-        const response = await this.wsService.sendAndWaitForResponse({
-            action: 'getOperation',
-            operationId,
-        });
-        const raw = response?.data;
-        if (!raw) return null;
-
-        return new LoadOperationEntry({
-            operationId: raw.operationId,
-            name: raw.name || '',
-            note: raw.note || '',
-            timestamp: raw.timestamp,
-            owned: raw.owned ?? false,
-            forces: (raw.forces || []).map((f: any) => ({
-                instanceId: f.instanceId,
-                alignment: f.alignment,
-                timestamp: f.timestamp,
-                exists: false,
+            factions: factions.map(faction => ({
+                ...faction,
+                eras: Object.fromEntries(
+                    Object.entries(faction.eras).map(([eraId, units]) => [
+                        eraId,
+                        new Set(units),
+                    ]),
+                ),
             })),
-            cloud: true,
-        });
-    }
-
-    private async saveOperationCloud(op: SerializedOperation): Promise<void> {
-        const ws = await this.canUseCloud();
-        if (!ws) return;
-        this.wsService.send({
-            action: 'saveOperation',
-            data: op,
-        });
-    }
-
-    /**
-     * Bulk-fetch basic force metadata from the cloud for a list of instanceIds.
-     * Returns enrichment data (name, type, bv, pv, timestamp) for each found force.
-     * Sends requests in chunks of 100 to stay within the server limit.
-     */
-    private static readonly FORCE_INFO_CHUNK_SIZE = 100;
-
-    public async getForceInfoBulk(instanceIds: string[]): Promise<Map<string, OperationForceInfo>> {
-        const result = new Map<string, OperationForceInfo>();
-        const ws = await this.canUseCloud();
-        if (!ws || instanceIds.length === 0) return result;
-
-        try {
-            for (let i = 0; i < instanceIds.length; i += DataService.FORCE_INFO_CHUNK_SIZE) {
-                const chunk = instanceIds.slice(i, i + DataService.FORCE_INFO_CHUNK_SIZE);
-                const response = await this.wsService.sendAndWaitForResponse({
-                    action: 'getForceInfoBulk',
-                    instanceIds: chunk,
-                });
-                if (!response?.data || !Array.isArray(response.data)) continue;
-
-                for (const entry of response.data) {
-                    result.set(entry.instanceId, {
-                        instanceId: entry.instanceId,
-                        alignment: 'friendly', // placeholder, caller should override
-                        timestamp: '',          // placeholder, caller should override
-                        name: entry.name,
-                        type: entry.type,
-                        factionId: entry.factionId,
-                        eraId: entry.eraId,
-                        bv: entry.bv,
-                        pv: entry.pv,
-                        forceTimestamp: entry.timestamp,
-                        exists: true,
-                    });
-                }
-            }
-        } catch (err) {
-            this.logger.error(`Failed to fetch force info bulk: ${err}`);
-        }
-
-        return result;
-    }
-
-    private getComparableTimestamp(timestamp: string | number | null | undefined): number {
-        if (typeof timestamp === 'number') return timestamp;
-        if (timestamp) return new Date(timestamp).getTime();
-        return 0;
-    }
-
-
-    private async listForcesCloud(): Promise<LoadForceEntry[]> {
-        const ws = await this.canUseCloud();
-        if (!ws) return [];
-        const forces: LoadForceEntry[] = [];
-        const uuid = this.userStateService.uuid();
-        const payload = {
-            action: 'listForces',
-            uuid,
         };
-        const response = await this.wsService.sendAndWaitForResponse(payload);
-        if (response && Array.isArray(response.data)) {
-            for (const raw of response.data as RemoteLoadForceEntry[]) {
-                try {
-                    forces.push(createLoadForceEntry(raw, this, { cloud: true }));
-                } catch (error) {
-                    this.logger.error('Failed to deserialize force: ' + error + ' ' + raw);
-                }
-            }
-        }
-        return forces;
-    }
-
-    SAVE_FORCE_CLOUD_DEBOUNCE_MS = 2000;
-    // Debounce map to prevent multiple simultaneous saves for the same force
-    private saveForceCloudDebounce = new Map<string, {
-        timeout: ReturnType<typeof setTimeout>,
-        force: Force,
-        resolvers: Array<{ resolve: () => void, reject: (e: any) => void }>
-    }>();
-
-    public hasPendingCloudSaves(): boolean {
-        return this.saveForceCloudDebounce && this.saveForceCloudDebounce.size > 0;
-    }
-
-    private async saveForceCloud(force: Force): Promise<void> {
-        if (force.readOnly()) {
-            this.logger.warn(`DataService.saveForceCloud() blocked: force "${force.name}" is read-only.`);
-            return;
-        }
-        const instanceId = force.instanceId();
-        if (!instanceId) return; // Should not happen, nothing to save without an instanceId
-
-        return new Promise<void>((resolve, reject) => {
-            const existing = this.saveForceCloudDebounce.get(instanceId);
-            if (existing) {
-                // clear previous timeout and replace stored force with latest
-                clearTimeout(existing.timeout);
-                existing.force = force;
-                existing.resolvers.push({ resolve, reject });
-                // reschedule
-                const timeout = setTimeout(() => {
-                    void this.flushSaveForceCloud(instanceId);
-                }, this.SAVE_FORCE_CLOUD_DEBOUNCE_MS);
-                existing.timeout = timeout;
-                this.saveForceCloudDebounce.set(instanceId, existing);
-            } else {
-                const timeout = setTimeout(() => {
-                    void this.flushSaveForceCloud(instanceId);
-                }, this.SAVE_FORCE_CLOUD_DEBOUNCE_MS);
-                // store/replace entry
-                this.saveForceCloudDebounce.set(instanceId, {
-                    timeout,
-                    force,
-                    resolvers: [{ resolve, reject }]
-                });
-            }
-        });
-    }
-
-    private async updateForceTagsCloud(instanceId: string, tags: readonly string[]): Promise<{ updated: boolean; timestamp: string | null }> {
-        const failed = { updated: false, timestamp: null };
-        const ws = await this.canUseCloud();
-        if (!ws) {
-            return failed;
-        }
-
-        try {
-            const uuid = this.userStateService.uuid();
-            const response = await this.wsService.sendAndWaitForResponse({
-                action: 'setForceTags',
-                uuid,
-                instanceId,
-                tags,
-            });
-
-            if (!response) {
-                return failed;
-            }
-
-            if (response.code === 'not_owner') {
-                this.logger.warn(`Cannot update force tags in cloud for ${instanceId}: not the owner.`);
-                return failed;
-            }
-
-            if (response.action === 'error') {
-                this.logger.error(`Failed to update force tags in cloud for ${instanceId}: ${response.message ?? 'unknown error'}`);
-                return failed;
-            }
-
-            return response.action === 'forceTagsUpdated'
-                ? { updated: true, timestamp: typeof response.timestamp === 'string' ? response.timestamp : null }
-                : failed;
-        } catch (err) {
-            this.logger.error(`Failed to update force tags in cloud for ${instanceId}: ${err}`);
-            return failed;
-        }
-    }
-
-    private async saveForceCloudImmediately(force: Force): Promise<void> {
-        const instanceId = force.instanceId();
-        if (!instanceId) return;
-
-        const pending = this.saveForceCloudDebounce.get(instanceId);
-        if (pending) {
-            clearTimeout(pending.timeout);
-            this.saveForceCloudDebounce.delete(instanceId);
-        }
-
-        try {
-            await this.sendForceToCloud(force);
-            for (const resolver of pending?.resolvers ?? []) {
-                resolver.resolve();
-            }
-        } catch (error) {
-            for (const resolver of pending?.resolvers ?? []) {
-                resolver.reject(error);
-            }
-            throw error;
-        }
-    }
-
-    private async sendForceToCloud(force: Force): Promise<void> {
-        const ws = await this.canUseCloud();
-        if (!ws) {
-            throw new Error('Cloud save skipped because WebSocket is unavailable.');
-        }
-
-        const uuid = this.userStateService.uuid();
-        let savedForceCount: number | undefined;
-        try {
-            savedForceCount = await this.dbService.countForces();
-        } catch (error) {
-            this.logger.warn(`Could not count local forces before cloud save: ${error}`);
-        }
-        const response = await this.wsService.sendAndWaitForResponse({
-            action: 'saveForce',
-            uuid,
-            data: force.serialize(),
-            ...(savedForceCount === undefined ? {} : { savedForceCount }),
-        });
-
-        if (!response) {
-            throw new Error('Cloud save did not receive a response.');
-        }
-        if (response.code === 'not_owner') {
-            this.logger.warn('Cannot save force to cloud: not the owner.');
-            this.forceNeedsAdoption.next(force);
-            throw new Error('Cannot save force to cloud: not the owner.');
-        }
-        if (response.action === 'error') {
-            throw new Error(response.message ?? 'Cloud save failed.');
-        }
-        if (response.action !== 'forceSaved') {
-            throw new Error(`Cloud save returned unexpected response: ${response.action ?? 'unknown'}.`);
-        }
-
-    }
-
-    // Flush function performs the actual cloud save for the latest Force for a given instanceId
-    private async flushSaveForceCloud(instanceId: string): Promise<void> {
-        const entry = this.saveForceCloudDebounce.get(instanceId);
-        if (!entry) return;
-        // Remove entry immediately to allow new debounces
-        this.saveForceCloudDebounce.delete(instanceId);
-        clearTimeout(entry.timeout);
-
-        const { force, resolvers } = entry;
-
-        if (force.readOnly()) {
-            this.logger.warn(`DataService.flushSaveForceCloud() blocked: force "${force.name}" is read-only.`);
-            for (const r of resolvers) r.resolve();
-            return;
-        }
-
-        try {
-            await this.sendForceToCloud(force);
-            for (const r of resolvers) r.resolve();
-        } catch (err) {
-            for (const r of resolvers) r.reject(err);
-        }
-    }
-
-    // Best-effort flush of all pending debounced cloud saves.
-    private flushAllPendingSavesOnUnload(): void {
-        if (!this.saveForceCloudDebounce || this.saveForceCloudDebounce.size === 0) return;
-
-        const ws = this.wsService.getWebSocket();
-        const canSendOverWs = ws && ws.readyState === WebSocket.OPEN;
-
-        for (const [instanceId, entry] of Array.from(this.saveForceCloudDebounce.entries())) {
-            try {
-                // stop scheduled debounce
-                clearTimeout(entry.timeout);
-                this.saveForceCloudDebounce.delete(instanceId);
-
-                // Skip read-only forces, they must never be saved
-                if (entry.force.readOnly()) {
-                    for (const r of entry.resolvers) {
-                        try { r.resolve(); } catch { /* best-effort */ }
-                    }
-                    continue;
-                }
-
-                // try to send final payload over websocket if available (synchronous queueing)
-                if (canSendOverWs) {
-                    try {
-                        const uuid = this.userStateService.uuid();
-                        const payload = {
-                            action: 'saveForce',
-                            uuid,
-                            data: entry.force.serialize()
-                        };
-                        this.wsService.send(payload);
-                    } catch { /* best-effort */ }
-                }
-
-                // resolve pending promises so callers do not hang on unload
-                for (const r of entry.resolvers) {
-                    try { r.resolve(); } catch { /* best-effort */ }
-                }
-            } catch (err) {
-                // ensure resolvers are resolved even on error
-                for (const r of entry.resolvers) {
-                    try { r.resolve(); } catch { /* best-effort */ }
-                }
-            }
-        }
-    }
-
-    private async getForceCloud(
-        instanceId: string,
-        ownedOnly: boolean,
-        includeOwnership: boolean = true,
-    ): Promise<any | null> {
-        const ws = await this.canUseCloud();
-        if (!ws) return null;
-        const payload = {
-            action: 'getForce',
-            ...(includeOwnership ? { uuid: this.userStateService.uuid() } : {}),
-            instanceId,
-            ownedOnly,
-        };
-        const response = await this.wsService.sendAndWaitForResponse(payload);
-        return response.data || null;
-    }
-
-    /* ----------------------------------------------------------
-     * Canvas Data
-     */
-
-    public deleteCanvasDataOfUnit(unit: ForceUnit): void {
-        this.dbService.deleteCanvasData(unit.id);
     }
 
     /* ----------------------------------------------------------
@@ -1713,9 +954,9 @@ export class DataService {
         for (const pack of getForcePacks()) {
             const lookupKeys = new Set<string>();
 
-            const processUnits = (unitList: Array<{ name: string }>) => {
+            const processUnits = (unitList: ForcePack['units']) => {
                 for (const pu of unitList) {
-                    const unit = this.getUnitByName(pu.name);
+                    const unit = this.getUnitByUuid(pu.uuid);
                     if (unit) {
                         const key = getUnitVariantGroupKey(unit);
                         lookupKeys.add(key);
@@ -1767,169 +1008,4 @@ export class DataService {
         return this.lookupKeyToForcePacks!.get(getUnitVariantGroupKey(unit)) ?? [];
     }
 
-    /* ----------------------------------------------------------
-     * Organizations (force org-chart layouts)
-     */
-
-    public async saveOrganization(org: SerializedOrganization): Promise<void> {
-        await this.dbService.saveOrganization(org);
-        this.saveOrganizationCloud(org);
-    }
-
-    public async deleteOrganization(organizationId: string): Promise<void> {
-        await this.dbService.deleteOrganization(organizationId);
-        const ws = await this.canUseCloud();
-        if (ws) {
-            this.wsService.send({
-                action: 'delOrganization',
-                organizationId,
-            });
-        }
-    }
-
-    public async listOrganizations(): Promise<LoadOrganizationEntry[]> {
-        const [localOrgs, cloudOrgs] = await Promise.all([
-            this.listOrganizationsLocal(),
-            this.listOrganizationsCloud(),
-        ]);
-
-        const orgMap = new Map<string, LoadOrganizationEntry>();
-
-        for (const org of localOrgs) {
-            org.local = true;
-            orgMap.set(org.organizationId, org);
-        }
-
-        for (const cloudOrg of cloudOrgs) {
-            const existing = orgMap.get(cloudOrg.organizationId);
-            cloudOrg.cloud = true;
-            if (existing) {
-                cloudOrg.local = true;
-            }
-            orgMap.set(cloudOrg.organizationId, cloudOrg);
-        }
-
-        // Push local-only orgs to cloud
-        const localOnly = Array.from(orgMap.values()).filter(o => o.local && !o.cloud);
-        if (localOnly.length > 0) {
-            for (const entry of localOnly) {
-                const serialized = await this.dbService.getOrganization(entry.organizationId);
-                if (serialized) this.saveOrganizationCloud(serialized);
-            }
-        }
-
-        // Save cloud orgs locally for offline access
-        for (const cloudOrg of cloudOrgs) {
-            const localEntry = localOrgs.find(l => l.organizationId === cloudOrg.organizationId);
-            if (!localEntry || cloudOrg.timestamp > localEntry.timestamp) {
-                // Fetch full org from cloud and save locally
-                this.syncOrganizationFromCloud(cloudOrg.organizationId);
-            }
-        }
-
-        return Array.from(orgMap.values()).sort((a, b) => b.timestamp - a.timestamp);
-    }
-
-    public async getOrganization(organizationId: string): Promise<LoadedOrganization | null> {
-        const localPromise = this.dbService.getOrganization(organizationId);
-        let cloudOrg: LoadedOrganization | null = null;
-
-        try {
-            const ws = await this.canUseCloud();
-            if (ws) {
-                const response = await this.wsService.sendAndWaitForResponse({
-                    action: 'getOrganization',
-                    organizationId,
-                });
-                cloudOrg = response?.data ?? null;
-            }
-        } catch {
-            // cloud unavailable
-        }
-
-        const localOrg = await localPromise;
-
-        if (localOrg && cloudOrg) {
-            return cloudOrg.timestamp > localOrg.timestamp ? cloudOrg : localOrg;
-        }
-        return cloudOrg || localOrg || null;
-    }
-
-    /**
-     * Find all locally-stored organizations that contain a specific force instanceId.
-     */
-    public async findOrganizationsForForce(instanceId: string): Promise<LoadOrganizationEntry[]> {
-        const serialized = await this.dbService.listOrganizations();
-        return serialized
-            .filter(org => org.forces.some(f => f.instanceId === instanceId))
-            .map(org => new LoadOrganizationEntry({
-                organizationId: org.organizationId,
-                name: org.name,
-                timestamp: org.timestamp,
-                factionId: org.factionId,
-                forceCount: org.forces.length,
-                groupCount: org.groups.length,
-                local: true,
-            }));
-    }
-
-    private async listOrganizationsLocal(): Promise<LoadOrganizationEntry[]> {
-        const serialized = await this.dbService.listOrganizations();
-        return serialized.map(org => new LoadOrganizationEntry({
-            organizationId: org.organizationId,
-            name: org.name,
-            timestamp: org.timestamp,
-            factionId: org.factionId,
-            forceCount: org.forces.length,
-            groupCount: org.groups.length,
-            local: true,
-        }));
-    }
-
-    private async listOrganizationsCloud(): Promise<LoadOrganizationEntry[]> {
-        const ws = await this.canUseCloud();
-        if (!ws) return [];
-
-        const response = await this.wsService.sendAndWaitForResponse({
-            action: 'listOrganizations',
-        });
-        if (!response?.data || !Array.isArray(response.data)) return [];
-
-        return response.data.map((raw: any) => new LoadOrganizationEntry({
-            organizationId: raw.organizationId,
-            name: raw.name || '',
-            timestamp: raw.timestamp,
-            factionId: raw.factionId,
-            forceCount: raw.forceCount ?? 0,
-            groupCount: raw.groupCount ?? 0,
-            cloud: true,
-            owned: raw.owned ?? true,
-        }));
-    }
-
-    private async saveOrganizationCloud(org: SerializedOrganization): Promise<void> {
-        const ws = await this.canUseCloud();
-        if (!ws) return;
-        this.wsService.send({
-            action: 'saveOrganization',
-            data: org,
-        });
-    }
-
-    private async syncOrganizationFromCloud(organizationId: string): Promise<void> {
-        try {
-            const ws = await this.canUseCloud();
-            if (!ws) return;
-            const response = await this.wsService.sendAndWaitForResponse({
-                action: 'getOrganization',
-                organizationId,
-            });
-            if (response?.data) {
-                const { owned: _owned, ...serialized } = response.data as LoadedOrganization;
-                await this.dbService.saveOrganization(serialized);
-            }
-        } catch {
-            // Silently fail — will retry on next list
-        }
-    }
 }

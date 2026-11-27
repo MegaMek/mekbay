@@ -1,0 +1,124 @@
+// Copyright (C) 2026 The MegaMek Team
+// SPDX-License-Identifier: GPL-3.0-or-later
+
+import { TestBed } from '@angular/core/testing';
+import { TacticalHeatScaleComponent } from './tactical-heat-scale.component';
+import type { MekRecordSheetSnapshot } from '../../models/runtime/mek-record-sheet';
+import type { NonMekRecordSheetSnapshot } from '../../models/runtime/non-mek-record-sheet';
+
+describe('TacticalHeatScaleComponent', () => {
+    function setup(readOnly = false) {
+        TestBed.configureTestingModule({ imports: [TacticalHeatScaleComponent] });
+        const fixture = TestBed.createComponent(TacticalHeatScaleComponent);
+        fixture.componentRef.setInput('entity', { entityUuid: 'heat-test', heat: {
+            current: 4, pending: null, previous: 4, projection: null, dissipation: 10, tracked: true,
+        } } as unknown as NonMekRecordSheetSnapshot);
+        fixture.componentRef.setInput('readOnly', readOnly);
+        fixture.detectChanges();
+        const track = fixture.nativeElement.querySelector('.heat-track') as HTMLElement;
+        spyOn(track, 'setPointerCapture');
+        const cells = [...track.querySelectorAll<HTMLElement>('[data-heat]')];
+        cells.forEach((cell, heat) => spyOn(cell, 'getBoundingClientRect').and.returnValue(
+            new DOMRect(heat * 20, 0, 20, 32)));
+        spyOn(track, 'getBoundingClientRect').and.returnValue(new DOMRect(0, 0, 640, 80));
+        const changed = jasmine.createSpy('heatChange');
+        fixture.componentInstance.heatChange.subscribe(changed);
+        const pointer = (element: HTMLElement, type: string, heat: number) => element.dispatchEvent(
+            new PointerEvent(type, { bubbles: true, pointerId: 1, button: 0, clientX: heat * 20 + 10, clientY: 16 }));
+        return { fixture, track, cells, changed, pointer };
+    }
+
+    it('previews heat and effects while dragging and commits only once on release', () => {
+        const { fixture, track, cells, changed, pointer } = setup();
+        pointer(cells[4], 'pointerdown', 4);
+        pointer(track, 'pointermove', 18);
+        fixture.detectChanges();
+        expect(changed).not.toHaveBeenCalled();
+        expect(fixture.componentInstance.preview()).toBe(18);
+        expect(fixture.nativeElement.querySelector('.drag-feedback').textContent).toContain('+14');
+        expect(fixture.nativeElement.querySelector('.drag-feedback').textContent).toContain('Shutdown');
+        pointer(track, 'pointerup', 18);
+        cells[18].dispatchEvent(new MouseEvent('click', { bubbles: true, detail: 1 }));
+        expect(changed).toHaveBeenCalledOnceWith(18);
+        expect(fixture.componentInstance.preview()).toBeNull();
+    });
+
+    it('prints the effect that starts at each threshold on its scale cell', () => {
+        const { cells } = setup();
+        const marks = (heat: number) => [...cells[heat].querySelectorAll('.heat-mark')]
+            .map(mark => `${mark.getAttribute('data-kind')} ${mark.textContent?.trim()}`.trim());
+        expect(marks(8)).toEqual(['fire +1']);
+        expect(marks(21)).toEqual(['pilot-damage 6+']);
+        expect(marks(30)).toEqual(['shutdown']);
+        expect(marks(9)).toEqual([]);
+    });
+
+    it('shows a RISC Heat Sink Override Kit Mek the avoid numbers it rolls, for shutdown only', () => {
+        TestBed.configureTestingModule({ imports: [TacticalHeatScaleComponent] });
+        const fixture = TestBed.createComponent(TacticalHeatScaleComponent);
+        const show = (riscOverrideKit: boolean) => {
+            fixture.componentRef.setInput('mek', {
+                entityUuid: 'override-kit', identity: { form: 'biped' }, equipment: [], endTurnCalculatesHeat: true,
+                heat: { current: 14, previous: 14, heatsinksOff: 0 },
+                heatProjection: { kind: 'unsupported', blockers: [] },
+                heatSinks: { count: 10, unavailableUnits: 0, riscOverrideKit },
+            } as unknown as MekRecordSheetSnapshot);
+            fixture.detectChanges();
+        };
+        const marks = (heat: number) => [...fixture.nativeElement.querySelectorAll(`[data-heat="${heat}"] .heat-mark`)]
+            .map(mark => `${mark.getAttribute('data-kind')} ${mark.textContent?.trim()}`.trim());
+        const active = () => fixture.componentInstance.effects().map(effect => effect.label);
+
+        show(false);
+        expect([14, 18, 22, 26, 30].map(marks)).toEqual([['shutdown 4+'], ['shutdown 6+'], ['shutdown 8+'],
+            ['shutdown 10+'], ['shutdown']]);
+        expect(active()).toContain('Shutdown, avoid on 4+');
+        show(true);
+        expect([14, 18, 22, 26, 30].map(marks)).toEqual([['shutdown 2+'], ['shutdown 4+'], ['shutdown 6+'],
+            ['shutdown 8+'], ['shutdown']]);
+        expect(marks(19)).toEqual(['ammo-explosion 4+']);
+        expect(active()).toContain('Shutdown, avoid on 2+');
+    });
+
+    it('cancels a drag without changing heat', () => {
+        const { fixture, track, cells, changed, pointer } = setup();
+        pointer(cells[4], 'pointerdown', 4);
+        pointer(track, 'pointermove', 25);
+        pointer(track, 'pointercancel', 25);
+        expect(changed).not.toHaveBeenCalled();
+        expect(fixture.componentInstance.displayedHeat()).toBe(4);
+    });
+
+    it('supports keyboard and overflow entry and rejects invalid heat', () => {
+        const { fixture, track, changed } = setup();
+        track.dispatchEvent(new KeyboardEvent('keydown', { key: 'ArrowRight', bubbles: true }));
+        expect(changed).toHaveBeenCalledWith(5);
+        fixture.componentInstance.setHeat(42);
+        expect(changed).toHaveBeenCalledWith(42);
+        changed.calls.reset();
+        fixture.componentInstance.setHeat(NaN);
+        fixture.componentInstance.setHeat(-1);
+        fixture.componentInstance.setHeat(2.5);
+        expect(changed).not.toHaveBeenCalled();
+    });
+
+    it('blocks all heat edits in read-only mode', () => {
+        const { fixture, track, cells, changed, pointer } = setup(true);
+        pointer(cells[4], 'pointerdown', 4);
+        pointer(track, 'pointerup', 18);
+        track.dispatchEvent(new KeyboardEvent('keydown', { key: 'End', bubbles: true }));
+        fixture.componentInstance.setHeat(42);
+        expect(changed).not.toHaveBeenCalled();
+        expect(fixture.componentInstance.preview()).toBeNull();
+    });
+
+    it('follows the inventory selection projection, including zero, and removes it when cleared', () => {
+        const { fixture } = setup();
+        fixture.componentRef.setInput('selectedHeat', 0);
+        fixture.detectChanges();
+        expect(fixture.nativeElement.querySelector('.legend-item[data-marker="selected"]').textContent).toContain('0');
+        fixture.componentRef.setInput('selectedHeat', null);
+        fixture.detectChanges();
+        expect(fixture.nativeElement.querySelector('.legend-item[data-marker="selected"]')).toBeNull();
+    });
+});

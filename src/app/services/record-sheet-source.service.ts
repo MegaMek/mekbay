@@ -1,0 +1,62 @@
+// Copyright (C) 2026 The MegaMek Team
+// SPDX-License-Identifier: GPL-3.0-or-later
+
+import { Injectable, inject } from '@angular/core';
+
+import type { BaseEntity } from '../models/entity/base-entity';
+import type { DesignIdentity } from './unit-catalog/unit-catalog.types';
+import {
+    RecordSheetSvgGenerator,
+    type RecordSheetSvgGeneratorOptions,
+} from '../utils/sheets/record-sheet-svg-generator';
+import { OptionsService } from './options.service';
+import { UnitNameService } from './unit-name.service';
+import { UnitFluffImageService } from './catalogs/unit-fluff-image.service';
+
+export interface RecordSheetSourceResult {
+    readonly svgs: readonly SVGSVGElement[];
+}
+
+export interface RecordSheetEntitySourceContext {
+    readonly design?: DesignIdentity;
+}
+
+/** Generates a record sheet from the admitted Entity. */
+@Injectable({ providedIn: 'root' })
+export class RecordSheetSourceService {
+    private readonly unitNames = inject(UnitNameService);
+    private readonly options = inject(OptionsService);
+    private readonly fluffImages = inject(UnitFluffImageService);
+
+    async load(
+        entity: BaseEntity,
+        generatorOptions: Partial<RecordSheetSvgGeneratorOptions> = {},
+        context: RecordSheetEntitySourceContext = {},
+    ): Promise<RecordSheetSourceResult> {
+        await this.fluffImages.initialize();
+        const currentOptions = this.options.options();
+        const pageFormat = generatorOptions.pageFormat
+            ?? (generatorOptions.format === 'a4' || generatorOptions.format === 'letter'
+                ? generatorOptions.format : currentOptions.printAllOptions.paperSize);
+        const svgs = await RecordSheetSvgGenerator.generatePages(entity, {
+            ...generatorOptions,
+            format: generatorOptions.format ?? pageFormat,
+            pageFormat,
+            ruleset: generatorOptions.ruleset ?? currentOptions.CBTRules,
+            pipLayout: generatorOptions.pipLayout ?? currentOptions.recordSheetPipLayout,
+            showQuirks: currentOptions.CBTOptionalRules?.quirks !== false,
+            groupWeapons: generatorOptions.groupWeapons ?? currentOptions.recordSheetGroupWeapons === 'enabled',
+            fluffImageUrl: generatorOptions.fluffImageUrl === undefined
+                ? await this.fluffImages.loadEntityUrl(entity, context.design) : generatorOptions.fluffImageUrl,
+        });
+        svgs.forEach(svg => {
+            svg.dataset['mekbaySheetSource'] = 'generated';
+            this.unitNames.applyToRecordSheet(svg, entity);
+        });
+        return Object.freeze({ svgs });
+    }
+
+    applyUnitName(svg: SVGSVGElement, entity: BaseEntity): void {
+        this.unitNames.applyToRecordSheet(svg, entity);
+    }
+}

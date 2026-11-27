@@ -2,7 +2,7 @@
 import path from 'node:path';
 import { buildBfsGenerationPlan, writeBfsGenerationPlan } from './lib/bfs-generation';
 
-const { loadOptionalEnvFile, resolveMmDataRoot } = require('./lib/script-paths.js') as typeof import('./lib/script-paths.js');
+const { loadOptionalEnvFile, resolveMmDataRoot } = require('./lib/script-paths') as typeof import('./lib/script-paths');
 
 interface CliOptions {
     write: boolean;

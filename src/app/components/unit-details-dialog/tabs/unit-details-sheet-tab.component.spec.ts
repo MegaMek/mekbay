@@ -9,33 +9,33 @@ import { By } from '@angular/platform-browser';
 import { createEmptyUnit } from '../../../testing/unit-test-helpers';
 import { LoggerService } from '../../../services/logger.service';
 import { OptionsService } from '../../../services/options.service';
-import { SheetService } from '../../../services/sheet.service';
+import { NativeEntityService } from '../../../services/native-entity.service';
+import { TestTankEntity } from '../../../models/entity/testing/test-entities';
+import { CBTForceMember } from '../../../models/force-member.model';
+import type { CBTForce } from '../../../models/cbt-force.model';
 import { SvgViewerLiteComponent } from '../../svg-viewer-lite/svg-viewer-lite.component';
 import { UnitDetailsSheetTabComponent } from './unit-details-sheet-tab.component';
 
-function makeSvg(): SVGSVGElement {
-    const svg = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
-    svg.setAttribute('viewBox', '0 0 100 200');
-    return svg;
-}
-
 describe('UnitDetailsSheetTabComponent', () => {
-    let sheetService: jasmine.SpyObj<Pick<SheetService, 'getSheet'>>;
     let logger: jasmine.SpyObj<Pick<LoggerService, 'error'>>;
+    let nativeEntities: jasmine.SpyObj<Pick<NativeEntityService, 'canLoad' | 'load'>>;
     const options = signal({ printAllOptions: { recordSheetCenterPanelContent: 'clusterTable' } });
 
     beforeEach(() => {
-        sheetService = jasmine.createSpyObj<Pick<SheetService, 'getSheet'>>('SheetService', ['getSheet']);
         logger = jasmine.createSpyObj<Pick<LoggerService, 'error'>>('LoggerService', ['error']);
+        nativeEntities = jasmine.createSpyObj<Pick<NativeEntityService, 'canLoad' | 'load'>>(
+            'NativeEntityService', ['canLoad', 'load'],
+        );
+        nativeEntities.canLoad.and.returnValue(true);
+        nativeEntities.load.and.resolveTo({ entity: new TestTankEntity(), source: {} } as never);
         options.set({ printAllOptions: { recordSheetCenterPanelContent: 'clusterTable' } });
-        sheetService.getSheet.and.resolveTo(makeSvg());
 
         TestBed.configureTestingModule({
             imports: [UnitDetailsSheetTabComponent],
             providers: [
                 provideZonelessChangeDetection(),
-                { provide: SheetService, useValue: sheetService },
                 { provide: LoggerService, useValue: logger },
+                { provide: NativeEntityService, useValue: nativeEntities },
                 { provide: OptionsService, useValue: { options } },
             ],
         });
@@ -49,7 +49,7 @@ describe('UnitDetailsSheetTabComponent', () => {
 
     async function createComponent() {
         const fixture = TestBed.createComponent(UnitDetailsSheetTabComponent);
-        fixture.componentRef.setInput('unit', createEmptyUnit({ sheets: ['atlas.svg'] }));
+        fixture.componentRef.setInput('unit', createEmptyUnit());
         fixture.detectChanges();
         await settle();
         fixture.detectChanges();
@@ -93,5 +93,21 @@ describe('UnitDetailsSheetTabComponent', () => {
 
         (viewer.isZoomPanActive as jasmine.Spy).and.returnValue(true);
         expect(component.isZoomPanActive()).toBeTrue();
+    });
+
+    it('passes the exact admitted force design to the viewer without loading its latest catalog revision', async () => {
+        const entity = new TestTankEntity();
+        const member = new CBTForceMember('retained-instance', {} as CBTForce, entity);
+        nativeEntities.canLoad.and.returnValue(false);
+        const fixture = TestBed.createComponent(UnitDetailsSheetTabComponent);
+        fixture.componentRef.setInput('unit', createEmptyUnit());
+        fixture.componentRef.setInput('forceMember', member);
+        fixture.detectChanges();
+        await settle();
+        fixture.detectChanges();
+        const viewer = fixture.debugElement.query(By.directive(SvgViewerLiteComponent)).componentInstance as SvgViewerLiteComponent;
+
+        expect(viewer.nativeEntity()).toBe(entity);
+        expect(nativeEntities.load).not.toHaveBeenCalled();
     });
 });

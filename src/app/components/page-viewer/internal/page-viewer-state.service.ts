@@ -4,16 +4,16 @@
 
 import { Injectable, computed, signal } from '@angular/core';
 
-import type { CBTForceUnit } from '../../../models/cbt-force-unit.model';
 import type {
     PageViewerPageDescriptor,
     PageViewerShadowDescriptor,
     PageViewerTransitionState
 } from './types';
+import type { PageViewerMember } from './types';
 
 @Injectable()
 export class PageViewerStateService {
-    readonly forceUnits = signal<CBTForceUnit[]>([]);
+    readonly forceUnits = signal<PageViewerMember[]>([]);
     readonly selectedUnitId = signal<string | null>(null);
     readonly suppressSelectionRedisplay = signal(false);
     readonly viewStartIndex = signal(0);
@@ -41,7 +41,7 @@ export class PageViewerStateService {
         return Math.max(1, Math.min(this.visiblePageCount(), this.maxVisiblePageCount()));
     });
 
-    setForceUnits(units: CBTForceUnit[]): void {
+    setForceUnits(units: PageViewerMember[]): void {
         this.forceUnits.set(units);
         this.viewStartIndex.update((currentIndex) => this.normalizeIndex(currentIndex));
     }

@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 // Author: Drake
 
-import type { MountedEquipment } from './mounted-equipment.model';
+export const C3_EMERGENCY_MASTER_FLAG = 'F_C3EM' as const;
 
 export const C3EM_MODE_STATE_KEY = 'c3emMode';
 export const C3EM_OPERATING_TURNS_STATE_KEY = 'c3emOperatingTurns';
@@ -34,26 +34,24 @@ export class C3EmergencyMasterActivationTracker {
     }
 }
 
-export function isC3EmergencyMaster(equipment: MountedEquipment): boolean {
-    return equipment.equipment?.flags.has('F_C3EM') === true;
+export function isC3EmergencyMasterEquipment(
+    equipment: Readonly<{ hasFlag(flag: string): boolean }> | null | undefined,
+): boolean {
+    return equipment?.hasFlag(C3_EMERGENCY_MASTER_FLAG) === true;
 }
 
-export function getC3EmergencyMasterMode(equipment: MountedEquipment): C3EmergencyMasterMode {
-    const value = equipment.states.get(C3EM_MODE_STATE_KEY);
-    return value === 'on' || value === 'off' ? value : 'auto';
+/** Representation-independent fried policy shared by legacy and ComponentId runtimes. */
+export function isC3EmergencyMasterOperatingTurnsFried(operatingTurns: number): boolean {
+    return operatingTurns === C3EM_FRIED_SEQUENCE_VALUE;
 }
 
-export function getC3EmergencyMasterOperatingTurns(equipment: MountedEquipment): number {
-    const value = Number(equipment.states.get(C3EM_OPERATING_TURNS_STATE_KEY) ?? 0);
-    if (!Number.isFinite(value)) return 0;
-    return Math.max(0, Math.min(C3EM_FRIED_SEQUENCE_VALUE, Math.trunc(value)));
-}
-
-export function isC3EmergencyMasterFried(equipment: MountedEquipment): boolean {
-    return getC3EmergencyMasterOperatingTurns(equipment) === C3EM_FRIED_SEQUENCE_VALUE;
-}
-
-export function isC3EmergencyMasterRequested(equipment: MountedEquipment, automatic: boolean): boolean {
-    const mode = getC3EmergencyMasterMode(equipment);
+/**
+ * Representation-independent request policy. In typed V2, `automatic` is true
+ * only after the encounter coordinator promotes the exact endpoint to master.
+ */
+export function isC3EmergencyMasterModeRequested(
+    mode: C3EmergencyMasterMode,
+    automatic: boolean,
+): boolean {
     return mode === 'on' || (mode === 'auto' && automatic);
 }

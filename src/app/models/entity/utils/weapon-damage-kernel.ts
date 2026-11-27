@@ -1,0 +1,97 @@
+// Copyright (C) 2026 The MegaMek Team
+// SPDX-License-Identifier: GPL-3.0-or-later
+
+/** Minimal immutable inputs needed to resolve record-sheet weapon damage. */
+export interface WeaponDamageFacts {
+  readonly id: string;
+  readonly damage: string | number | readonly number[];
+  readonly rackSize: number;
+  readonly ammoType: string;
+  readonly flags: ReadonlySet<string>;
+  readonly oneShotCount: 0 | 1 | 2;
+  readonly rapidFireCount: number;
+}
+
+/**
+ * A Fusillade: the ProtoMek launcher of iATM munitions, which lacks the iATM's Streak-like features (IO:AE p. 59).
+ */
+export function isFusilladeLauncher(weapon: Pick<WeaponDamageFacts, 'ammoType' | 'flags'>): boolean {
+  return weapon.ammoType === 'IATM' && weapon.flags.has('F_PROTO_WEAPON');
+}
+
+export interface AmmoDamageFacts {
+  readonly damagePerShot: number;
+}
+
+export type ResolvedWeaponDamageUnit = 'missile' | 'shot' | 'artillery';
+
+export interface ResolvedWeaponDamageFacts {
+  readonly values: readonly number[];
+  readonly maximum: number;
+  readonly unit?: ResolvedWeaponDamageUnit;
+}
+
+/**
+ * Resolve static weapon damage from detached catalog facts.
+ *
+ * This is the sole formula owner shared by Equipment and MekEntity callers.
+ * Compatible-ammunition selection stays at each
+ * boundary; the kernel only consumes the selected ammo's damage fact.
+ */
+export function resolveWeaponDamageFacts(
+  weapon: WeaponDamageFacts,
+  ammo: AmmoDamageFacts | null,
+): ResolvedWeaponDamageFacts {
+  const damage = weapon.damage;
+  if (damage === '') return fixedDamage(0);
+  if (damage === 'special' && weapon.oneShotCount > 0 && ammo) {
+    return fixedDamage(ammo.damagePerShot);
+  }
+  // A Fusillade "must roll on the 3 column of the Cluster Hits Table upon any successful attack" (IO:AE p. 59), each
+  // missile doing its loaded ammunition's damage.
+  if (damage === 'cluster' || isFusilladeLauncher(weapon)) {
+    return resolveClusterDamage(weapon, ammo);
+  }
+  if (damage === 'artillery') return fixedDamage(weapon.rackSize, 'artillery');
+  if (damage === 'variable') {
+    return fixedDamage(weapon.id === 'CLPlasmaCannon' ? 0 : weapon.rackSize);
+  }
+  if (Array.isArray(damage)) return { values: damage, maximum: Math.max(0, ...damage) };
+  if (typeof damage !== 'number' || damage < 0) return fixedDamage(weapon.rackSize);
+
+  return {
+    values: [damage],
+    maximum: damage * Math.max(1, weapon.rapidFireCount),
+    ...(weapon.rapidFireCount > 0 ? { unit: 'shot' as const } : {}),
+  };
+}
+
+function resolveClusterDamage(
+  weapon: WeaponDamageFacts,
+  ammo: AmmoDamageFacts | null,
+): ResolvedWeaponDamageFacts {
+  if (weapon.flags.has('F_LARGE_MISSILE')) return fixedDamage(ammo?.damagePerShot ?? 0);
+  if (weapon.flags.has('F_NARC')) {
+    return { values: [1], maximum: weapon.rackSize, unit: 'missile' };
+  }
+  if (weapon.ammoType === 'HAG') return fixedDamage(weapon.rackSize);
+  if (weapon.ammoType === 'MEK_MORTAR') {
+    const damagePerMissile = ammo?.damagePerShot ?? 2;
+    return { values: [damagePerMissile], maximum: weapon.rackSize * damagePerMissile, unit: 'missile' };
+  }
+  if (weapon.ammoType === 'BA_TUBE' || !weapon.flags.has('F_MISSILE')) {
+    return fixedDamage(weapon.rackSize);
+  }
+  return {
+    values: [ammo?.damagePerShot ?? 0],
+    maximum: ammo ? weapon.rackSize * ammo.damagePerShot : 0,
+    unit: 'missile',
+  };
+}
+
+function fixedDamage(
+  value: number,
+  unit?: ResolvedWeaponDamageUnit,
+): ResolvedWeaponDamageFacts {
+  return { values: [value], maximum: value, ...(unit ? { unit } : {}) };
+}

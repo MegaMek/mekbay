@@ -3,6 +3,7 @@
 // Author: Drake
 
 import type { BaseEntity } from './entity/base-entity';
+import { STRUCTURE_TYPE } from './entity/types/structure';
 import {
     ComponentTechLevel,
     CompoundTechLevel,
@@ -18,7 +19,6 @@ import {
     type WireEquipmentTechData,
 } from './equipment-tech-codec';
 import { getNumCriticalSlots } from './entity/utils/equipment-helpers';
-import type { MountedEquipment } from './mounted-equipment.model';
 import type { UnitSummary } from './unit-summary.model';
 import type { CBTGameRules } from './rules/game-rules';
 import { AmmoValidityUtil } from '../utils/ammo-validity.util';
@@ -27,6 +27,27 @@ import type { EquipmentFlag } from './equipment-flags.type';
 import { AmmoMunitionFlag } from './ammo-munition-flags.type';
 import type { EquipmentRegistry } from './equipment-lookup';
 import { WEAPON_TYPES, type WeaponType } from './weapon-types.model';
+import { resolveWeaponDamageFacts } from './entity/utils/weapon-damage-kernel';
+import { isBombastLaserEquipment } from './bombast-laser-mode.model';
+import { isHagEquipment } from './hag-mode.model';
+import { isFlamerEquipment } from './flamer-mode.model';
+import { isPpcEquipment } from './ppc-capacitor.model';
+import { isBapEquipment } from './bap-equipment.model';
+import {
+    VIRAL_JAMMER_OPERATING_HEAT,
+    isViralJammerEquipment,
+} from './escalating-equipment.model';
+import { signatureSystemOperatingHeat } from './stealth-equipment.model';
+import {
+    heatSinkUnitsPerMount,
+    isCompactHeatSinkEquipment,
+    isHeatSinkEquipment,
+} from './heat-equipment.model';
+import { physicalEquipmentOperatingHeatFromFlags } from './entity/utils/physical-weapon-kernel';
+import { isBattleArmorAmmo } from './equipment-platform.model';
+import { aerospaceSupportOperatingHeat } from './aerospace-support-equipment.model';
+import { c3EquipmentOperatingHeat, isC3MasterEquipment } from './c3-network.model';
+import { isArmorKitEquipment } from './infantry-equipment.model';
 
 
 
@@ -35,7 +56,6 @@ import { WEAPON_TYPES, type WeaponType } from './weapon-types.model';
 // ============================================================================
 
 export type EquipmentType = 'weapon' | 'ammo' | 'misc' | 'armor' | 'structure';
-export type TechLevel = 'Introductory' | 'Standard' | 'Advanced' | 'Experimental' | 'Unofficial';
 export type RangeBrackets = 'short' | 'medium' | 'long' | 'extreme';
 export type WeaponCategory = 'energy' | 'missile' | 'ballistic' | 'artillery' | 'other';
 
@@ -68,7 +88,7 @@ export type AmmoCategory = 'Ballistic' | 'Missile' | 'Energy' | 'Artillery' | 'B
 
 export type AmmoType =
     | 'NA' | 'AC' | 'VEHICLE_FLAMER' | 'MG' | 'MG_HEAVY' | 'MG_LIGHT' | 'GAUSS'
-    | 'LRM' | 'LRM_TORPEDO' | 'NLRM_TORPEDO' | 'SRM' | 'SRM_TORPEDO' | 'SRM_STREAK' | 'MRM'
+    | 'LRM' | 'LRM_TORPEDO' | 'SRM' | 'SRM_TORPEDO' | 'SRM_STREAK' | 'MRM'
     | 'NARC' | 'AMS' | 'ARROW_IV' | 'LONG_TOM' | 'SNIPER' | 'THUMPER'
     | 'AC_LBX' | 'AC_ULTRA' | 'GAUSS_LIGHT' | 'GAUSS_HEAVY' | 'AC_ROTARY'
     | 'SRM_ADVANCED' | 'BA_MICRO_BOMB' | 'LRM_TORPEDO_COMBO' | 'MINE' | 'ATM'
@@ -84,7 +104,7 @@ export type AmmoType =
     | 'AAA_MISSILE' | 'AS_MISSILE' | 'ASEW_MISSILE' | 'LAA_MISSILE'
     | 'RL_BOMB' | 'ARROW_IV_BOMB' | 'FLUID_GUN'
     | 'SNIPER_CANNON' | 'THUMPER_CANNON' | 'LONG_TOM_CANNON'
-    | 'NAIL_RIVET_GUN' | 'ACi' | 'KRAKENM' | 'PAC' | 'NLRM' | 'RIFLE'
+    | 'NAIL_RIVET_GUN' | 'ACi' | 'KRAKENM' | 'PAC' | 'NLRM' | 'NLRM_TORPEDO' | 'RIFLE'
     | 'VGL' | 'C3_REMOTE_SENSOR' | 'AC_PRIMITIVE' | 'LRM_PRIMITIVE' | 'SRM_PRIMITIVE'
     | 'BA_TUBE' | 'IATM' | 'LMASS' | 'MMASS' | 'HMASS' | 'APDS'
     | 'AC_IMP' | 'GAUSS_IMP' | 'SRM_IMP' | 'LRM_IMP'
@@ -101,7 +121,6 @@ export const AMMO_TYPE_CATEGORY: Record<AmmoType, AmmoCategory> = {
     GAUSS: 'Ballistic',
     LRM: 'Missile',
     LRM_TORPEDO: 'Missile',
-    NLRM_TORPEDO: 'Missile',
     SRM: 'Missile',
     SRM_TORPEDO: 'Missile',
     SRM_STREAK: 'Missile',
@@ -182,6 +201,7 @@ export const AMMO_TYPE_CATEGORY: Record<AmmoType, AmmoCategory> = {
     KRAKENM: 'Missile',
     PAC: 'Ballistic',
     NLRM: 'Missile',
+    NLRM_TORPEDO: 'Missile',
     RIFLE: 'Ballistic',
     VGL: 'Special',
     C3_REMOTE_SENSOR: 'Special',
@@ -319,7 +339,7 @@ export interface EquipmentRawData {
     name: string;
     shortName?: string;
     sortingName?: string;
-    rulesRefs?: EquipmentRulesReference[];
+    rulesRefs?: readonly EquipmentRulesReference[];
     aliases?: string[];
     stats?: Partial<EquipmentStats>;
     tech?: Partial<WireEquipmentTechData>;
@@ -343,7 +363,7 @@ export type RawEquipmentMap = Record<string, EquipmentRawData>;
 /** Raw equipment data from JSON file */
 export interface RawEquipmentData {
     version: string;
-    etag?: string;
+    assetHash?: string;
     equipment: RawEquipmentMap;
 }
 
@@ -405,7 +425,7 @@ const ARMOR_DEFAULTS: ArmorData = {
 };
 
 const STRUCTURE_DEFAULTS: StructureData = {
-    typeId: 0
+    typeId: STRUCTURE_TYPE.STANDARD
 };
 
 const WIRE_TECH_DEFAULTS: WireEquipmentTechData = {
@@ -445,7 +465,7 @@ export class Equipment {
     readonly name: string;
     readonly shortName: string;
     readonly sortingName: string;
-    readonly rulesRefs: EquipmentRulesReference[];
+    readonly rulesRefs: readonly EquipmentRulesReference[];
     readonly aliases: string[];
     protected readonly stats: EquipmentStats;
     readonly tech: TechData;
@@ -459,7 +479,7 @@ export class Equipment {
         this.name = data.name;
         this.shortName = data.shortName ?? data.name;
         this.sortingName = data.sortingName ?? data.name;
-        this.rulesRefs = Array.isArray(data.rulesRefs) ? data.rulesRefs : [];
+        this.rulesRefs = data.rulesRefs ?? [];
         this.aliases = data.aliases ?? [];
         this.type = data.type;
         this.modes = data.modes ?? [];
@@ -482,6 +502,9 @@ export class Equipment {
     }
     get svSlots(): number { return this.stats.svSlots; }
     get tankSlots(): number { return this.stats.tankSlots; }
+    get hittable(): boolean { return this.stats.hittable; }
+    get omniFixedOnly(): boolean { return this.stats.omniFixedOnly; }
+    get instantModeSwitch(): boolean { return this.stats.instantModeSwitch; }
     get techBase(): EquipmentTechBase { return this.tech.base; }
     get level(): ComponentTechLevel { return this.tech.level; }
     get rating(): string { return this.tech.rating; }
@@ -512,9 +535,8 @@ export class Equipment {
     }
 
     hasFlag(flag: EquipmentFlag): boolean { return this.flags.has(flag); }
-    hasAnyFlag(flags: EquipmentFlag[]): boolean { return flags.some(f => this.flags.has(f)); }
+    hasAnyFlag(flags: readonly EquipmentFlag[]): boolean { return flags.some(f => this.flags.has(f)); }
     hasAllFlags(flags: EquipmentFlag[]): boolean { return flags.every(f => this.flags.has(f)); }
-    hasMode(mode: string): boolean { return this.modes.includes(mode); }
     isExplosive() { return this.stats.explosive ?? false; }
     getNumCriticalSlots(entity: BaseEntity, size: number = 1): number | undefined {
         return getNumCriticalSlots(entity, this, size);
@@ -530,8 +552,9 @@ export class Equipment {
 // Weapon Equipment Class
 // ============================================================================
 
+/** Weapons whose type includes S: special munitions such as standard and light AC ammo (TW pp. 140, 303). */
 const SWITCHABLE_AMMO = new Set<AmmoType>([
-    'AC', 'AC_PRIMITIVE', 'AC_IMP', 'AC_LBX', 'AC_ROTARY',
+    'AC', 'AC_PRIMITIVE', 'AC_IMP', 'AC_LBX', 'AC_ROTARY', 'LAC',
     'LRM', 'LRM_PRIMITIVE', 'LRM_IMP', 'NLRM',
     'MML',
     'SRM', 'SRM_IMP',
@@ -550,8 +573,6 @@ function orderedWeaponTypes(types: Iterable<WeaponType>): WeaponType[] {
     const typeSet = new Set(types);
     return WEAPON_TYPES.filter(type => typeSet.has(type));
 }
-
-const NON_DAMAGING_WEAPON_FLAGS = ['F_TAG', 'F_AMS', 'F_NARC'] as const;
 
 export class WeaponEquipment extends Equipment {
     readonly weapon: WeaponData;
@@ -575,7 +596,7 @@ export class WeaponEquipment extends Equipment {
 
     get heat(): number { return this.weapon.heat; }
     get damage(): string | number | Array<number> {
-        return NON_DAMAGING_WEAPON_FLAGS.some(flag => this.hasFlag(flag)) ? '' : this.weapon.damage;
+        return this.hasAnyFlag(['F_TAG', 'F_AMS', 'F_NARC']) ? '' : this.weapon.damage;
     }
     get rackSize(): number { return this.weapon.rackSize; }
     get ammoType(): AmmoType { return this.weapon.ammoType; }
@@ -599,17 +620,27 @@ export class WeaponEquipment extends Equipment {
         return this.hasFlag('F_INFANTRY') && this.infantry !== undefined;
     }
 
-    getClusterSize(ammo?: AmmoEquipment | null, fallbackProfile?: AmmoWeaponProfile | null): number {
+    /**
+     * Damage points per hit-location group. ATMs group by ruleset; without rules this is the printed
+     * Core notation (C6).
+     */
+    getClusterSize(
+        ammo?: AmmoEquipment | null,
+        fallbackProfile?: AmmoWeaponProfile | null,
+        rules?: Pick<CBTGameRules, 'atmClusterSize'>,
+    ): number {
+        if (this.hasFlag('F_ATM') || this.ammoType === 'ATM' || this.ammoType === 'IATM') {
+            return rules?.atmClusterSize ?? 6;
+        }
         let clusterSize = 0;
         const ammoProfile = resolveAmmoWeaponProfile(ammo) ?? fallbackProfile;
         if (ammoProfile) {
-            clusterSize = ammoProfile.clusterSize;
-        } else if (this.hasFlag('F_SRM')) {
+            clusterSize = ammoProfile.clusterSize ?? 0;
+        } else if (this.hasFlag('F_SRM') || this.ammoType === 'SRM_TORPEDO') {
             clusterSize = 2;
-        } else if (this.hasAnyFlag(['F_LRM', 'F_MRM', 'F_HAG'])) {
+        } else if (this.hasAnyFlag(['F_LRM', 'F_MRM']) || isHagEquipment(this)
+            || ['LRM_TORPEDO', 'NLRM_TORPEDO', 'ROCKET_LAUNCHER'].includes(this.ammoType)) {
             clusterSize = 5;
-        } else if (this.hasFlag('F_ATM')) {
-            clusterSize = 6;
         } else if (this.hasFlag('F_M_POD') || this.ammoType === 'SBGAUSS') {
             clusterSize = 1;
         }
@@ -630,15 +661,20 @@ export class WeaponEquipment extends Equipment {
         const types = new Set<WeaponType>();
 
         // AE: Area-Effect
-        if ((this.hasFlag('F_ARTILLERY') && !this.hasFlag('F_DIRECT_FIRE')) || this.hasFlag('F_VGL')) types.add('AE');
+        if ((this.hasFlag('F_ARTILLERY') && !this.hasFlag('F_DIRECT_FIRE'))
+            || this.hasFlag('F_VGL')) types.add('AE');
 
         // AI: Anti-Infantry
-        if (this.hasAnyFlag(['F_VSP', 'F_BURST_FIRE', 'F_FLAMER', 'F_MG', 'F_MGA'])) types.add('AI');
+        if (isFlamerEquipment(this)
+            || this.hasAnyFlag(['F_VSP', 'F_BURST_FIRE'])
+            || this.hasAnyFlag(['F_MG', 'F_MGA'])) {
+            types.add('AI');
+        }
 
         // C: Cluster
         // note: SBGauss has no damage==cluster but the ammo does have M_CLUSTER
-        if ((this.weapon.damage === 'cluster' && !this.hasAnyFlag(['F_LARGE_MISSILE', 'F_NARC'])) 
-            || this.hasAnyFlag(['F_HAG', 'F_M_POD'])) {
+        if ((this.weapon.damage === 'cluster' && !this.hasAnyFlag(['F_LARGE_MISSILE', 'F_NARC']))
+            || isHagEquipment(this) || this.hasFlag('F_M_POD')) {
             types.add('C');
         }
 
@@ -647,19 +683,23 @@ export class WeaponEquipment extends Equipment {
             || this.ammoType === 'SNIPER_CANNON'
             || this.ammoType === 'THUMPER_CANNON'
             || this.ammoType === 'LONG_TOM_CANNON'
-            || (this.hasAllFlags(['F_BALLISTIC', 'F_DIRECT_FIRE']) && !this.hasAnyFlag(['F_M_POD', 'F_PLASMA']))
-            || this.hasAnyFlag(['F_MG','F_MGA'])) {
+            || (this.hasFlag('F_BALLISTIC') && this.hasFlag('F_DIRECT_FIRE')
+                && !this.hasAnyFlag(['F_M_POD', 'F_PLASMA']))
+            || this.hasAnyFlag(['F_MG', 'F_MGA'])) {
             types.add('DB');
         }
 
         // DE: Direct-Fire Energy
-        if ((this.hasFlag('F_DIRECT_FIRE') && this.hasAnyFlag(['F_ENERGY', 'F_PLASMA']) && !this.hasFlag('F_PULSE'))
-            || this.hasAnyFlag(['F_FLAMER'])) {
+        if ((this.hasFlag('F_DIRECT_FIRE') && this.hasAnyFlag(['F_ENERGY', 'F_PLASMA'])
+            && !this.hasFlag('F_PULSE'))
+            || isFlamerEquipment(this)) {
             types.add('DE');
         }
 
         // E: Electronics
-        if (this.hasAnyFlag(['F_TAG', 'F_C3M', 'F_C3MBS', 'F_BAP']) || this.ammoType === 'C3_REMOTE_SENSOR') types.add('E');
+        if (this.hasFlag('F_TAG') || isC3MasterEquipment(this)
+            || isBapEquipment(this)
+            || this.ammoType === 'C3_REMOTE_SENSOR') types.add('E');
 
         // F: Flak
         if ((this.hasFlag('F_ARTILLERY') && !this.hasFlag('F_DIRECT_FIRE'))
@@ -671,7 +711,9 @@ export class WeaponEquipment extends Equipment {
         }
 
         // H: Heat-Causing
-        if (this.hasAnyFlag(['F_FLAMER', 'F_PLASMA', 'F_INFERNO', 'F_INCENDIARY_NEEDLES'])) types.add('H');
+        if (isFlamerEquipment(this)
+            || this.hasFlag('F_PLASMA')
+            || this.hasAnyFlag(['F_INFERNO', 'F_INCENDIARY_NEEDLES'])) types.add('H');
 
         // M: Missile
         if (this.hasFlag('F_MISSILE') || getAmmoCategory(this.ammoType) === 'Missile') types.add('M');
@@ -683,7 +725,7 @@ export class WeaponEquipment extends Equipment {
         if (this.hasFlag('F_PULSE')) types.add('P');
 
         // PB: Point-Blank
-        if (this.hasAnyFlag(['F_AMS','F_AP_POD','F_B_POD'])) types.add('PB');
+        if (this.hasAnyFlag(['F_AMS', 'F_AP_POD', 'F_B_POD'])) types.add('PB');
 
         // R: Rapid-Fire
         if (['AC_ULTRA', 'AC_ULTRA_THB', 'AC_ROTARY'].includes(this.ammoType)) types.add('R');
@@ -692,11 +734,13 @@ export class WeaponEquipment extends Equipment {
         if (this.supportsSwitchableAmmo) types.add('S');
         
         // V: Variable Damage
-        if (Array.isArray(this.damage) || this.hasAnyFlag(['F_BOMBAST_LASER','F_M_POD'])) types.add('V');
+        if (Array.isArray(this.damage) || isBombastLaserEquipment(this) || this.hasFlag('F_M_POD')) types.add('V');
 
         // X: Explosive
         // Note: had to put AC and PPC in the filter because they have explosive==true and that's an optional rule (they still get clan case thou!)
-        if (this.stats.explosive && !this.hasAnyFlag(['F_AC', 'F_PPC', 'F_B_POD', 'F_M_POD'])) types.add('X');
+        if (this.stats.explosive
+            && !this.hasAnyFlag(['F_AC', 'F_B_POD', 'F_M_POD'])
+            && !isPpcEquipment(this)) types.add('X');
 
         return orderedWeaponTypes(types);
     }
@@ -726,6 +770,8 @@ export interface WeaponDamageOptions {
     readonly ammo?: AmmoEquipment | null;
     readonly ammoProfile?: AmmoWeaponProfile | null;
     readonly range?: 'short' | 'medium' | 'long' | 'extreme' | null;
+    /** Runtime/rules-adjusted weapon damage; ammunition semantics remain canonical. */
+    readonly damageOverride?: WeaponEquipment['damage'];
 }
 
 const DAMAGE_RANGE_INDEX = { short: 0, medium: 1, long: 2, extreme: 2 } as const;
@@ -737,7 +783,7 @@ export function resolveWeaponDamage(
     options: WeaponDamageOptions = {},
 ): WeaponDamage {
     const ammo = resolveWeaponAmmo(weapon, equipmentRegistry, options);
-    const damage = resolveWeaponDamageWithAmmo(weapon, ammo);
+    const damage = resolveWeaponDamageWithAmmo(weapon, ammo, options.damageOverride);
     if (!options.range || damage.values.length < 2) return damage;
     return { ...damage, values: [damage.values[DAMAGE_RANGE_INDEX[options.range]] ?? 0] };
 }
@@ -753,49 +799,20 @@ export function resolveWeaponAmmo(
         : findStandardAmmoForWeapon(weapon, equipmentRegistry, options.ammoProfile);
 }
 
-function resolveWeaponDamageWithAmmo(weapon: WeaponEquipment, ammo: AmmoEquipment | null): WeaponDamage {
-    const damage = weapon.weapon.damage;
-    if (damage === '') return fixedDamage(0);
-    if (damage === 'special' && weapon.oneShotCount && ammo) return fixedDamage(ammo.damagePerShot);
-    if (damage === 'cluster') return resolveClusterDamage(weapon, ammo);
-    if (damage === 'artillery') return fixedDamage(weapon.rackSize, 'artillery');
-    if (damage === 'variable') return resolveVariableDamage(weapon);
-    if (Array.isArray(damage)) return { values: damage, maximum: Math.max(0, ...damage) };
-    if (typeof damage !== 'number' || damage < 0) return fixedDamage(weapon.rackSize);
-
-    const shots = weapon.getRapidFireCount();
-    return {
-        values: [damage],
-        maximum: damage * Math.max(1, shots),
-        ...(shots > 0 && { unit: 'shot' as const }),
-    };
-}
-
-function resolveClusterDamage(weapon: WeaponEquipment, ammo: AmmoEquipment | null): WeaponDamage {
-    if (weapon.hasFlag('F_LARGE_MISSILE')) return fixedDamage(ammo?.damagePerShot ?? 0);
-    if (weapon.ammoType === 'HAG') return fixedDamage(weapon.rackSize);
-    if (weapon.ammoType === 'MEK_MORTAR') {
-        const damagePerMissile = ammo?.damagePerShot ?? 2;
-        return { values: [damagePerMissile], maximum: weapon.rackSize * damagePerMissile, unit: 'missile' };
-    }
-    if (weapon.ammoType === 'BA_TUBE' || !weapon.hasFlag('F_MISSILE')) {
-        return fixedDamage(weapon.rackSize);
-    }
-    return {
-        values: [ammo?.damagePerShot ?? 0],
-        maximum: ammo ? weapon.rackSize * ammo.damagePerShot : 0,
-        unit: 'missile',
-    };
-}
-
-function fixedDamage(value: number, unit?: WeaponDamageUnit): WeaponDamage {
-    return { values: [value], maximum: value, ...(unit && { unit }) };
-}
-
-function resolveVariableDamage(weapon: WeaponEquipment): WeaponDamage {
-    // MegaMek's record-sheet formatter explicitly leaves the Clan Plasma Cannon
-    // numeric damage blank; other unresolved variable weapons use their rack size.
-    return fixedDamage(weapon.internalName === 'CLPlasmaCannon' ? 0 : weapon.rackSize);
+function resolveWeaponDamageWithAmmo(
+    weapon: WeaponEquipment,
+    ammo: AmmoEquipment | null,
+    damage: WeaponEquipment['damage'] = weapon.weapon.damage,
+): WeaponDamage {
+    return resolveWeaponDamageFacts({
+        id: weapon.internalName,
+        damage,
+        rackSize: weapon.rackSize,
+        ammoType: weapon.ammoType,
+        flags: weapon.flags,
+        oneShotCount: weapon.oneShotCount ?? 0,
+        rapidFireCount: weapon.getRapidFireCount(),
+    }, ammo ? { damagePerShot: ammo.damagePerShot } : null);
 }
 
 /** Finds the canonical damage-bearing ammo definition; it does not imply carried ammo. */
@@ -852,7 +869,7 @@ function getAmmoForWeapon(
 
 export function ammoMatchesWeapon(weapon: WeaponEquipment, ammo?: AmmoEquipment | null): ammo is AmmoEquipment {
     if (!ammo || ammo.ammoType !== weapon.ammoType) return false;
-    if (weapon.hasFlag('F_BA_WEAPON') !== ammo.hasFlag('F_BATTLEARMOR')) return false;
+    if (weapon.hasFlag('F_BA_WEAPON') !== isBattleArmorAmmo(ammo)) return false;
     return weapon.rackSize <= 0 || ammo.rackSize === weapon.rackSize;
 }
 
@@ -940,28 +957,9 @@ export class AmmoEquipment extends Equipment {
         return types.some(type => this.hasMunitionType(type));
     }
 
-    compatibleAmmo(other: AmmoEquipment, unit?: UnitSummary, inventory: readonly MountedEquipment[] = []): boolean {
-        return AmmoValidityUtil.isAmmoCompatible(this, other, unit, inventory);
+    compatibleAmmo(other: AmmoEquipment, unit?: UnitSummary): boolean {
+        return AmmoValidityUtil.isAmmoCompatible(this, other, unit);
     }
-}
-
-const NATIVE_TORPEDO_AMMO_TYPES = new Set<AmmoType>([
-    'LRM_TORPEDO',
-    'SRM_TORPEDO',
-    'NLRM_TORPEDO',
-]);
-
-/** MegaMek's native SRT/LRT/NLRT ammo types plus torpedo-converted missile ammo. */
-export function isTorpedoAmmo(ammo: AmmoEquipment | null | undefined): boolean {
-    return ammo !== null && ammo !== undefined
-        && (NATIVE_TORPEDO_AMMO_TYPES.has(ammo.ammoType) || ammo.hasMunitionType('M_TORPEDO'));
-}
-
-/** Coolant Pods are encoded as ammo by MegaMek, but are operated directly as equipment. */
-export function isCoolantPodEquipment(
-    equipment: Equipment | null | undefined,
-): equipment is AmmoEquipment {
-    return equipment instanceof AmmoEquipment && equipment.ammoType === 'COOLANT_POD';
 }
 
 // ============================================================================
@@ -980,31 +978,26 @@ export class MiscEquipment extends Equipment {
     get baseDamageAbsorptionRate(): number { return this.misc.baseDamageAbsorptionRate; }
     get baseDamageCapacity(): number { return this.misc.baseDamageCapacity; }
     get industrial(): boolean { return this.misc.industrial; }
-    /** Heat generated while operating, equivalent to MegaMek's MiscType.getHeat(). */
+    /**
+     * Heat generated while operating, equivalent to MegaMek's MiscType.getHeat() except for a RISC laser pulse module,
+     * whose heat belongs to the laser it modifies (riscLaserPulseHeat).
+     */
     get operatingHeat(): number {
-        if (this.hasAnyFlag(['F_NULL_SIG', 'F_VOID_SIG'])) return 10;
-        if (this.hasFlag('F_MOBILE_HPG')) return this.hasFlag('F_MEK_EQUIPMENT') ? 20 : 40;
-        if (this.hasFlag('F_CHAMELEON_SHIELD')) return 6;
-        if (this.hasAnyFlag(['F_VIRAL_JAMMER_DECOY', 'F_VIRAL_JAMMER_HOMING'])) return 12;
-        if (this.hasFlag('F_RISC_LASER_PULSE_MODULE')
-            || this.hasFlag('F_NOVA')
-            || this.hasAllFlags(['F_CLUB', 'S_SPOT_WELDER'])) return 2;
-        if (this.hasFlag('F_CLUB')) {
-            if (this.hasFlag('S_VIBRO_SMALL')) return 3;
-            if (this.hasFlag('S_VIBRO_MEDIUM')) return 5;
-            if (this.hasFlag('S_VIBRO_LARGE')) return 7;
-        }
+        const signatureHeat = signatureSystemOperatingHeat(this);
+        if (signatureHeat > 0) return signatureHeat;
+        const physicalHeat = physicalEquipmentOperatingHeatFromFlags(this.flags);
+        const aerospaceHeat = aerospaceSupportOperatingHeat(this);
+        if (aerospaceHeat !== null) return aerospaceHeat;
+        if (isViralJammerEquipment(this)) return VIRAL_JAMMER_OPERATING_HEAT;
+        const c3Heat = c3EquipmentOperatingHeat(this);
+        if (c3Heat > 0) return c3Heat;
+        if (physicalHeat > 0) return physicalHeat;
         return 0;
     }
-    get isArmorKit(): boolean { return this.hasFlag('F_ARMOR_KIT'); }
-    get isHeatSink(): boolean {
-        return this.hasAnyFlag(['F_HEAT_SINK', 'F_DOUBLE_HEAT_SINK', 'F_IS_DOUBLE_HEAT_SINK_PROTOTYPE', 'F_LASER_HEAT_SINK']);
-    }
-    get isCompactHeatSink(): boolean { return this.hasFlag('F_COMPACT_HEAT_SINK'); }
-    get heatSinkUnitsPerMount(): number {
-        if (!this.isHeatSink) return 0;
-        return this.isCompactHeatSink && this.hasFlag('F_DOUBLE_HEAT_SINK') ? 2 : 1;
-    }
+    get isArmorKit(): boolean { return isArmorKitEquipment(this); }
+    get isHeatSink(): boolean { return isHeatSinkEquipment(this); }
+    get isCompactHeatSink(): boolean { return isCompactHeatSinkEquipment(this); }
+    get heatSinkUnitsPerMount(): number { return heatSinkUnitsPerMount(this); }
 }
 
 // ============================================================================
@@ -1051,18 +1044,8 @@ export class StructureEquipment extends Equipment {
     get structureTypeId(): number { return this.structure.typeId; }
 }
 
-const BOMB_AMMO_FLAGS: EquipmentFlag[] = [
-    'F_ALT_BOMB', 'F_DIVE_BOMB', 'F_GROUND_BOMB', 'F_OTHER_BOMB', 'F_SPACE_BOMB',
-];
-
-/** Whether equipment is a bomb payload excluded from aerospace construction mass. */
-export function isBombEquipment(equipment: Equipment): boolean {
-    if (equipment instanceof AmmoEquipment) return equipment.hasAnyFlag(BOMB_AMMO_FLAGS);
-    return equipment instanceof WeaponEquipment && equipment.hasFlag('F_BOMB_WEAPON');
-}
-
 // ============================================================================
-// Factory Functions
+// Formatting and Factory Functions
 // ============================================================================
 
 const EQUIPMENT_CONSTRUCTORS: Record<EquipmentType, new (data: EquipmentRawData) => Equipment> = {
@@ -1072,6 +1055,17 @@ const EQUIPMENT_CONSTRUCTORS: Record<EquipmentType, new (data: EquipmentRawData)
     armor: ArmorEquipment,
     structure: StructureEquipment
 };
+
+/** Short equipment label, with an explicit ammo designation and optional shot count. */
+export function formatEquipmentName(equipment: Equipment, ammoShots?: number): string {
+    let name = equipment.shortName || equipment.name || equipment.id;
+    // A coolant pod is catalogued as ammunition but is a piece of equipment to the player, as MegaMek names it.
+    if (equipment instanceof AmmoEquipment && equipment.ammoType !== 'COOLANT_POD') {
+        if (!/\bammo\b/i.test(name)) name += ' Ammo';
+        if (ammoShots !== undefined) name += ` (${ammoShots})`;
+    }
+    return name;
+}
 
 /** Creates the appropriate Equipment subclass based on type */
 export function createEquipment(data: EquipmentRawData): Equipment {

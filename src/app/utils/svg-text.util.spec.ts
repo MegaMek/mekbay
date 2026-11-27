@@ -2,7 +2,10 @@ import { getSvgTextLines, measureSvgTextCanvas, writeSvgTextLines } from './svg-
 
 describe('svg text utilities', () => {
     function svg(markup: string): SVGSVGElement {
-        return new DOMParser().parseFromString(`<svg xmlns="http://www.w3.org/2000/svg">${markup}</svg>`, 'image/svg+xml').documentElement as unknown as SVGSVGElement;
+        return new DOMParser().parseFromString(
+            `<svg xmlns="http://www.w3.org/2000/svg">${markup}</svg>`,
+            'image/svg+xml',
+        ).documentElement as unknown as SVGSVGElement;
     }
 
     it('finds direct text rows and direct tspans', () => {
@@ -15,6 +18,7 @@ describe('svg text utilities', () => {
     it('caches canvas metrics by font and text', () => {
         const root = svg('<text id="metricLine" font-size="8" font-family="Roboto"></text>');
         const line = root.getElementById('metricLine') as SVGTextContentElement;
+        spyOnProperty(document.fonts, 'status', 'get').and.returnValue('loaded');
         const measureText = spyOn(CanvasRenderingContext2D.prototype, 'measureText').and.callThrough();
         const text = 'svg-metric-cache-sentinel';
 
@@ -22,7 +26,24 @@ describe('svg text utilities', () => {
         const secondWidth = measureSvgTextCanvas(line, text);
 
         expect(secondWidth).toBe(firstWidth);
-        expect(measureText).toHaveBeenCalledTimes(1);
+        expect(measureText.calls.allArgs().filter(([value]) => value === text)).toHaveSize(1);
+    });
+
+    it('uses the sheet font defaults when detached text has no computed font styles', () => {
+        const root = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
+        const line = document.createElementNS(root.namespaceURI, 'text') as SVGTextElement;
+        root.appendChild(line);
+        const text = 'Ammo: detached font defaults';
+        line.setAttribute('font-size', '31');
+        line.setAttribute('font-family', 'monospace');
+        measureSvgTextCanvas(line, text);
+
+        line.setAttribute('font-size', '13');
+        line.removeAttribute('font-family');
+        const context = document.createElement('canvas').getContext('2d')!;
+        context.font = '13px Roboto, Arial, sans-serif';
+
+        expect(measureSvgTextCanvas(line, text)).toBeCloseTo(context.measureText(text).width, 4);
     });
 
     it('wraps between rows and clears stale rows', () => {
@@ -34,6 +55,17 @@ describe('svg text utilities', () => {
 
         writeSvgTextLines(root.getElementById('name'), 'Alpha', { maxWidth: 10, measure });
         expect(getSvgTextLines(root.getElementById('name')).map(line => line.textContent)).toEqual(['Alpha', '']);
+    });
+
+    it('removes stale generated text-length constraints before replacing a label', () => {
+        const root = svg('<text id="name" textLength="70.4" lengthAdjust="spacingAndGlyphs">Long System Name</text>');
+
+        writeSvgTextLines(root.getElementById('name'), 'Kick');
+
+        const line = root.getElementById('name')!;
+        expect(line.textContent).toBe('Kick');
+        expect(line.hasAttribute('textLength')).toBeFalse();
+        expect(line.hasAttribute('lengthAdjust')).toBeFalse();
     });
 
     it('uses an ellipsis when the final row cannot fit the remaining text', () => {
@@ -57,16 +89,16 @@ describe('svg text utilities', () => {
     it('keeps very long text bounded and stable across repeated writes', () => {
         const root = svg('<g id="name"><text>Old first</text><text>Old second</text><text>Old third</text></g>');
         const measure = (_line: SVGTextContentElement, text: string) => text.length;
-        const text = 'a b c d e f g h i l m n o p q r s t u v z a b c d e f g h i l m n o p q r s t u v z';
+        const value = 'a b c d e f g h i l m n o p q r s t u v z a b c d e f g h i l m n o p q r s t u v z';
         const options = { maxWidth: 10, measure };
 
-        writeSvgTextLines(root.getElementById('name'), text, options);
+        writeSvgTextLines(root.getElementById('name'), value, options);
         const firstWrite = getSvgTextLines(root.getElementById('name')).map(line => line.textContent ?? '');
 
         expect(firstWrite).toEqual(['a b c d e', 'f g h i l', 'm n o p...']);
         expect(firstWrite.every(line => line.length <= 10)).toBeTrue();
 
-        writeSvgTextLines(root.getElementById('name'), text, options);
+        writeSvgTextLines(root.getElementById('name'), value, options);
         expect(getSvgTextLines(root.getElementById('name')).map(line => line.textContent ?? '')).toEqual(firstWrite);
     });
 });

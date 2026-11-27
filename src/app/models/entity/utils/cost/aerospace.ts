@@ -7,11 +7,6 @@ import type { ConvFighterEntity } from '../../entities/aero/conv-fighter-entity'
 import { calculateArmorCost, calculateHeatNeutralRequirement, calculatePowerAmplifierWeight } from './common';
 import { amount, buildCostReport, multiplier, type EntityCostEntry, type EntityCostReport } from './cost-report';
 
-/** Mirrors MegaMek's AeroCostCalculator. */
-export function calculateAeroFighterCost(entity: AeroEntity, equipmentCost: number): number {
-  return calculateAeroFighterCostReport(entity, [amount('Equipment', equipmentCost)]).total;
-}
-
 export function calculateAeroFighterCostReport(
   entity: AeroEntity, equipment: readonly EntityCostEntry[],
 ): EntityCostReport {
@@ -26,11 +21,6 @@ export function calculateAeroFighterCostReport(
     amount('Heatsinks', (entity.heatSinkType() === 'Double' ? 6000 : 2000) * entity.heatSinkCount()),
     ...equipment, multiplier('Weight Multiplier', priceMultiplier),
   ], true);
-}
-
-/** Mirrors MegaMek's ConvFighterCostCalculator. */
-export function calculateConventionalFighterCost(entity: ConvFighterEntity, equipmentCost: number): number {
-  return calculateConventionalFighterCostReport(entity, [amount('Equipment', equipmentCost)]).total;
 }
 
 export function calculateConventionalFighterCostReport(

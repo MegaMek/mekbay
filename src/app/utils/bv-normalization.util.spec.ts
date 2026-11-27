@@ -7,7 +7,7 @@ import {
     type BvNormalizationSettings,
 } from '../models/unit-search-result.model';
 import type { UnitSummary, UnitSubtype, UnitType } from '../models/unit-summary.model';
-import { BVCalculatorUtil } from './bv-calculator.util';
+import { calculateAdjustedBV } from './cbt-common.util';
 import {
     findBvNormalizationMatch,
     isValidBvNormalizationSettings,
@@ -120,7 +120,7 @@ describe('classic BV normalization', () => {
 
         for (let gunnery = 0; gunnery <= 8; gunnery++) {
             for (let piloting = 0; piloting <= 8; piloting++) {
-                const adjustedBv = BVCalculatorUtil.calculateAdjustedBV(unit, unit.bv, gunnery, piloting);
+                const adjustedBv = calculateAdjustedBV(unit, unit.bv, gunnery, piloting);
                 expect(findBvNormalizationMatch(
                     unit,
                     settings(adjustedBv, adjustedBv, gunnery, gunnery, piloting, piloting),
@@ -140,8 +140,8 @@ describe('classic BV normalization', () => {
 
     it('allows only skill pairs within max delta, including the boundary', () => {
         const unit = createUnit();
-        const allowedBv = BVCalculatorUtil.calculateAdjustedBV(unit, unit.bv, 2, 3);
-        const disallowedBv = BVCalculatorUtil.calculateAdjustedBV(unit, unit.bv, 2, 4);
+        const allowedBv = calculateAdjustedBV(unit, unit.bv, 2, 3);
+        const disallowedBv = calculateAdjustedBV(unit, unit.bv, 2, 4);
 
         expect(findBvNormalizationMatch(unit, settings(allowedBv, allowedBv, 2, 2, 3, 3, 1)))
             .toEqual({ kind: 'bv', adjustedValue: allowedBv, gunnery: 2, piloting: 3 });
@@ -151,7 +151,7 @@ describe('classic BV normalization', () => {
 
     it('allows only equal effective skills when max delta is zero', () => {
         const unit = createUnit();
-        const equalBv = BVCalculatorUtil.calculateAdjustedBV(unit, unit.bv, 3, 3);
+        const equalBv = calculateAdjustedBV(unit, unit.bv, 3, 3);
 
         expect(findBvNormalizationMatch(unit, settings(equalBv, equalBv, 3, 3, 2, 3, 0)))
             .toEqual({ kind: 'bv', adjustedValue: equalBv, gunnery: 3, piloting: 3 });
@@ -159,7 +159,7 @@ describe('classic BV normalization', () => {
 
     it('ignores the Piloting range and max delta for fixed-Piloting units', () => {
         const unit = createUnit({ type: 'ProtoMek' as UnitType });
-        const adjustedBv = BVCalculatorUtil.calculateAdjustedBV(unit, unit.bv, 3, 5);
+        const adjustedBv = calculateAdjustedBV(unit, unit.bv, 3, 5);
 
         expect(findBvNormalizationMatch(unit, settings(adjustedBv, adjustedBv, 3, 3, 0, 0, 0)))
             .toEqual({ kind: 'bv', adjustedValue: adjustedBv, gunnery: 3, piloting: 5 });
@@ -167,7 +167,7 @@ describe('classic BV normalization', () => {
 
     it('still limits fixed-Piloting units to the selected Gunnery range', () => {
         const unit = createUnit({ type: 'ProtoMek' as UnitType });
-        const defaultBv = BVCalculatorUtil.calculateAdjustedBV(unit, unit.bv, 4, 5);
+        const defaultBv = calculateAdjustedBV(unit, unit.bv, 4, 5);
 
         expect(findBvNormalizationMatch(unit, settings(defaultBv, defaultBv, 3, 3, 0, 0, 0))).toBeNull();
     });
@@ -202,7 +202,7 @@ describe('classic BV normalization', () => {
 
     it('maximizes Gunnery-adjusted BV while retaining mandatory Piloting', () => {
         const unit = createUnit({ type: 'ProtoMek' as UnitType });
-        const maximumBv = BVCalculatorUtil.calculateAdjustedBV(unit, unit.bv, 3, 5);
+        const maximumBv = calculateAdjustedBV(unit, unit.bv, 3, 5);
 
         expect(findBvNormalizationMatch(unit, settings(0, maximumBv, 3, 5, 0, 0, 0)))
             .toEqual({ kind: 'bv', adjustedValue: maximumBv, gunnery: 3, piloting: 5 });
@@ -210,7 +210,7 @@ describe('classic BV normalization', () => {
 
     it('does not use the default crew when a variable Piloting range excludes it', () => {
         const unit = createUnit();
-        const adjustedBv = BVCalculatorUtil.calculateAdjustedBV(unit, unit.bv, 4, 4);
+        const adjustedBv = calculateAdjustedBV(unit, unit.bv, 4, 4);
 
         expect(findBvNormalizationMatch(unit, settings(1000, 1100, 4, 4, 4, 4)))
             .toEqual({ kind: 'bv', adjustedValue: adjustedBv, gunnery: 4, piloting: 4 });
@@ -232,7 +232,7 @@ describe('classic BV normalization', () => {
 
     it('reports effective Piloting and deduplicates fixed ProtoMek pairs', () => {
         const unit = createUnit({ type: 'ProtoMek' as UnitType });
-        const adjustedBv = BVCalculatorUtil.calculateAdjustedBV(unit, unit.bv, 4, 5);
+        const adjustedBv = calculateAdjustedBV(unit, unit.bv, 4, 5);
 
         expect(findBvNormalizationMatch(unit, settings(adjustedBv, adjustedBv, 4, 4, 0, 8)))
             .toEqual({ kind: 'bv', adjustedValue: adjustedBv, gunnery: 4, piloting: 5 });
@@ -244,7 +244,7 @@ describe('classic BV normalization', () => {
             subtype: 'Mechanized Conventional Infantry' as UnitSubtype,
             canAntiMech: false,
         });
-        const adjustedBv = BVCalculatorUtil.calculateAdjustedBV(unit, unit.bv, 4, 5);
+        const adjustedBv = calculateAdjustedBV(unit, unit.bv, 4, 5);
 
         expect(findBvNormalizationMatch(unit, settings(adjustedBv, adjustedBv, 4, 4, 0, 8)))
             .toEqual({ kind: 'bv', adjustedValue: adjustedBv, gunnery: 4, piloting: 5 });
@@ -256,7 +256,7 @@ describe('classic BV normalization', () => {
             subtype: 'Conventional Infantry' as UnitSubtype,
             canAntiMech: false,
         });
-        const adjustedBv = BVCalculatorUtil.calculateAdjustedBV(unit, unit.bv, 4, 8);
+        const adjustedBv = calculateAdjustedBV(unit, unit.bv, 4, 8);
 
         expect(findBvNormalizationMatch(unit, settings(adjustedBv, adjustedBv, 4, 4, 0, 0, 0)))
             .toEqual({ kind: 'bv', adjustedValue: adjustedBv, gunnery: 4, piloting: 8 });
@@ -268,7 +268,7 @@ describe('classic BV normalization', () => {
             subtype: 'Conventional Infantry' as UnitSubtype,
             canAntiMech: true,
         });
-        const adjustedBv = BVCalculatorUtil.calculateAdjustedBV(unit, unit.bv, 4, 2);
+        const adjustedBv = calculateAdjustedBV(unit, unit.bv, 4, 2);
 
         expect(findBvNormalizationMatch(unit, settings(adjustedBv, adjustedBv, 4, 4, 2, 2)))
             .toEqual({ kind: 'bv', adjustedValue: adjustedBv, gunnery: 4, piloting: 2 });

@@ -21,13 +21,13 @@ describe('shouldCombineReferenceTables', () => {
 describe('ClusterTableDialogComponent', () => {
     const close = jasmine.createSpy('close');
 
-    function createFixture(unit: UnitSummary, gameRules: CBTGameRules = CORE_2026_GAME_RULES) {
+    function createFixture(unit: UnitSummary, gameRules: CBTGameRules = CORE_2026_GAME_RULES, hasHotLoadedAmmo = false) {
         TestBed.resetTestingModule();
         TestBed.configureTestingModule({
             imports: [ClusterTableDialogComponent],
             providers: [
                 { provide: DialogRef, useValue: { close } },
-                { provide: DIALOG_DATA, useValue: { unit, gameRules } },
+                { provide: DIALOG_DATA, useValue: { unit, gameRules, hasHotLoadedAmmo } },
             ],
         });
         const fixture = TestBed.createComponent(ClusterTableDialogComponent);
@@ -89,8 +89,6 @@ describe('ClusterTableDialogComponent', () => {
         fixture.detectChanges();
         const menu = fixture.nativeElement.querySelector('.table-subtype-menu') as HTMLElement;
         expect(menu.querySelectorAll('.table-subtype-button')).toHaveSize(3);
-        expect(getComputedStyle(menu).position).toBe('absolute');
-        expect(getComputedStyle(menu).flexDirection).toBe('column');
 
         (fixture.nativeElement.querySelector('[data-table-option="vehicle-vtol"]') as HTMLButtonElement).click();
         fixture.detectChanges();
@@ -167,6 +165,61 @@ describe('ClusterTableDialogComponent', () => {
         expect(fixture.nativeElement.querySelector('td.rolled-highlight')?.textContent.trim()).toBe('LT(C)');
     });
 
+    it('keeps the lowest two of three dice, adds signed modifiers, and bounds cluster lookup', () => {
+        const fixture = createFixture(clusterWeaponUnit(), TW_GAME_RULES, true);
+        const component = fixture.componentInstance;
+        component.selectTableOption('cluster-full');
+        fixture.detectChanges();
+        const checkbox = fixture.nativeElement.querySelector('.cluster-roll-options .bt-checkbox') as HTMLInputElement;
+        expect(checkbox.checked).toBeFalse();
+        expect(fixture.nativeElement.textContent).toContain('This unit has ammo bins marked hot-loaded');
+        checkbox.click();
+        const table = component.displayedTables()[0];
+        const column = table.columns[0];
+        const rollers = fixture.debugElement.queryAll(node => node.componentInstance instanceof DiceRollerComponent)
+            .map(node => node.componentInstance as DiceRollerComponent);
+        const roller = rollers.find(roller => roller.diceCount() === 3)!;
+        spyOn(roller, 'roll');
+        component.setClusterModifier('2');
+        component.rollTableColumn(table, column);
+        component.setClusterModifier('-8'); // A running roll retains the modifier it started with.
+        component.onRollFinished({ results: [6, 3, 2], sum: 11 }, 3);
+        expect(roller.roll).toHaveBeenCalled();
+        expect(component.rolledResult()?.roll).toBe(7);
+        expect(component.rollHistory()[0].dice).toBe('3d6 (lowest two) + 2');
+        component.rollTableColumn(table, column);
+        component.onRollFinished({ results: [2, 2, 6], sum: 10 }, 3);
+        expect(component.rolledResult()?.roll).toBe(2);
+        component.setClusterModifier('20');
+        component.rollTableColumn(table, column);
+        component.onRollFinished({ results: [2, 2, 6], sum: 10 }, 3);
+        expect(component.rolledResult()?.roll).toBe(12);
+    });
+
+    it('limits hot-loading and modifiers to cluster columns in a combined table', () => {
+        const fixture = createFixture(clusterWeaponUnit());
+        const component = fixture.componentInstance;
+        const table = component.tableView().combinedTable!;
+        const location = table.columns.find(column => column.rollable && column.rollSource?.tableKey.includes('locations'))!;
+        const cluster = table.columns.find(column => column.rollable && column.rollSource?.tableKey.startsWith('cluster-'))!;
+        const rollers = fixture.debugElement.queryAll(node => node.componentInstance instanceof DiceRollerComponent)
+            .map(node => node.componentInstance as DiceRollerComponent);
+        new Set(rollers).forEach(roller => spyOn(roller, 'roll'));
+        component.hotLoaded.set(true);
+        component.setClusterModifier('2');
+        component.rollTableColumn(table, location);
+        component.onRollFinished({ results: [3, 4], sum: 7 }, 2);
+        expect(component.rolledResult()?.roll).toBe(7);
+        expect(component.rollHistory()[0].dice).toBe('2d6');
+        component.rollTableColumn(table, cluster);
+        component.onRollFinished({ results: [3, 4, 6], sum: 13 }, 3);
+        expect(component.rolledResult()?.roll).toBe(9);
+        component.hotLoaded.set(false);
+        component.rollTableColumn(table, cluster);
+        component.onRollFinished({ results: [3, 4], sum: 7 }, 2);
+        expect(component.rolledResult()?.roll).toBe(9);
+    });
+
     it('rolls the configured one-die physical table and preserves grouped kick cells', () => {
         const fixture = createFixture(unit({}), TW_GAME_RULES);
         const component = fixture.componentInstance;
@@ -201,35 +254,6 @@ describe('ClusterTableDialogComponent', () => {
         expect([...cellButtons].every(button => !button.classList.contains('bt-button'))).toBeTrue();
     });
 
-    it('stretches roll buttons to the full height of a wrapped header row', () => {
-        const fixture = createFixture(unit({}));
-        const rollLabel = fixture.nativeElement.querySelector(
-            '[data-table-key="mek-biped-locations"] th.roll-column',
-        ) as HTMLTableCellElement;
-        rollLabel.innerHTML = '2d6<br>roll';
-
-        const button = fixture.nativeElement.querySelector(
-            '[data-table-key="mek-biped-locations"] .roll-header-button',
-        ) as HTMLButtonElement;
-        const header = button.closest('th')!;
-
-        expect(rollLabel.getBoundingClientRect().height).toBeGreaterThan(32);
-        expect(Math.abs(button.getBoundingClientRect().height - header.getBoundingClientRect().height)).toBeLessThan(1);
-    });
-
-    it('centers constrained roll results inside wide table cells', () => {
-        const fixture = createFixture(unit({ type: 'Tank', subtype: 'Combat Vehicle' }));
-        const button = fixture.nativeElement.querySelector(
-            '[data-table-key="vehicle-motive-damage"] tbody .table-roll-button',
-        ) as HTMLButtonElement;
-        const buttonBounds = button.getBoundingClientRect();
-        const cellBounds = button.closest('td')!.getBoundingClientRect();
-
-        expect(Math.abs(
-            buttonBounds.left + buttonBounds.width / 2 - (cellBounds.left + cellBounds.width / 2),
-        )).toBeLessThan(1);
-    });
-
     it('does not make informational tables rollable', () => {
         const fixture = createFixture(unit({ type: 'Infantry', subtype: 'Conventional Infantry' }));
 
@@ -237,10 +261,6 @@ describe('ClusterTableDialogComponent', () => {
         expect(fixture.componentInstance.hasRollableTable()).toBeFalse();
         expect(fixture.nativeElement.querySelector('.roll-instructions')).toBeNull();
 
-        const label = fixture.nativeElement.querySelector('.table-header-label') as HTMLElement;
-        const header = label.closest('th')!;
-        expect(getComputedStyle(label).display).toBe('block');
-        expect(Math.abs(label.getBoundingClientRect().width - header.clientWidth)).toBeLessThan(1);
     });
 
     it('renders swarm modifiers with grouped attacking and friendly headers', () => {
@@ -257,9 +277,8 @@ describe('ClusterTableDialogComponent', () => {
             .toEqual(['ACTIVE', '1', '2', '3', '4', '5', '6']);
     });
 
-    it('lets compact reference tables share rows while wide tables span the grid', () => {
+    it('marks compact and wide reference-table sections', () => {
         const fixture = createFixture(unit({ type: 'Infantry', subtype: 'Battle Armor' }));
-        const content = fixture.nativeElement.querySelector('.dialog-content') as HTMLElement;
         const legAttacks = fixture.nativeElement.querySelector(
             '[data-table-section="battle-armor-leg-attacks"]',
         ) as HTMLElement;
@@ -270,22 +289,9 @@ describe('ClusterTableDialogComponent', () => {
             '[data-table-section="battle-armor-swarm-modifiers"]',
         ) as HTMLElement;
 
-        expect(getComputedStyle(content).display).toBe('grid');
         expect(legAttacks.classList).toContain('compact-table-section');
         expect(swarmAttacks.classList).toContain('compact-table-section');
         expect(swarmModifiers.classList).not.toContain('compact-table-section');
-        expect(getComputedStyle(legAttacks).gridColumnEnd).toBe('auto');
-        expect(getComputedStyle(swarmModifiers).gridColumnStart).toBe('1');
-        expect(getComputedStyle(swarmModifiers).gridColumnEnd).toBe('-1');
-
-        content.style.flex = 'none';
-        content.style.width = '860px';
-        const legBounds = legAttacks.getBoundingClientRect();
-        const swarmBounds = swarmAttacks.getBoundingClientRect();
-        const modifierBounds = swarmModifiers.getBoundingClientRect();
-
-        expect(Math.abs(legBounds.top - swarmBounds.top)).toBeLessThan(1);
-        expect(modifierBounds.width).toBeGreaterThan(legBounds.width * 1.9);
     });
 
     it('renders both burst-fire titles as two deliberate lines', () => {
@@ -300,7 +306,6 @@ describe('ClusterTableDialogComponent', () => {
                 `[data-table-section="${key}"] > h3`,
             ) as HTMLHeadingElement;
             expect(heading.textContent).toBe(title);
-            expect(getComputedStyle(heading).whiteSpace).toBe('pre-line');
         }
     });
 

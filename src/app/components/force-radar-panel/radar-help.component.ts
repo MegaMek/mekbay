@@ -45,7 +45,7 @@ import { ChangeDetectionStrategy, Component, signal } from '@angular/core';
                 <div class="value-example" aria-label="Example: 300 actual value out of a 500 reference">
                     <span><b>300</b><small>Actual value</small></span>
                     <span aria-hidden="true">/</span>
-                    <span><b>500</b><small>P95 reference</small></span>
+                    <span><b>500</b><small>95th percentile reference</small></span>
                 </div>
             </section>
         </ng-template>

@@ -6,9 +6,8 @@ import type { TemplateRef } from '@angular/core';
 import { GameSystem } from '../models/common.model';
 import type { UnitSummary } from '../models/unit-summary.model';
 import { FormatNumberPipe } from '../pipes/format-number.pipe';
-import type { DataTableCellContext, DataTableColumn } from '../components/data-table/data-table.component';
+import type { DataTableCellContext, DataTableColumn, DataTableColumnTrack } from '../components/data-table/data-table.component';
 import { formatASDamageValue, isASDamageFilterKey } from './as-damage.util';
-import { formatMovement } from './as-common.util';
 
 export const UNIT_DATA_TABLE_SORT_KEY_GROUPS: Readonly<Record<string, readonly string[]>> = {
     'as.damage': ['as.dmg._dmgS', 'as.dmg._dmgM', 'as.dmg._dmgL', 'as.dmg._dmgE'],
@@ -16,11 +15,11 @@ export const UNIT_DATA_TABLE_SORT_KEY_GROUPS: Readonly<Record<string, readonly s
 };
 
 const UNIT_DATA_TABLE_VISIBLE_SORT_KEYS: Readonly<Record<GameSystem, readonly string[]>> = {
-    [GameSystem.ALPHA_STRIKE]: [
+    [GameSystem.AS]: [
         'name', 'year', 'as.TP', 'role', 'as.PV', 'as.SZ', 'as._mv', 'as.TMM',
         'as.Arm', 'as.Str', 'as.OV',
     ],
-    [GameSystem.CLASSIC]: [
+    [GameSystem.CBT]: [
         'name', 'type', 'subtype', 'role', 'bv', 'tons', 'year', 'level',
         '_techBaseDisplay', 'moveType', 'armor', 'internal', '_mdSumNoPhysical',
         'dpt', 'c3', 'cost',
@@ -28,8 +27,8 @@ const UNIT_DATA_TABLE_VISIBLE_SORT_KEYS: Readonly<Record<GameSystem, readonly st
 };
 
 const UNIT_DATA_TABLE_VISIBLE_SORT_GROUPS: Readonly<Record<GameSystem, readonly string[]>> = {
-    [GameSystem.ALPHA_STRIKE]: ['as.damage'],
-    [GameSystem.CLASSIC]: ['movement'],
+    [GameSystem.AS]: ['as.damage'],
+    [GameSystem.CBT]: ['movement'],
 };
 
 export interface UnitDataTableSortOption {
@@ -60,6 +59,8 @@ export interface UnitDataTableColumnOptions<Row> {
     readonly isSortActive: (keyOrGroup: string) => boolean;
     readonly templates: UnitDataTableCellTemplates<Row>;
     readonly valueTrack?: number;
+    readonly nameTrack?: DataTableColumnTrack;
+    readonly afterNameColumns?: readonly DataTableColumn<Row>[];
     readonly afterValueColumns?: readonly DataTableColumn<Row>[];
     readonly sortSlot?: UnitDataTableSortSlot<Row> | null;
     readonly trailingColumns?: readonly DataTableColumn<Row>[];
@@ -112,11 +113,11 @@ export function formatUnitDataTableSortSlotValue(
     resolveRawValue: (unit: UnitSummary, key: string) => unknown = getNestedProperty,
 ): string {
     if (UNIT_DATA_TABLE_SORT_KEY_GROUPS['movement']?.includes(sortKey)) {
-        return formatClassicUnitMovement(unit) || '—';
+        return formatCBTUnitMovement(unit) || '—';
     }
 
     if (sortKey === 'subtype') {
-        return formatClassicUnitSubtype(unit) || '—';
+        return formatCBTUnitSubtype(unit) || '—';
     }
 
     const rawValue = resolveRawValue(unit, sortKey);
@@ -133,7 +134,7 @@ export function formatUnitDataTableSortSlotValue(
         : String(rawValue);
 }
 
-export function formatClassicUnitMovement(unit: UnitSummary): string {
+export function formatCBTUnitMovement(unit: UnitSummary): string {
     if (!unit.walk) {
         return '';
     }
@@ -152,11 +153,11 @@ export function formatClassicUnitMovement(unit: UnitSummary): string {
     return movement;
 }
 
-export function formatClassicUnitSubtype(unit: UnitSummary): string {
+export function formatCBTUnitSubtype(unit: UnitSummary): string {
     return unit.subtype && unit.subtype !== unit.type ? unit.subtype : '';
 }
 
-export function formatClassicUnitStat(value: number | undefined): string {
+export function formatCBTUnitStat(value: number | undefined): string {
     return value == null ? '—' : FormatNumberPipe.formatValue(value, true, false);
 }
 
@@ -175,32 +176,13 @@ export function formatUnitTons(tons: number | undefined): string {
     return `${rounded(tons / 1_000_000)}M`;
 }
 
-export function formatAlphaStrikeUnitMovement(unit: UnitSummary, useHex: boolean): string {
-    const movementModes = unit.as.MVm;
-    if (!movementModes) {
-        return unit.as.MV ?? '';
-    }
-
-    const entries = Object.entries(movementModes)
-        .filter((entry): entry is [string, number] => typeof entry[1] === 'number' && entry[1] > 0)
-        .sort(([firstMode], [secondMode]) => {
-            if (firstMode === '') return -1;
-            if (secondMode === '') return 1;
-            return 0;
-        });
-
-    return entries.length > 0
-        ? entries.map(([mode, inches]) => formatMovement(inches, mode, useHex)).join('/')
-        : unit.as.MV ?? '';
-}
-
-/** Builds the shared AS or Classic unit-stat columns used by search and force overview. */
+/** Builds the shared AS or CBT unit-stat columns used by search and force overview. */
 export function buildUnitDataTableColumns<Row>(
     options: UnitDataTableColumnOptions<Row>,
 ): readonly DataTableColumn<Row>[] {
-    return options.gameSystem === GameSystem.ALPHA_STRIKE
+    return options.gameSystem === GameSystem.AS
         ? buildAlphaStrikeColumns(options)
-        : buildClassicColumns(options);
+        : buildCBTColumns(options);
 }
 
 function buildAlphaStrikeColumns<Row>(options: UnitDataTableColumnOptions<Row>): DataTableColumn<Row>[] {
@@ -208,7 +190,8 @@ function buildAlphaStrikeColumns<Row>(options: UnitDataTableColumnOptions<Row>):
     const value = unitValue(options.getUnit);
     const columns: DataTableColumn<Row>[] = [
         iconColumn(templates.icon),
-        nameColumn(templates.name, options.isSortActive),
+        nameColumn(templates.name, options.isSortActive, options.nameTrack),
+        ...(options.afterNameColumns ?? []),
         yearColumn(templates.year, options.isSortActive),
         {
             id: 'type',
@@ -328,12 +311,13 @@ function buildAlphaStrikeColumns<Row>(options: UnitDataTableColumnOptions<Row>):
     return columns;
 }
 
-function buildClassicColumns<Row>(options: UnitDataTableColumnOptions<Row>): DataTableColumn<Row>[] {
+function buildCBTColumns<Row>(options: UnitDataTableColumnOptions<Row>): DataTableColumn<Row>[] {
     const { templates } = options;
     const value = unitValue(options.getUnit);
     const columns: DataTableColumn<Row>[] = [
         iconColumn(templates.icon),
-        nameColumn(templates.name, options.isSortActive),
+        nameColumn(templates.name, options.isSortActive, options.nameTrack),
+        ...(options.afterNameColumns ?? []),
         {
             id: 'type',
             header: 'Type',
@@ -347,7 +331,7 @@ function buildClassicColumns<Row>(options: UnitDataTableColumnOptions<Row>): Dat
             id: 'subtype',
             header: 'Subtype',
             track: 130,
-            value: value(formatClassicUnitSubtype),
+            value: value(formatCBTUnitSubtype),
             sortKey: 'subtype',
             sortActive: options.isSortActive('subtype'),
             cellClass: tableCellClass('cbt-td-subtype', options.isSortActive('subtype')),
@@ -435,7 +419,7 @@ function buildClassicColumns<Row>(options: UnitDataTableColumnOptions<Row>): Dat
             id: 'firepower',
             header: 'Firepower',
             track: 88,
-            value: value(unit => formatClassicUnitStat(unit._mdSumNoPhysical)),
+            value: value(unit => formatCBTUnitStat(unit._mdSumNoPhysical)),
             sortKey: '_mdSumNoPhysical',
             sortActive: options.isSortActive('_mdSumNoPhysical'),
             cellClass: tableCellClass('cbt-td-firepower', options.isSortActive('_mdSumNoPhysical')),
@@ -445,7 +429,7 @@ function buildClassicColumns<Row>(options: UnitDataTableColumnOptions<Row>): Dat
             id: 'damage-per-turn',
             header: 'Dmg/Turn',
             track: 92,
-            value: value(unit => formatClassicUnitStat(unit.dpt)),
+            value: value(unit => formatCBTUnitStat(unit.dpt)),
             sortKey: 'dpt',
             sortActive: options.isSortActive('dpt'),
             cellClass: tableCellClass('cbt-td-dpt', options.isSortActive('dpt')),
@@ -490,11 +474,12 @@ function iconColumn<Row>(template: TemplateRef<DataTableCellContext<Row>>): Data
 function nameColumn<Row>(
     template: TemplateRef<DataTableCellContext<Row>>,
     isSortActive: (keyOrGroup: string) => boolean,
+    track: DataTableColumnTrack = { minPx: 320, flex: 1.35 },
 ): DataTableColumn<Row> {
     return {
         id: 'name',
         header: 'Name',
-        track: { minPx: 320, flex: 1.35 },
+        track,
         cellTemplate: template,
         sortKey: 'name',
         sortActive: isSortActive('name'),

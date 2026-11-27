@@ -93,3 +93,11 @@ export function requireCsvColumnCount(row: CsvRow, expected: number, filePath: s
         throw new Error(`${filePath}:${row.rowNumber} has ${row.cells.length} columns; expected ${expected}.`);
     }
 }
+
+export function formatCsvRows(rows: readonly (readonly (string | number)[])[]): string {
+    const formatCell = (value: string | number): string => {
+        const text = String(value);
+        return /[",\r\n]/u.test(text) ? `"${text.replaceAll('"', '""')}"` : text;
+    };
+    return `${rows.map(row => row.map(formatCell).join(',')).join('\n')}\n`;
+}

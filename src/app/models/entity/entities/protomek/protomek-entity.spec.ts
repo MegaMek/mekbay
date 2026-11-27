@@ -90,6 +90,6 @@ describe('ProtoMekEntity CASE', () => {
     addTestEquipment(entity, ammo, { location: 'Torso' });
 
     expect(entity.implicitClanCaseLocations()).toEqual(new Set());
-    expect(entity.locationHasCaseProtection('Torso')).toBeFalse();
+    expect(entity.ammoCaseProtection('Torso')).toBeNull();
   });
 });

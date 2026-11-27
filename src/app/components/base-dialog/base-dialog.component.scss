@@ -1,5 +1,5 @@
 .modal-flex-center {
-    position: fixed;
+    position: absolute;
     inset: 0;
     z-index: 1001;
     display: flex;
@@ -142,7 +142,6 @@
     }
 
     .overflow-icon {
-        font-size: 0.8em;
         opacity: 0.8;
     }
 

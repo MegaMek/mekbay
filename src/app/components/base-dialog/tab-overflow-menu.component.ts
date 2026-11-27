@@ -51,7 +51,7 @@ import { ChangeDetectionStrategy, Component, input, output } from '@angular/core
     `
 })
 export class TabOverflowMenuComponent {
-    tabs = input<string[]>([]);
+    tabs = input<readonly string[]>([]);
     activeTab = input<string>();
     tabSelected = output<string>();
 

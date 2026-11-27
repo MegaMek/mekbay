@@ -25,10 +25,7 @@
               {
                 "glob": "**/*",
                 "input": "public",
-                "output": ".",
-                "ignore": [
-                  "images/units/**"
-                ]
+                "output": "."
               },
               {
                 "glob": "{LICENSE,NOTICE,THIRD-PARTY-NOTICES.md}",
@@ -47,10 +44,7 @@
                 {
                   "glob": "**/*",
                   "input": "public",
-                  "output": ".",
-                  "ignore": [
-                    "images/units/**"
-                  ]
+                  "output": "."
                 },
                 {
                   "glob": "{LICENSE,NOTICE,THIRD-PARTY-NOTICES.md}",
@@ -82,10 +76,7 @@
                 {
                   "glob": "**/*",
                   "input": "public",
-                  "output": ".",
-                  "ignore": [
-                    "images/units/**"
-                  ]
+                  "output": "."
                 },
                 {
                   "glob": "{LICENSE,NOTICE,THIRD-PARTY-NOTICES.md}",
@@ -112,15 +103,31 @@
               ],
               "outputHashing": "all"
             },
+            "dev": {
+              "assets": [
+                {
+                  "glob": "**/*",
+                  "input": "public",
+                  "output": "."
+                },
+                {
+                  "glob": "{LICENSE,NOTICE,THIRD-PARTY-NOTICES.md}",
+                  "input": ".",
+                  "output": "legal"
+                },
+                {
+                  "glob": "icon-192x192.png",
+                  "input": "public/icons/dev",
+                  "output": "icons"
+                }
+              ]
+            },
             "development": {
               "assets": [
                 {
                   "glob": "**/*",
                   "input": "public",
-                  "output": ".",
-                  "ignore": [
-                    "images/units/**"
-                  ]
+                  "output": "."
                 },
                 {
                   "glob": "{LICENSE,NOTICE,THIRD-PARTY-NOTICES.md}",
@@ -159,6 +166,9 @@
           "builder": "@angular/build:karma",
           "options": {
             "tsConfig": "tsconfig.spec.json",
+            "styles": [
+              "src/styles.scss"
+            ],
             "karmaConfig": ".karma-no-gpu.cjs",
             "browsers": "ChromeHeadlessNoGpu",
             "assets": [

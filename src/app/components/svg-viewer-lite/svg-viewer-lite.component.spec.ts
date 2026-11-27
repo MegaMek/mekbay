@@ -7,17 +7,17 @@ import { TestBed } from '@angular/core/testing';
 
 import { createEmptyUnit } from '../../testing/unit-test-helpers';
 import { OptionsService } from '../../services/options.service';
-import { SheetService } from '../../services/sheet.service';
 import { LoggerService } from '../../services/logger.service';
+import { NativeEntityService } from '../../services/native-entity.service';
+import type { LoadedEntity } from '../../models/entity/entity-repository';
+import { TestTankEntity } from '../../models/entity/testing/test-entities';
+import { RecordSheetSourceService } from '../../services/record-sheet-source.service';
+import type { RecordSheetGroupWeapons, RecordSheetPipLayout } from '../../models/options.model';
 import { SvgViewerLiteComponent } from './svg-viewer-lite.component';
+import { SvgExportUtil } from '../../utils/svg-export.util';
 
-function makeSvg(width = 100, height = 200): SVGSVGElement {
-    const svg = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
-    svg.setAttribute('id', 'source-sheet');
-    svg.setAttribute('viewBox', `0 0 ${width} ${height}`);
-    svg.setAttribute('width', width.toString());
-    svg.setAttribute('height', height.toString());
-    return svg;
+function loadedEntity(entity: TestTankEntity): LoadedEntity {
+    return { entity, source: {} } as unknown as LoadedEntity;
 }
 
 function deferred<T>(): { promise: Promise<T>; resolve: (value: T) => void; reject: (reason?: unknown) => void } {
@@ -45,16 +45,32 @@ type LayoutState = {
 const layouts = new WeakMap<HTMLElement, Partial<LayoutState>>();
 
 describe('SvgViewerLiteComponent', () => {
-    let sheetService: jasmine.SpyObj<Pick<SheetService, 'getSheet'>>;
     let logger: jasmine.SpyObj<Pick<LoggerService, 'error'>>;
+    let nativeEntities: jasmine.SpyObj<Pick<NativeEntityService, 'canLoad' | 'load'>>;
+    let recordSheets: jasmine.SpyObj<Pick<RecordSheetSourceService, 'load'>>;
     let originalResizeObserver: typeof ResizeObserver | undefined;
     let triggerResize: (() => void) | null;
-    const options = signal({ printAllOptions: { recordSheetCenterPanelContent: 'clusterTable' } });
+    const options = signal({ mouseWheelAction: 'scroll' as 'scroll' | 'zoom', CBTOptionalRules: { quirks: true }, recordSheetPipLayout: 'classic' as RecordSheetPipLayout,
+        recordSheetGroupWeapons: 'disabled' as RecordSheetGroupWeapons,
+        printAllOptions: { paperSize: 'letter' as 'a4' | 'letter', recordSheetCenterPanelContent: 'clusterTable' } });
 
     beforeEach(() => {
-        sheetService = jasmine.createSpyObj<Pick<SheetService, 'getSheet'>>('SheetService', ['getSheet']);
         logger = jasmine.createSpyObj<Pick<LoggerService, 'error'>>('LoggerService', ['error']);
-        options.set({ printAllOptions: { recordSheetCenterPanelContent: 'clusterTable' } });
+        nativeEntities = jasmine.createSpyObj<Pick<NativeEntityService, 'canLoad' | 'load'>>(
+            'NativeEntityService', ['canLoad', 'load'],
+        );
+        nativeEntities.canLoad.and.returnValue(true);
+        nativeEntities.load.and.resolveTo(loadedEntity(new TestTankEntity()));
+        recordSheets = jasmine.createSpyObj<Pick<RecordSheetSourceService, 'load'>>(
+            'RecordSheetSourceService', ['load'],
+        );
+        recordSheets.load.and.callFake(async () => {
+            const svg = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
+            svg.dataset['mekbayGenerated'] = '1';
+            svg.setAttribute('viewBox', '0 0 612 792');
+            return { svgs: [svg] };
+        });
+        options.set({ mouseWheelAction: 'scroll', CBTOptionalRules: { quirks: true }, recordSheetPipLayout: 'classic', recordSheetGroupWeapons: 'disabled', printAllOptions: { paperSize: 'letter' as 'a4' | 'letter', recordSheetCenterPanelContent: 'clusterTable' } });
         triggerResize = null;
         originalResizeObserver = window.ResizeObserver;
         window.ResizeObserver = class implements ResizeObserver {
@@ -71,8 +87,9 @@ describe('SvgViewerLiteComponent', () => {
             imports: [SvgViewerLiteComponent],
             providers: [
                 provideZonelessChangeDetection(),
-                { provide: SheetService, useValue: sheetService },
                 { provide: LoggerService, useValue: logger },
+                { provide: NativeEntityService, useValue: nativeEntities },
+                { provide: RecordSheetSourceService, useValue: recordSheets },
                 { provide: OptionsService, useValue: { options } },
             ],
         });
@@ -80,6 +97,31 @@ describe('SvgViewerLiteComponent', () => {
 
     afterEach(() => {
         window.ResizeObserver = originalResizeObserver!;
+        window.dispatchEvent(new Event('afterprint'));
+    });
+
+    it('follows global paper size changes and respects an explicit preview override', async () => {
+        const { fixture } = await createViewer();
+        options.update(value => ({ ...value, printAllOptions: { ...value.printAllOptions, paperSize: 'a4' } }));
+        fixture.detectChanges();
+        await settle();
+        fixture.detectChanges();
+        expect(recordSheets.load.calls.mostRecent().args[1]).toEqual(jasmine.objectContaining({ format: 'a4', pageFormat: 'a4' }));
+        fixture.componentRef.setInput('paperSize', 'letter');
+        fixture.detectChanges();
+        await settle();
+        expect(recordSheets.load.calls.mostRecent().args[1]).toEqual(jasmine.objectContaining({ format: 'letter', pageFormat: 'letter' }));
+    });
+
+    it('regenerates an open preview when the Quirks option changes', async () => {
+        const { fixture } = await createViewer();
+        expect(recordSheets.load.calls.mostRecent().args[1]?.showQuirks).toBeTrue();
+        const previousCalls = recordSheets.load.calls.count();
+        options.update(value => ({ ...value, CBTOptionalRules: { quirks: false } }));
+        fixture.detectChanges();
+        await settle();
+        expect(recordSheets.load.calls.count()).toBeGreaterThan(previousCalls);
+        expect(recordSheets.load.calls.mostRecent().args[1]?.showQuirks).toBeFalse();
     });
 
     async function settle(): Promise<void> {
@@ -88,11 +130,9 @@ describe('SvgViewerLiteComponent', () => {
         }
     }
 
-    async function createViewer(zoomable = true, _controls = false, sheets = ['atlas.svg']) {
-        sheetService.getSheet.and.callFake(async (sheetName) => sheetName.includes('wide') ? makeSvg(50, 300) : makeSvg());
-
+    async function createViewer(zoomable = true) {
         const fixture = TestBed.createComponent(SvgViewerLiteComponent);
-        fixture.componentRef.setInput('unit', createEmptyUnit({ sheets }));
+        fixture.componentRef.setInput('unit', createEmptyUnit());
         fixture.componentRef.setInput('zoomable', zoomable);
         fixture.detectChanges();
         await settle();
@@ -132,6 +172,9 @@ describe('SvgViewerLiteComponent', () => {
     }): void {
         const state = { ...layouts.get(element), ...layout };
         layouts.set(element, state);
+
+        if (layout.clientWidth !== undefined) element.style.width = `${layout.clientWidth}px`;
+        if (layout.clientHeight !== undefined) element.style.height = `${layout.clientHeight}px`;
 
         for (const key of ['clientWidth', 'clientHeight', 'scrollWidth', 'scrollHeight', 'offsetLeft', 'offsetTop'] as const) {
             Object.defineProperty(element, key, { configurable: true, get: () => layouts.get(element)?.[key] ?? 0 });
@@ -191,50 +234,304 @@ describe('SvgViewerLiteComponent', () => {
         }));
     }
 
-    it('loads cloned sheets into the content surface at fit-width scale', async () => {
+    it('loads a generated sheet into the content surface at fit-width scale', async () => {
         const { container, content, svg } = await createViewer();
 
-        expect(sheetService.getSheet).toHaveBeenCalledOnceWith('atlas.svg', undefined);
+        expect(nativeEntities.load).toHaveBeenCalledTimes(1);
+        expect(recordSheets.load).toHaveBeenCalledTimes(1);
+        expect(svg.dataset['mekbayGenerated']).toBe('1');
         expect(svg.id).toBe('');
         expect(svg.style.width).toBe('100%');
         expect(content.style.width).toBe('100%');
         expect(container.classList).toContain('zoomable');
     });
 
-    it('ignores stale sheet loads when the unit changes before a previous request resolves', async () => {
-        const atlasLoad = deferred<SVGSVGElement>();
-        const marauderLoad = deferred<SVGSVGElement>();
-        sheetService.getSheet.and.callFake((sheetName) => {
-            if (sheetName === 'atlas.svg') return atlasLoad.promise;
-            if (sheetName === 'marauder.svg') return marauderLoad.promise;
-            return Promise.reject(new Error(`Unexpected sheet ${sheetName}`));
+    it('fits an entire page, retains zoom on resize, and switches back to width without reloading', async () => {
+        const { fixture, container, content, svg } = await createViewer();
+        expect(content.style.width).toBe('100%');
+        fixture.componentRef.setInput('fitMode', 'page');
+        fixture.detectChanges();
+        const fittedWidth = 500 * 612 / 792;
+        expect(parseFloat(content.style.width)).toBeCloseTo(fittedWidth, 2);
+        expect(parseFloat(content.style.width) * 792 / 612).toBeCloseTo(500, 2);
+        expect(recordSheets.load).toHaveBeenCalledTimes(1);
+        expect(fixture.nativeElement.querySelector('svg')).toBe(svg);
+
+        fixture.componentInstance.setZoomPercent(200);
+        await new Promise<void>(resolve => requestAnimationFrame(() => resolve()));
+        expect(parseFloat(content.style.width)).toBeCloseTo(fittedWidth * 2, 2);
+        setLayout(container, { clientWidth: 200, clientHeight: 500 });
+        triggerResize?.();
+        await new Promise<void>(resolve => requestAnimationFrame(() => resolve()));
+        expect(content.style.width).toBe('400px');
+        expect(fixture.componentInstance.zoomPercent()).toBe(200);
+
+        fixture.componentRef.setInput('fitMode', 'width');
+        fixture.detectChanges();
+        expect(content.style.width).toBe('100%');
+        expect(fixture.componentInstance.zoomPercent()).toBe(100);
+        expect(recordSheets.load).toHaveBeenCalledTimes(1);
+        expect(nativeEntities.load).toHaveBeenCalledTimes(1);
+    });
+
+    it('can fit pages with intrinsic dimensions when no viewBox is present', async () => {
+        const { fixture, content, svg } = await createViewer();
+        svg.removeAttribute('viewBox');
+        svg.setAttribute('width', '600');
+        svg.setAttribute('height', '800');
+        fixture.componentRef.setInput('fitMode', 'page');
+        fixture.detectChanges();
+        expect(content.style.width).toBe('375px');
+        expect(recordSheets.load).toHaveBeenCalledTimes(1);
+    });
+
+    it('shows every page returned for a multi-page unit', async () => {
+        recordSheets.load.and.callFake(async () => {
+            const front = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
+            const reverse = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
+            front.dataset['mekbayPageRole'] = 'primary';
+            reverse.dataset['mekbayPageRole'] = 'reverse';
+            return { svgs: [front, reverse] };
         });
 
+        const { element } = await createViewer();
+        const pages = [...element.querySelectorAll<SVGSVGElement>('svg')];
+
+        expect(pages.map(page => page.dataset['mekbayPageRole'])).toEqual(['primary', 'reverse']);
+        expect(pages.every(page => page.style.width === '100%')).toBeTrue();
+    });
+
+    it('renders the admitted native design even when its catalog entry was deleted', async () => {
+        const admitted = new TestTankEntity();
+        nativeEntities.canLoad.and.returnValue(false);
         const fixture = TestBed.createComponent(SvgViewerLiteComponent);
-        fixture.componentRef.setInput('unit', createEmptyUnit({ sheets: ['atlas.svg'] }));
+        fixture.componentRef.setInput('unit', createEmptyUnit());
+        fixture.componentRef.setInput('nativeEntity', admitted);
+        fixture.detectChanges();
+        await settle();
+        fixture.detectChanges();
+
+        expect(nativeEntities.canLoad).not.toHaveBeenCalled();
+        expect(nativeEntities.load).not.toHaveBeenCalled();
+        expect(recordSheets.load.calls.mostRecent().args[0]).toBe(admitted);
+        expect(fixture.nativeElement.querySelector('svg')).not.toBeNull();
+    });
+
+    it('ignores an older pending sheet when the admitted design changes under the same UUID', async () => {
+        const previous = new TestTankEntity();
+        const replacement = new TestTankEntity();
+        const oldSheet = deferred<{ svgs: SVGSVGElement[] }>();
+        const newSheet = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
+        newSheet.dataset['design'] = 'replacement';
+        recordSheets.load.and.callFake(entity => entity === previous
+            ? oldSheet.promise : Promise.resolve({ svgs: [newSheet] }));
+        const fixture = TestBed.createComponent(SvgViewerLiteComponent);
+        fixture.componentRef.setInput('unit', createEmptyUnit());
+        fixture.componentRef.setInput('nativeEntity', previous);
+        fixture.detectChanges();
+        await settle();
+        fixture.componentRef.setInput('nativeEntity', replacement);
+        fixture.detectChanges();
+        await settle();
+        oldSheet.resolve({ svgs: [document.createElementNS('http://www.w3.org/2000/svg', 'svg')] });
+        await settle();
+        fixture.detectChanges();
+
+        expect(nativeEntities.load).not.toHaveBeenCalled();
+        expect(fixture.nativeElement.querySelector('svg')).toBe(newSheet);
+    });
+
+    it('regenerates on pip layout changes while unrelated presentation options keep the sheet', async () => {
+        const { fixture, svg } = await createViewer();
+        options.update(current => ({ ...current,
+            printAllOptions: { paperSize: 'letter' as 'a4' | 'letter', recordSheetCenterPanelContent: 'fluffImage' } }));
+        await fixture.whenStable();
+        expect(recordSheets.load).toHaveBeenCalledTimes(1);
+        options.update(current => ({ ...current, recordSheetPipLayout: 'rail' }));
+        await fixture.whenStable();
+        expect(recordSheets.load).toHaveBeenCalledTimes(2);
+        expect(recordSheets.load.calls.mostRecent().args[1]).toEqual({ pipLayout: 'rail', showQuirks: true, groupWeapons: false, format: 'letter', pageFormat: 'letter' });
+        expect(nativeEntities.load).toHaveBeenCalledTimes(2);
+        expect(fixture.nativeElement.querySelector('svg')).not.toBe(svg);
+    });
+
+    it('regenerates an open preview when identical weapons become grouped', async () => {
+        const { fixture, svg } = await createViewer();
+        options.update(current => ({ ...current, recordSheetGroupWeapons: 'enabled' }));
+        await fixture.whenStable();
+        expect(recordSheets.load).toHaveBeenCalledTimes(2);
+        expect(recordSheets.load.calls.mostRecent().args[1]?.groupWeapons).toBeTrue();
+        expect(fixture.nativeElement.querySelector('svg')).not.toBe(svg);
+    });
+
+    it('groups identical weapons under "Only previews" only in the unit details sheet preview', async () => {
+        const { fixture, svg } = await createViewer();
+        options.update(current => ({ ...current, recordSheetGroupWeapons: 'previews' }));
+        await fixture.whenStable();
+        expect(recordSheets.load).toHaveBeenCalledTimes(1);
+
+        fixture.componentRef.setInput('previewGrouping', true);
+        fixture.detectChanges();
+        await fixture.whenStable();
+        expect(recordSheets.load).toHaveBeenCalledTimes(2);
+        expect(recordSheets.load.calls.mostRecent().args[1]?.groupWeapons).toBeTrue();
+        expect(fixture.nativeElement.querySelector('svg')).not.toBe(svg);
+    });
+
+    it('reports loading until all generated pages are attached and regenerates for A4', async () => {
+        const pending = deferred<{ svgs: SVGSVGElement[] }>();
+        recordSheets.load.and.returnValue(pending.promise);
+        const fixture = TestBed.createComponent(SvgViewerLiteComponent);
+        fixture.componentRef.setInput('nativeEntity', new TestTankEntity());
+        fixture.detectChanges();
+
+        expect(fixture.componentInstance.loading()).toBeTrue();
+        expect(fixture.componentInstance.ready()).toBeFalse();
+        expect(fixture.componentInstance.loadError()).toBeNull();
+        pending.resolve({ svgs: [document.createElementNS('http://www.w3.org/2000/svg', 'svg')] });
+        await settle();
+        await new Promise<void>(resolve => requestAnimationFrame(() => resolve()));
+        expect(fixture.componentInstance.loading()).toBeFalse();
+        expect(fixture.componentInstance.ready()).toBeTrue();
+
+        fixture.componentRef.setInput('paperSize', 'a4');
+        fixture.detectChanges();
+        expect(fixture.componentInstance.ready()).toBeFalse();
+        await settle();
+        await new Promise<void>(resolve => requestAnimationFrame(() => resolve()));
+        expect(fixture.componentInstance.ready()).toBeTrue();
+        expect(recordSheets.load.calls.mostRecent().args[1]).toEqual({ pipLayout: 'classic', showQuirks: true, groupWeapons: false, format: 'a4', pageFormat: 'a4' });
+        expect(nativeEntities.load).not.toHaveBeenCalled();
+    });
+
+    it('exposes render failures and clears the error for a replacement draft', async () => {
+        recordSheets.load.and.rejectWith(new Error('Invalid armor allocation'));
+        const fixture = TestBed.createComponent(SvgViewerLiteComponent);
+        fixture.componentRef.setInput('nativeEntity', new TestTankEntity());
+        fixture.detectChanges();
+        await settle();
+        expect(fixture.componentInstance.loading()).toBeFalse();
+        expect(fixture.componentInstance.ready()).toBeFalse();
+        expect(fixture.componentInstance.loadError()).toBe('Invalid armor allocation');
+        await expectAsync(fixture.componentInstance.downloadPng(true)).toBeRejectedWithError('Invalid armor allocation');
+        await expectAsync(fixture.componentInstance.print()).toBeRejectedWithError('Invalid armor allocation');
+
+        recordSheets.load.and.resolveTo({ svgs: [document.createElementNS('http://www.w3.org/2000/svg', 'svg')] });
+        fixture.componentRef.setInput('nativeEntity', new TestTankEntity());
+        fixture.detectChanges();
+        expect(fixture.componentInstance.loadError()).toBeNull();
+        await settle();
+        await new Promise<void>(resolve => requestAnimationFrame(() => resolve()));
+        expect(fixture.componentInstance.ready()).toBeTrue();
+    });
+
+    it('does not replace a newer ready draft with an old render error', async () => {
+        const pending = deferred<{ svgs: SVGSVGElement[] }>();
+        recordSheets.load.and.returnValues(pending.promise,
+            Promise.resolve({ svgs: [document.createElementNS('http://www.w3.org/2000/svg', 'svg')] }));
+        const fixture = TestBed.createComponent(SvgViewerLiteComponent);
+        fixture.componentRef.setInput('nativeEntity', new TestTankEntity());
+        fixture.detectChanges();
+        fixture.componentRef.setInput('nativeEntity', new TestTankEntity());
+        fixture.detectChanges();
+        await settle();
+        await new Promise<void>(resolve => requestAnimationFrame(() => resolve()));
+        pending.reject(new Error('Obsolete failure'));
+        await settle();
+        expect(fixture.componentInstance.ready()).toBeTrue();
+        expect(fixture.componentInstance.loadError()).toBeNull();
+        expect(logger.error).not.toHaveBeenCalled();
+    });
+
+    it('propagates strict PNG failures while preserving best-effort details exports', async () => {
+        const { fixture } = await createViewer();
+        await new Promise<void>(resolve => requestAnimationFrame(() => resolve()));
+        const exportError = new Error('PNG export failed');
+        spyOn(SvgExportUtil, 'downloadPng').and.rejectWith(exportError);
+        spyOn(SvgExportUtil, 'openPng').and.rejectWith(exportError);
+        await expectAsync(fixture.componentInstance.downloadPng(true)).toBeRejectedWith(exportError);
+        await expectAsync(fixture.componentInstance.openPng(true)).toBeRejectedWith(exportError);
+        await expectAsync(fixture.componentInstance.downloadPng()).toBeResolved();
+        await expectAsync(fixture.componentInstance.openPng()).toBeResolved();
+    });
+
+    it('snapshots PNG pages before asynchronous rendering so later edits cannot change the export', async () => {
+        const { fixture, svg } = await createViewer();
+        await new Promise<void>(resolve => requestAnimationFrame(() => resolve()));
+        svg.setAttribute('data-design', 'exported draft');
+        const exported = deferred<void>();
+        const download = spyOn(SvgExportUtil, 'downloadPng').and.returnValue(exported.promise);
+        const action = fixture.componentInstance.downloadPng(true);
+        svg.setAttribute('data-design', 'later draft');
+        const captured = download.calls.mostRecent().args[0][0];
+        expect(captured).not.toBe(svg);
+        expect(captured.getAttribute('data-design')).toBe('exported draft');
+        exported.resolve();
+        await action;
+    });
+
+    it('treats an empty generated page list as a failed preview', async () => {
+        recordSheets.load.and.resolveTo({ svgs: [] });
+        const fixture = TestBed.createComponent(SvgViewerLiteComponent);
+        fixture.componentRef.setInput('nativeEntity', new TestTankEntity());
+        fixture.detectChanges();
+        await settle();
+        expect(fixture.componentInstance.ready()).toBeFalse();
+        expect(fixture.componentInstance.loading()).toBeFalse();
+        expect(fixture.componentInstance.loadError()).toBe('No record sheet pages were generated.');
+    });
+
+    it('prints the attached unsaved draft pages without loading a catalog or force design', async () => {
+        const primary = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
+        primary.dataset['design'] = 'unsaved';
+        const supplemental = primary.cloneNode(true) as SVGSVGElement;
+        supplemental.dataset['page'] = 'supplemental';
+        recordSheets.load.and.resolveTo({ svgs: [primary, supplemental] });
+        const fixture = TestBed.createComponent(SvgViewerLiteComponent);
+        fixture.componentRef.setInput('nativeEntity', new TestTankEntity());
+        fixture.componentRef.setInput('paperSize', 'a4');
+        fixture.detectChanges();
+        await settle();
+        await new Promise<void>(resolve => requestAnimationFrame(() => resolve()));
+        const print = spyOn(window, 'print').and.stub();
+        await fixture.componentInstance.print();
+        const printed = document.querySelectorAll('#record-sheet-print-container svg');
+        expect(print).toHaveBeenCalledOnceWith();
+        expect(printed.length).toBe(2);
+        expect(printed[0].getAttribute('data-design')).toBe('unsaved');
+        expect(printed[1].getAttribute('data-page')).toBe('supplemental');
+        expect(document.querySelector('#record-sheet-print-container style')!.textContent).toContain('size: A4 portrait');
+        expect(recordSheets.load).toHaveBeenCalledTimes(1);
+        expect(nativeEntities.load).not.toHaveBeenCalled();
+        expect(fixture.nativeElement.querySelector('svg')).toBe(primary);
+    });
+
+    it('ignores stale sheet loads when the unit changes before a previous request resolves', async () => {
+        const atlasLoad = deferred<LoadedEntity>();
+        const marauderLoad = deferred<LoadedEntity>();
+        nativeEntities.load.and.returnValues(atlasLoad.promise, marauderLoad.promise);
+
+        const fixture = TestBed.createComponent(SvgViewerLiteComponent);
+        fixture.componentRef.setInput('unit', createEmptyUnit());
         fixture.componentRef.setInput('zoomable', true);
         fixture.detectChanges();
         await settle();
 
-        fixture.componentRef.setInput('unit', createEmptyUnit({ sheets: ['marauder.svg'] }));
+        fixture.componentRef.setInput('unit', createEmptyUnit({ name: 'Marauder' }));
         fixture.detectChanges();
         await settle();
 
-        const marauderSvg = makeSvg();
-        marauderSvg.setAttribute('data-sheet', 'marauder.svg');
-        marauderLoad.resolve(marauderSvg);
+        marauderLoad.resolve(loadedEntity(new TestTankEntity()));
         await settle();
         fixture.detectChanges();
 
-        const atlasSvg = makeSvg();
-        atlasSvg.setAttribute('data-sheet', 'atlas.svg');
-        atlasLoad.resolve(atlasSvg);
+        atlasLoad.resolve(loadedEntity(new TestTankEntity()));
         await settle();
         fixture.detectChanges();
 
         const svgs = Array.from((fixture.nativeElement as HTMLElement).querySelectorAll<SVGSVGElement>('svg'));
         expect(svgs.length).toBe(1);
-        expect(svgs[0].getAttribute('data-sheet')).toBe('marauder.svg');
+        expect(svgs[0].hasAttribute('aria-label')).toBeFalse();
     });
 
     it('does not consume wheel events when zoomable is false', async () => {
@@ -248,8 +545,8 @@ describe('SvgViewerLiteComponent', () => {
         expect(prevented).toBeFalse();
     });
 
-    it('pans vertically with mousewheel and horizontally with shift mousewheel', async () => {
-        const { container } = await createViewer();
+    it('pans vertically with wheel and horizontally with Shift+wheel without changing zoom', async () => {
+        const { container, fixture } = await createViewer();
 
         wheel(container, { deltaY: 180 });
         expect(container.scrollTop).toBe(180);
@@ -257,9 +554,10 @@ describe('SvgViewerLiteComponent', () => {
         setLayout(container, { scrollWidth: 1600 });
         wheel(container, { shiftKey: true, deltaY: 120 });
         expect(container.scrollLeft).toBe(120);
+        expect(fixture.componentInstance.zoomPercent()).toBe(100);
     });
 
-    it('zooms around the cursor and creates horizontal overflow on ctrl mousewheel', async () => {
+    it('zooms around the cursor and creates horizontal overflow on Ctrl+wheel', async () => {
         const { container, content } = await createViewer();
 
         wheel(container, { ctrlKey: true, clientX: 760, clientY: 270, deltaY: -240 });
@@ -274,6 +572,50 @@ describe('SvgViewerLiteComponent', () => {
         expect(container.scrollWidth).toBeGreaterThan(container.clientWidth);
         expect(container.scrollLeft).toBeGreaterThan(0);
         expect(container.scrollTop).toBeGreaterThan(0);
+    });
+
+    it('matches page-viewer modifier priority, delta normalization and pan bounds', async () => {
+        const { container, fixture } = await createViewer();
+        setLayout(container, { scrollWidth: 2000, scrollHeight: 3000, scrollLeft: 500, scrollTop: 800 });
+
+        wheel(container, { shiftKey: true, ctrlKey: true, deltaY: 120, deltaX: 40 });
+        expect(container.scrollLeft).toBe(540);
+        expect(container.scrollTop).toBe(800);
+
+        wheel(container, { deltaY: 0, deltaX: 2, deltaMode: WheelEvent.DOM_DELTA_LINE });
+        expect(container.scrollLeft).toBe(572);
+        expect(container.scrollTop).toBe(800);
+        wheel(container, { shiftKey: true, deltaY: 1, deltaMode: WheelEvent.DOM_DELTA_PAGE });
+        expect(container.scrollLeft).toBe(1000);
+        wheel(container, { deltaY: -10, deltaMode: WheelEvent.DOM_DELTA_PAGE });
+        expect(container.scrollTop).toBe(0);
+        expect(fixture.componentInstance.zoomPercent()).toBe(100);
+    });
+
+    it('keeps Meta+wheel on the default zoom path and clamps zoom-out at fit', async () => {
+        const { container, fixture } = await createViewer();
+        wheel(container, { metaKey: true, deltaY: -120 });
+        expect(fixture.componentInstance.zoomPercent()).toBeGreaterThan(100);
+        wheel(container, { ctrlKey: true, deltaY: 10000 });
+        expect(fixture.componentInstance.zoomPercent()).toBe(100);
+    });
+
+    it('switches an existing preview back to wheel zoom and Ctrl scrolling immediately', async () => {
+        const { container, fixture } = await createViewer();
+        options.update(value => ({ ...value, mouseWheelAction: 'zoom' }));
+        wheel(container, { deltaY: -120 });
+        const zoom = fixture.componentInstance.zoomPercent();
+        expect(zoom).toBeGreaterThan(100);
+        setLayout(container, { scrollWidth: 2000, scrollHeight: 3000, scrollLeft: 100, scrollTop: 100 });
+        wheel(container, { ctrlKey: true, deltaY: 120 });
+        wheel(container, { deltaX: 40 });
+        expect(fixture.componentInstance.zoomPercent()).toBe(zoom);
+        expect(container.scrollTop).toBe(220);
+        expect(container.scrollLeft).toBe(140);
+        options.update(value => ({ ...value, mouseWheelAction: 'scroll' }));
+        wheel(container, { deltaX: 20, deltaY: 30 });
+        expect(container.scrollTop).toBe(250);
+        expect(container.scrollLeft).toBe(160);
     });
 
     it('toggles zoom on mouse double-click at the input position', async () => {
@@ -298,6 +640,7 @@ describe('SvgViewerLiteComponent', () => {
         container.scrollTop = 1200;
         setLayout(container, { scrollWidth: 1000, scrollHeight: 700 });
         triggerResize?.();
+        await new Promise<void>(resolve => requestAnimationFrame(() => resolve()));
 
         expect(container.scrollLeft).toBe(0);
         expect(container.scrollTop).toBeLessThanOrEqual(200);

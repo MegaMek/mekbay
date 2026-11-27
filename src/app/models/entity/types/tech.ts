@@ -80,7 +80,8 @@ export interface EntityTechnology {
     entityTechAdvancements(): readonly TechRatingSource[];
 }
 
-const TECH_RATING_ORDER: readonly TechRating[] = ['A', 'B', 'C', 'D', 'E', 'F'];
+/** Tech ratings in ascending order; the index is the native BLK rating code. */
+export const TECH_RATINGS: readonly TechRating[] = ['A', 'B', 'C', 'D', 'E', 'F'];
 const COMPOSITE_AVAILABILITY_ORDER: readonly CompositeAvailabilityCode[] =
     ['A', 'B', 'C', 'D', 'E', 'F', 'F*', 'X'];
 
@@ -89,7 +90,12 @@ function availabilityTuple(source: TechRatingSource): TechAvailabilityTuple {
         return source.availability as TechAvailabilityTuple;
     }
     const availability = source.availability as TechAvailability;
-    return TECH_ERAS.map(era => availability[era] ?? 'X') as unknown as TechAvailabilityTuple;
+    return [
+        availability.sl ?? 'X',
+        availability.sw ?? 'X',
+        availability.clan ?? 'X',
+        availability.da ?? 'X',
+    ];
 }
 
 function harderAvailability(value: CompositeAvailabilityCode): CompositeAvailabilityCode {
@@ -168,7 +174,7 @@ export function calculateCompositeTechRating(
     let firstExtinction = firstObsoleteYear(context);
 
     for (const source of sources) {
-        if (TECH_RATING_ORDER.indexOf(source.rating) > TECH_RATING_ORDER.indexOf(rating)) {
+        if (TECH_RATINGS.indexOf(source.rating) > TECH_RATINGS.indexOf(rating)) {
             rating = source.rating;
         }
         availabilityTuple(source).forEach((value, era) => {
@@ -383,6 +389,7 @@ export interface TechData {
     readonly level: ComponentTechLevel;
     readonly availability: TechAvailability;
     readonly advancement: SplitTechDates;
+    readonly factions?: TechFactions;
 }
 
 /** Type guard: is the dates value a per-tech-base split? */
@@ -625,6 +632,11 @@ const TECH_LEVEL_RANK: Readonly<Record<ComponentTechLevel, number>> = {
 
 export function compareTechLevels(left: ComponentTechLevel, right: ComponentTechLevel): number {
     return TECH_LEVEL_RANK[left] - TECH_LEVEL_RANK[right];
+}
+
+/** MegaMek's native `rules level` number: 1 = Introductory … 5 = Unofficial. */
+export function rulesLevelOfTechLevel(level: ComponentTechLevel): number {
+    return TECH_LEVEL_RANK[level] + 1;
 }
 
 /** Highest static construction-rules level among the supplied technologies. */

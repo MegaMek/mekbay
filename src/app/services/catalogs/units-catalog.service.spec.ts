@@ -2,173 +2,456 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 // Author: Drake
 
-import { provideZonelessChangeDetection } from '@angular/core';
-import { HttpHeaders, provideHttpClient } from '@angular/common/http';
-import { HttpTestingController, provideHttpClientTesting } from '@angular/common/http/testing';
+import { provideZonelessChangeDetection, signal } from '@angular/core';
 import { TestBed } from '@angular/core/testing';
-import { signal } from '@angular/core';
 
-import { REMOTE_HOST } from '../../models/common.model';
-import type { Options } from '../../models/options.model';
-import type { UnitSummary, Units } from '../../models/unit-summary.model';
+import type { UnitSummary } from '../../models/unit-summary.model';
 import { createEmptyUnit } from '../../testing/unit-test-helpers';
-import { DbService } from '../db.service';
 import { LoggerService } from '../logger.service';
-import { OptionsService } from '../options.service';
+import { CustomUnitsService } from '../custom-units.service';
 import { UnitRuntimeService } from '../unit-runtime.service';
+import { UnitSearchIndexService } from '../unit-search-index.service';
+import { TagsService } from '../tags.service';
+import { PublicTagsService } from '../public-tags.service';
+import {
+    CoreUnitCatalogService,
+    type CoreUnitCatalogSnapshot,
+    type PreparedCoreCatalogActivation,
+} from '../unit-catalog/core-unit-catalog.service';
+import {
+    MM_DATA_UNIT_PROVIDER_ID,
+    asCatalogActivationId,
+    asSourceHash,
+    asUnitUuid,
+    makeUnitFileName,
+    type StoredCoreContent,
+} from '../unit-catalog/unit-catalog.types';
 import { UnitsCatalogService } from './units-catalog.service';
 
-async function settleMicrotasks(): Promise<void> {
-    for (let index = 0; index < 5; index += 1) {
-        await Promise.resolve();
-    }
+const UUIDS = [
+    asUnitUuid('019f6767-0dcb-7bb8-992f-000000000001'),
+    asUnitUuid('019f6767-0dcb-7bb8-992f-000000000002'),
+];
+const SOURCE_HASH = asSourceHash('A'.repeat(27));
+
+function summary(name: string, index: number): UnitSummary {
+    const unit = createEmptyUnit({ uuid: UUIDS[index], name, chassis: name, mul1id: index + 1 });
+    return {
+        ...unit,
+        uuid: UUIDS[index],
+        provider: MM_DATA_UNIT_PROVIDER_ID,
+        origin: 'megamek',
+        hash: SOURCE_HASH,
+        baseChassis: unit.chassis,
+        entityType: 'Mek',
+        pv: unit.as.PV,
+        engine: unit.engine || null,
+    } as UnitSummary;
 }
 
-function buildPrimaryUnits(count: number): UnitSummary[] {
-    const units: UnitSummary[] = [];
-    for (let i = 0; i < count; i += 1) {
-        units.push(createEmptyUnit({ mul1id: -1, name: `Primary ${i}` }));
-    }
-    units.push(createEmptyUnit({ mul1id: -1, name: 'Shared Unit' }));
-    return units;
-}
-
-describe('UnitsCatalogService custom servers', () => {
-    let service: UnitsCatalogService;
-    let httpMock: HttpTestingController;
-    let optionsSignal: ReturnType<typeof signal<Options>>;
-    let dbMock: {
-        getUnits: jasmine.Spy;
-        saveUnits: jasmine.Spy;
-        getCustomServerUnits: jasmine.Spy;
-        saveCustomServerUnits: jasmine.Spy;
+function snapshot(
+    revision: number,
+    summaries: readonly UnitSummary[],
+    digest = revision === 1 ? 'A'.repeat(43) : 'B'.repeat(43),
+): CoreUnitCatalogSnapshot {
+    return {
+        revision,
+        summaries,
+        generation: {
+            activationId: asCatalogActivationId(digest),
+        } as NonNullable<CoreUnitCatalogSnapshot['generation']>,
     };
-    let preprocessSpy: jasmine.Spy;
+}
 
-    const CUSTOM_SERVER = 'https://custom.example';
+function activation(value: CoreUnitCatalogSnapshot): PreparedCoreCatalogActivation {
+    return {
+        revision: value.revision,
+        generation: value.generation!,
+        dependencies: {},
+        snapshot: value,
+        committedState: { status: 'ready', availableUnits: value.summaries.length },
+    } as PreparedCoreCatalogActivation;
+}
+
+describe('UnitsCatalogService native core projection', () => {
+    let service: UnitsCatalogService;
+    let current: ReturnType<typeof signal<CoreUnitCatalogSnapshot>>;
+    let pending: ReturnType<typeof signal<PreparedCoreCatalogActivation | undefined>>;
+    let initializeCore: jasmine.Spy;
+    let finalizeCore: jasmine.Spy;
+    let commitCore: jasmine.Spy;
+    let rejectCore: jasmine.Spy;
+    let acknowledgeCore: jasmine.Spy;
+    let readUnitSource: jasmine.Spy;
+    let logger: jasmine.SpyObj<Pick<LoggerService, 'info' | 'warn' | 'error'>>;
+    let customRevision: ReturnType<typeof signal<number>>;
+    let customSummaries: UnitSummary[];
+    let customSources: Map<UnitSummary['uuid'], StoredCoreContent>;
 
     beforeEach(() => {
         TestBed.resetTestingModule();
-
-        optionsSignal = signal<Options>({ unitServers: [CUSTOM_SERVER] } as Options);
-
-        dbMock = {
-            getUnits: jasmine.createSpy('getUnits').and.resolveTo(null),
-            saveUnits: jasmine.createSpy('saveUnits').and.resolveTo(undefined),
-            getCustomServerUnits: jasmine.createSpy('getCustomServerUnits').and.resolveTo(null),
-            saveCustomServerUnits: jasmine.createSpy('saveCustomServerUnits').and.resolveTo(undefined),
-        };
-
-        preprocessSpy = jasmine.createSpy('preprocessUnits');
+        customRevision = signal(0);
+        customSummaries = [];
+        customSources = new Map();
+        current = signal<CoreUnitCatalogSnapshot>({ revision: 0, summaries: [] });
+        pending = signal<PreparedCoreCatalogActivation | undefined>(
+            activation(snapshot(1, [summary('Alpha', 0), summary('Beta', 1)])),
+        );
+        initializeCore = jasmine.createSpy('initialize').and.resolveTo(undefined);
+        finalizeCore = jasmine.createSpy('finalizePendingActivation').and.resolveTo(true);
+        rejectCore = jasmine.createSpy('rejectPendingActivation');
+        acknowledgeCore = jasmine.createSpy('acknowledgeCatalogConsumersReady').and.resolveTo(undefined);
+        readUnitSource = jasmine.createSpy('readUnitSource').and.resolveTo(undefined);
+        logger = jasmine.createSpyObj('LoggerService', ['info', 'warn', 'error']);
+        commitCore = jasmine.createSpy('commitPendingActivation').and.callFake((revision: number) => {
+            const candidate = pending();
+            if (!candidate || candidate.revision !== revision) return undefined;
+            current.set(candidate.snapshot);
+            pending.set(undefined);
+            return candidate.snapshot;
+        });
 
         TestBed.configureTestingModule({
             providers: [
                 provideZonelessChangeDetection(),
-                provideHttpClient(),
-                provideHttpClientTesting(),
                 UnitsCatalogService,
-                { provide: DbService, useValue: dbMock },
-                { provide: UnitRuntimeService, useValue: { preprocessUnits: preprocessSpy } },
-                { provide: OptionsService, useValue: { options: optionsSignal } },
-                { provide: LoggerService, useValue: { info() {}, warn() {}, error() {} } },
+                { provide: TagsService, useValue: {} },
+                { provide: PublicTagsService, useValue: {} },
+                {
+                    provide: CustomUnitsService,
+                    useValue: {
+                        initialize: () => Promise.resolve(),
+                        revision: customRevision.asReadonly(),
+                        records: () => customSummaries,
+                        prepareSummaries: async () => customSummaries,
+                        captureSources: () => new Map(customSources),
+                        commitSummaries: () => undefined,
+                    },
+                },
+                {
+                    provide: CoreUnitCatalogService,
+                    useValue: {
+                        state: signal({ status: 'idle', availableUnits: 0 }).asReadonly(),
+                        catalogSnapshot: current.asReadonly(),
+                        pendingActivation: pending.asReadonly(),
+                        initialize: initializeCore,
+                        finalizePendingActivation: finalizeCore,
+                        commitPendingActivation: commitCore,
+                        rejectPendingActivation: rejectCore,
+                        acknowledgeCatalogConsumersReady: acknowledgeCore,
+                        readUnitSource,
+                    },
+                },
+                { provide: LoggerService, useValue: logger },
             ],
         });
-
         service = TestBed.inject(UnitsCatalogService);
-        httpMock = TestBed.inject(HttpTestingController);
     });
 
-    afterEach(() => {
-        httpMock.verify();
+    it('publishes core before a cold custom rebuild finishes, then publishes the custom result', async () => {
+        const custom = TestBed.inject(CustomUnitsService);
+        const customSummary = { ...summary('Custom', 1), isCustom: true };
+        pending.set(activation(snapshot(1, [summary('Core', 0)])));
+        spyOn(custom, 'records').and.returnValue([{}] as never);
+        let finish!: (summaries: readonly UnitSummary[]) => void;
+        const building = new Promise<readonly UnitSummary[]>(resolve => { finish = resolve; });
+        const prepare = spyOn(custom, 'prepareSummaries').and.callFake(async (_dependencies, options) => options?.cachedOnly ? [] : building);
+        await service.initialize();
+        const first = service.pendingActivation()!;
+        expect(first.snapshot.units.map(unit => unit.name)).toEqual(['Core']);
+        service.commitPendingActivation(first.revision);
+        TestBed.tick();
+        expect(service.getUnits().map(unit => unit.name)).toEqual(['Core']);
+        expect(prepare).toHaveBeenCalledTimes(2);
+        finish([customSummary]);
+        const revision = await service.prepareCustomChanges();
+        service.commitPendingActivation(revision!);
+        expect(service.getUnits().map(unit => unit.name)).toEqual(['Core', 'Custom']);
     });
 
-    async function flush(url: string, method: 'HEAD' | 'GET', body: unknown, etag: string): Promise<void> {
-        const request = httpMock.expectOne(url);
-        expect(request.request.method).toBe(method);
-        request.flush(body as any, { headers: new HttpHeaders({ ETag: etag }) });
-        await settleMicrotasks();
+    async function initializeAndCommit(): Promise<number> {
+        const first = service.initialize();
+        expect(service.initialize()).toBe(first);
+        await first;
+        const revision = service.pendingActivation()!.revision;
+        expect(await service.finalizePendingActivation(revision)).toBeTrue();
+        expect(service.commitPendingActivation(revision)).toBeDefined();
+        return revision;
     }
 
-    it('merges new-named units from a custom server and tags them with the server host', async () => {
-        const primaryUnits = buildPrimaryUnits(9000);
-        const primaryBody: Units = { version: '1', etag: '', units: primaryUnits };
-        const customBody: Units = {
-            version: '1',
-            etag: '',
-            units: [
-                createEmptyUnit({ mul1id: 0, name: 'Shared Unit' }), // collides with primary -> dropped
-                createEmptyUnit({ mul1id: 500, uuid: '', name: 'Custom Alpha' }),
-                createEmptyUnit({ mul1id: 0, uuid: '', name: 'Custom Beta' }),
-            ],
-        };
+    for (const total of [1, 9, 10]) {
+        it(`reports custom rebuild progress only for a substantial batch (${total} changed units)`, async () => {
+            await initializeAndCommit();
+            const settledState = service.coreState();
+            let finish!: (summaries: readonly UnitSummary[]) => void;
+            spyOn(TestBed.inject(CustomUnitsService), 'prepareSummaries').and.callFake((_dependencies, options) => {
+                options!.onProgress?.({ completed: 0, total });
+                return new Promise(resolve => { finish = resolve; });
+            });
 
-        const initializePromise = service.initialize();
-        const concurrentInitializePromise = service.initialize();
-        expect(concurrentInitializePromise).toBe(initializePromise);
-        await settleMicrotasks();
+            customRevision.set(1);
+            const preparation = service.prepareCustomChanges();
+            if (total === 10) {
+                expect(service.coreState()).toEqual(jasmine.objectContaining({
+                    status: 'loading', progress: { phase: 'projecting', completed: 0, total },
+                }));
+            } else {
+                expect(service.coreState()).toBe(settledState);
+            }
 
-        // Primary db.mekbay.com flow
-        await flush(`${REMOTE_HOST}/units.json?ngsw-bypass=true`, 'HEAD', '', 'primary-etag');
-        await flush(`${REMOTE_HOST}/units.json?ngsw-bypass=true`, 'GET', primaryBody, 'primary-etag');
+            finish([]);
+            await preparation;
+            expect(service.pendingActivation()!.showProgress).toBe(total === 10);
+        });
+    }
 
-        // Custom server flow
-        await flush(`${CUSTOM_SERVER}/units.json?ngsw-bypass=true`, 'HEAD', '', 'custom-etag');
-        await flush(`${CUSTOM_SERVER}/units.json?ngsw-bypass=true`, 'GET', customBody, 'custom-etag');
-
-        await Promise.all([initializePromise, concurrentInitializePromise]);
-        await service.initialize();
-        httpMock.expectNone(`${REMOTE_HOST}/units.json?ngsw-bypass=true`);
-        httpMock.expectNone(`${CUSTOM_SERVER}/units.json?ngsw-bypass=true`);
-
-        const units = service.getUnits();
-        const byName = new Map(units.map(u => [u.name, u]));
-
-        // 9001 primary (incl. Shared Unit) + 2 custom (Alpha, Beta)
-        expect(units.length).toBe(9003);
-
-        expect(byName.get('Custom Alpha')?.serverHost).toBe(CUSTOM_SERVER);
-        expect(byName.get('Custom Beta')?.serverHost).toBe(CUSTOM_SERVER);
-
-        // Older/custom exporters may omit UUIDs. The loader supplies stable, distinct
-        // server-scoped identities so UUID-based search indexes do not collapse them.
-        const customUuids = [byName.get('Custom Alpha')?.uuid, byName.get('Custom Beta')?.uuid];
-        expect(customUuids.every(uuid => uuid?.startsWith(`custom:${encodeURIComponent(CUSTOM_SERVER)}:`))).toBeTrue();
-        expect(new Set(customUuids).size).toBe(2);
-
-        // Collision: primary wins, only one Shared Unit, no serverHost.
-        expect(units.filter(u => u.name === 'Shared Unit').length).toBe(1);
-        expect(byName.get('Shared Unit')?.serverHost).toBeUndefined();
-
-        // Preserve external IDs; UUIDs distinguish designs that have no MUL entry.
-        expect(byName.get('Custom Beta')?.mul1id).toBe(0);
-        expect(byName.get('Custom Alpha')?.mul1id).toBe(500);
-        expect(new Set(units.map(unit => unit.uuid)).size).toBe(units.length);
-
-        // Custom server dataset was cached for offline use.
-        expect(dbMock.saveCustomServerUnits).toHaveBeenCalledWith(CUSTOM_SERVER, jasmine.objectContaining({ etag: 'custom-etag' }));
-
-        // preprocessUnits re-run over the merged set.
-        expect(preprocessSpy).toHaveBeenCalled();
-        const lastPreprocessArg = preprocessSpy.calls.mostRecent().args[0] as UnitSummary[];
-        expect(lastPreprocessArg.length).toBe(9003);
+    it('cancels superseded preparation and never publishes an older custom snapshot', async () => {
+        await initializeAndCommit();
+        const jobs: { signal: AbortSignal; resolve: (units: readonly UnitSummary[]) => void }[] = [];
+        spyOn(TestBed.inject(CustomUnitsService), 'prepareSummaries').and.callFake((_dependencies, options) =>
+            new Promise(resolve => jobs.push({ signal: options!.signal, resolve })));
+        customRevision.set(1);
+        const older = service.prepareCustomChanges();
+        customRevision.set(2);
+        const newer = service.prepareCustomChanges();
+        expect(jobs.length).toBe(2);
+        expect(jobs[0].signal.aborted).toBeTrue();
+        expect(service.getUnits().map(unit => unit.name)).toEqual(['Alpha', 'Beta']);
+        jobs[1].resolve([createEmptyUnit({ name: 'Latest custom', isCustom: true })]);
+        const latestRevision = (await newer)!;
+        jobs[0].resolve([createEmptyUnit({ name: 'Stale custom', isCustom: true })]);
+        await older;
+        expect(service.pendingActivation()!.revision).toBe(latestRevision);
+        service.commitPendingActivation(latestRevision);
+        expect(service.getUnits().map(unit => unit.name)).toEqual(['Alpha', 'Beta', 'Latest custom']);
     });
 
-    it('does not query custom servers when none are configured', async () => {
-        optionsSignal.set({ unitServers: [] } as unknown as Options);
+    it('refuses to commit a custom snapshot superseded before the reactive observer runs', async () => {
+        await initializeAndCommit();
+        customRevision.set(1);
+        const revision = (await service.prepareCustomChanges())!;
+        customRevision.set(2);
+        expect(service.pendingActivation()).toBeUndefined();
+        expect(service.commitPendingActivation(revision)).toBeUndefined();
+        expect(await service.finalizePendingActivation(revision)).toBeFalse();
+    });
 
-        const primaryUnits = buildPrimaryUnits(9000);
-        const primaryBody: Units = { version: '1', etag: '', units: primaryUnits };
+    it('refuses a custom-only candidate when a newer core activation is already waiting', async () => {
+        await initializeAndCommit();
+        customRevision.set(1);
+        const revision = (await service.prepareCustomChanges())!;
+        pending.set(activation(snapshot(2, [summary('Updated core', 0)])));
+        expect(service.pendingActivation()).toBeUndefined();
+        expect(service.commitPendingActivation(revision)).toBeUndefined();
+        expect(await service.finalizePendingActivation(revision)).toBeFalse();
+        const replacement = (await service.prepareCustomChanges())!;
+        expect(service.commitPendingActivation(replacement)?.coreRevision).toBe(2);
+    });
 
-        const initializePromise = service.initialize();
-        await settleMicrotasks();
+    it('publishes only the prepared native core catalog', async () => {
+        await initializeAndCommit();
 
-        await flush(`${REMOTE_HOST}/units.json?ngsw-bypass=true`, 'HEAD', '', 'primary-etag');
-        await flush(`${REMOTE_HOST}/units.json?ngsw-bypass=true`, 'GET', primaryBody, 'primary-etag');
+        expect(initializeCore).toHaveBeenCalledTimes(1);
+        expect(service.getUnits().map(unit => unit.name)).toEqual(['Alpha', 'Beta']);
+        expect(service.getCoreSummaries().map(unit => unit.name)).toEqual(['Alpha', 'Beta']);
+        expect(service.getUnits().every(unit => !Object.hasOwn(unit, 'fluff'))).toBeTrue();
+    });
 
-        await initializePromise;
+    it('publishes and retrieves only the core design when a custom UUID collides', async () => {
+        const collision = { ...summary('Custom collision', 0), isCustom: true, origin: 'user' as const };
+        const other = createEmptyUnit({ name: 'Other custom', isCustom: true });
+        customSummaries = [collision, other];
+        const source: StoredCoreContent = { file: makeUnitFileName(collision.uuid, 'mtf'), hash: SOURCE_HASH,
+            format: 'mtf', bytes: new TextEncoder().encode('custom source').buffer };
+        customSources.set(collision.uuid, source);
+        customSources.set(other.uuid, { ...source, file: makeUnitFileName(other.uuid, 'mtf') });
+        readUnitSource.and.resolveTo({ ...source, bytes: new TextEncoder().encode('core source').buffer });
+        await initializeAndCommit();
 
-        expect(service.getUnits().length).toBe(9001);
-        expect(dbMock.getCustomServerUnits).not.toHaveBeenCalled();
-        httpMock.verify(); // no outstanding custom-server requests
+        const units = service.getUnits();
+        expect(units.map(unit => unit.name)).toEqual(['Alpha', 'Beta', 'Other custom']);
+        expect(service.catalogSnapshot().customSummaries).toEqual([other]);
+        expect(service.hasCustomUnit(collision.uuid)).toBeFalse();
+        expect(service.hasCustomUnit(other.uuid)).toBeTrue();
+        expect(new TextDecoder().decode((await service.readNativeUnitSource(collision.uuid))!.bytes)).toBe('core source');
+
+        const runtime = TestBed.inject(UnitRuntimeService);
+        runtime.commitPreparedRuntimeCatalog(runtime.prepareRuntimeCatalog(units));
+        expect(runtime.getUnitByUuid(collision.uuid)).toBe(units[0]);
+        expect(runtime.getUnitByIdentifier('Alpha')).toBe(units[0]);
+        expect(runtime.getUnitByIdentifier('Custom collision')).toBeUndefined();
+        expect(runtime.resolveUnitReference({ unit: 'Alpha' })).toEqual(jasmine.objectContaining({
+            kind: 'resolved', uuid: collision.uuid, unit: units[0], usedLegacyNameFallback: true,
+        }));
+        const search = TestBed.inject(UnitSearchIndexService);
+        const prepared = search.prepareCatalogIndexes(units, [], []);
+        expect(prepared.unitOrdinalLookup.unitUuids).toEqual(units.map(unit => unit.uuid));
+        expect(prepared.unitOrdinalLookup.ordinalsByUnitUuid.size).toBe(3);
+        expect(prepared.unitOrdinalLookup.ordinalsByUnitUuid.get(collision.uuid)).toBe(0);
+    });
+
+    it('preserves transient tag overlays when a core design is replaced', async () => {
+        await initializeAndCommit();
+        const alpha = service.getUnits()[0]!;
+        alpha._nameTags = [{ tag: 'Owned', quantity: 2 }];
+        alpha._chassisTags = [{ tag: 'Chassis', quantity: 1 }];
+        alpha._publicTags = [{ tag: 'Public', publicId: 'tag-1', subscribed: true }];
+
+        pending.set(activation(snapshot(2, [summary('Alpha Prime', 0), summary('Beta', 1)])));
+        TestBed.tick();
+        await service.prepareCustomChanges();
+        await Promise.resolve();
+        const revision = service.pendingActivation()!.revision;
+        expect(service.commitPendingActivation(revision)).toBeDefined();
+
+        const replacement = service.getUnits()[0]!;
+        expect(replacement.name).toBe('Alpha Prime');
+        expect(replacement._nameTags).toEqual([{ tag: 'Owned', quantity: 2 }]);
+        expect(replacement._chassisTags).toEqual([{ tag: 'Chassis', quantity: 1 }]);
+        expect(replacement._publicTags).toEqual([
+            { tag: 'Public', publicId: 'tag-1', subscribed: true },
+        ]);
+        expect(replacement).not.toBe(alpha);
+    });
+
+    it('coalesces concurrent source extraction but does not retain a manual source cache', async () => {
+        await initializeAndCommit();
+        const file = makeUnitFileName(UUIDS[0], 'mtf');
+        let release!: (source: StoredCoreContent) => void;
+        readUnitSource.and.returnValue(new Promise<StoredCoreContent>(resolve => { release = resolve; }));
+
+        const first = service.readNativeUnitSource(UUIDS[0]);
+        const second = service.readNativeUnitSource(UUIDS[0]);
+        expect(readUnitSource).toHaveBeenCalledTimes(1);
+        release({
+            file,
+            hash: SOURCE_HASH,
+            format: 'mtf',
+            bytes: new TextEncoder().encode('Version:1.3').buffer,
+        });
+        const [firstSource, secondSource] = await Promise.all([first, second]);
+
+        expect(firstSource).toEqual(secondSource);
+        expect(firstSource?.bytes).not.toBe(secondSource?.bytes);
+        readUnitSource.and.resolveTo(firstSource);
+        await service.readNativeUnitSource(UUIDS[0]);
+        expect(readUnitSource).toHaveBeenCalledTimes(2);
+        expect(logger.info).toHaveBeenCalledTimes(2);
+    });
+
+    it('acknowledges the committed core generation and delegates rejection', async () => {
+        const revision = await initializeAndCommit();
+        await service.acknowledgeCatalogRevisionApplied(revision);
+        expect(acknowledgeCore).toHaveBeenCalledOnceWith(
+            1,
+            asCatalogActivationId('A'.repeat(43)),
+        );
+
+        pending.set(activation(snapshot(2, [summary('Alpha Prime', 0)])));
+        TestBed.tick();
+        await service.prepareCustomChanges();
+        await Promise.resolve();
+        const rejected = service.pendingActivation()!.revision;
+        const error = new Error('invalid catalog');
+        service.rejectPendingActivation(rejected, error);
+        expect(rejectCore).toHaveBeenCalledOnceWith(2, error);
+        expect(service.pendingActivation()).toBeUndefined();
+    });
+
+    it('fails closed when core initialization prepares no activation', async () => {
+        pending.set(undefined);
+        await expectAsync(service.initialize()).toBeRejectedWithError(
+            /prepared no complete activation/u,
+        );
+    });
+
+    it('atomically joins custom adds, updates and removal while retaining the core summaries', async () => {
+        await initializeAndCommit();
+        const custom = { ...summary('Custom Alpha', 0),
+            uuid: asUnitUuid('019f6767-0dcb-7bb8-992f-000000000003'),
+            origin: 'user' as const, isCustom: true };
+        customSummaries = [custom];
+        customRevision.set(1);
+        TestBed.tick();
+        await service.prepareCustomChanges();
+        let candidate = service.pendingActivation()!;
+        expect(service.getSummaries().length).toBe(2);
+        expect(candidate.snapshot.summaries.length).toBe(3);
+        expect(await service.finalizePendingActivation(candidate.revision)).toBeTrue();
+        service.commitPendingActivation(candidate.revision);
+        expect(service.getSummaries().map(unit => unit.name)).toEqual(['Alpha', 'Beta', 'Custom Alpha']);
+        expect(service.getCoreSummaries().map(unit => unit.name)).toEqual(['Alpha', 'Beta']);
+        expect(commitCore).toHaveBeenCalledTimes(1);
+        expect(finalizeCore).toHaveBeenCalledTimes(1);
+
+        customSummaries = [{ ...custom, name: 'Custom Beta' }];
+        customRevision.set(2);
+        TestBed.tick();
+        await service.prepareCustomChanges();
+        candidate = service.pendingActivation()!;
+        service.commitPendingActivation(candidate.revision);
+        expect(service.getUnits().map(unit => unit.name)).toEqual(['Alpha', 'Beta', 'Custom Beta']);
+
+        customSummaries = [];
+        customRevision.set(3);
+        TestBed.tick();
+        await service.prepareCustomChanges();
+        service.commitPendingActivation(service.pendingActivation()!.revision);
+        expect(service.getUnits().map(unit => unit.name)).toEqual(['Alpha', 'Beta']);
+        expect(commitCore).toHaveBeenCalledTimes(1);
+    });
+
+    it('binds custom native bytes to the visible summary revision and detaches each load', async () => {
+        const uuid = asUnitUuid('019f6767-0dcb-7bb8-992f-000000000003');
+        const source: StoredCoreContent = { file: makeUnitFileName(uuid, 'mtf'), hash: SOURCE_HASH,
+            format: 'mtf', bytes: new TextEncoder().encode('old').buffer };
+        customSummaries = [{ ...summary('Custom Alpha', 0), uuid, origin: 'user', isCustom: true }];
+        customSources.set(uuid, source);
+        await initializeAndCommit();
+        customSources.set(uuid, { ...source, bytes: new TextEncoder().encode('new').buffer });
+        customRevision.set(1);
+        TestBed.tick();
+        await service.prepareCustomChanges();
+        expect(new TextDecoder().decode((await service.readNativeUnitSource(uuid))!.bytes)).toBe('old');
+        service.commitPendingActivation(service.pendingActivation()!.revision);
+        const first = (await service.readNativeUnitSource(uuid))!;
+        const second = (await service.readNativeUnitSource(uuid))!;
+        expect(new TextDecoder().decode(first.bytes)).toBe('new');
+        expect(first.bytes).not.toBe(second.bytes);
+        expect(readUnitSource).not.toHaveBeenCalled();
+    });
+
+    it('does not reset or mutate visible core search overlays while preparing a custom edit', async () => {
+        await initializeAndCommit();
+        const active = service.getUnits()[0];
+        active._searchKey = 'ready-to-search';
+        active._nameTags = [{ tag: 'Owned', quantity: 3 }];
+        active.as.dmg._dmgS = 7;
+        customRevision.set(1);
+        TestBed.tick();
+        await service.prepareCustomChanges();
+        const candidate = service.pendingActivation()!.snapshot.units[0];
+        expect(candidate).not.toBe(active);
+        candidate._searchKey = 'replacement';
+        candidate._nameTags = [];
+        candidate.as.dmg._dmgS = 12;
+        candidate.as.MVm[''] = 99;
+        expect(active._searchKey).toBe('ready-to-search');
+        expect(active._nameTags).toEqual([{ tag: 'Owned', quantity: 3 }]);
+        expect(active.as.dmg._dmgS).toBe(7);
+        expect(active.as.MVm['']).not.toBe(99);
+    });
+
+    it('can retry publishing an unchanged saved custom revision after search preparation fails', async () => {
+        await initializeAndCommit();
+        customRevision.set(1);
+        const failedRevision = (await service.prepareCustomChanges())!;
+        service.rejectPendingActivation(failedRevision, new Error('Index preparation failed'));
+        expect(service.getUnits().map(unit => unit.name)).toEqual(['Alpha', 'Beta']);
+        const retryRevision = (await service.prepareCustomChanges())!;
+        expect(retryRevision).toBeGreaterThan(failedRevision);
+        expect(service.commitPendingActivation(retryRevision)).toBeDefined();
+        expect(commitCore).toHaveBeenCalledTimes(1);
+        expect(rejectCore).not.toHaveBeenCalled();
     });
 });

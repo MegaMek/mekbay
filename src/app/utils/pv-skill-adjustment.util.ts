@@ -3,13 +3,14 @@
 // Author: Drake
 
 export function adjustPointValueForSkill(basePointValue: number, skill: number): number {
-    if (!Number.isInteger(basePointValue) || basePointValue < 1) {
-        throw new RangeError('Base point value must be a positive integer.');
+    if (!Number.isInteger(basePointValue) || basePointValue < 0) {
+        throw new RangeError('Base point value must be a non-negative integer.');
     }
     if (!Number.isInteger(skill) || skill < 0) {
         throw new RangeError('Alpha Strike skill must be a non-negative integer.');
     }
-    if (skill === 4) return basePointValue;
+    // Catalog units without an Alpha Strike conversion use PV 0 at every skill.
+    if (basePointValue === 0 || skill === 4) return basePointValue;
     if (skill > 4) {
         const multiplier = 1 + (basePointValue > 14 ? Math.floor((basePointValue - 5) / 10) : 0);
         return Math.max(1, basePointValue - (skill - 4) * multiplier);

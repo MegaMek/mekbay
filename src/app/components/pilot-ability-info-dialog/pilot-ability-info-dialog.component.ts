@@ -9,7 +9,7 @@ import { type PilotAbility, type ASCustomPilotAbility, formatSummaryMovement, ge
 import { formatRulesReference, type GameSystem, type RulesReference } from '../../models/common.model';
 import type { GameService } from '../../services/game.service';
 import { OptionsService } from '../../services/options.service';
-import type { FormationWideAbility } from '../../utils/formation-type.model';
+import type { FormationWideAbility } from '../../utils/formation/formation-type.model';
 
 export interface PilotAbilityInfoDialogData {
     gameSystem: GameSystem;

@@ -9,7 +9,6 @@ import { DialogRef, DIALOG_DATA } from '@angular/cdk/dialog';
 
 @Component({
     selector: 'license-dialog',
-    standalone: true,
     changeDetection: ChangeDetectionStrategy.OnPush,
     imports: [
     BaseDialogComponent

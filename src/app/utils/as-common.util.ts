@@ -2,6 +2,8 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 // Author: Drake
 
+import type { ASUnitTypeCode } from '../models/unit-summary.model';
+
 export function formatMovement(inches: number, suffix: string = '', useHex: boolean): string {
     if (useHex) {
         return Math.floor(inches) / 2 + '<span class="hex-symbol">⬢</span>' + suffix;
@@ -23,13 +25,13 @@ export function formatMovementWithAlternate(
     return `${inches}(${alternateInches})″${suffix}`;
 }
 
-export function isAerospace(type: string, movementModes: { [mode: string]: number }): boolean {
+export function isAerospace(type: ASUnitTypeCode, movementModes: Readonly<Record<string, number>>): boolean {
     return type === 'AF' || type === 'CF' || type === 'DA' || type === 'DS' 
     || type === 'SC' || type === 'WS' || type === 'SS' || type === 'JS' 
     || (type === 'SV' && hasAerospaceMovementMode(movementModes));
 }
 
-export function hasAerospaceMovementMode(movementModes: { [mode: string]: number }): boolean {
+export function hasAerospaceMovementMode(movementModes: Readonly<Record<string, number>>): boolean {
     return movementModes['a'] !== undefined || movementModes['p'] !== undefined || movementModes['k'] !== undefined;
 }
 

@@ -1,0 +1,553 @@
+// Copyright (C) 2026 The MegaMek Team
+// SPDX-License-Identifier: GPL-3.0-or-later
+
+import { provideZonelessChangeDetection, signal } from '@angular/core';
+import { TestBed } from '@angular/core/testing';
+import { GameSystem } from '../models/common.model';
+import type { SerializedForce } from '../models/force-serialization';
+import { DbService, type TagOp } from './db.service';
+import { DialogsService } from './dialogs.service';
+import { AppUpdateService } from './app-update.service';
+import { LoggerService } from './logger.service';
+import { createEmptyCBTForceForTest } from '../testing/unit-test-helpers';
+import type { SavedCustomUnit } from '../models/custom-unit.model';
+import { asUnitUuid } from './unit-catalog/unit-catalog.types';
+
+describe('DbService current force persistence', () => {
+    let service: DbService;
+    const saveCustomUnit = (record: SavedCustomUnit) => service.updateCustomUnits([
+        { uuid: record.uuid, accountUuid: record.accountUuid ?? '', update: () => record },
+    ]);
+    const deleteCustomUnit = (uuid: string, accountUuid = '') => service.updateCustomUnits([
+        { uuid, accountUuid, update: () => undefined },
+    ]);
+    const instanceId = `force-v2-db-${Date.now()}-${Math.random()}`;
+
+    beforeEach(async () => {
+        TestBed.configureTestingModule({
+            providers: [
+                provideZonelessChangeDetection(),
+                DbService,
+                { provide: LoggerService, useValue: { info: () => undefined, warn: () => undefined, error: () => undefined } },
+                { provide: DialogsService, useValue: { choose: () => Promise.resolve('continue'), showError: () => Promise.resolve() } },
+            ],
+        });
+        service = TestBed.inject(DbService);
+        await service.waitForDbReady();
+    });
+
+    afterEach(async () => {
+        await service.deleteForce(instanceId);
+    });
+
+    for (const deletePersonalData of [false, true]) {
+        it(`clears logout identity and preferences while ${deletePersonalData ? 'deleting only forces, tags, searches and custom units' : 'preserving all saved data'}`, async () => {
+            const database = await (service as unknown as { dbPromise: Promise<IDBDatabase> }).dbPromise;
+            const stores = Array.from(database.objectStoreNames);
+            const key = `logout-test-${crypto.randomUUID()}`;
+            try {
+                await new Promise<void>((resolve, reject) => {
+                    const tx = database.transaction(stores, 'readwrite');
+                    for (const name of stores) tx.objectStore(name).put({ test: key }, key);
+                    tx.objectStore('store').put({ uuid: 'old-account' }, 'user');
+                    tx.objectStore('store').put({ colorScheme: 'dark' }, 'options');
+                    tx.oncomplete = () => resolve(); tx.onerror = () => reject(tx.error);
+                });
+                await service.clearLocalSession(deletePersonalData);
+                expect(await service.getUserData()).toBeFalsy();
+                expect(await service.getOptions()).toBeFalsy();
+                const removed = new Set(deletePersonalData ? ['forceStore', 'tagsStore', 'savedSearchesStore', 'customUnitsStore', 'subscribedCustomUnitsStore', 'customUnitSummariesStore'] : []);
+                await new Promise<void>((resolve, reject) => {
+                    const tx = database.transaction(stores, 'readonly');
+                    for (const name of stores) {
+                        const request = tx.objectStore(name).get(key);
+                        request.onsuccess = () => expect(request.result).withContext(name)
+                            .toEqual(removed.has(name) ? undefined : { test: key });
+                    }
+                    tx.oncomplete = () => resolve(); tx.onerror = () => reject(tx.error);
+                });
+            } finally {
+                await new Promise<void>((resolve, reject) => {
+                    const tx = database.transaction(stores, 'readwrite');
+                    for (const name of stores) tx.objectStore(name).delete(key);
+                    tx.oncomplete = () => resolve(); tx.onerror = () => reject(tx.error);
+                });
+            }
+        });
+    }
+
+    it('keeps provided images in a dedicated store across catalog and account resets and purges them independently', async () => {
+        const url = `https://art.example/${crypto.randomUUID()}.png`;
+        const uuid = asUnitUuid(crypto.randomUUID());
+        const blob = new Blob(['provided'], { type: 'image/png' });
+        try {
+            await service.saveUnitArtwork(uuid, { fluff: blob });
+            await service.saveProvidedImage(url, blob);
+            await service.clearCatalogCaches();
+            await service.clearLocalSession();
+            const fresh = TestBed.runInInjectionContext(() => new DbService());
+            expect(await (await fresh.listProvidedImages()).get(url)!.text()).toBe('provided');
+            const database = await (fresh as unknown as { dbPromise: Promise<IDBDatabase> }).dbPromise;
+            expect(database.objectStoreNames.contains('providedImagesStore')).toBeTrue();
+            database.close();
+            await service.purgeProvidedImages();
+            expect((await service.listProvidedImages()).size).toBe(0);
+            expect(await (await service.getUnitArtwork(uuid))!.fluff!.text()).toBe('provided');
+        } finally {
+            await service.purgeUnitArtwork([uuid]);
+            await service.purgeProvidedImages();
+        }
+    });
+
+    it('stores custom native designs in their own store across updates and cache clearing', async () => {
+        const uuid = asUnitUuid(crypto.randomUUID());
+        const record: SavedCustomUnit = {
+            schemaVersion: 1, uuid, createdAt: Date.now(), updatedAt: Date.now(), format: 'mtf',
+            source: `Version:1.3\nuuid:${uuid}\nchassis:Workshop\n`,
+        };
+        try {
+            await saveCustomUnit(record);
+            expect((await service.listCustomUnits()).find(row => (row as SavedCustomUnit).uuid === uuid)).toEqual(record);
+            const updated = { ...record, source: `${record.source}model:Modified\n`, updatedAt: record.updatedAt + 1 };
+            await saveCustomUnit(updated);
+            await service.clearCatalogCaches();
+            const stored = (await service.listCustomUnits()).filter(row => (row as SavedCustomUnit).uuid === uuid);
+            expect(stored).toEqual([updated]);
+            const database = await (service as unknown as { dbPromise: Promise<IDBDatabase> }).dbPromise;
+            expect(database.objectStoreNames.contains('customUnitsStore')).toBeTrue();
+            await deleteCustomUnit(uuid);
+            expect((await service.listCustomUnits()).some(row => (row as SavedCustomUnit).uuid === uuid)).toBeFalse();
+        } finally {
+            await deleteCustomUnit(uuid);
+        }
+    });
+
+    it('stores the same subscribed UUID independently for two accounts', async () => {
+        const uuid = asUnitUuid(crypto.randomUUID());
+        const first: SavedCustomUnit = { schemaVersion: 1, uuid, accountUuid: 'custom-test-first', owned: false, subscribed: true,
+            createdAt: 1, updatedAt: 1, format: 'mtf', source: `uuid:${uuid}\nchassis:Shared\n` };
+        const second = { ...first, accountUuid: 'custom-test-second' };
+        try {
+            await saveCustomUnit(first); await saveCustomUnit(second);
+            expect((await service.listCustomUnits()).filter(row => (row as SavedCustomUnit).uuid === uuid).length).toBe(2);
+            await deleteCustomUnit(uuid, first.accountUuid);
+            expect((await service.listCustomUnits()).filter(row => (row as SavedCustomUnit).uuid === uuid)).toEqual([second]);
+        } finally {
+            await deleteCustomUnit(uuid, first.accountUuid); await deleteCustomUnit(uuid, second.accountUuid);
+        }
+    });
+
+    it('separates owned designs from subscriptions and refuses to persist a temporary preview', async () => {
+        const owned: SavedCustomUnit = { schemaVersion: 1, uuid: asUnitUuid(crypto.randomUUID()), accountUuid: 'separate-stores-test', owned: true,
+            createdAt: 1, updatedAt: 1, format: 'mtf', source: 'test source' };
+        const subscribed = { ...owned, uuid: asUnitUuid(crypto.randomUUID()), owned: false, subscribed: true };
+        try {
+            await saveCustomUnit(owned); await saveCustomUnit(subscribed);
+            await expectAsync(saveCustomUnit({ ...subscribed, subscribed: false })).toBeRejectedWithError(/Only subscribed/);
+            const database = await (service as unknown as { dbPromise: Promise<IDBDatabase> }).dbPromise;
+            expect(database.objectStoreNames.contains('subscribedCustomUnitsStore')).toBeTrue();
+            await new Promise<void>((resolve, reject) => {
+                const tx = database.transaction('subscribedCustomUnitsStore', 'readwrite');
+                tx.objectStore('subscribedCustomUnitsStore').clear();
+                tx.oncomplete = () => resolve(); tx.onerror = () => reject(tx.error);
+            });
+            expect((await service.listCustomUnits()).filter(r => (r as SavedCustomUnit).accountUuid === owned.accountUuid)).toEqual([owned]);
+        } finally {
+            await deleteCustomUnit(owned.uuid, owned.accountUuid); await deleteCustomUnit(subscribed.uuid, owned.accountUuid);
+        }
+    });
+
+    it('writes admitted compact V2 records without materializing their predecessor', async () => {
+        const base: SerializedForce = {
+            version: 2,
+            timestamp: '2026-08-10T00:00:00.000Z',
+            instanceId,
+            type: GameSystem.CBT,
+            name: 'Protected DB Force',
+            personnel: { people: [], assignments: [] },
+            groups: [],
+        };
+        const revision = (value: number) => createEmptyCBTForceForTest(instanceId, value);
+        const first = { ...base, cbt: revision(1) };
+
+        await service.saveForce(first);
+        const stored = await rawStoredForce(instanceId);
+        expect(stored['timestamp']).toBe(Date.parse(first.timestamp));
+        expect(stored['cbt']).toEqual({ r: 1 });
+        expect(stored['units']).toEqual([]);
+        expect(stored['groups']).toEqual([]);
+        expect(stored['personnel']).toBeUndefined();
+        expect((stored['cbt'] as Record<string, unknown>)['forceId']).toBeUndefined();
+        await expectAsync(service.saveForce(base)).toBeRejectedWithError(/current CBT snapshot/u);
+        expect((await service.getForce(instanceId))?.cbt).toEqual(first.cbt);
+
+        const second = { ...base, timestamp: '2026-08-10T00:00:01.000Z', cbt: revision(2) };
+        await service.saveForce(second);
+        expect((await service.getForce(instanceId))?.cbt).toEqual(second.cbt);
+    });
+
+    it('replaces an unreadable row on save without reading it', async () => {
+        await putRawForce(instanceId, {
+            version: 2,
+            timestamp: '2026-08-10T00:00:00.000Z',
+            instanceId,
+            type: GameSystem.CBT,
+            name: 'Unreadable row',
+            cbt: { forceRevision: 99 },
+        });
+        const current: SerializedForce = {
+            version: 2,
+            timestamp: '2026-08-10T00:00:01.000Z',
+            instanceId,
+            type: GameSystem.CBT,
+            name: 'Current compact row',
+            personnel: { people: [], assignments: [] },
+            cbt: createEmptyCBTForceForTest(instanceId, 1),
+        };
+
+        await service.saveForce(current);
+
+        const stored = await rawStoredForce(instanceId);
+        expect(stored['name']).toBe('Current compact row');
+        expect(stored['cbt']).toEqual({ r: 1 });
+        expect(stored['units']).toEqual([]);
+        expect(stored['groups']).toEqual([]);
+    });
+
+    it('lists valid headers without decoding or retaining unreadable combat state', async () => {
+        await putRawForce(instanceId, {
+            version: 2, instanceId, timestamp: Date.parse('2026-08-10T00:00:00Z'), type: GameSystem.CBT, name: 'Preview only',
+            units: [{ id: 'unit:preview', uuid: 'AZ9nZw3Le7iZL67wggL14g', crew: [{ id: 'person:pilot', name: 'Morgan', g: 3 }],
+                state: { l: 'combat data the preview must never inspect' } }],
+            groups: [{ id: 'group:preview', unitIndices: [0] }], cbt: { r: 0 },
+            personnel: [{ id: 'person:reserve', name: 'Unassigned Morgan', health: { unreadable: true } }],
+        });
+
+        const entry = (await service.listForces()).find(force => force.instanceId === instanceId)!;
+        expect(entry.name).toBe('Preview only');
+        expect(entry.reserveCount).toBe(1);
+        expect(entry.groups![0].units[0]).toEqual(jasmine.objectContaining({ alias: 'Morgan', g: 3, p: 5 }));
+        expect(JSON.stringify(entry)).not.toContain('combat data');
+        expect(JSON.stringify(entry)).not.toContain('Unassigned Morgan');
+        expect((entry as unknown as Record<string, unknown>)['cbt']).toBeUndefined();
+        expect(await service.getForcePreview(instanceId)).toEqual(entry);
+        expect(await service.getForcePreview(`${instanceId}-missing`)).toBeNull();
+        await expectAsync(service.getForce(instanceId)).toBeRejected();
+    });
+
+    it('keeps cached V1 source bytes intact until an explicit best-effort load', async () => {
+        const source: SerializedForce = { version: 1, instanceId, timestamp: '2026-09-01T00:00:00Z', type: GameSystem.CBT,
+            name: 'Legacy cache', groups: [{ id: 'g', units: [{ id: 'u', unit: 'Atlas', state: { inventory: 'unreadable' } as never }] }] };
+        await service.saveForce(source);
+        expect(await rawStoredForce(instanceId)).toEqual(source as unknown as Record<string, unknown>);
+        expect(await service.getForce(instanceId)).toEqual(source);
+        expect((await service.listForces()).find(force => force.instanceId === instanceId)?.groups![0].units[0].unit).toBe('Atlas');
+        expect((await service.getForcePreview(instanceId))?.groups![0].units[0].unit).toBe('Atlas');
+    });
+
+    it('rejects unreadable tag updates and aborts their transaction without escaping the event handler', async () => {
+        const database = await (service as unknown as { dbPromise: Promise<IDBDatabase> }).dbPromise;
+        const request = { result: { version: 2, instanceId, type: GameSystem.AS } } as IDBRequest;
+        const put = jasmine.createSpy('put');
+        const abort = jasmine.createSpy('abort');
+        const transaction = { objectStore: () => ({ get: () => request, put }), abort } as unknown as IDBTransaction;
+        const createTransaction = spyOn(database, 'transaction').and.returnValue(transaction);
+        try {
+            const result = service.updateForceTags(instanceId, ['updated']).then(
+                value => ({ value, error: undefined }),
+                error => ({ value: undefined, error }),
+            );
+            await Promise.resolve();
+            let escaped: unknown;
+            try {
+                request.onsuccess?.call(request, new Event('success'));
+            } catch (error) {
+                escaped = error;
+            }
+            expect(escaped).toBeUndefined();
+            // Avoid waiting forever if a broken event handler left the operation pending.
+            if (escaped) return;
+
+            expect((await result).error).toEqual(jasmine.any(Error));
+            expect(abort).toHaveBeenCalledTimes(1);
+            expect(put).not.toHaveBeenCalled();
+        } finally {
+            createTransaction.and.callThrough();
+        }
+    });
+
+    it('leaves an unreadable stored record unchanged when its tag update fails', async () => {
+        const source = { version: 2, instanceId, type: GameSystem.AS, malformed: true };
+        await putRawForce(instanceId, source);
+
+        await expectAsync(service.updateForceTags(instanceId, ['updated'])).toBeRejectedWithError();
+
+        expect(await rawStoredForce(instanceId)).toEqual(source);
+    });
+
+    it('checks existing keys in one transaction without decoding unreadable records', async () => {
+        await putRawForce(instanceId, { version: 2, malformed: true });
+        const database = await (service as unknown as { dbPromise: Promise<IDBDatabase> }).dbPromise;
+        const transaction = database.transaction.bind(database);
+        let get!: jasmine.Spy;
+        let getKey!: jasmine.Spy;
+        const createTransaction = spyOn(database, 'transaction').and.callFake((...args) => {
+            const created = transaction(...args);
+            const store = created.objectStore('forceStore');
+            get = spyOn(store, 'get').and.callThrough();
+            getKey = spyOn(store, 'getKey').and.callThrough();
+            return created;
+        });
+        try {
+            const missingId = `${instanceId}-missing`;
+            expect(await service.getExistingForceIds([instanceId, missingId])).toEqual(new Set([instanceId]));
+            expect(createTransaction).toHaveBeenCalledOnceWith('forceStore', 'readonly');
+            expect(getKey.calls.allArgs()).toEqual([[instanceId], [missingId]]);
+            expect(get).not.toHaveBeenCalled();
+            expect(await service.getExistingForceIds([])).toEqual(new Set());
+            expect(createTransaction).toHaveBeenCalledTimes(1);
+        } finally {
+            createTransaction.and.callThrough();
+        }
+    });
+
+    it('settles only the acknowledged prefix of pending tag ops and keeps them across a sync reset', async () => {
+        const previousState = await service.getTagSyncState();
+        const op = (k: string): TagOp => ({ k, t: 'Scout', c: 0, a: 1, ts: 1 });
+        try {
+            await service.saveTagSyncState({ pendingOps: [op('sent-1'), op('sent-2'), op('queued')], lastSyncTs: 1 });
+
+            expect(await service.clearPendingTagOps(9, 2)).toEqual([op('queued')]);
+            await service.resetTagSyncTimestamp();
+
+            expect(await service.getTagSyncState()).toEqual({ pendingOps: [op('queued')], lastSyncTs: 0 });
+        } finally {
+            await service.saveTagSyncState(previousState);
+        }
+    });
+
+    it('reads subscribed public tags saved before V4 with their unit names as unit keys', async () => {
+        const previous = await service.getSubscribedPublicTags();
+        try {
+            await putRawRecord('publicTagsStore', 'subscribed', {
+                'owner:Lance': { publicId: 'owner', tagName: 'Lance', unitNames: ['Atlas AS7-D'], chassisKeys: [], subscribed: true },
+            });
+
+            expect([...await service.getSubscribedPublicTags()]).toEqual([['owner:Lance', {
+                publicId: 'owner', tagName: 'Lance', unitKeys: ['Atlas AS7-D'], chassisKeys: [], subscribed: true,
+            }]]);
+        } finally {
+            await service.saveSubscribedPublicTags(previous);
+        }
+    });
+});
+
+async function putRawRecord(storeName: string, key: string, value: unknown): Promise<void> {
+    const database = await new Promise<IDBDatabase>((resolve, reject) => {
+        const request = indexedDB.open('mekbay');
+        request.onsuccess = () => resolve(request.result);
+        request.onerror = () => reject(request.error);
+    });
+    try {
+        await new Promise<void>((resolve, reject) => {
+            const transaction = database.transaction(storeName, 'readwrite');
+            transaction.objectStore(storeName).put(value, key);
+            transaction.oncomplete = () => resolve();
+            transaction.onerror = () => reject(transaction.error);
+        });
+    } finally {
+        database.close();
+    }
+}
+
+async function rawStoredForce(instanceId: string): Promise<Record<string, unknown>> {
+    const database = await new Promise<IDBDatabase>((resolve, reject) => {
+        const request = indexedDB.open('mekbay');
+        request.onsuccess = () => resolve(request.result);
+        request.onerror = () => reject(request.error);
+    });
+    try {
+        return await new Promise<Record<string, unknown>>((resolve, reject) => {
+            const transaction = database.transaction('forceStore', 'readonly');
+            const request = transaction.objectStore('forceStore').get(instanceId);
+            transaction.oncomplete = () => resolve(request.result as Record<string, unknown>);
+            transaction.onerror = () => reject(transaction.error);
+        });
+    } finally {
+        database.close();
+    }
+}
+
+async function putRawForce(instanceId: string, force: Record<string, unknown>): Promise<void> {
+    const database = await new Promise<IDBDatabase>((resolve, reject) => {
+        const request = indexedDB.open('mekbay');
+        request.onsuccess = () => resolve(request.result);
+        request.onerror = () => reject(request.error);
+    });
+    try {
+        await new Promise<void>((resolve, reject) => {
+            const transaction = database.transaction('forceStore', 'readwrite');
+            transaction.objectStore('forceStore').put(force, instanceId);
+            transaction.oncomplete = () => resolve();
+            transaction.onerror = () => reject(transaction.error);
+        });
+    } finally {
+        database.close();
+    }
+}
+
+describe('DbService blocked database upgrade', () => {
+    it('rejects before one recovery dialog and closes a late successful connection', async () => {
+        TestBed.resetTestingModule();
+        const request = {} as IDBOpenDBRequest;
+        spyOn(indexedDB, 'open').and.returnValue(request);
+        let resolveChoice!: (choice: 'continue') => void;
+        const choose = jasmine.createSpy('choose').and.returnValue(
+            new Promise<'retry' | 'reset' | 'continue'>(resolve => {
+                resolveChoice = resolve as (choice: 'continue') => void;
+            }),
+        );
+        const showError = jasmine.createSpy('showError').and.resolveTo();
+        TestBed.configureTestingModule({
+            providers: [
+                provideZonelessChangeDetection(),
+                DbService,
+                { provide: LoggerService, useValue: { info() {}, warn() {}, error() {} } },
+                { provide: DialogsService, useValue: { choose, showError } },
+            ],
+        });
+        const service = TestBed.inject(DbService);
+        const ready = service.waitForDbReady();
+
+        request.onblocked?.call(request, new Event('blocked') as IDBVersionChangeEvent);
+        for (let index = 0; index < 4; index += 1) await Promise.resolve();
+        expect(choose).toHaveBeenCalledTimes(1);
+        expect(showError).not.toHaveBeenCalled();
+        const dialogOptions = choose.calls.mostRecent().args[4] as { readonly messageHtml: string };
+        expect(dialogOptions.messageHtml).toContain('Close every other MekBay tab before retrying');
+
+        const close = jasmine.createSpy('close');
+        const lateDatabase = { close } as unknown as IDBDatabase;
+        request.onsuccess?.call(request, {
+            target: { result: lateDatabase },
+        } as unknown as Event);
+        expect(close).toHaveBeenCalledTimes(1);
+
+        resolveChoice('continue');
+        await ready;
+    });
+});
+
+describe('DbService schema change in another tab', () => {
+    it('drops the stale connection, runs without local storage and offers a reload', async () => {
+        TestBed.resetTestingModule();
+        const request = {} as IDBOpenDBRequest;
+        spyOn(indexedDB, 'open').and.returnValue(request);
+        const choose = jasmine.createSpy('choose').and.resolveTo('later');
+        const appUpdate = { updatePending: signal(false), restartForUpdate: jasmine.createSpy('restartForUpdate') };
+        TestBed.configureTestingModule({
+            providers: [
+                provideZonelessChangeDetection(),
+                DbService,
+                { provide: LoggerService, useValue: { info() {}, warn() {}, error() {} } },
+                { provide: DialogsService, useValue: { choose, showError: () => Promise.resolve() } },
+                { provide: AppUpdateService, useValue: appUpdate },
+            ],
+        });
+        const service = TestBed.inject(DbService);
+        const close = jasmine.createSpy('close');
+        const database = { close, onversionchange: null } as unknown as IDBDatabase;
+        request.onsuccess?.call(request, { target: { result: database } } as unknown as Event);
+        await service.waitForDbReady();
+
+        database.onversionchange!.call(database, new Event('versionchange') as IDBVersionChangeEvent);
+        await Promise.resolve();
+
+        expect(close).toHaveBeenCalledTimes(1);
+        expect(appUpdate.updatePending()).toBeTrue();
+        expect(choose).toHaveBeenCalledOnceWith('Reload required', jasmine.any(String), jasmine.any(Array), 'later');
+        expect((await service.listProvidedImages()).size).toBe(0);
+        await expectAsync(service.saveProvidedImage('https://art.example/a.png', new Blob(['a'])))
+            .toBeRejectedWithError(/Local storage is unavailable/);
+        expect(appUpdate.restartForUpdate).not.toHaveBeenCalled();
+    });
+});
+
+describe('DbService legacy catalog cleanup', () => {
+    it('deletes every disposable catalog row during the schema 17 upgrade', async () => {
+        TestBed.resetTestingModule();
+        const openRequest = {} as IDBOpenDBRequest;
+        spyOn(indexedDB, 'open').and.returnValue(openRequest);
+        const deletedKeys: string[] = [];
+        const keyCursorRequest = {} as IDBRequest<IDBCursor | null>;
+        const forceCursorRequest = {} as IDBRequest<IDBCursorWithValue | null>;
+        const baseStore = {
+            indexNames: { contains: () => true },
+            createIndex: () => undefined,
+            openCursor: () => ({} as IDBRequest<IDBCursorWithValue | null>),
+        };
+        const generalStore = {
+            ...baseStore,
+            delete: (key: IDBValidKey) => {
+                deletedKeys.push(String(key));
+                return {} as IDBRequest<undefined>;
+            },
+            openKeyCursor: () => keyCursorRequest,
+        };
+        const forceStore = { ...baseStore, openCursor: () => forceCursorRequest };
+        const stores = new Map<string, unknown>([
+            ['store', generalStore],
+            ['forceStore', forceStore],
+        ]);
+        const storeNames = [
+            'store', 'sheetsStore', 'forceStore', 'tagsStore',
+            'savedSearchesStore', 'canvasStore', 'publicTagsStore',
+            'operationsStore', 'organizationsStore',
+        ];
+        const transaction = {
+            objectStore: (name: string) => stores.get(name) ?? baseStore,
+        } as unknown as IDBTransaction;
+        const database = {
+            objectStoreNames: { contains: (name: string) => storeNames.includes(name) },
+            createObjectStore: () => baseStore,
+            deleteObjectStore: () => undefined,
+            close: () => undefined,
+            onversionchange: null,
+        } as unknown as IDBDatabase;
+        Object.assign(openRequest, { result: database, transaction });
+
+        TestBed.configureTestingModule({
+            providers: [
+                provideZonelessChangeDetection(),
+                DbService,
+                { provide: LoggerService, useValue: { info() {}, warn() {}, error() {} } },
+                { provide: DialogsService, useValue: { choose: () => Promise.resolve('continue'), showError: () => Promise.resolve() } },
+            ],
+        });
+        const service = TestBed.inject(DbService);
+        openRequest.onupgradeneeded?.call(openRequest, {
+            target: openRequest,
+            oldVersion: 16,
+        } as unknown as IDBVersionChangeEvent);
+
+        (forceCursorRequest as unknown as { result: IDBCursorWithValue | null }).result = null;
+        forceCursorRequest.onsuccess?.call(forceCursorRequest, new Event('success'));
+        (keyCursorRequest as unknown as { result: IDBCursor | null }).result = {
+            key: 'options',
+            continue: () => undefined,
+        } as unknown as IDBCursor;
+        keyCursorRequest.onsuccess?.call(keyCursorRequest, new Event('success'));
+
+        for (const key of [
+            'equipment', 'factions', 'megamekFactions', 'megamekAvailability',
+            'megamekRulesets', 'eras', 'sourcebooks', 'quirks', 'sarnaPageTitles',
+            'forceNameWords', 'pilotNames',
+        ]) {
+            expect(deletedKeys).toContain(key);
+        }
+        expect(deletedKeys).not.toContain('options');
+
+        openRequest.onsuccess?.call(openRequest, { target: openRequest } as unknown as Event);
+        await service.waitForDbReady();
+    });
+});

@@ -2,9 +2,10 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 // Author: Drake
 
+import type { DisplayUnitNameFormat } from '../models/options.model';
+import { formatUnitName } from './unit-display-name.util';
 import type { ASForceUnit } from '../models/as-force-unit.model';
 import type { ASForce } from '../models/as-force.model';
-import type { PrintAllOptions } from '../models/print-options.model';
 import type { AsAbilityLookupService } from '../services/as-ability-lookup.service';
 import { formatMovement, formatMovementWithAlternate } from './as-common.util';
 import { createASPrintRulesReferencePage, getASPrintRulesReferenceStyles } from './as-print-reference.util';
@@ -21,7 +22,6 @@ interface RosterCell {
     renderAsHtml?: boolean;
 }
 
-type ASSummaryPrintOptions = Pick<PrintAllOptions, 'printMargin'>;
 type ASAbilityLookup = Pick<AsAbilityLookupService, 'parseAbility'>;
 
 export class ASSummaryPrintUtil {
@@ -29,8 +29,8 @@ export class ASSummaryPrintUtil {
         force: ASForce,
         abilityLookup: ASAbilityLookup,
         useHex: boolean,
-        printOptions: ASSummaryPrintOptions,
         triggerPrint: boolean = true,
+        nameFormat: DisplayUnitNameFormat = 'innerSphereClan',
     ): Promise<void> {
         if (force.units().length === 0) {
             console.warn('No units to export.');
@@ -39,19 +39,20 @@ export class ASSummaryPrintUtil {
 
         const groups = force.groups();
         const forceName = getPrintRosterHeading(force).name;
-        const rosterPage = await this.createRosterSummaryPage(force, useHex);
+        const rosterPage = await this.createRosterSummaryPage(force, useHex, nameFormat);
         const rulesReferencePage = createASPrintRulesReferencePage(
             groups,
             abilityLookup,
             useHex,
             forceName,
+            nameFormat,
         );
 
         await printInOverlay({
             containerId: 'as-summary-print-container',
             bodyClass: 'as-summary-print-active',
             content: rosterPage.outerHTML + rulesReferencePage.outerHTML,
-            styles: this.getPrintStyles(printOptions.printMargin),
+            styles: this.getPrintStyles(),
             triggerPrint,
         });
     }
@@ -59,6 +60,7 @@ export class ASSummaryPrintUtil {
     private static async createRosterSummaryPage(
         force: ASForce,
         useHex: boolean,
+        nameFormat: DisplayUnitNameFormat,
     ): Promise<HTMLElement> {
         const groups = force.groups();
         const container = document.createElement('div');
@@ -82,14 +84,14 @@ export class ASSummaryPrintUtil {
         let totalPv = 0;
         for (const group of groups) {
             for (const forceUnit of group.units()) {
-                const unit = forceUnit.getUnit();
+                const unit = forceUnit.getSummary();
                 const as = unit.as;
                 const adjustedPv = forceUnit.adjustedPv();
                 totalPv += adjustedPv;
 
                 const row = document.createElement('tr');
                 const cells: RosterCell[] = [
-                    { content: [unit.chassis, unit.model].filter(Boolean).join(' ') },
+                    { content: formatUnitName(unit, nameFormat) },
                     { content: as.TP },
                     { content: String(as.SZ) },
                     { content: String(forceUnit.pilotSkill()) },
@@ -132,7 +134,7 @@ export class ASSummaryPrintUtil {
     }
 
     private static formatRosterTmm(forceUnit: ASForceUnit): string {
-        const isBattleMek = forceUnit.getUnit().as.TP === 'BM';
+        const isBattleMek = forceUnit.getSummary().as.TP === 'BM';
         return Object.entries(forceUnit.effectiveTmm())
             .filter(([mode]) => !isBattleMek || (mode !== 'a' && mode !== 'g'))
             .map(([mode, value]) => `${value}${mode}`)
@@ -145,7 +147,7 @@ export class ASSummaryPrintUtil {
     }
 
     private static formatRosterMovement(forceUnit: ASForceUnit, useHex: boolean): string {
-        const isBattleMek = forceUnit.getUnit().as.TP === 'BM';
+        const isBattleMek = forceUnit.getSummary().as.TP === 'BM';
         return (Object.entries(forceUnit.effectiveMovement()) as Array<[string, number]>)
             .filter(([mode, value]) => typeof value === 'number'
                 && (!isBattleMek || (mode !== 'a' && mode !== 'g')))
@@ -176,7 +178,7 @@ export class ASSummaryPrintUtil {
         return td;
     }
 
-    private static getPrintStyles(printMargin: PrintAllOptions['printMargin']): string {
+    private static getPrintStyles(): string {
         return `
             @media screen {
                 #as-summary-print-container {
@@ -203,7 +205,7 @@ export class ASSummaryPrintUtil {
                 #as-summary-print-container {
                     display: block;
                     width: 100% !important;
-                    height: 100% !important;
+                    height: auto !important;
                     margin: 0 !important;
                     padding: 0 !important;
                 }
@@ -226,7 +228,7 @@ export class ASSummaryPrintUtil {
                 }
 
                 @page {
-                    margin: ${printMargin === 'none' ? '0in' : '0.25in'} !important;
+                    margin: 0.25in !important;
                 }
             }
         `;

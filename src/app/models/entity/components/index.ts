@@ -13,12 +13,9 @@
 export {
   type GyroType,
   type GyroTypeDescriptor,
-  type GyroComponent,
   GYRO_DATA,
-  getGyro,
-  getAllGyroTypes,
   getGyroTechAdvancement,
-} from './gyro';
+} from './gyro-data';
 
 export {
   getAllCockpitTypes,
@@ -37,11 +34,13 @@ export {
 } from '../components/cockpit-data';
 
 export {
+  EXPERIMENTAL_MEK_SYSTEM_TECH,
   getFullHeadEjectionTech,
   getRiscHeatSinkOverrideKitTech,
 } from './mek-system-tech-data';
 
 export {
+  DROPSHIP_COLLAR_TECH,
   getAerospaceFighterConstructionTech,
   getBattleArmorConstructionTech,
   getCombatVehicleConstructionTech,
@@ -65,6 +64,7 @@ export {
 } from './construction-tech-data';
 
 export {
+  armoredComponentStaticTechLevel,
   MIXED_TECH,
   OMNI_TECH,
   OMNI_VEHICLE_TECH,
@@ -86,10 +86,13 @@ export {
   getStructureTechAdvancement,
 } from './structure';
 
+export { structureTechAdvancement } from './structure-tech-data';
+
 export {
   type MountedArmorType,
   MountedArmor,
   type MountedArmorOptions,
+  STANDARD_ARMOR_EQUIPMENT,
 } from './armor';
 
 export {

@@ -42,5 +42,3 @@ export interface OAuthFlowResult {
     replaceExisting?: boolean;
     userState?: UserStateSnapshot;
 }
-
-export type OAuthPopupResult = OAuthFlowResult;

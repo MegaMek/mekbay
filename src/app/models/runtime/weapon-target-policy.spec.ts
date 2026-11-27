@@ -1,0 +1,117 @@
+// Copyright (C) 2026 The MegaMek Team
+// SPDX-License-Identifier: GPL-3.0-or-later
+
+import { AmmoEquipment, WeaponEquipment, type AmmoType } from '../equipment.model';
+import type { AmmoMunitionFlag } from '../ammo-munition-flags.type';
+import type { EquipmentFlag } from '../equipment-flags.type';
+import {
+    TARGET_BOMBAST_SECONDARY_REASON,
+    TARGET_NARC_BUILDING_REASON,
+    TARGET_NARC_INFANTRY_REASON,
+    TARGET_TAG_INFANTRY_REASON,
+    TARGET_THUNDER_TERRAIN_REASON,
+    TARGET_WATER_LAYER_REASON,
+    weaponTargetDisabledReason,
+    type WeaponTargetSubject,
+} from './weapon-target-policy';
+
+function weapon(
+    flags: EquipmentFlag[],
+    ammoType: AmmoType = 'NA',
+    selectedAmmo: AmmoEquipment | null = null,
+    underwater = false,
+): WeaponTargetSubject {
+    return {
+        weapon: new WeaponEquipment({
+            id: flags.join('-') || 'weapon',
+            name: 'Weapon',
+            type: 'weapon',
+            flags,
+            weapon: { ammoType, rackSize: ammoType === 'NA' ? 0 : 10, ranges: [7, 14, 21, 28] },
+        }),
+        selectedAmmo,
+        underwater,
+    };
+}
+
+function ammo(munitionType: AmmoMunitionFlag[] = []): AmmoEquipment {
+    return new AmmoEquipment({
+        id: `ammo-${munitionType.join('-')}`,
+        name: 'Ammo',
+        type: 'ammo',
+        ammo: { type: 'LRM', rackSize: 10, shots: 12, munitionType },
+    });
+}
+
+describe('weapon target policy', () => {
+    it('restricts nonpenetrating attacks to conventional infantry and requires AA for a flying aerospace target', () => {
+        const base = weapon([]);
+        expect(weaponTargetDisabledReason({ ...base, infantryOnly: true }, 'total-warfare', { unitType: 'infantry' })).toBeNull();
+        for (const unitType of ['battle-armor', 'mek-biped', 'vehicle'] as const) {
+            expect(weaponTargetDisabledReason({ ...base, infantryOnly: true }, 'total-warfare', { unitType })).not.toBeNull();
+        }
+        const airborne = { unitType: 'aero' as const, calculator: { isAirborne: true } };
+        expect(weaponTargetDisabledReason({ ...base, groundToAirBlocked: true }, 'total-warfare', airborne)).not.toBeNull();
+        expect(weaponTargetDisabledReason(base, 'total-warfare', airborne)).toBeNull();
+        expect(weaponTargetDisabledReason({ ...base, groundToAirBlocked: true }, 'total-warfare', { unitType: 'aero' })).toBeNull();
+    });
+
+    it('requires a building target from outside and allows direct fire from within the same building', () => {
+        for (const unitType of ['infantry', 'battle-armor'] as const) {
+            const target = { unitType, calculator: { buildingCover: 'building-2' as const } };
+            expect(weaponTargetDisabledReason(weapon([]), 'total-warfare', target)).toContain('Target the building');
+            const local = { calculator: { insideTargetBuilding: true as const, infantryBuildingType: 'heavy' as const } };
+            expect(weaponTargetDisabledReason(weapon([]), 'total-warfare', { ...target, local })).toBeNull();
+            expect(weaponTargetDisabledReason(weapon([]), 'total-warfare', { ...target,
+                local: { distance: 1, calculator: { ...local.calculator, targetLevelDifference: 3 } } })).toContain('line of sight');
+            expect(weaponTargetDisabledReason(weapon([]), 'core-2026', target)).toBeNull();
+        }
+    });
+
+    it('checks interior lines of sight between noninfantry units in a multihex building', () => {
+        const target = { unitType: 'mek-biped' as const, calculator: { buildingCover: 'building-2' as const },
+            local: { distance: 2, calculator: { insideTargetBuilding: true as const, targetLevelDifference: 2 } } };
+        expect(weaponTargetDisabledReason(weapon([]), 'total-warfare', target)).toContain('line of sight');
+        expect(weaponTargetDisabledReason(weapon([]), 'total-warfare', { ...target, local: { ...target.local, distance: 1 } })).toBeNull();
+    });
+
+    it('restricts Thunder ammunition to terrain regardless of a manual TN override', () => {
+        const launcher = weapon(['F_INDIRECT_FIRE'], 'LRM', ammo(['M_THUNDER']));
+        expect(weaponTargetDisabledReason(launcher, 'core-2026', {
+            unitType: 'mek-biped',
+            local: { manualTnOverride: { kind: 'user-manual', modifier: 2 } },
+        })).toBe(TARGET_THUNDER_TERRAIN_REASON);
+        expect(weaponTargetDisabledReason(launcher, 'core-2026', { unitType: 'terrain' })).toBeNull();
+    });
+
+    it('applies Total Warfare TAG, NARC, and Bombast restrictions only where its rules require them', () => {
+        expect(weaponTargetDisabledReason(
+            weapon(['F_TAG']), 'total-warfare', { unitType: 'infantry' },
+        )).toBe(TARGET_TAG_INFANTRY_REASON);
+        expect(weaponTargetDisabledReason(
+            weapon(['F_NARC']), 'total-warfare', { unitType: 'battle-armor' },
+        )).toBe(TARGET_NARC_INFANTRY_REASON);
+        expect(weaponTargetDisabledReason(
+            weapon(['F_NARC']), 'total-warfare',
+            { unitType: 'mek-biped', calculator: { buildingCover: 'building-1' } },
+        )).toBe(TARGET_NARC_BUILDING_REASON);
+        expect(weaponTargetDisabledReason(
+            weapon(['F_BOMBAST_LASER']), 'total-warfare',
+            { unitType: 'mek-biped', local: { calculator: { secondaryTarget: true } } },
+        )).toBe(TARGET_BOMBAST_SECONDARY_REASON);
+        expect(weaponTargetDisabledReason(
+            weapon(['F_TAG']), 'core-2026', { unitType: 'infantry' },
+        )).toBeNull();
+    });
+
+    it('keeps weapons and targets in the same water layer', () => {
+        expect(weaponTargetDisabledReason(
+            weapon(['F_DIRECT_FIRE']), 'core-2026',
+            { unitType: 'mek-biped', calculator: { waterDepth: 'underwater-depth-2' } },
+        )).toBe(TARGET_WATER_LAYER_REASON);
+        expect(weaponTargetDisabledReason(
+            weapon(['F_DIRECT_FIRE'], 'NA', null, true), 'core-2026',
+            { unitType: 'mek-biped', local: { calculator: { partialCover: true } } },
+        )).toBe(TARGET_WATER_LAYER_REASON);
+    });
+});

@@ -2,8 +2,10 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 // Author: Drake
 
+import { normalizeMulId } from '../utils/mul-id';
+import { parseForceGeneratorAvailability } from '../types/force-generator-availability';
 import { BaseEntity } from '../base-entity';
-import { AmmoEquipment, WeaponEquipment } from '../../equipment.model';
+import { AmmoEquipment, ammoMatchesWeapon, WeaponEquipment } from '../../equipment.model';
 import {
   MountedEngine,
   MountedArmor,
@@ -17,16 +19,17 @@ import type { SupportVehicle } from '../entities/support-vehicle';
 import { VehicleEntity } from '../entities/vehicle/vehicle-entity';
 import {
   ArmorType,
-  EntityFluff,
   EntityMountedEquipment,
+  type EntityMountedEquipmentInput,
+  type EntityMountedWeapon,
   EntityQuirk,
   EntityTechBase,
   EntityWeaponQuirk,
+  factionFromAbbr,
   HeatSinkType,
   LocationArmor,
   VALID_TECH_BASE_STRINGS,
   locationArmor,
-  normalizeSystemManufacturerKey,
   requireArmorEquipment,
   resolveArmorEquipment,
 } from '../types';
@@ -43,8 +46,13 @@ import {
 import { createCompoundTechLevel } from '../types/tech';
 import { BuildingBlock } from './building-block';
 import { parseEquipmentLine, type EquipmentLineProfile } from './equipment-resolver';
+import { installedMaterialSlotName } from './material-slot-name';
 import { parseTransporterLines } from './transporter-codec';
 import { ParseContext } from './parse-context';
+import { parseBlkEntityFluff } from './entity-fluff-parser';
+import { standardWeaponBayDamage, weaponBayDamageLimit, weaponBayGroupingKey } from '../utils/weapon-bay-grouping';
+import { asUnitUuid } from '../../../services/unit-catalog/unit-catalog.types';
+import type { EquipmentBayInput } from '../equipment-relationships';
 
 /**
  * Common BLK parsing - reads universal blocks that apply to all unit types.
@@ -52,21 +60,18 @@ import { ParseContext } from './parse-context';
  * Each type-specific parser calls `parseBaseBlk(bb, entity, ctx)` first,
  * then handles its own type-specific blocks.
  */
-export function parseBaseBlk(
-  bb: BuildingBlock,
-  entity: BaseEntity,
-  ctx: ParseContext,
-): void {
+export function parseBaseBlk(bb: BuildingBlock, entity: BaseEntity, ctx: ParseContext): void {
   // ── Identity ──
   const uuid = bb.getFirstString('UUID');
-  if (uuid) entity.uuid.set(uuid);
+  if (uuid) entity.uuid.set(asUnitUuid(uuid));
+  const refitFromUUID = bb.getFirstString('refitFromUUID');
+  if (refitFromUUID) entity.refitFromUUID.set(asUnitUuid(refitFromUUID));
   entity.chassis.set(bb.getFirstString('Name'));
   entity.model.set(bb.getFirstString('Model'));
 
   if (bb.exists('mul id:')) {
-    const mulId = bb.getFirstInt('mul id:');
-    ctx.validateNonNegativeInt('mul id:', mulId);
-    entity.mulId.set(mulId);
+    const mulId = bb.getFirstString('mul id:');
+    entity.mulId.set(normalizeMulId(mulId));
   }
 
   // ── Year ──
@@ -79,7 +84,7 @@ export function parseBaseBlk(
   if (bb.exists('originalBuildYear')) {
     const oby = bb.getFirstInt('originalBuildYear');
     ctx.validateNumber('originalBuildYear', oby);
-    entity.originalBuildYear.set(oby);
+    entity.originalBuildYear.set(oby === entity.year() ? -1 : oby);
   }
 
   // ── Tech Level ──
@@ -93,14 +98,29 @@ export function parseBaseBlk(
   }
 
   // ── Meta ──
+  if (bb.exists('availability')) {
+    entity.forceGeneratorAvailability.set(
+      parseForceGeneratorAvailability(bb.getDataAsString('availability'), (message) =>
+        ctx.warn('availability', message),
+      ),
+    );
+  }
   if (bb.exists('role')) {
     entity.role.set(bb.getFirstString('role'));
   }
+  if (bb.exists('missionroles')) {
+    entity.missionRoles.set(bb.getFirstString('missionroles').trim());
+  }
   if (bb.exists('source')) {
-    entity.source.set(parseMetadataList(bb.getDataAsString('source')).map(source => ctx.resolveSourcebook(source)));
+    entity.source.set(parseMetadataList(bb.getDataAsString('source')).map((source) => ctx.resolveSourcebook(source)));
   }
   if (bb.exists('published')) {
-    entity.published.set(parseMetadataList(bb.getDataAsString('published')).map(source => ctx.resolveSourcebook(source)));
+    entity.published.set(
+      parseMetadataList(bb.getDataAsString('published')).map((source) => ctx.resolveSourcebook(source)),
+    );
+  }
+  if (bb.exists('faction')) {
+    entity.faction.set(factionFromAbbr(bb.getFirstString('faction')));
   }
   if (bb.exists('omni')) {
     entity.omni.set(bb.getFirstString('omni').toLowerCase() === 'true' || bb.getFirstInt('omni') === 1);
@@ -130,8 +150,7 @@ export function parseBaseBlk(
     for (const line of quirkLines) {
       const trimmed = line.trim();
       if (trimmed) {
-        const quirk = ctx.resolveQuirk(trimmed);
-        if (quirk) quirks.push(quirk);
+        quirks.push(ctx.resolveQuirk(trimmed));
       }
     }
     entity.quirks.set(quirks);
@@ -160,74 +179,19 @@ export function parseBaseBlk(
     entity.transporters.set(parseTransporterLines(bb.getDataAsString('transporters'), entity.techBase(), ctx));
   }
   if ((entity instanceof MekEntity || entity instanceof VehicleEntity) && entity.omni()) {
-    entity.transporters.update(transporters => [...transporters, {
-      id: `transporter-${transporters.length + 1}`,
-      kind: 'battle-armor-handles',
-      troopers: -1,
-      omni: false,
-    }]);
+    entity.transporters.update((transporters) => [
+      ...transporters,
+      {
+        id: `transporter-${transporters.length + 1}`,
+        kind: 'battle-armor-handles',
+        troopers: -1,
+        omni: false,
+      },
+    ]);
   }
 
   // ── Fluff ──
-  const fluff: EntityFluff = {};
-  if (bb.exists('overview')) fluff.overview = bb.getDataAsString('overview').join('\n');
-  if (bb.exists('capabilities')) fluff.capabilities = bb.getDataAsString('capabilities').join('\n');
-  if (bb.exists('deployment')) fluff.deployment = bb.getDataAsString('deployment').join('\n');
-  if (bb.exists('history')) fluff.history = bb.getDataAsString('history').join('\n');
-  if (bb.exists('manufacturer')) fluff.manufacturer = bb.getDataAsString('manufacturer').join('\n');
-  if (bb.exists('primaryFactory')) fluff.primaryFactory = bb.getFirstString('primaryFactory');
-  if (bb.exists('notes')) fluff.notes = bb.getDataAsString('notes').join('\n');
-  if (bb.exists('fluffDate')) fluff.fluffDate = bb.getFirstString('fluffDate');
-  if (bb.exists('use')) fluff.use = bb.getFirstString('use');
-  if (bb.exists('length')) fluff.length = bb.getFirstString('length');
-  if (bb.exists('width')) fluff.width = bb.getFirstString('width');
-  if (bb.exists('height')) fluff.height = bb.getFirstString('height');
-
-  // System manufacturers
-  {
-    const sysMfrs: Record<string, string> = {};
-    // Format 1: unified block
-    if (bb.exists('systemManufacturers')) {
-      const sysLines = bb.getDataAsString('systemManufacturers');
-      for (const line of sysLines) {
-        const colonIdx = line.indexOf(':');
-        if (colonIdx > 0) {
-          const rawKey = line.substring(0, colonIdx);
-          const canonical = normalizeSystemManufacturerKey(rawKey);
-          if (!canonical) {
-            ctx.warn('systemManufacturers', `Unknown system manufacturer key: "${rawKey}"`);
-          }
-          sysMfrs[canonical ?? rawKey] = line.substring(colonIdx + 1);
-        }
-      }
-    }
-    if (Object.keys(sysMfrs).length > 0) {
-      fluff.systemManufacturers = sysMfrs;
-    }
-  }
-
-  {
-    const sysModels: Record<string, string> = {};
-    if (bb.exists('systemModels')) {
-      const modelLines = bb.getDataAsString('systemModels');
-      for (const line of modelLines) {
-        const colonIdx = line.indexOf(':');
-        if (colonIdx > 0) {
-          const rawKey = line.substring(0, colonIdx);
-          const canonical = normalizeSystemManufacturerKey(rawKey);
-          if (!canonical) {
-            ctx.warn('systemModels', `Unknown system model key: "${rawKey}"`);
-          }
-          sysModels[canonical ?? rawKey] = line.substring(colonIdx + 1);
-        }
-      }
-    }
-    if (Object.keys(sysModels).length > 0) {
-      fluff.systemModels = sysModels;
-    }
-  }
-
-  entity.fluff.set(fluff);
+  entity.fluff.set(parseBlkEntityFluff(bb, (field, message) => ctx.warn(field, message)));
 
   // ── BV override ──
   if (bb.exists('bv')) {
@@ -235,6 +199,7 @@ export function parseBaseBlk(
   }
 
   // ── Icon / Fluff image ──
+  entity.iconPath.set(bb.getFirstString('iconpath'));
   if (bb.exists('icon')) {
     entity.iconEncoded.set(bb.getFirstString('icon'));
   }
@@ -243,32 +208,25 @@ export function parseBaseBlk(
   }
 }
 
-export function resolveBlkStructure(
-  entity: BaseEntity,
-  typeId: number,
-  ctx: ParseContext,
-): boolean {
+export function resolveBlkStructure(entity: BaseEntity, typeId: number, ctx: ParseContext): boolean {
   const structure = getStructureByTypeId(typeId, entity.techBase(), ctx.equipmentRegistry);
-  const fallback = getStructureByTypeId(0, entity.techBase(), ctx.equipmentRegistry)
-    ?? STANDARD_STRUCTURE_EQUIPMENT;
-  entity.setUniformStructure(new MountedStructure({
-    tonnage: entity.tonnage(),
-    structure: structure ?? fallback,
-  }));
+  const fallback = getStructureByTypeId(0, entity.techBase(), ctx.equipmentRegistry) ?? STANDARD_STRUCTURE_EQUIPMENT;
+  entity.setUniformStructure(
+    new MountedStructure({
+      tonnage: entity.tonnage(),
+      structure: structure ?? fallback,
+    }),
+  );
   return structure !== null;
 }
 
 function parseMetadataList(values: readonly string[]): string[] {
-  return values.flatMap(value => value.split(',').map(item => item.trim()).filter(Boolean));
-}
-
-/**
- * Parse equipment from a location block in BLK format.
- * Returns array of equipment lines (already trimmed).
- */
-export function getBlkEquipmentLines(bb: BuildingBlock, locationTag: string): string[] {
-  if (!bb.exists(locationTag)) return [];
-  return bb.getDataAsString(locationTag).filter(l => l.trim() !== '');
+  return values.flatMap((value) =>
+    value
+      .split(',')
+      .map((item) => item.trim())
+      .filter(Boolean),
+  );
 }
 
 /**
@@ -293,16 +251,12 @@ export function parseBlkEquipment(
     equipmentLineProfile?: EquipmentLineProfile;
   },
 ): void {
-  const createsWeaponBays = opts?.equipmentLineProfile === 'large-craft'
-    || opts?.equipmentLineProfile === 'dropship';
+  const createsWeaponBays = opts?.equipmentLineProfile === 'large-craft' || opts?.equipmentLineProfile === 'dropship';
+  const parsedBays: EquipmentBayInput[] = [];
   for (const [blkTag, locCode] of equipTags) {
     if (!bb.exists(blkTag)) continue;
-    let currentBay: EntityMountedEquipment[] = [];
-    const finishBay = (): void => {
-      if (currentBay.length === 0) return;
-      entity.addEquipmentBay('weapon-bay', { mounts: currentBay });
-      currentBay = [];
-    };
+    const inputs: EntityMountedEquipmentInput[] = [];
+    const newBayStarts = new Set<number>();
     const lines = bb.getDataAsString(blkTag);
     for (const raw of lines) {
       const line = raw.trim();
@@ -310,14 +264,18 @@ export function parseBlkEquipment(
 
       const parsed = parseEquipmentLine(line, { profile: opts?.equipmentLineProfile });
       if (parsed.omniPod) entity.omni.set(true);
-      const resolved = ctx.resolveEquipment(parsed.name, blkTag, entity.techBase());
-      const shotsCount = opts?.equipmentLineProfile === 'large-craft'
-        || opts?.equipmentLineProfile === 'dropship'
-        ? resolved?.type === 'ammo' ? parsed.shots : undefined
-        : parsed.shots;
+      const equipmentId = installedMaterialSlotName(entity, locCode, parsed.name, ctx);
+      const resolved = ctx.resolveEquipment(equipmentId, blkTag, entity.techBase());
+      const shotsCount =
+        opts?.equipmentLineProfile === 'large-craft' || opts?.equipmentLineProfile === 'dropship'
+          ? resolved?.type === 'ammo'
+            ? parsed.shots
+            : undefined
+          : parsed.shots;
 
-      const mount = entity.addEquipment({
-        equipmentId: parsed.name,
+      if (parsed.isNewBay) newBayStarts.add(inputs.length);
+      inputs.push({
+        equipmentId,
         equipment: resolved ?? undefined,
         allocation: { kind: 'location', location: locCode },
         rearMounted: parsed.rearMounted,
@@ -329,17 +287,86 @@ export function parseBlkEquipment(
         facing: parsed.facing,
         shotsCount,
       });
-      if (createsWeaponBays) {
-        if (resolved instanceof WeaponEquipment) {
-          if (parsed.isNewBay) finishBay();
-          currentBay.push(mount);
-        } else if (resolved instanceof AmmoEquipment && currentBay.length > 0) {
-          currentBay.push(mount);
+    }
+    const mounts = entity.addEquipmentBatch(inputs);
+    if (createsWeaponBays) {
+      parsedBays.push(...groupParsedWeaponBays(mounts, newBayStarts));
+    }
+  }
+  if (parsedBays.length > 0) {
+    entity.replaceEquipmentBays('weapon-bay', [
+      ...entity.equipmentBays().filter((bay) => bay.kind === 'weapon-bay'),
+      ...parsedBays,
+    ]);
+  }
+}
+
+/** Preserve authored bay starts and ammo order while enforcing the weapon-class damage limit. */
+function groupParsedWeaponBays(
+  mounts: readonly EntityMountedEquipment[],
+  newBayStarts: ReadonlySet<number>,
+): readonly EquipmentBayInput[] {
+  interface ParsedWeaponBay {
+    readonly key: string;
+    readonly mounts: EntityMountedEquipment[];
+    readonly weapons: EntityMountedWeapon[];
+    damage: number;
+  }
+  const bays: ParsedWeaponBay[] = [];
+  const pendingAmmo: EntityMountedEquipment[] = [];
+  let currentBay: ParsedWeaponBay | undefined;
+  for (let mountIndex = 0; mountIndex < mounts.length; mountIndex++) {
+    const mount = mounts[mountIndex];
+    if (mount.equipment instanceof WeaponEquipment) {
+      const weapon = mount as EntityMountedWeapon;
+      const key = weaponBayGroupingKey(weapon);
+      const damage = standardWeaponBayDamage(weapon);
+      if (
+        newBayStarts.has(mountIndex) ||
+        currentBay === undefined ||
+        currentBay.key !== key ||
+        currentBay.damage + damage > weaponBayDamageLimit(weapon)
+      ) {
+        currentBay = { key, mounts: [], weapons: [], damage: 0 };
+        bays.push(currentBay);
+      }
+      currentBay.mounts.push(weapon);
+      currentBay.weapons.push(weapon);
+      currentBay.damage += damage;
+      for (let index = 0; index < pendingAmmo.length;) {
+        if (ammoFitsParsedBay(pendingAmmo[index], currentBay)) {
+          currentBay.mounts.push(pendingAmmo[index]);
+          pendingAmmo.splice(index, 1);
+        } else {
+          index++;
         }
       }
+    } else if (mount.equipment instanceof AmmoEquipment) {
+      let compatibleBay: ParsedWeaponBay | undefined;
+      for (let index = bays.length - 1; index >= 0; index--) {
+        if (ammoFitsParsedBay(mount, bays[index])) {
+          compatibleBay = bays[index];
+          break;
+        }
+      }
+      if (compatibleBay) compatibleBay.mounts.push(mount);
+      else pendingAmmo.push(mount);
     }
-    if (createsWeaponBays) finishBay();
   }
+  return bays;
+}
+
+function ammoFitsParsedBay(
+  ammo: EntityMountedEquipment,
+  bay: {
+    readonly weapons: readonly EntityMountedWeapon[];
+  },
+): boolean {
+  const ammoEquipment = ammo.equipment;
+  if (!(ammoEquipment instanceof AmmoEquipment)) return false;
+  return bay.weapons.some(
+    (weapon) => weapon.rearMounted === ammo.rearMounted && ammoMatchesWeapon(weapon.equipment, ammoEquipment),
+  );
 }
 
 /**
@@ -379,9 +406,6 @@ export function getBlkEngineIsClan(bb: BuildingBlock): EntityTechBase {
  * blocks themselves.
  */
 export interface BlkEngineOpts {
-  /** Mark the engine as super-heavy (tonnage > 100).  Default: `false`. */
-  isSuperHeavy?: boolean;
-
   /** Entity-family-specific derived engine rating. Default: walk MP x tonnage. */
   rating?: number;
 
@@ -431,7 +455,6 @@ export function parseBlkEngine(
   opts: BlkEngineOpts = {},
 ): BlkEngineResult | undefined {
   const {
-    isSuperHeavy = false,
     rating = entity.walkMP() * entity.tonnage(),
     includeHeatSinks = true,
     defaultTotalHeatSinks = 10,
@@ -442,7 +465,7 @@ export function parseBlkEngine(
   if (engineTypeRequired && !bb.exists('engine_type')) return undefined;
   const engineType = bb.exists('engine_type')
     ? decodeBlkEngineType(bb.getFirstInt('engine_type'))
-    : 'Fusion' as const;
+    : ('Fusion' as const);
 
   // ── Clan flag (respects clan_engine override for mixed-tech) ──
   const engineTechBase = getBlkEngineIsClan(bb);
@@ -464,7 +487,6 @@ export function parseBlkEngine(
     type: engineType,
     rating,
     techBase: engineTechBase,
-    isSuperHeavy,
   });
 
   return { mountedEngine, heatSinkType, totalHeatSinks };
@@ -495,9 +517,7 @@ export function parseBlkArmor(
   const decodedType: ArmorType = bb.exists('armor_type')
     ? decodeBlkArmorType(bb.getFirstInt('armor_type'))
     : 'STANDARD';
-  const type: ArmorType = decodedType === 'STANDARD' && opts?.remapStandardTo
-    ? opts.remapStandardTo
-    : decodedType;
+  const type: ArmorType = decodedType === 'STANDARD' && opts?.remapStandardTo ? opts.remapStandardTo : decodedType;
 
   // ── Armor-specific tech base ──
   const compoundCode = bb.exists('armor_tech_level')
@@ -505,100 +525,88 @@ export function parseBlkArmor(
     : bb.exists('armor_tech')
       ? bb.getFirstInt('armor_tech')
       : null;
-  const techBase: EntityTechBase = compoundCode == null
-    ? entity.techBase()
-    : decodeBlkCompoundTechBase(compoundCode, entity.techBase());
+  const techBase: EntityTechBase =
+    compoundCode == null ? entity.techBase() : decodeBlkCompoundTechBase(compoundCode, entity.techBase());
 
   // ── Resolve common/default armor ──
   const resolvedArmor = resolveArmorEquipment(type, techBase === 'Clan', ctx.equipmentRegistry);
   if (type !== 'PATCHWORK' && !resolvedArmor) {
     ctx.error('armor_type', `Invalid armor type ${type} for ${techBase} technology`);
   }
-  const armor = resolvedArmor ?? requireArmorEquipment(
-    'STANDARD',
-    techBase === 'Clan',
-    ctx.equipmentRegistry,
-  );
-  const technology = compoundCode == null
-    ? createCompoundTechLevel(componentTechLevelFromRulesLevel(entity.rulesLevel()), techBase)
-    : decodeBlkCompoundTechLevel(compoundCode);
-  const techRating = bb.exists('armor_tech_rating')
-    ? decodeBlkTechRating(bb.getFirstInt('armor_tech_rating'))
-    : null;
+  const armor = resolvedArmor ?? requireArmorEquipment('STANDARD', techBase === 'Clan', ctx.equipmentRegistry);
+  const technology =
+    compoundCode == null
+      ? createCompoundTechLevel(componentTechLevelFromRulesLevel(entity.rulesLevel()), techBase)
+      : decodeBlkCompoundTechLevel(compoundCode);
+  const techRating = bb.exists('armor_tech_rating') ? decodeBlkTechRating(bb.getFirstInt('armor_tech_rating')) : null;
 
   if (type !== 'PATCHWORK') {
-    entity.setUniformArmor(new MountedArmor({
-      techBase,
-      armor,
-      technology,
-      techRating,
-    }));
+    entity.setUniformArmor(
+      new MountedArmor({
+        techBase,
+        armor,
+        technology,
+        techRating,
+      }),
+    );
     return;
   }
 
-  // Patchwork is a wire-format marker. Domain state is effective armor at
-  // every real armor location; pseudo-locations remain codec-only sentinels.
-  entity.setUniformArmor(new MountedArmor({
-    armor: requireArmorEquipment(
-      'STANDARD',
-      entity.techBase() === 'Clan',
-      ctx.equipmentRegistry,
-    ),
-    techBase: entity.techBase(),
-  }));
+  // Preserve the native mode even if all effective location materials match.
+  entity.setUniformArmor(
+    new MountedArmor({
+      armor: requireArmorEquipment('STANDARD', entity.techBase() === 'Clan', ctx.equipmentRegistry),
+      techBase: entity.techBase(),
+    }),
+  );
+  entity.enablePatchworkArmor();
   if (type === 'PATCHWORK' && opts?.patchworkLocs) {
     for (const loc of opts.patchworkLocs) {
       if (!entity.armorLocations.includes(loc)) continue;
-      if (!bb.exists(`${loc}_armor_type`)) continue;
-      const code = bb.getFirstInt(`${loc}_armor_type`);
+      const hasLocalBar = entity.isSupportVehicle() && bb.exists(`${loc}_barrating`);
+      if (!bb.exists(`${loc}_armor_type`) && !hasLocalBar) continue;
+      const code = bb.exists(`${loc}_armor_type`) ? bb.getFirstInt(`${loc}_armor_type`) : 0;
       if (code < 0) continue;
       const locationTech = bb.getFirstString(`${loc}_armor_tech`).toLowerCase();
       const explicitClan = locationTech.includes('clan');
       const explicitIs = locationTech.includes('inner sphere');
       const isClan = explicitClan || (!explicitIs && entity.techBase() === 'Clan');
-      const locationType = decodeBlkArmorType(code);
+      const locationType = hasLocalBar
+        ? (`SV_BAR_${bb.getFirstInt(`${loc}_barrating`)}` as ArmorType)
+        : decodeBlkArmorType(code);
       if (locationType === 'PATCHWORK') continue;
-      const locationArmor = resolveArmorEquipment(
-        locationType,
-        isClan,
-        ctx.equipmentRegistry,
-      );
+      const locationArmor = resolveArmorEquipment(locationType, isClan, ctx.equipmentRegistry);
       if (!locationArmor) {
         ctx.error(`${loc}_armor_type`, `Invalid armor type ${locationType} for ${isClan ? 'Clan' : 'IS'} technology`);
       }
-      entity.setArmorAt(loc, new MountedArmor({
-        armor: locationArmor ?? requireArmorEquipment(
-          'STANDARD',
-          isClan,
-          ctx.equipmentRegistry,
-        ),
-        techBase: explicitClan ? 'Clan' : explicitIs ? 'IS' : 'All',
-        techRating: bb.exists(`${loc}_armor_tech_rating`)
-          ? decodeBlkTechRating(bb.getFirstInt(`${loc}_armor_tech_rating`))
-          : null,
-      }));
+      entity.setArmorAt(
+        loc,
+        new MountedArmor({
+          armor: locationArmor ?? requireArmorEquipment('STANDARD', isClan, ctx.equipmentRegistry),
+          techBase: explicitClan ? 'Clan' : explicitIs ? 'IS' : 'All',
+          techRating: bb.exists(`${loc}_armor_tech_rating`)
+            ? decodeBlkTechRating(bb.getFirstInt(`${loc}_armor_tech_rating`))
+            : null,
+        }),
+      );
     }
   }
 }
 
 /**
- * Parse the uniform support-vehicle armor policy from Java's `loadSVArmor()`.
+ * Parse support-vehicle armor using Java's `loadSVArmor()` policy.
  *
  * A BAR block supplies the armor material only when `armor_type` is absent;
- * an explicit armor type always wins. Location-specific support patchwork
- * requires location-specific BAR state and is rejected until that state is
- * represented by the entity model.
+ * an explicit armor type always wins. Patchwork stores each facing's BAR in
+ * its installed armor material and accepts either local BAR or armor type.
  */
-export function parseBlkSupportArmor(
-  bb: BuildingBlock,
-  entity: BaseEntity & SupportVehicle,
-  ctx: ParseContext,
-): void {
+export function parseBlkSupportArmor(bb: BuildingBlock, entity: BaseEntity & SupportVehicle, ctx: ParseContext): void {
   const hasArmorType = bb.exists('armor_type');
   const hasBarRating = bb.exists('barrating');
 
   if (hasArmorType && bb.getFirstInt('armor_type') === 7) {
-    ctx.error('armor_type', 'Support-vehicle patchwork armor is not yet supported');
+    parseBlkArmor(bb, entity, ctx, { patchworkLocs: entity.armorLocations });
+    entity.barRating.set(entity.armorAt(entity.armorLocations[0]).armor.bar);
     return;
   }
   if (!hasArmorType && !hasBarRating) {
@@ -618,41 +626,37 @@ export function parseBlkSupportArmor(
   }
 
   const type = hasArmorType ? decodeBlkArmorType(bb.getFirstInt('armor_type')) : barType!;
-  const compoundCode = bb.exists('armor_tech_level')
-    ? bb.getFirstInt('armor_tech_level')
-    : null;
-  const techBase = compoundCode == null
-    ? entity.techBase()
-    : decodeBlkCompoundTechBase(compoundCode, entity.techBase());
+  const compoundCode = bb.exists('armor_tech_level') ? bb.getFirstInt('armor_tech_level') : null;
+  const techBase =
+    compoundCode == null ? entity.techBase() : decodeBlkCompoundTechBase(compoundCode, entity.techBase());
   const armor = resolveArmorEquipment(type, techBase === 'Clan', ctx.equipmentRegistry);
   if (!armor) {
     ctx.error('armor_type', `Invalid armor type ${type} for ${techBase} technology`);
     return;
   }
 
-  const technologySource = barType == null
-    ? null
-    : resolveArmorEquipment(barType, false, ctx.equipmentRegistry);
+  const technologySource = barType == null ? null : resolveArmorEquipment(barType, false, ctx.equipmentRegistry);
   if (barType != null && !technologySource) {
     ctx.error('barrating', `Could not resolve support-vehicle BAR ${barRating} armor`);
     return;
   }
 
-  const technology = compoundCode == null
-    ? technologySource == null
-      ? createCompoundTechLevel(componentTechLevelFromRulesLevel(entity.rulesLevel()), techBase)
-      : createCompoundTechLevel(technologySource.level, techBase)
-    : decodeBlkCompoundTechLevel(compoundCode);
-  const techRating = bb.exists('armor_tech_rating')
-    ? decodeBlkTechRating(bb.getFirstInt('armor_tech_rating'))
-    : null;
+  const technology =
+    compoundCode == null
+      ? technologySource == null
+        ? createCompoundTechLevel(componentTechLevelFromRulesLevel(entity.rulesLevel()), techBase)
+        : createCompoundTechLevel(technologySource.level, techBase)
+      : decodeBlkCompoundTechLevel(compoundCode);
+  const techRating = bb.exists('armor_tech_rating') ? decodeBlkTechRating(bb.getFirstInt('armor_tech_rating')) : null;
 
-  entity.setUniformArmor(new MountedArmor({
-    armor,
-    techBase,
-    technology,
-    techRating,
-  }));
+  entity.setUniformArmor(
+    new MountedArmor({
+      armor,
+      techBase,
+      technology,
+      techRating,
+    }),
+  );
   entity.barRating.set(hasBarRating ? barRating : 0);
 }
 
@@ -666,11 +670,7 @@ export function parseBlkSupportArmor(
  *
  * Shared by aero, smallcraft, dropship, and largecraft parsers.
  */
-export function parseBlkArmorValues(
-  bb: BuildingBlock,
-  entity: BaseEntity,
-  locations: readonly string[],
-): void {
+export function parseBlkArmorValues(bb: BuildingBlock, entity: BaseEntity, locations: readonly string[]): void {
   if (!bb.exists('armor')) return;
   const ints = bb.getDataAsInt('armor');
   const armorMap = new Map<string, LocationArmor>();
@@ -690,11 +690,7 @@ export function parseBlkArmorValues(
  *
  * Shared by aero, smallcraft, dropship, and largecraft parsers.
  */
-export function parseBlkAeroEngine(
-  bb: BuildingBlock,
-  entity: AeroEntity,
-  opts?: BlkEngineOpts,
-): void {
+export function parseBlkAeroEngine(bb: BuildingBlock, entity: AeroEntity, opts?: BlkEngineOpts): void {
   const result = parseBlkEngine(bb, entity, opts);
   if (result) {
     entity.mountedEngine.set(result.mountedEngine);
@@ -730,24 +726,20 @@ export interface CrewEntity extends BaseEntity {
  * `otherpassenger` is only read if the entity has that signal
  * (SmallCraft/DropShip do, JumpShip does not).
  */
-export function parseBlkCrew(
-  bb: BuildingBlock,
-  entity: CrewEntity,
-  options: { parsePassengers?: boolean } = {},
-): void {
-  if (bb.exists('crew'))            entity.crew.set(bb.getFirstInt('crew'));
-  if (bb.exists('officers'))        entity.officers.set(bb.getFirstInt('officers'));
-  if (bb.exists('gunners'))         entity.gunners.set(bb.getFirstInt('gunners'));
+export function parseBlkCrew(bb: BuildingBlock, entity: CrewEntity, options: { parsePassengers?: boolean } = {}): void {
+  if (bb.exists('crew')) entity.crew.set(bb.getFirstInt('crew'));
+  if (bb.exists('officers')) entity.officers.set(bb.getFirstInt('officers'));
+  if (bb.exists('gunners')) entity.gunners.set(bb.getFirstInt('gunners'));
   if (options.parsePassengers !== false && bb.exists('passengers')) {
     entity.passengers.set(bb.getFirstInt('passengers'));
   }
-  if (bb.exists('marines'))         entity.marines.set(bb.getFirstInt('marines'));
-  if (bb.exists('battlearmor'))     entity.battleArmor.set(bb.getFirstInt('battlearmor'));
+  if (bb.exists('marines')) entity.marines.set(bb.getFirstInt('marines'));
+  if (bb.exists('battlearmor')) entity.battleArmor.set(bb.getFirstInt('battlearmor'));
   if (entity.otherPassenger && bb.exists('otherpassenger')) {
     entity.otherPassenger.set(bb.getFirstInt('otherpassenger'));
   }
-  if (bb.exists('life_boat'))       entity.lifeboats.set(bb.getFirstInt('life_boat'));
-  if (bb.exists('escape_pod'))      entity.escapePods.set(bb.getFirstInt('escape_pod'));
+  if (bb.exists('life_boat')) entity.lifeboats.set(bb.getFirstInt('life_boat'));
+  if (bb.exists('escape_pod')) entity.escapePods.set(bb.getFirstInt('escape_pod'));
 }
 
 /** Expand the legacy aggregate docking-collar block into canonical transporters. */
@@ -756,10 +748,12 @@ export function parseLegacyDockingCollars(bb: BuildingBlock, entity: BaseEntity)
 
   const count = bb.getFirstInt('docking_collar');
   if (count <= 0) return;
-  entity.transporters.update(transporters => {
-    const usedCollarNumbers = new Set(transporters
-      .filter(transporter => transporter.kind === 'docking-collar')
-      .map(transporter => transporter.collarNumber));
+  entity.transporters.update((transporters) => {
+    const usedCollarNumbers = new Set(
+      transporters
+        .filter((transporter) => transporter.kind === 'docking-collar')
+        .map((transporter) => transporter.collarNumber),
+    );
     const dockingCollars = Array.from({ length: count }, (_, index) => {
       let collarNumber = 1;
       while (usedCollarNumbers.has(collarNumber)) collarNumber++;

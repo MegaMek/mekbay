@@ -3,32 +3,30 @@
 // Author: Drake
 
 import { Component, input, computed, inject, ChangeDetectionStrategy } from '@angular/core';
+import { DialogRef } from '@angular/cdk/dialog';
 
 import type { UnitComponent } from '../../models/unit-summary.model';
 import { DataService } from '../../services/data.service';
 import type { UnitSummary } from '../../models/unit-summary.model';
 import { AmmoEquipment, type Equipment, formatEquipmentRulesRefs, WeaponEquipment } from '../../models/equipment.model';
-import { TechDate, TechAdvancementDates, techDateYear, formatTechDate } from '../../models/entity';
+import { equipmentHeat, equipmentTechnologyGroups, equipmentToHitModifier, equipmentTypeLabel, type EquipmentInfoGroup } from './equipment-info';
 import { getWeaponTypeCSSClass } from '../../utils/equipment.util';
-import { CBTGameRulesService } from '../../services/cbt-game-rules.service';
-import { formatInventoryControlHeat } from '../../utils/inventory-control-heat.util';
+import { OptionsService } from '../../services/options.service';
+import { gameRulesFor } from '../../models/rules/game-rules';
 
 
 @Component({
     selector: 'floating-comp-info',
-    standalone: true,
     changeDetection: ChangeDetectionStrategy.OnPush,
-    imports: [],
     templateUrl: './floating-comp-info.component.html',
-    styleUrls: ['./floating-comp-info.component.css'],
-    host: {
-        '(pointerenter)': 'onPointerEnter()',
-        '(pointerleave)': 'onPointerLeave()'
-    }
+    styleUrls: ['./floating-comp-info.component.css', './equipment-info.css'],
+    host: { '[class.modal]': '!!dialogRef' },
 })
 export class FloatingCompInfoComponent {
     private dataService = inject(DataService);
-    private rulesService = inject(CBTGameRulesService);
+    private optionsService = inject(OptionsService);
+    private gameRules = computed(() => gameRulesFor(this.optionsService.options().CBTRules));
+    readonly dialogRef = inject<DialogRef<void>>(DialogRef, { optional: true });
     unit = input.required<UnitSummary>();
     comp = input<UnitComponent | null>(null);
 
@@ -45,14 +43,6 @@ export class FloatingCompInfoComponent {
 
     equipmentDisplay = computed(() => this.computeEquipmentDisplay());
 
-    onPointerEnter() {
-        // overlay service listens for overlay element pointer events; parent keeps component state
-    }
-
-    onPointerLeave() {
-        // overlay service listens for overlay element pointer events; parent keeps component state
-    }
-
     get name(): string {
         return this.equipment()?.name ?? this.comp()?.n ?? '';
     }
@@ -64,30 +54,14 @@ export class FloatingCompInfoComponent {
 
     get typeLabel(): string {
         const currentComp = this.comp();
-        if (currentComp?.t === 'X') {
-            const equipment = this.equipment() ?? currentComp.eq;
-            if (equipment instanceof AmmoEquipment) {
-                const labels = [equipment.category, ...(equipment.isExplosive() ? ['Explosive'] : [])];
-                return `Ammo (${labels.join(', ')})`;
-            }
-
-            return 'Ammo';
-        }
-
-        return this.typeClass.charAt(0).toUpperCase() + this.typeClass.slice(1);
+        return equipmentTypeLabel(this.typeClass, this.equipment() ?? currentComp?.eq);
     }
 
     get toHitModifier(): string | null {
         const equipment = this.equipment() ?? this.comp()?.eq;
         if (!equipment) return null;
 
-        const modifierValues = this.rulesService.gameRules().resolveToHit({ subject: equipment }).profile;
-        if (modifierValues.every(value => value === 0)) return null;
-        return modifierValues.map(value => this.formatToHitModifier(value)).join('/');
-    }
-
-    private formatToHitModifier(modifier: number): string {
-        return modifier > 0 ? `+${modifier}` : String(modifier);
+        return equipmentToHitModifier(equipment, this.gameRules());
     }
 
     get rackSize(): number | null {
@@ -129,11 +103,7 @@ export class FloatingCompInfoComponent {
     }
 
     get heat(): string | null {
-        const eq = this.equipment();
-        if (eq instanceof WeaponEquipment) {
-            return formatInventoryControlHeat(eq.heat, '', eq.getRapidFireCount());
-        }
-        return null;
+        return equipmentHeat(this.equipment());
     }
 
     get hasHeat(): boolean {
@@ -141,120 +111,26 @@ export class FloatingCompInfoComponent {
         return eq instanceof WeaponEquipment && eq.heat > 0;
     }
 
-    computeEquipmentDisplay(): Array<{ group: string, items: Array<{ label: string, value: any }> }> {
+    computeEquipmentDisplay(): EquipmentInfoGroup[] {
         const unit = this.unit();
         if (!unit) return [];
         const eq = this.equipment();
         if (!eq) return [];
 
-        // Helper to pick earliest TechDate from two options
-        const earliest = (a: TechDate, b: TechDate): TechDate => {
-            const aY = techDateYear(a), bY = techDateYear(b);
-            if (aY == null) return b;
-            if (bY == null) return a;
-            return aY <= bY ? a : b;
-        };
-
-        // Helper to pick latest TechDate from two options
-        const latest = (a: TechDate, b: TechDate): TechDate => {
-            const aY = techDateYear(a), bY = techDateYear(b);
-            if (aY == null) return b;
-            if (bY == null) return a;
-            return aY >= bY ? a : b;
-        };
-
-        let dates: TechAdvancementDates;
-        if (unit.mixed) {
-            const is = eq.tech.advancement?.is;
-            const clan = eq.tech.advancement?.clan;
-            // For mixed: earliest for most dates, latest for extinction
-            let extinct: TechDate;
-            let reintroduced: TechDate;
-
-            // Only show extinction if BOTH have it (otherwise tech was still available)
-            const bothHaveExtinction = is?.extinct && clan?.extinct;
-            if (bothHaveExtinction) {
-                extinct = latest(is?.extinct, clan?.extinct);
-                reintroduced = earliest(is?.reintroduced, clan?.reintroduced);
-                // If extinction is at or beyond reintroduction, there's no real gap
-                const extY = techDateYear(extinct), reintY = techDateYear(reintroduced);
-                if (extY != null && reintY != null && extY >= reintY) {
-                    extinct = undefined;
-                    reintroduced = undefined;
-                }
-            }
-
-            dates = {
-                prototype: earliest(is?.prototype, clan?.prototype),
-                production: earliest(is?.production, clan?.production),
-                common: earliest(is?.common, clan?.common),
-                extinct,
-                reintroduced
-            };
-        } else {
-            switch (unit.techBase) {
-                case 'Clan':
-                    dates = eq.tech.advancement?.clan ?? {};
-                    break;
-                case 'Inner Sphere':
-                default:
-                    dates = eq.tech.advancement?.is ?? {};
-                    break;
-            }
-        }
-
-        const historyItems: Array<{ label: string, value: string }> = [
-            { label: 'Prototype', value: formatTechDate(dates?.prototype) },
-            { label: 'Production', value: formatTechDate(dates?.production) },
-            { label: 'Common', value: formatTechDate(dates?.common) },
-            { label: 'Extinction', value: formatTechDate(dates?.extinct) },
-            { label: 'Reintroduction', value: formatTechDate(dates?.reintroduced) },
-        ].filter((item): item is { label: string, value: string } =>
-            item.value !== undefined && item.value !== null && item.value !== '')
-        .sort((a, b) => {
-            const aYear = parseInt(a.value.replace(/^~/, ''), 10);
-            const bYear = parseInt(b.value.replace(/^~/, ''), 10);
-            if (isNaN(aYear)) return 1;
-            if (isNaN(bYear)) return -1;
-            return aYear - bYear;
-        });
-
-        const unitType = unit.as?.TP;
-        let slots = eq.critSlots;
-        if (unitType === 'SV') {
-            slots = eq.svSlots > -1 ? eq.svSlots : eq.critSlots;
-        } else if (unitType !== 'BM' && unitType !== 'IM') {
-            slots = eq.tankSlots > -1 ? eq.tankSlots : eq.critSlots;
-        }
-
-        const ratingString = `${eq.techBase} | ${eq.rating}/${eq.availability}`;
-        const result = [
+        return [
             {
                 group: 'General',
                 items: [
-                    { label: 'BV', value: eq.bv },
+                    { label: 'BV', value: eq instanceof AmmoEquipment
+                        ? this.gameRules().getAmmoBV(eq, this.dataService.getEquipmentRegistry())
+                        : eq.bv },
                     { label: 'Cost', value: eq.cost },
                     { label: 'Tonnage', value: eq.tonnage },
                     { label: 'Criticals', value: eq.critSlots },
                     { label: 'Reference', value: formatEquipmentRulesRefs(eq.rulesRefs) }
                 ]
             },
-            {
-                group: 'Technology',
-                items: [
-                    { label: 'Level', value: eq.level },
-                    { label: 'Rating', value: ratingString },
-                ]
-            }
+            ...equipmentTechnologyGroups(eq, unit.techBase === 'Clan' ? 'Clan' : 'IS', unit.mixed),
         ];
-
-        if (historyItems.length > 0) {
-            result.push({
-                group: 'History',
-                items: historyItems
-            });
-        }
-
-        return result;
     }
 }

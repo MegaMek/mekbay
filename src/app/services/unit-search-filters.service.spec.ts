@@ -11,7 +11,7 @@ import type { ForceUnit } from '../models/force-unit.model';
 import type { MULFactions } from '../models/mulfactions.model';
 import { MULFACTION_EXTINCT } from '../models/mulfactions.model';
 import type { AvailabilitySource, UnitSearchViewMode } from '../models/options.model';
-import type { UnitSummary, Units } from '../models/unit-summary.model';
+import type { UnitSummary } from '../models/unit-summary.model';
 import { GameSystem } from '../models/common.model';
 import { DataService } from './data.service';
 import { DbService, type TagData } from './db.service';
@@ -21,7 +21,7 @@ import { OptionsService } from './options.service';
 import { PublicTagsService } from './public-tags.service';
 import { TagsService } from './tags.service';
 import { UnitAvailabilitySourceService } from './unit-availability-source.service';
-import { UnitInitializerService } from './unit-initializer.service';
+import { UnitSearchAvailabilityService } from './unit-search-availability.service';
 import { UnitSearchFiltersService } from './unit-search-filters.service';
 import { UrlService } from './url.service';
 import { UserStateService } from './userState.service';
@@ -34,46 +34,62 @@ import {
 } from '../utils/unit-search-filter-config.util';
 import { MEGAMEK_AVAILABILITY_UNKNOWN, type MegaMekWeightedAvailabilityRecord } from '../models/megamek/availability.model';
 import { FORMATION_TARGET_FILTER_KEY, MEGAMEK_RARITY_PRODUCTION_SORT_KEY } from './unit-search-filters.model';
-import { SEARCH_WORKER_FACTORY } from '../utils/unit-search-worker-factory.util';
-import type { SearchWorkerLike } from '../utils/unit-search-worker-client.util';
-import type { UnitSearchWorkerResponseMessage } from '../utils/unit-search-worker-protocol.util';
 import { createEmptyUnit, type TestUnitOverrides } from '../testing/unit-test-helpers';
+import { UnitsCatalogService } from './catalogs/units-catalog.service';
+import { UnitRuntimeService } from './unit-runtime.service';
+import { UnitSearchIndexService } from './unit-search-index.service';
+import { TestConvFighterEntity, TestFixedWingSupportEntity } from '../models/entity/testing/test-entities';
+import { getForcePacks } from '../models/forcepacks.model';
 
 const originalJasmineTimeoutInterval = jasmine.DEFAULT_TIMEOUT_INTERVAL;
 jasmine.DEFAULT_TIMEOUT_INTERVAL = 60000;
 
 interface BenchmarkBundle {
-    units: Units;
+    units: {
+        version: string;
+        assetHash: string;
+        units: UnitSummary[];
+    };
     factions: MULFactions;
     eras: Eras;
 }
 
-interface SyntheticMegaMekRarityBenchmarkScenario {
-    bundle: BenchmarkBundle;
-    availabilityRecords: MegaMekWeightedAvailabilityRecord[];
-    availabilityRecordsByName: ReadonlyMap<string, MegaMekWeightedAvailabilityRecord>;
-    expectedTopScore: number;
+function stubMegaMekAvailabilityRecords(
+    dataService: DataService,
+    records: readonly MegaMekWeightedAvailabilityRecord[],
+): void {
+    spyOn(dataService, 'getMegaMekAvailabilityRecordForUnit').and.callFake(unit =>
+        records.find(record => record.n === unit.name));
 }
 
-class FakeSearchWorker implements SearchWorkerLike {
-    onmessage: ((event: MessageEvent<UnitSearchWorkerResponseMessage>) => void) | null = null;
-    onerror: ((event: ErrorEvent) => void) | null = null;
-    readonly messages: unknown[] = [];
+/**
+ * Mutable ownership of synthetic units belongs in this spec, not in the
+ * production catalog API. DataService only needs the catalog's public read
+ * surface for these search tests.
+ */
+class TestUnitsCatalog {
+    public readonly coreState = signal({ status: 'idle' as const, availableUnits: 0 as const }).asReadonly();
+    public readonly pendingActivation = signal(undefined).asReadonly();
+    private units: UnitSummary[] = [];
 
-    postMessage(message: unknown): void {
-        this.messages.push(message);
+    public replaceUnits(data: BenchmarkBundle['units']): void {
+        this.units = cloneUnit(data.units);
     }
 
-    terminate(): void {
-        return;
+    public getUnits(): UnitSummary[] {
+        return this.units;
     }
 
-    emit(message: UnitSearchWorkerResponseMessage): void {
-        this.onmessage?.({ data: message } as MessageEvent<UnitSearchWorkerResponseMessage>);
+    public getSummaries(): readonly UnitSummary[] {
+        return this.units;
     }
 
-    fail(message: string): void {
-        this.onerror?.({ message } as ErrorEvent);
+    public readNativeUnitSource(): Promise<undefined> {
+        return Promise.resolve(undefined);
+    }
+
+    public initialize(): Promise<void> {
+        return Promise.resolve();
     }
 }
 
@@ -84,9 +100,30 @@ function cloneUnit<T>(value: T): T {
     return JSON.parse(JSON.stringify(value)) as T;
 }
 
+function refreshSearchCorpusForTest(dataService: DataService): void {
+    const units = dataService.getUnits();
+    const eras = dataService.getEras();
+    const factions = dataService.getFactions();
+    const internals = dataService as any;
+
+    internals.runtimeSearchIndexesReady.set(false);
+    internals.invalidateForcePackCaches();
+    const runtime = TestBed.inject(UnitRuntimeService);
+    runtime.commitPreparedRuntimeCatalog(runtime.prepareRuntimeCatalog(units));
+    TestBed.inject(UnitRuntimeService).postprocessUnits(units, eras);
+    TestBed.inject(UnitSearchIndexService).rebuildIndexes(
+        units,
+        eras,
+        factions,
+        dataService.getEquipmentRegistry(),
+    );
+    internals.runtimeSearchIndexesReady.set(true);
+    dataService.searchCorpusVersion.update(version => version + 1);
+}
+
 function prepareUnitForSearch(unit: UnitSummary, index: number): UnitSummary {
     const clone = cloneUnit(unit);
-    clone.uuid = `${unit.uuid}__${index}`;
+    clone.uuid = `${unit.uuid}__${index}` as UnitSummary['uuid'];
     clone.mul1id = index + 1;
     clone.name = `${unit.name}__${index}`;
     clone._nameTags = clone._nameTags ?? [];
@@ -98,56 +135,6 @@ function prepareUnitForSearch(unit: UnitSummary, index: number): UnitSummary {
     clone.source = Array.isArray(clone.source) ? clone.source : [];
     clone.published = Array.isArray(clone.published) ? clone.published : [];
     return clone;
-}
-
-function buildBenchmarkBundle(payload: BenchmarkBundle, targetCount: number): BenchmarkBundle {
-    const prepared = payload.units.units.map((unit, index) => prepareUnitForSearch(unit, index));
-    if (prepared.length === 0) {
-        return {
-            units: { ...payload.units, units: [] },
-            factions: { ...payload.factions, factions: [] },
-            eras: { ...payload.eras, eras: [] },
-        };
-    }
-
-    const dataset: UnitSummary[] = [];
-    const idExpansion = new Map<number, number[]>();
-    for (let index = 0; index < targetCount; index++) {
-        const unit = prepareUnitForSearch(prepared[index % prepared.length], index);
-        dataset.push(unit);
-        const expandedIds = idExpansion.get(prepared[index % prepared.length].mul1id!) ?? [];
-        expandedIds.push(unit.mul1id!);
-        idExpansion.set(prepared[index % prepared.length].mul1id!, expandedIds);
-    }
-
-    const expandIds = (ids: number[]) => ids.flatMap(id => idExpansion.get(id) ?? []);
-
-    return {
-        units: {
-            ...payload.units,
-            units: dataset,
-        },
-        eras: {
-            ...payload.eras,
-            eras: payload.eras.eras.map(era => ({
-                ...cloneUnit(era),
-                factions: Array.isArray(era.factions) ? [...era.factions] : Array.from(era.factions),
-                units: expandIds(Array.isArray(era.units) ? era.units : Array.from(era.units)),
-            })),
-        },
-        factions: {
-            ...payload.factions,
-            factions: payload.factions.factions.map(faction => ({
-                ...cloneUnit(faction),
-                eras: Object.fromEntries(
-                    Object.entries(faction.eras).map(([eraId, unitIds]) => [
-                        Number(eraId),
-                        new Set(expandIds(Array.isArray(unitIds) ? unitIds : Array.from(unitIds))),
-                    ])
-                ) as Record<number, Set<number>>,
-            })),
-        },
-    };
 }
 
 function buildSmallBundle(payload: BenchmarkBundle): BenchmarkBundle {
@@ -197,12 +184,12 @@ function buildSmallBundle(payload: BenchmarkBundle): BenchmarkBundle {
     return {
         units: {
             version: payload.units.version,
-            etag: payload.units.etag,
+            assetHash: payload.units.assetHash,
             units: [firstUnit, secondUnit],
         },
         eras: {
             version: payload.eras.version,
-            etag: payload.eras.etag,
+            assetHash: payload.eras.assetHash,
             eras: [{
                 id: 1,
                 name: 'Succession Wars',
@@ -217,7 +204,7 @@ function buildSmallBundle(payload: BenchmarkBundle): BenchmarkBundle {
         },
         factions: {
             version: payload.factions.version,
-            etag: payload.factions.etag,
+            assetHash: payload.factions.assetHash,
             factions: [{
                 id: 1,
                 name: 'Test Faction',
@@ -231,10 +218,15 @@ function buildSmallBundle(payload: BenchmarkBundle): BenchmarkBundle {
     };
 }
 
+let nextSyntheticUuid = 1;
+
 function createTestUnit(overrides: TestUnitOverrides = {}): UnitSummary {
     const { as: asOverrides, ...unitOverrides } = overrides;
+    const uuid = unitOverrides.uuid
+        ?? `01900000-0000-7000-8000-${(nextSyntheticUuid++).toString(16).padStart(12, '0')}`;
 
     return createEmptyUnit({
+        uuid,
         name: 'Test Unit',
         mul1id: 1,
         chassis: 'Test Unit',
@@ -325,12 +317,12 @@ function createStandaloneBundle(): BenchmarkBundle {
     return {
         units: {
             version: 'test',
-            etag: 'test',
+            assetHash: 'test',
             units: [firstUnit, secondUnit],
         },
         eras: {
             version: 'test',
-            etag: 'test',
+            assetHash: 'test',
             eras: [{
                 id: 1,
                 name: 'Succession Wars',
@@ -345,7 +337,7 @@ function createStandaloneBundle(): BenchmarkBundle {
         },
         factions: {
             version: 'test',
-            etag: 'test',
+            assetHash: 'test',
             factions: [{
                 id: 1,
                 name: 'Test Faction',
@@ -357,16 +349,6 @@ function createStandaloneBundle(): BenchmarkBundle {
             }],
         },
     };
-}
-
-function createWorkerEntries(bundle: BenchmarkBundle, unitNames: readonly string[]) {
-    return unitNames.map((unitName) => {
-        const unit = bundle.units.units.find(candidate => candidate.name === unitName);
-        if (!unit) {
-            throw new Error(`Missing test unit: ${unitName}`);
-        }
-        return { unitUuid: unit.uuid };
-    });
 }
 
 const FREE_WORLDS_LEAGUE_FACTION = 'Free Worlds League';
@@ -502,12 +484,12 @@ function createStrategicCommandBundle(): BenchmarkBundle {
     return {
         units: {
             version: 'test',
-            etag: 'test',
+            assetHash: 'test',
             units: [firstAerospace, secondAerospace, heavyMek, battleArmor, lightMek, tank],
         },
         eras: {
             version: 'test',
-            etag: 'test',
+            assetHash: 'test',
             eras: [{
                 id: 1,
                 name: 'Clan Invasion',
@@ -522,7 +504,7 @@ function createStrategicCommandBundle(): BenchmarkBundle {
         },
         factions: {
             version: 'test',
-            etag: 'test',
+            assetHash: 'test',
             factions: [{
                 ...CLAN_WOLF_TEST_FACTION,
                 eras: {
@@ -535,7 +517,7 @@ function createStrategicCommandBundle(): BenchmarkBundle {
 
 function createFormationExistingForceUnit(
     unit: UnitSummary,
-    gameSystem: GameSystem = GameSystem.ALPHA_STRIKE,
+    gameSystem: GameSystem = GameSystem.AS,
     options: { faction?: Faction; pilotSkill?: number; gunnerySkill?: number } = {},
 ): ForceUnit {
     return {
@@ -545,7 +527,8 @@ function createFormationExistingForceUnit(
             techBase: () => 'Inner Sphere',
             gameSystem,
         },
-        getUnit: () => unit,
+        getSummary: () => unit,
+        getFormationSummary: () => unit,
         getBv: () => 0,
         pilotSkill: () => options.pilotSkill ?? 4,
         gunnerySkill: () => options.gunnerySkill ?? 4,
@@ -575,55 +558,24 @@ function setFactionFilter(service: UnitSearchFiltersService, factionName: string
     });
 }
 
-function buildSyntheticMegaMekRarityBenchmarkScenario(targetCount: number): SyntheticMegaMekRarityBenchmarkScenario {
-    const bundle = buildBenchmarkBundle(createStandaloneBundle(), targetCount);
-    let expectedTopScore = -1;
-
-    const availabilityRecords = bundle.units.units.flatMap((unit, index) => {
-        if (index % 13 === 0) {
-            return [];
-        }
-
-        let requisitionScore = ((index % 10) * 10) + 5;
-        let salvageScore = ((((index + 3) % 8) + 1) * 12) - 5;
-
-        if (index % 10 === 0) {
-            requisitionScore = 0;
-        }
-        if (index % 15 === 0) {
-            salvageScore = 0;
-        }
-
-        const effectiveScore = Math.max(requisitionScore, salvageScore);
-        expectedTopScore = Math.max(expectedTopScore, effectiveScore);
-
-        return [{
-            n: unit.name,
-            e: {
-                '1': {
-                    '1': [requisitionScore, salvageScore] as [number, number],
-                },
-            },
-        }];
+function hydrateDataService(
+    dataService: DataService,
+    unitsCatalog: TestUnitsCatalog,
+    bundle: BenchmarkBundle,
+): void {
+    unitsCatalog.replaceUnits(bundle.units);
+    const eras = cloneUnit(bundle.eras.eras).map((era) => ({
+        ...era,
+        factions: new Set(era.factions),
+        units: new Set(era.units),
+    }));
+    (dataService as any).eraIndex.commitPreparedIndex({
+        eras,
+        eraNameMap: new Map(eras.map(era => [era.name, era])),
+        eraIdMap: new Map(eras.map(era => [era.id, era])),
     });
-
-    const availabilityRecordsByName = new Map(
-        availabilityRecords.map(record => [record.n, record] as const)
-    );
-
-    return {
-        bundle,
-        availabilityRecords,
-        availabilityRecordsByName,
-        expectedTopScore,
-    };
-}
-
-function hydrateDataService(dataService: DataService, bundle: BenchmarkBundle): void {
-    (dataService as any).unitsCatalog.hydrate(cloneUnit(bundle.units));
-    (dataService as any).erasCatalog.hydrate(cloneUnit(bundle.eras));
     (dataService as any).factionsCatalog.hydrate(cloneUnit(bundle.factions));
-    (dataService as any).postprocessData();
+    refreshSearchCorpusForTest(dataService);
     dataService.isDataReady.set(true);
 }
 
@@ -634,16 +586,14 @@ async function flushAsyncWork(): Promise<void> {
 
 describe('UnitSearchFiltersService search telemetry', () => {
     let benchmarkBundle: BenchmarkBundle | null = null;
-    let sharedService: UnitSearchFiltersService | null = null;
-    let sharedDataService: DataService | null = null;
-    let sharedGameServiceStub: { currentGameSystem: ReturnType<typeof signal<GameSystem>> } | null = null;
+    let sharedService: UnitSearchFiltersService;
 
     function createService(
         bundleOverride?: BenchmarkBundle,
         options?: {
-            useRealLogger?: boolean;
-            workerFactory?: (() => SearchWorkerLike) | null;
             automaticallyConvertFiltersToSemantic?: boolean;
+            initialParams?: URLSearchParams;
+            unitSearchViewMode?: UnitSearchViewMode;
         }
     ) {
         const dbServiceStub = {
@@ -655,13 +605,13 @@ describe('UnitSearchFiltersService search telemetry', () => {
                 automaticallyConvertFiltersToSemantic: options?.automaticallyConvertFiltersToSemantic ?? false,
                 availabilitySource: 'mul' as AvailabilitySource,
                 megaMekAvailabilityFiltersUseAllScopedOptions: true,
-                unitSearchViewMode: 'list' as UnitSearchViewMode,
+                unitSearchViewMode: options?.unitSearchViewMode ?? 'list',
             }),
             initialized: signal(true),
         };
 
         const gameServiceStub = {
-            currentGameSystem: signal(GameSystem.CLASSIC),
+            currentGameSystem: signal(GameSystem.CBT),
         };
 
         const loggerStub = {
@@ -679,7 +629,7 @@ describe('UnitSearchFiltersService search telemetry', () => {
         const httpClientStub = {};
 
         const urlServiceStub = {
-            initialParams: new URLSearchParams(),
+            initialParams: new URLSearchParams(options?.initialParams),
             initialPathname: '/',
             getInitialParam: (key: string) => urlServiceStub.initialParams.get(key),
             getGameSystemOverride: () => null,
@@ -714,9 +664,7 @@ describe('UnitSearchFiltersService search telemetry', () => {
             uuid: () => '',
         };
 
-        const unitInitializerStub = {
-            initializeUnit: jasmine.createSpy('initializeUnit'),
-        };
+        const unitsCatalog = new TestUnitsCatalog();
 
         TestBed.resetTestingModule();
         TestBed.configureTestingModule({
@@ -727,25 +675,22 @@ describe('UnitSearchFiltersService search telemetry', () => {
                 { provide: HttpClient, useValue: httpClientStub },
                 { provide: DbService, useValue: dbServiceStub },
                 { provide: WsService, useValue: wsServiceStub },
-                { provide: UnitInitializerService, useValue: unitInitializerStub },
                 { provide: OptionsService, useValue: optionsServiceStub },
                 { provide: GameService, useValue: gameServiceStub },
                 { provide: UrlService, useValue: urlServiceStub },
                 { provide: UserStateService, useValue: userStateServiceStub },
                 { provide: PublicTagsService, useValue: publicTagsServiceStub },
                 { provide: TagsService, useValue: tagsServiceStub },
-                { provide: SEARCH_WORKER_FACTORY, useValue: options?.workerFactory ?? null },
+                { provide: UnitsCatalogService, useValue: unitsCatalog },
             ],
         });
 
-        if (!options?.useRealLogger) {
-            TestBed.overrideProvider(LoggerService, { useValue: loggerStub });
-        }
+        TestBed.overrideProvider(LoggerService, { useValue: loggerStub });
 
         const dataService = TestBed.inject(DataService);
         const bundle = bundleOverride ?? benchmarkBundle;
         if (bundle) {
-            hydrateDataService(dataService, bundle);
+            hydrateDataService(dataService, unitsCatalog, bundle);
         }
 
         return {
@@ -753,76 +698,26 @@ describe('UnitSearchFiltersService search telemetry', () => {
             service: TestBed.inject(UnitSearchFiltersService),
             optionsServiceStub,
             loggerStub,
-            logger: TestBed.inject(LoggerService),
             gameServiceStub,
+            urlServiceStub,
         };
     }
 
-    beforeAll(async () => {
-        try {
-            const [unitsResponse, factionsResponse, erasResponse] = await Promise.all([
-                fetch('https://db.mekbay.com/units.json'),
-                fetch('https://db.mekbay.com/factions.json'),
-                fetch('https://db.mekbay.com/eras.json'),
-            ]);
-
-            if (!unitsResponse.ok || !factionsResponse.ok || !erasResponse.ok) {
-                throw new Error('Failed to load one or more benchmark payloads');
-            }
-
-            benchmarkBundle = buildBenchmarkBundle({
-                units: await unitsResponse.json() as Units,
-                factions: await factionsResponse.json() as MULFactions,
-                eras: await erasResponse.json() as Eras,
-            }, 10000);
-
-            const { service, dataService, gameServiceStub } = createService();
-            sharedService = service;
-            sharedDataService = dataService;
-            sharedGameServiceStub = gameServiceStub;
-        } catch {
-            benchmarkBundle = null;
-        }
+    beforeAll(() => {
+        benchmarkBundle = createStandaloneBundle();
+        const { service } = createService();
+        sharedService = service;
     });
 
     afterAll(() => {
         jasmine.DEFAULT_TIMEOUT_INTERVAL = originalJasmineTimeoutInterval;
     });
 
-    xit('captures stage timings for a 10,000-unit real-data search', async () => {
-        if (!sharedService) {
-            pending('Real unit data could not be loaded for the benchmark test.');
-            return;
-        }
-        sharedService.resetFilters();
-        sharedService.searchText.set('crab bv=1000-3000');
-        const service = sharedService;
-
-        const results = service.filteredUnits();
-        await Promise.resolve();
-        const telemetry = service.searchTelemetry();
-
-        expect(results.length).toBeGreaterThan(0);
-        expect(telemetry).not.toBeNull();
-        expect(telemetry?.query).toBe('crab bv=1000-3000');
-        expect(telemetry?.unitCount).toBe(10000);
-        expect(telemetry?.resultCount).toBe(results.length);
-        expect(telemetry?.totalMs).toBeGreaterThan(0);
-        expect(telemetry?.stages.map(stage => stage.name)).toContain('parse-query');
-        expect(telemetry?.stages.map(stage => stage.name)).toContain('ast-filter');
-        expect(telemetry?.stages.map(stage => stage.name)).toContain('sort');
-    });
-
     it('skips relevance prep for complex filter-only searches', async () => {
-        if (!sharedService) {
-            pending('Real unit data could not be loaded for the benchmark test.');
-            return;
-        }
-
         sharedService.resetFilters();
         const service = sharedService;
 
-        service.searchText.set('(faction=="draco*" or faction="*suns") and type=BM');
+        service.searchText.set('(faction=="test*" or faction="*faction") and type=BM');
 
         const results = service.filteredUnits();
         await Promise.resolve();
@@ -835,7 +730,7 @@ describe('UnitSearchFiltersService search telemetry', () => {
         expect(telemetry?.stages.map(stage => stage.name)).toContain('ast-filter');
     });
 
-    xit('recomputes search results when the search corpus is refreshed', async () => {
+    it('recomputes search results when the search corpus is refreshed', async () => {
         if (!benchmarkBundle || benchmarkBundle.units.units.length === 0) {
             pending('Real unit data could not be loaded for the benchmark test.');
             return;
@@ -852,14 +747,14 @@ describe('UnitSearchFiltersService search telemetry', () => {
         addedUnit.name = 'Refresh Probe Unit';
 
         dataService.getUnits().push(addedUnit);
-        dataService.refreshSearchCorpus();
+        refreshSearchCorpusForTest(dataService);
 
         const results = service.filteredUnits();
         await Promise.resolve();
         const telemetry = service.searchTelemetry();
 
         expect(results.some(unit => unit.name === 'Refresh Probe Unit')).toBeTrue();
-        expect(telemetry?.unitCount).toBe(10001);
+        expect(telemetry?.unitCount).toBe(3);
     });
 
     it('invalidates force pack lookup caches when the search corpus is refreshed', () => {
@@ -877,7 +772,7 @@ describe('UnitSearchFiltersService search telemetry', () => {
             ['Stale Unit|Mek|BattleMek', ['stale-pack']],
         ]);
 
-        dataService.refreshSearchCorpus();
+        refreshSearchCorpusForTest(dataService);
 
         expect((dataService as any).forcePackToLookupKey).toBeNull();
         expect((dataService as any).lookupKeyToForcePacks).toBeNull();
@@ -899,7 +794,7 @@ describe('UnitSearchFiltersService search telemetry', () => {
         expect(service.filteredUnits().map(unit => unit.name)).toEqual(['Test Mek']);
         expect(service.forceGeneratorEligibleUnits().map(unit => unit.name)).toEqual(['Test Mek', 'Test Tank']);
 
-        gameServiceStub.currentGameSystem.set(GameSystem.ALPHA_STRIKE);
+        gameServiceStub.currentGameSystem.set(GameSystem.AS);
         service.bvPvLimit.set(30);
 
         expect(service.filteredUnits().map(unit => unit.name)).toEqual(['Test Mek']);
@@ -929,12 +824,12 @@ describe('UnitSearchFiltersService search telemetry', () => {
         TestBed.tick();
 
         service.setBudgetMode('bv-normalization');
-        gameServiceStub.currentGameSystem.set(GameSystem.ALPHA_STRIKE);
+        gameServiceStub.currentGameSystem.set(GameSystem.AS);
         TestBed.tick();
 
         expect(service.budgetMode()).toBe('pv-normalization');
 
-        gameServiceStub.currentGameSystem.set(GameSystem.CLASSIC);
+        gameServiceStub.currentGameSystem.set(GameSystem.CBT);
         TestBed.tick();
 
         expect(service.budgetMode()).toBe('bv-normalization');
@@ -1004,7 +899,7 @@ describe('UnitSearchFiltersService search telemetry', () => {
 
     it('round-trips PV normalization through saved-search state', () => {
         const { service, gameServiceStub } = createService(createStandaloneBundle());
-        gameServiceStub.currentGameSystem.set(GameSystem.ALPHA_STRIKE);
+        gameServiceStub.currentGameSystem.set(GameSystem.AS);
         TestBed.tick();
         const pvNormalization = {
             targetPv: { min: 20, max: 40 },
@@ -1078,11 +973,15 @@ describe('UnitSearchFiltersService search telemetry', () => {
         service.setFormationTarget({
             formationId: 'order-lance',
             existingUnits: [existingForceUnit],
-            gameSystem: GameSystem.ALPHA_STRIKE,
+            gameSystem: GameSystem.AS,
         });
 
         expect(service.filteredUnits().map(unit => unit.name)).toEqual(['Test Mek']);
         expect(service.forceGeneratorEligibleUnits().map(unit => unit.name)).toEqual(['Test Mek', 'Test Tank']);
+        service.setFormationTarget({ formationId: 'order-lance', gameSystem: GameSystem.AS,
+            existingUnits: [{ ...existingForceUnit, force: { faction: () => CLAN_WOLF_TEST_FACTION } }],
+        });
+        expect(service.filteredUnits()).toEqual([]);
     });
 
     it('clears the active formation target when filters are reset', () => {
@@ -1093,7 +992,7 @@ describe('UnitSearchFiltersService search telemetry', () => {
         service.setFormationTarget({
             formationId: 'order-lance',
             existingUnits: [existingForceUnit],
-            gameSystem: GameSystem.ALPHA_STRIKE,
+            gameSystem: GameSystem.AS,
         });
 
         expect(service.filteredUnits().map(unit => unit.name)).toEqual(['Test Mek']);
@@ -1102,6 +1001,69 @@ describe('UnitSearchFiltersService search telemetry', () => {
 
         expect(service.formationTarget()).toBeNull();
         expect(service.filteredUnits().map(unit => unit.name)).toEqual(['Test Mek', 'Test Tank']);
+    });
+
+    it('explains an existing support aircraft blocker and clears it when the group or filter changes', () => {
+        const bundle = createStandaloneBundle();
+        bundle.units.units = [createEmptyUnit({ name: 'Interceptor', type: 'Aero', subtype: 'Aerospace Fighter', role: 'Interceptor' })];
+        const { service, gameServiceStub } = createService(bundle);
+        gameServiceStub.currentGameSystem.set(GameSystem.CBT);
+        const support = new TestFixedWingSupportEntity();
+        support.chassis.set('Mustang Fighter');
+        support.role.set('Attack Fighter');
+        const member = { force: { faction: () => null }, getFormationEntity: () => support };
+        const target = { formationId: 'aerospace-superiority-squadron', existingUnits: [member], gameSystem: GameSystem.CBT };
+        const projectCandidate = spyOn<any>(service, 'createFormationCandidateUnit').and.callThrough();
+        service.setFormationTarget(target);
+
+        expect(service.filteredUnits()).toEqual([]);
+        expect(projectCandidate).not.toHaveBeenCalled();
+        const blocker = service.formationTargetBlocker()!;
+        expect(blocker.formationName).toBe('Aerospace Superiority');
+        expect(blocker.units).toEqual([member]);
+        expect(blocker.evaluation.constraints.filter(c => c.blocked).map(c => c.constraintId))
+            .toEqual(['aerospace-superiority-all-aerospace']);
+        service.setSearchText('formation="Aerospace Superiority"');
+        expect(service.filteredUnits()).toEqual([]);
+        expect(projectCandidate).not.toHaveBeenCalled();
+        service.setSearchText('');
+        service.setFormationTarget(target);
+
+        const fighter = new TestConvFighterEntity();
+        fighter.role.set('Attack Fighter');
+        service.setFormationTargetExistingUnits([{ ...member, getFormationEntity: () => fighter }]);
+        expect(service.formationTargetBlocker()).toBeNull();
+        expect(service.filteredUnits().map(unit => unit.name)).toEqual(['Interceptor']);
+
+        service.setFormationTargetExistingUnits([]);
+        expect(service.formationTargetBlocker()).toBeNull();
+        service.setFormationTarget(target);
+        expect(service.formationTargetBlocker()).not.toBeNull();
+        service.resetFilters();
+        expect(service.formationTargetBlocker()).toBeNull();
+    });
+
+    it('explains positive semantic formation blockers without blaming the group for negations or alternatives', () => {
+        const bundle = createStandaloneBundle();
+        const { service } = createService(bundle);
+        service.setFormationTargetExistingUnits([createFormationExistingForceUnit(bundle.units.units[0])]);
+        for (const operator of ['=', '==', '&=']) {
+            service.setSearchText(`formation${operator}"Aerospace Superiority"`);
+            expect(service.filteredUnits()).withContext(operator).toEqual([]);
+            expect(service.formationTargetBlocker()?.units[0].getFormationSummary?.()).withContext(operator).toBe(bundle.units.units[0]);
+        }
+        for (const query of [
+            'formation!="Aerospace Superiority"',
+            'formation="Aerospace Superiority" OR formation=Order',
+            'formation="Aerospace Superiority",Order',
+            'formation="Aerospace*"',
+            'formation="Aerospace Superiority',
+            'formation=Unknown',
+            'missing unit name',
+        ]) {
+            service.setSearchText(query);
+            expect(service.formationTargetBlocker()).withContext(query).toBeNull();
+        }
     });
 
     it('resets BV normalization skill controls to unrestricted defaults', () => {
@@ -1128,11 +1090,11 @@ describe('UnitSearchFiltersService search telemetry', () => {
         const { service, gameServiceStub } = createService(bundle);
         const existingForceUnit = createFormationExistingForceUnit(bundle.units.units[0]);
 
-        gameServiceStub.currentGameSystem.set(GameSystem.ALPHA_STRIKE);
+        gameServiceStub.currentGameSystem.set(GameSystem.AS);
         service.setFormationTarget({
             formationId: 'assault-lance',
             existingUnits: [existingForceUnit],
-            gameSystem: GameSystem.ALPHA_STRIKE,
+            gameSystem: GameSystem.AS,
         });
 
         service.setSearchText('formation=Order');
@@ -1151,7 +1113,7 @@ describe('UnitSearchFiltersService search telemetry', () => {
         const { service, gameServiceStub } = createService(bundle);
         const existingForceUnit = createFormationExistingForceUnit(bundle.units.units[0]);
 
-        gameServiceStub.currentGameSystem.set(GameSystem.ALPHA_STRIKE);
+        gameServiceStub.currentGameSystem.set(GameSystem.AS);
         service.setFormationTargetExistingUnits([existingForceUnit]);
         service.setSearchText('formation=Order');
 
@@ -1160,37 +1122,65 @@ describe('UnitSearchFiltersService search telemetry', () => {
         expect(service.forceGeneratorEligibleUnits().map(unit => unit.name)).toEqual(['Test Mek', 'Test Tank']);
     });
 
-    it('does not let unassigned catalog skills block Strategic Command formation filtering', () => {
+    it('preserves existing crew skills and uses planned candidate skills in formation filtering', () => {
         const bundle = createStrategicCommandBundle();
         const { service, gameServiceStub } = createService(bundle);
         const existingUnits = [
-            createFormationExistingForceUnit(bundle.units.units[0], GameSystem.ALPHA_STRIKE, { faction: CLAN_WOLF_TEST_FACTION, pilotSkill: 4, gunnerySkill: 4 }),
-            createFormationExistingForceUnit(bundle.units.units[1], GameSystem.ALPHA_STRIKE, { faction: CLAN_WOLF_TEST_FACTION, pilotSkill: 4, gunnerySkill: 4 }),
+            createFormationExistingForceUnit(bundle.units.units[0], GameSystem.AS, { faction: CLAN_WOLF_TEST_FACTION, pilotSkill: 4, gunnerySkill: 4 }),
+            createFormationExistingForceUnit(bundle.units.units[1], GameSystem.AS, { faction: CLAN_WOLF_TEST_FACTION, pilotSkill: 4, gunnerySkill: 4 }),
         ];
 
-        gameServiceStub.currentGameSystem.set(GameSystem.ALPHA_STRIKE);
+        gameServiceStub.currentGameSystem.set(GameSystem.AS);
         service.setFormationTarget({
             formationId: 'strategic-command-star',
             existingUnits,
-            gameSystem: GameSystem.ALPHA_STRIKE,
+            gameSystem: GameSystem.AS,
         });
 
-        expect(service.filteredUnits().map(unit => unit.name)).toEqual(['Elemental Point', 'Timber Wolf Prime']);
+        expect(service.filteredUnits()).toEqual([]);
 
         service.setSearchText('formation="Strategic Command"');
 
+        expect(service.filteredUnits()).toEqual([]);
+        service.setFormationTargetExistingUnits(existingUnits.map(unit => ({ ...unit, pilotSkill: () => 3, gunnerySkill: () => 3 })));
+        // Existing crews now qualify; the prospective unit still uses the selected skill.
+        expect(service.filteredUnits()).toEqual([]);
+        service.setPilotSkills(3, 4);
         expect(service.filteredUnits().map(unit => unit.name)).toEqual(['Elemental Point', 'Timber Wolf Prime']);
+    });
+
+    it('refreshes the blocker and semantic search when an existing crew changes in place', () => {
+        const bundle = createStrategicCommandBundle();
+        const { service, gameServiceStub } = createService(bundle);
+        gameServiceStub.currentGameSystem.set(GameSystem.AS);
+        const skill = signal(4);
+        const members = [0, 1].map(index => ({
+            ...createFormationExistingForceUnit(bundle.units.units[index], GameSystem.AS, { faction: CLAN_WOLF_TEST_FACTION }),
+            pilotSkill: skill,
+        }));
+        service.setFormationTargetExistingUnits(members);
+        service.setPilotSkills(3, 4);
+        service.setSearchText('formation="Strategic Command"');
+        expect(service.filteredUnits()).toEqual([]);
+        expect(service.formationTargetBlocker()).not.toBeNull();
+
+        skill.set(3);
+        expect(service.formationTargetBlocker()).toBeNull();
+        expect(service.filteredUnits().map(unit => unit.name)).toEqual(['Elemental Point', 'Timber Wolf Prime']);
+        skill.set(4);
+        expect(service.filteredUnits()).toEqual([]);
+        expect(service.formationTargetBlocker()).not.toBeNull();
     });
 
     it('limits faction dropdown availability by manual and semantic formation targets', () => {
         const createAlphaStrikeService = () => {
             const created = createService(createFormationFactionBundle());
-            created.gameServiceStub.currentGameSystem.set(GameSystem.ALPHA_STRIKE);
+            created.gameServiceStub.currentGameSystem.set(GameSystem.AS);
             return created.service;
         };
 
         let service = createAlphaStrikeService();
-        service.setFormationTarget({ formationId: 'anvil-lance', existingUnits: [], gameSystem: GameSystem.ALPHA_STRIKE });
+        service.setFormationTarget({ formationId: 'anvil-lance', existingUnits: [], gameSystem: GameSystem.AS });
 
         expectOptionAvailability(service.advOptions()['faction']?.options ?? [], FREE_WORLDS_LEAGUE_FACTION, true);
         expectOptionAvailability(service.advOptions()['faction']?.options ?? [], FEDERATED_SUNS_FACTION, false);
@@ -1206,7 +1196,7 @@ describe('UnitSearchFiltersService search telemetry', () => {
     it('limits MegaMek faction dropdown availability by semantic formation targets', () => {
         const bundle = createFormationFactionBundle();
         const { dataService, service, optionsServiceStub, gameServiceStub } = createService(bundle);
-        spyOn(dataService, 'getMegaMekAvailabilityRecords').and.returnValue([
+        stubMegaMekAvailabilityRecords(dataService, [
             {
                 n: bundle.units.units[0].name,
                 e: {
@@ -1220,14 +1210,11 @@ describe('UnitSearchFiltersService search telemetry', () => {
                 },
             },
         ]);
-        spyOn(dataService, 'getMegaMekAvailabilityRecordForUnit').and.callFake((unit: Pick<UnitSummary, 'name'>) => {
-            return dataService.getMegaMekAvailabilityRecords().find((record) => record.n === unit.name);
-        });
         optionsServiceStub.options.set({
             ...optionsServiceStub.options(),
             availabilitySource: 'megamek',
         });
-        gameServiceStub.currentGameSystem.set(GameSystem.ALPHA_STRIKE);
+        gameServiceStub.currentGameSystem.set(GameSystem.AS);
 
         service.setSearchText('formation=Anvil');
 
@@ -1273,9 +1260,9 @@ describe('UnitSearchFiltersService search telemetry', () => {
             },
         ];
         const { service, gameServiceStub } = createService(bundle);
-        gameServiceStub.currentGameSystem.set(GameSystem.ALPHA_STRIKE);
+        gameServiceStub.currentGameSystem.set(GameSystem.AS);
 
-        service.setFormationTarget({ formationId: 'anvil-lance', existingUnits: [], gameSystem: GameSystem.ALPHA_STRIKE });
+        service.setFormationTarget({ formationId: 'anvil-lance', existingUnits: [], gameSystem: GameSystem.AS });
 
         expectOptionAvailability(service.advOptions()['era']?.options ?? [], 'League Era', true);
         expectOptionAvailability(service.advOptions()['era']?.options ?? [], 'Suns Era', false);
@@ -1318,7 +1305,7 @@ describe('UnitSearchFiltersService search telemetry', () => {
             },
         ];
         const { dataService, service, optionsServiceStub, gameServiceStub } = createService(bundle);
-        spyOn(dataService, 'getMegaMekAvailabilityRecords').and.returnValue([
+        stubMegaMekAvailabilityRecords(dataService, [
             {
                 n: bundle.units.units[0].name,
                 e: {
@@ -1332,16 +1319,13 @@ describe('UnitSearchFiltersService search telemetry', () => {
                 },
             },
         ]);
-        spyOn(dataService, 'getMegaMekAvailabilityRecordForUnit').and.callFake((unit: Pick<UnitSummary, 'name'>) => {
-            return dataService.getMegaMekAvailabilityRecords().find((record) => record.n === unit.name);
-        });
         optionsServiceStub.options.set({
             ...optionsServiceStub.options(),
             availabilitySource: 'megamek',
         });
-        gameServiceStub.currentGameSystem.set(GameSystem.ALPHA_STRIKE);
+        gameServiceStub.currentGameSystem.set(GameSystem.AS);
 
-        service.setFormationTarget({ formationId: 'anvil-lance', existingUnits: [], gameSystem: GameSystem.ALPHA_STRIKE });
+        service.setFormationTarget({ formationId: 'anvil-lance', existingUnits: [], gameSystem: GameSystem.AS });
 
         expectOptionAvailability(service.advOptions()['era']?.options ?? [], 'League Era', true);
         expectOptionAvailability(service.advOptions()['era']?.options ?? [], 'Suns Era', false);
@@ -1350,7 +1334,7 @@ describe('UnitSearchFiltersService search telemetry', () => {
     it('limits formation dropdown availability by manual and semantic faction filters', () => {
         const { service } = createService(createFormationFactionBundle());
         const expectFormationAvailability = (formationId: string, available: boolean) => {
-            expect(service.getFormationTargetOptions(GameSystem.ALPHA_STRIKE).find((option) => option.name === formationId))
+            expect(service.getFormationTargetOptions(GameSystem.AS).find((option) => option.name === formationId))
                 .toEqual(jasmine.objectContaining({ name: formationId, available }));
         };
 
@@ -1369,7 +1353,7 @@ describe('UnitSearchFiltersService search telemetry', () => {
         const semanticService = createService(createFormationFactionBundle()).service;
         semanticService.setSearchText(`faction="${FEDERATED_SUNS_FACTION}"`);
         const expectSemanticFormationAvailability = (formationId: string, available: boolean) => {
-            expect(semanticService.getFormationTargetOptions(GameSystem.ALPHA_STRIKE).find((option) => option.name === formationId))
+            expect(semanticService.getFormationTargetOptions(GameSystem.AS).find((option) => option.name === formationId))
                 .toEqual(jasmine.objectContaining({ name: formationId, available }));
         };
 
@@ -1380,7 +1364,7 @@ describe('UnitSearchFiltersService search telemetry', () => {
     it('limits Clan-only formation availability to Clan faction filters', () => {
         const { service } = createService(createFormationFactionBundle());
         const expectFormationAvailability = (formationId: string, available: boolean) => {
-            expect(service.getFormationTargetOptions(GameSystem.ALPHA_STRIKE).find((option) => option.name === formationId))
+            expect(service.getFormationTargetOptions(GameSystem.AS).find((option) => option.name === formationId))
                 .toEqual(jasmine.objectContaining({ name: formationId, available }));
         };
 
@@ -1402,9 +1386,9 @@ describe('UnitSearchFiltersService search telemetry', () => {
 
     it('limits faction dropdown availability by Clan-only formation targets', () => {
         const { service, gameServiceStub } = createService(createFormationFactionBundle());
-        gameServiceStub.currentGameSystem.set(GameSystem.ALPHA_STRIKE);
+        gameServiceStub.currentGameSystem.set(GameSystem.AS);
 
-        service.setFormationTarget({ formationId: 'phalanx-star', existingUnits: [], gameSystem: GameSystem.ALPHA_STRIKE });
+        service.setFormationTarget({ formationId: 'phalanx-star', existingUnits: [], gameSystem: GameSystem.AS });
 
         expectOptionAvailability(service.advOptions()['faction']?.options ?? [], FEDERATED_SUNS_FACTION, false);
         expectOptionAvailability(service.advOptions()['faction']?.options ?? [], CLAN_WOLF_FACTION, true);
@@ -1413,9 +1397,9 @@ describe('UnitSearchFiltersService search telemetry', () => {
 
     it('sorts formation target options alphabetically and resolves loose semantic names', () => {
         const { service, gameServiceStub } = createService(createStandaloneBundle());
-        gameServiceStub.currentGameSystem.set(GameSystem.ALPHA_STRIKE);
+        gameServiceStub.currentGameSystem.set(GameSystem.AS);
 
-        const formationTargetOptions = service.getFormationTargetOptions(GameSystem.ALPHA_STRIKE);
+        const formationTargetOptions = service.getFormationTargetOptions(GameSystem.AS);
         const displayNames = formationTargetOptions
             .slice(1)
             .map((option) => option.displayName ?? option.name);
@@ -1433,71 +1417,21 @@ describe('UnitSearchFiltersService search telemetry', () => {
         expect(service.semanticFormationTargetId()).toBe('vehicle-command-lance');
     });
 
-    it('ignores the active formation target for worker-backed generator eligibility', async () => {
-        const worker = new FakeSearchWorker();
+    it('ignores the active formation target for force-generator eligibility', () => {
         const bundle = createStandaloneBundle();
-        const { service } = createService(bundle, {
-            workerFactory: () => worker,
-        });
+        const { service } = createService(bundle);
         const existingForceUnit = createFormationExistingForceUnit(bundle.units.units[0]);
-
-        await flushAsyncWork();
 
         service.setFormationTarget({
             formationId: 'order-lance',
             existingUnits: [existingForceUnit],
-            gameSystem: GameSystem.ALPHA_STRIKE,
+            gameSystem: GameSystem.AS,
         });
         service.searchText.set('Test');
         service.filteredUnits();
 
-        const corpusVersion = (service as any).getWorkerCorpusVersion();
-        const snapshot = (service as any).getWorkerCorpusSnapshot(corpusVersion);
-        const request = (service as any).buildWorkerSearchRequest(corpusVersion);
-
-        (service as any).searchWorkerClient.submit(snapshot, request);
-        const initMessage = worker.messages.at(-1) as any;
-        worker.emit({ type: 'ready', corpusVersion: initMessage.snapshot.corpusVersion });
-        await flushAsyncWork();
-
-        const executeMessage = worker.messages.filter((message: any) => message.type === 'execute').at(-1) as any;
-        worker.emit({
-            type: 'result',
-            revision: executeMessage.request.revision,
-            corpusVersion: executeMessage.request.corpusVersion,
-            telemetryQuery: executeMessage.request.telemetryQuery,
-            entries: bundle.units.units.map((unit) => ({ unitUuid: unit.uuid })),
-            stages: [],
-            totalMs: 1,
-            unitCount: bundle.units.units.length,
-            isComplex: false,
-        });
-        await flushAsyncWork();
-
         expect(service.filteredUnits().map(unit => unit.name)).toEqual(['Test Mek']);
         expect(service.forceGeneratorEligibleUnits().map(unit => unit.name)).toEqual(['Test Mek', 'Test Tank']);
-    });
-
-    it('preserves complex OR semantic queries for worker execution', async () => {
-        const bundle = createStandaloneBundle();
-        const { service, gameServiceStub } = createService(bundle, {
-            workerFactory: () => new FakeSearchWorker(),
-        });
-
-        await flushAsyncWork();
-
-        gameServiceStub.currentGameSystem.set(GameSystem.ALPHA_STRIKE);
-        service.searchText.set('pv>0 or pv<0');
-
-        const corpusVersion = (service as any).getWorkerCorpusVersion();
-        const request = (service as any).buildWorkerSearchRequest(corpusVersion);
-
-        expect(request.executionQuery).toBe('pv>0 or pv<0');
-        expect(request.telemetryQuery).toBe('pv>0 or pv<0');
-
-        service.setFilter('type', ['Mek']);
-        const filteredRequest = (service as any).buildWorkerSearchRequest(corpusVersion);
-        expect(filteredRequest.executionQuery).toBe('(pv>0 or pv<0) type=Mek');
     });
 
     it('distinguishes force packs by subtype when chassis and type match', () => {
@@ -1510,6 +1444,7 @@ describe('UnitSearchFiltersService search telemetry', () => {
         const bundle = buildSmallBundle(benchmarkBundle);
         const [battleMekPeacekeeper, industrialPeacekeeper] = bundle.units.units;
 
+        battleMekPeacekeeper.uuid = getForcePacks().find(pack => pack.name === FORCE_PACK_NAME)!.units[0].uuid;
         battleMekPeacekeeper.name = 'BMPeacekeeper_PKP1A';
         battleMekPeacekeeper.chassis = 'Peacekeeper';
         battleMekPeacekeeper.model = 'PKP-1A';
@@ -1644,7 +1579,7 @@ describe('UnitSearchFiltersService search telemetry', () => {
         ];
 
         const { dataService, service, optionsServiceStub } = createService(bundle);
-        spyOn(dataService, 'getMegaMekAvailabilityRecords').and.returnValue([
+        stubMegaMekAvailabilityRecords(dataService, [
             {
                 n: bundle.units.units[0].name,
                 // t: bundle.units.units[0].type,
@@ -1666,11 +1601,6 @@ describe('UnitSearchFiltersService search telemetry', () => {
                 },
             },
         ]);
-        spyOn(dataService, 'getMegaMekAvailabilityRecordForUnit').and.callFake((unit: Pick<UnitSummary, 'name'>) => {
-            return dataService.getMegaMekAvailabilityRecords().find((record) => (
-                record.n === unit.name
-            ));
-        });
 
         optionsServiceStub.options.set({
             ...optionsServiceStub.options(),
@@ -1740,7 +1670,7 @@ describe('UnitSearchFiltersService search telemetry', () => {
         ];
 
         const { dataService, service, optionsServiceStub } = createService(bundle);
-        spyOn(dataService, 'getMegaMekAvailabilityRecords').and.returnValue([
+        stubMegaMekAvailabilityRecords(dataService, [
             {
                 n: bundle.units.units[0].name,
                 // t: bundle.units.units[0].type,
@@ -1762,11 +1692,6 @@ describe('UnitSearchFiltersService search telemetry', () => {
                 },
             },
         ]);
-        spyOn(dataService, 'getMegaMekAvailabilityRecordForUnit').and.callFake((unit: Pick<UnitSummary, 'name'>) => {
-            return dataService.getMegaMekAvailabilityRecords().find((record) => (
-                record.n === unit.name
-            ));
-        });
 
         optionsServiceStub.options.set({
             ...optionsServiceStub.options(),
@@ -1929,66 +1854,6 @@ describe('UnitSearchFiltersService search telemetry', () => {
         expect(namedFactionOptions.find((option) => option.name === 'Clan Sea Fox')).toEqual(jasmine.objectContaining({ available: false }));
     });
 
-    it('keeps era dropdown options in chronological catalog order', () => {
-        const bundle = createStandaloneBundle();
-        bundle.eras.eras = [
-            {
-                id: 2,
-                name: 'Succession Wars',
-                img: '',
-                years: {
-                    from: 2781,
-                    to: 3049,
-                },
-                units: [1, 2],
-                factions: [],
-            },
-            {
-                id: 1,
-                name: 'Age of War',
-                img: '',
-                years: {
-                    from: 2005,
-                    to: 2570,
-                },
-                units: [1],
-                factions: [],
-            },
-            {
-                id: 3,
-                name: 'Clan Invasion',
-                img: '',
-                years: {
-                    from: 3050,
-                    to: 3061,
-                },
-                units: [2],
-                factions: [],
-            },
-        ];
-        bundle.factions.factions = [{
-            id: 1,
-            name: 'Test Faction',
-            group: 'Other',
-            img: '',
-            eras: {
-                1: new Set([1]),
-                2: new Set([1, 2]),
-                3: new Set([2]),
-            },
-        }];
-
-        const { service } = createService(bundle);
-        const eraOptions = service.advOptions()['era']?.options ?? [];
-        const namedEraOptions = eraOptions.filter((option): option is { name: string } => typeof option !== 'number');
-
-        expect(namedEraOptions.map((option) => option.name)).toEqual([
-            'Age of War',
-            'Succession Wars',
-            'Clan Invasion',
-        ]);
-    });
-
     it('scopes MegaMek faction dropdown availability by Available From and Rarity selections', () => {
         if (!benchmarkBundle || benchmarkBundle.units.units.length < 2) {
             pending('Real unit data could not be loaded for the MegaMek availability scope test.');
@@ -2024,7 +1889,7 @@ describe('UnitSearchFiltersService search telemetry', () => {
         }));
 
         const { dataService, service, optionsServiceStub } = createService(bundle);
-        spyOn(dataService, 'getMegaMekAvailabilityRecords').and.returnValue([
+        stubMegaMekAvailabilityRecords(dataService, [
             {
                 n: bundle.units.units[0].name,
                 // t: 'Mek',
@@ -2043,11 +1908,6 @@ describe('UnitSearchFiltersService search telemetry', () => {
                 },
             },
         ]);
-        spyOn(dataService, 'getMegaMekAvailabilityRecordForUnit').and.callFake((unit: Pick<UnitSummary, 'name'>) => {
-            return dataService.getMegaMekAvailabilityRecords().find((record) => (
-                record.n === unit.name
-            ));
-        });
 
         optionsServiceStub.options.set({
             ...optionsServiceStub.options(),
@@ -2129,7 +1989,7 @@ describe('UnitSearchFiltersService search telemetry', () => {
         }];
 
         const { dataService, service, optionsServiceStub } = createService(bundle);
-        spyOn(dataService, 'getMegaMekAvailabilityRecords').and.returnValue([
+        stubMegaMekAvailabilityRecords(dataService, [
             {
                 n: bundle.units.units[0].name,
                 e: {
@@ -2139,9 +1999,6 @@ describe('UnitSearchFiltersService search telemetry', () => {
                 },
             },
         ]);
-        spyOn(dataService, 'getMegaMekAvailabilityRecordForUnit').and.callFake((unit: Pick<UnitSummary, 'name'>) => {
-            return dataService.getMegaMekAvailabilityRecords().find((record) => record.n === unit.name);
-        });
 
         optionsServiceStub.options.set({
             ...optionsServiceStub.options(),
@@ -2227,7 +2084,7 @@ describe('UnitSearchFiltersService search telemetry', () => {
         ];
 
         const { dataService, service, optionsServiceStub } = createService(bundle);
-        spyOn(dataService, 'getMegaMekAvailabilityRecords').and.returnValue([
+        stubMegaMekAvailabilityRecords(dataService, [
             {
                 n: 'BattleMaster C3',
                 e: {
@@ -2241,9 +2098,6 @@ describe('UnitSearchFiltersService search telemetry', () => {
                 },
             },
         ]);
-        spyOn(dataService, 'getMegaMekAvailabilityRecordForUnit').and.callFake((unit: Pick<UnitSummary, 'name'>) => {
-            return dataService.getMegaMekAvailabilityRecords().find((record) => record.n === unit.name);
-        });
 
         const rasalhagueDominion = {
             'Rasalhague Dominion': {
@@ -2346,7 +2200,7 @@ describe('UnitSearchFiltersService search telemetry', () => {
         ];
 
         const { dataService, service, optionsServiceStub } = createService(bundle);
-        spyOn(dataService, 'getMegaMekAvailabilityRecords').and.returnValue([
+        stubMegaMekAvailabilityRecords(dataService, [
             {
                 n: 'BattleMaster C3',
                 e: {
@@ -2360,9 +2214,6 @@ describe('UnitSearchFiltersService search telemetry', () => {
                 },
             },
         ]);
-        spyOn(dataService, 'getMegaMekAvailabilityRecordForUnit').and.callFake((unit: Pick<UnitSummary, 'name'>) => {
-            return dataService.getMegaMekAvailabilityRecords().find((record) => record.n === unit.name);
-        });
 
         const rasalhagueDominion = {
             'Rasalhague Dominion': {
@@ -2462,7 +2313,7 @@ describe('UnitSearchFiltersService search telemetry', () => {
         ];
 
         const { dataService, service, optionsServiceStub } = createService(bundle);
-        spyOn(dataService, 'getMegaMekAvailabilityRecords').and.returnValue([
+        stubMegaMekAvailabilityRecords(dataService, [
             {
                 n: 'BattleMaster C3',
                 e: {
@@ -2476,9 +2327,6 @@ describe('UnitSearchFiltersService search telemetry', () => {
                 },
             },
         ]);
-        spyOn(dataService, 'getMegaMekAvailabilityRecordForUnit').and.callFake((unit: Pick<UnitSummary, 'name'>) => {
-            return dataService.getMegaMekAvailabilityRecords().find((record) => record.n === unit.name);
-        });
 
         const rasalhagueDominion = {
             'Rasalhague Dominion': {
@@ -2580,7 +2428,7 @@ describe('UnitSearchFiltersService search telemetry', () => {
         ];
 
         const { dataService, service } = createService(bundle);
-        spyOn(dataService, 'getMegaMekAvailabilityRecords').and.returnValue([
+        stubMegaMekAvailabilityRecords(dataService, [
             {
                 n: 'BattleMaster C3',
                 e: {
@@ -2596,9 +2444,6 @@ describe('UnitSearchFiltersService search telemetry', () => {
                 },
             },
         ]);
-        spyOn(dataService, 'getMegaMekAvailabilityRecordForUnit').and.callFake((unit: Pick<UnitSummary, 'name'>) => {
-            return dataService.getMegaMekAvailabilityRecords().find((record) => record.n === unit.name);
-        });
 
         service.searchText.set('BattleMaster');
         service.setFilter('era', ['Dark Age']);
@@ -2679,7 +2524,7 @@ describe('UnitSearchFiltersService search telemetry', () => {
         ];
 
         const { dataService, service } = createService(bundle);
-        spyOn(dataService, 'getMegaMekAvailabilityRecords').and.returnValue([
+        stubMegaMekAvailabilityRecords(dataService, [
             {
                 n: 'BattleMaster C3',
                 e: {
@@ -2690,9 +2535,6 @@ describe('UnitSearchFiltersService search telemetry', () => {
                 },
             },
         ]);
-        spyOn(dataService, 'getMegaMekAvailabilityRecordForUnit').and.callFake((unit: Pick<UnitSummary, 'name'>) => {
-            return dataService.getMegaMekAvailabilityRecords().find((record) => record.n === unit.name);
-        });
 
         service.searchText.set('BattleMaster');
         service.setFilter('era', ['ilClan']);
@@ -2811,7 +2653,7 @@ describe('UnitSearchFiltersService search telemetry', () => {
         ];
 
         const { dataService, service } = createService(bundle);
-        spyOn(dataService, 'getMegaMekAvailabilityRecords').and.returnValue([
+        stubMegaMekAvailabilityRecords(dataService, [
             {
                 n: 'BattleMaster C3',
                 e: {
@@ -2822,9 +2664,6 @@ describe('UnitSearchFiltersService search telemetry', () => {
                 },
             },
         ]);
-        spyOn(dataService, 'getMegaMekAvailabilityRecordForUnit').and.callFake((unit: Pick<UnitSummary, 'name'>) => {
-            return dataService.getMegaMekAvailabilityRecords().find((record) => record.n === unit.name);
-        });
 
         service.searchText.set('BattleMaster');
         service.setFilter('era', ['ilClan']);
@@ -2874,7 +2713,7 @@ describe('UnitSearchFiltersService search telemetry', () => {
         }];
 
         const { dataService, service, optionsServiceStub } = createService(bundle);
-        spyOn(dataService, 'getMegaMekAvailabilityRecords').and.returnValue([
+        stubMegaMekAvailabilityRecords(dataService, [
             {
                 n: bundle.units.units[0].name,
                 // t: bundle.units.units[0].type,
@@ -2887,11 +2726,6 @@ describe('UnitSearchFiltersService search telemetry', () => {
                 },
             },
         ]);
-        spyOn(dataService, 'getMegaMekAvailabilityRecordForUnit').and.callFake((unit: Pick<UnitSummary, 'name'>) => {
-            return dataService.getMegaMekAvailabilityRecords().find((record) => (
-                record.n === unit.name
-            ));
-        });
 
         optionsServiceStub.options.set({
             ...optionsServiceStub.options(),
@@ -2921,7 +2755,7 @@ describe('UnitSearchFiltersService search telemetry', () => {
         bundle.factions.factions[0].eras[1] = new Set([1, 2]);
 
         const { dataService, service, optionsServiceStub } = createService(bundle);
-        spyOn(dataService, 'getMegaMekAvailabilityRecords').and.returnValue([
+        stubMegaMekAvailabilityRecords(dataService, [
             {
                 n: 'Requisition Unit',
                 e: {
@@ -2939,9 +2773,6 @@ describe('UnitSearchFiltersService search telemetry', () => {
                 },
             },
         ]);
-        spyOn(dataService, 'getMegaMekAvailabilityRecordForUnit').and.callFake((unit: Pick<UnitSummary, 'name'>) => {
-            return dataService.getMegaMekAvailabilityRecords().find((record) => record.n === unit.name);
-        });
 
         optionsServiceStub.options.set({
             ...optionsServiceStub.options(),
@@ -2969,7 +2800,7 @@ describe('UnitSearchFiltersService search telemetry', () => {
         bundle.factions.factions[0].eras[1] = new Set([1, 2]);
 
         const { dataService, service, optionsServiceStub } = createService(bundle);
-        spyOn(dataService, 'getMegaMekAvailabilityRecords').and.returnValue([
+        stubMegaMekAvailabilityRecords(dataService, [
             {
                 n: 'Very Rare Unit',
                 e: {
@@ -2987,9 +2818,6 @@ describe('UnitSearchFiltersService search telemetry', () => {
                 },
             },
         ]);
-        spyOn(dataService, 'getMegaMekAvailabilityRecordForUnit').and.callFake((unit: Pick<UnitSummary, 'name'>) => {
-            return dataService.getMegaMekAvailabilityRecords().find((record) => record.n === unit.name);
-        });
 
         optionsServiceStub.options.set({
             ...optionsServiceStub.options(),
@@ -2999,136 +2827,6 @@ describe('UnitSearchFiltersService search telemetry', () => {
         service.searchText.set('rarity="very rare"');
 
         expect(service.filteredUnits().map((unit) => unit.name)).toEqual(['Very Rare Unit']);
-    });
-
-    it('filters MegaMek units by semantic rarity queries while the worker is active', async () => {
-        const worker = new FakeSearchWorker();
-        const bundle = createStandaloneBundle();
-        bundle.units.units[0].name = 'Very Common Crab';
-        bundle.units.units[0].chassis = 'Very Common Crab';
-        bundle.units.units[0].model = 'VCC-1';
-        bundle.units.units[1].name = 'Unknown Crab';
-        bundle.units.units[1].chassis = 'Unknown Crab';
-        bundle.units.units[1].model = 'UNC-1';
-        bundle.eras.eras[0].units = [1, 2];
-        bundle.factions.factions[0].eras[1] = new Set([1, 2]);
-
-        const { dataService, service, optionsServiceStub } = createService(bundle, {
-            workerFactory: () => worker,
-        });
-        spyOn(dataService, 'getMegaMekAvailabilityRecords').and.returnValue([
-            {
-                n: 'Very Common Crab',
-                e: {
-                    '1': {
-                        '1': [85, 0],
-                    },
-                },
-            },
-        ]);
-        spyOn(dataService, 'getMegaMekAvailabilityRecordForUnit').and.callFake((unit: Pick<UnitSummary, 'name'>) => {
-            return dataService.getMegaMekAvailabilityRecords().find((record) => record.n === unit.name);
-        });
-
-        await flushAsyncWork();
-
-        optionsServiceStub.options.set({
-            ...optionsServiceStub.options(),
-            availabilitySource: 'megamek',
-        });
-        service.searchText.set('crab rarity="very common"');
-        service.filteredUnits();
-
-        const corpusVersion = (service as any).getWorkerCorpusVersion();
-        const snapshot = (service as any).getWorkerCorpusSnapshot(corpusVersion);
-        const request = (service as any).buildWorkerSearchRequest(corpusVersion);
-
-        (service as any).searchWorkerClient.submit(snapshot, request);
-
-        const initMessage = worker.messages.at(-1) as any;
-        worker.emit({ type: 'ready', corpusVersion: initMessage.snapshot.corpusVersion });
-        await flushAsyncWork();
-
-        const executeMessage = worker.messages.filter((message: any) => message.type === 'execute').at(-1) as any;
-        worker.emit({
-            type: 'result',
-            revision: executeMessage.request.revision,
-            corpusVersion: executeMessage.request.corpusVersion,
-            telemetryQuery: executeMessage.request.telemetryQuery,
-            entries: createWorkerEntries(bundle, ['Very Common Crab', 'Unknown Crab']),
-            stages: [],
-            totalMs: 1,
-            unitCount: bundle.units.units.length,
-            isComplex: false,
-        });
-        await flushAsyncWork();
-
-        expect(service.filteredUnits().map((unit) => unit.name)).toEqual(['Very Common Crab']);
-    });
-
-    it('filters MegaMek units by semantic Unknown rarity queries while the worker is active', async () => {
-        const worker = new FakeSearchWorker();
-        const bundle = createStandaloneBundle();
-        bundle.units.units[0].name = 'Known Crab';
-        bundle.units.units[0].chassis = 'Known Crab';
-        bundle.units.units[0].model = 'KNC-1';
-        bundle.units.units[1].name = 'Unknown Crab';
-        bundle.units.units[1].chassis = 'Unknown Crab';
-        bundle.units.units[1].model = 'UNC-1';
-        bundle.eras.eras[0].units = [1, 2];
-        bundle.factions.factions[0].eras[1] = new Set([1, 2]);
-
-        const { dataService, service, optionsServiceStub } = createService(bundle, {
-            workerFactory: () => worker,
-        });
-        spyOn(dataService, 'getMegaMekAvailabilityRecords').and.returnValue([
-            {
-                n: 'Known Crab',
-                e: {
-                    '1': {
-                        '1': [85, 0],
-                    },
-                },
-            },
-        ]);
-        spyOn(dataService, 'getMegaMekAvailabilityRecordForUnit').and.callFake((unit: Pick<UnitSummary, 'name'>) => {
-            return dataService.getMegaMekAvailabilityRecords().find((record) => record.n === unit.name);
-        });
-
-        await flushAsyncWork();
-
-        optionsServiceStub.options.set({
-            ...optionsServiceStub.options(),
-            availabilitySource: 'megamek',
-        });
-        service.searchText.set('crab rarity="unknown"');
-        service.filteredUnits();
-
-        const corpusVersion = (service as any).getWorkerCorpusVersion();
-        const snapshot = (service as any).getWorkerCorpusSnapshot(corpusVersion);
-        const request = (service as any).buildWorkerSearchRequest(corpusVersion);
-
-        (service as any).searchWorkerClient.submit(snapshot, request);
-
-        const initMessage = worker.messages.at(-1) as any;
-        worker.emit({ type: 'ready', corpusVersion: initMessage.snapshot.corpusVersion });
-        await flushAsyncWork();
-
-        const executeMessage = worker.messages.filter((message: any) => message.type === 'execute').at(-1) as any;
-        worker.emit({
-            type: 'result',
-            revision: executeMessage.request.revision,
-            corpusVersion: executeMessage.request.corpusVersion,
-            telemetryQuery: executeMessage.request.telemetryQuery,
-            entries: createWorkerEntries(bundle, ['Known Crab', 'Unknown Crab']),
-            stages: [],
-            totalMs: 1,
-            unitCount: bundle.units.units.length,
-            isComplex: false,
-        });
-        await flushAsyncWork();
-
-        expect(service.filteredUnits().map((unit) => unit.name)).toEqual(['Unknown Crab']);
     });
 
     it('filters MegaMek units by Unknown rarity from the UI', () => {
@@ -3143,7 +2841,7 @@ describe('UnitSearchFiltersService search telemetry', () => {
         bundle.factions.factions[0].eras[1] = new Set([1, 2]);
 
         const { dataService, service, optionsServiceStub } = createService(bundle);
-        spyOn(dataService, 'getMegaMekAvailabilityRecords').and.returnValue([
+        stubMegaMekAvailabilityRecords(dataService, [
             {
                 n: 'Known Unit',
                 e: {
@@ -3153,9 +2851,6 @@ describe('UnitSearchFiltersService search telemetry', () => {
                 },
             },
         ]);
-        spyOn(dataService, 'getMegaMekAvailabilityRecordForUnit').and.callFake((unit: Pick<UnitSummary, 'name'>) => {
-            return dataService.getMegaMekAvailabilityRecords().find((record) => record.n === unit.name);
-        });
 
         optionsServiceStub.options.set({
             ...optionsServiceStub.options(),
@@ -3189,7 +2884,7 @@ describe('UnitSearchFiltersService search telemetry', () => {
         bundle.factions.factions[0].eras[1] = new Set([1, 2, 3]);
 
         const { dataService, service } = createService(bundle);
-        spyOn(dataService, 'getMegaMekAvailabilityRecords').and.returnValue([
+        stubMegaMekAvailabilityRecords(dataService, [
             {
                 n: lowUnit.name,
                 e: {
@@ -3207,9 +2902,6 @@ describe('UnitSearchFiltersService search telemetry', () => {
                 },
             },
         ]);
-        spyOn(dataService, 'getMegaMekAvailabilityRecordForUnit').and.callFake((unit: Pick<UnitSummary, 'name'>) => {
-            return dataService.getMegaMekAvailabilityRecords().find((record) => record.n === unit.name);
-        });
 
         service.setSortOrder(MEGAMEK_RARITY_PRODUCTION_SORT_KEY);
         service.setSortDirection('desc');
@@ -3255,7 +2947,7 @@ describe('UnitSearchFiltersService search telemetry', () => {
         }];
 
         const { dataService, service, optionsServiceStub } = createService(bundle);
-        spyOn(dataService, 'getMegaMekAvailabilityRecords').and.returnValue([
+        stubMegaMekAvailabilityRecords(dataService, [
             {
                 n: bundle.units.units[0].name,
                 e: {
@@ -3273,9 +2965,6 @@ describe('UnitSearchFiltersService search telemetry', () => {
                 },
             },
         ]);
-        spyOn(dataService, 'getMegaMekAvailabilityRecordForUnit').and.callFake((unit: Pick<UnitSummary, 'name'>) => {
-            return dataService.getMegaMekAvailabilityRecords().find((record) => record.n === unit.name);
-        });
 
         optionsServiceStub.options.set({
             ...optionsServiceStub.options(),
@@ -3328,7 +3017,7 @@ describe('UnitSearchFiltersService search telemetry', () => {
 
         const { dataService, service, optionsServiceStub } = createService(bundle);
         const unitAvailabilitySource = TestBed.inject(UnitAvailabilitySourceService);
-        spyOn(dataService, 'getMegaMekAvailabilityRecords').and.returnValue([
+        stubMegaMekAvailabilityRecords(dataService, [
             {
                 n: bundle.units.units[0].name,
                 e: {
@@ -3346,9 +3035,6 @@ describe('UnitSearchFiltersService search telemetry', () => {
                 },
             },
         ]);
-        spyOn(dataService, 'getMegaMekAvailabilityRecordForUnit').and.callFake((unit: Pick<UnitSummary, 'name'>) => {
-            return dataService.getMegaMekAvailabilityRecords().find((record) => record.n === unit.name);
-        });
 
         optionsServiceStub.options.set({
             ...optionsServiceStub.options(),
@@ -3358,9 +3044,9 @@ describe('UnitSearchFiltersService search telemetry', () => {
         const directMembershipSpy = spyOn(unitAvailabilitySource, 'unitMatchesMegaMekMembership').and.callThrough();
         const scopedSetSpy = spyOn(unitAvailabilitySource, 'getMegaMekMembershipUnitIds').and.callThrough();
 
-        expect(service.unitBelongsToEra(bundle.units.units[0], 'Age of War', { factionNames: ['Draconis Combine'] })).toBeTrue();
-        expect(service.unitBelongsToEra(bundle.units.units[0], 'Age of War', { factionNames: ['Federated Suns'] })).toBeFalse();
-        expect(service.unitBelongsToEra(bundle.units.units[1], 'Age of War', { factionNames: ['Federated Suns'] })).toBeTrue();
+        expect(TestBed.inject(UnitSearchAvailabilityService).unitBelongsToEra(bundle.units.units[0], 'Age of War', { factionNames: ['Draconis Combine'] })).toBeTrue();
+        expect(TestBed.inject(UnitSearchAvailabilityService).unitBelongsToEra(bundle.units.units[0], 'Age of War', { factionNames: ['Federated Suns'] })).toBeFalse();
+        expect(TestBed.inject(UnitSearchAvailabilityService).unitBelongsToEra(bundle.units.units[1], 'Age of War', { factionNames: ['Federated Suns'] })).toBeTrue();
         expect(directMembershipSpy).toHaveBeenCalledTimes(3);
         expect(scopedSetSpy).not.toHaveBeenCalled();
     });
@@ -3421,7 +3107,7 @@ describe('UnitSearchFiltersService search telemetry', () => {
         ];
 
         const { dataService, service, optionsServiceStub } = createService(bundle);
-        spyOn(dataService, 'getMegaMekAvailabilityRecords').and.returnValue([
+        stubMegaMekAvailabilityRecords(dataService, [
             {
                 n: bundle.units.units[0].name,
                 e: {
@@ -3442,27 +3128,24 @@ describe('UnitSearchFiltersService search telemetry', () => {
                 },
             },
         ]);
-        spyOn(dataService, 'getMegaMekAvailabilityRecordForUnit').and.callFake((unit: Pick<UnitSummary, 'name'>) => {
-            return dataService.getMegaMekAvailabilityRecords().find((record) => record.n === unit.name);
-        });
 
         optionsServiceStub.options.set({
             ...optionsServiceStub.options(),
             availabilitySource: 'megamek',
         });
 
-        expect(Array.from((service as any).getSemanticIndexedUnitIds('era', 'Age of War', {
+        expect(Array.from(TestBed.inject(UnitSearchAvailabilityService).getIndexedUnitIds('era', 'Age of War', {
             factionNames: ['Draconis Combine'],
-        }) ?? [])).toEqual([bundle.units.units[0].uuid]);
-        expect(Array.from((service as any).getSemanticIndexedUnitIds('era', 'Age of War', {
+        }, false) ?? [])).toEqual([bundle.units.units[0].uuid]);
+        expect(Array.from(TestBed.inject(UnitSearchAvailabilityService).getIndexedUnitIds('era', 'Age of War', {
             factionNames: ['Federated Suns'],
-        }) ?? [])).toEqual([bundle.units.units[1].uuid]);
-        expect(Array.from((service as any).getSemanticIndexedUnitIds('faction', 'Draconis Combine', {
+        }, false) ?? [])).toEqual([bundle.units.units[1].uuid]);
+        expect(Array.from(TestBed.inject(UnitSearchAvailabilityService).getIndexedUnitIds('faction', 'Draconis Combine', {
             eraNames: ['Age of War'],
-        }) ?? [])).toEqual([bundle.units.units[0].uuid]);
-        expect(Array.from((service as any).getSemanticIndexedUnitIds('faction', 'Federated Suns', {
+        }, false) ?? [])).toEqual([bundle.units.units[0].uuid]);
+        expect(Array.from(TestBed.inject(UnitSearchAvailabilityService).getIndexedUnitIds('faction', 'Federated Suns', {
             eraNames: ['Succession Wars'],
-        }) ?? [])).toEqual([]);
+        }, false) ?? [])).toEqual([]);
     });
 
     it('marks the MegaMek Extinct faction as available when extinct units exist', () => {
@@ -3529,7 +3212,7 @@ describe('UnitSearchFiltersService search telemetry', () => {
         ];
 
         const { dataService, service, optionsServiceStub } = createService(bundle);
-        spyOn(dataService, 'getMegaMekAvailabilityRecords').and.returnValue([
+        stubMegaMekAvailabilityRecords(dataService, [
             {
                 n: bundle.units.units[0].name,
                 e: {
@@ -3545,9 +3228,6 @@ describe('UnitSearchFiltersService search telemetry', () => {
                 },
             },
         ]);
-        spyOn(dataService, 'getMegaMekAvailabilityRecordForUnit').and.callFake((unit: Pick<UnitSummary, 'name'>) => {
-            return dataService.getMegaMekAvailabilityRecords().find((record) => record.n === unit.name);
-        });
 
         optionsServiceStub.options.set({
             ...optionsServiceStub.options(),
@@ -3624,7 +3304,7 @@ describe('UnitSearchFiltersService search telemetry', () => {
         ];
 
         const { dataService, service, optionsServiceStub } = createService(bundle);
-        spyOn(dataService, 'getMegaMekAvailabilityRecords').and.returnValue([
+        stubMegaMekAvailabilityRecords(dataService, [
             {
                 n: bundle.units.units[0].name,
                 e: {
@@ -3640,9 +3320,6 @@ describe('UnitSearchFiltersService search telemetry', () => {
                 },
             },
         ]);
-        spyOn(dataService, 'getMegaMekAvailabilityRecordForUnit').and.callFake((unit: Pick<UnitSummary, 'name'>) => {
-            return dataService.getMegaMekAvailabilityRecords().find((record) => record.n === unit.name);
-        });
 
         optionsServiceStub.options.set({
             ...optionsServiceStub.options(),
@@ -3668,1004 +3345,6 @@ describe('UnitSearchFiltersService search telemetry', () => {
         service.setFilter('era', ['Early Succession War']);
 
         expect(service.filteredUnits().map((unit) => unit.name)).toEqual(['Boomerang']);
-    });
-
-    it('keeps the worker active in MegaMek mode while applying MegaMek availability filters after worker search', async () => {
-        const worker = new FakeSearchWorker();
-        const bundle = benchmarkBundle && benchmarkBundle.units.units.length >= 2
-            ? buildSmallBundle(benchmarkBundle)
-            : createStandaloneBundle();
-        const { dataService, service, optionsServiceStub, loggerStub } = createService(bundle, {
-            workerFactory: () => worker,
-        });
-
-        spyOn(dataService, 'getMegaMekAvailabilityRecords').and.returnValue([
-            {
-                n: bundle.units.units[0].name,
-                // t: bundle.units.units[0].type,
-                // c: bundle.units.units[0].chassis,
-                // m: bundle.units.units[0].model,
-                e: {
-                    '1': {
-                        '1': [55, 0],
-                    },
-                },
-            },
-        ]);
-        spyOn(dataService, 'getMegaMekAvailabilityRecordForUnit').and.callFake((unit: Pick<UnitSummary, 'name'>) => {
-            return dataService.getMegaMekAvailabilityRecords().find((record) => record.n === unit.name);
-        });
-
-        await flushAsyncWork();
-
-        optionsServiceStub.options.set({
-            ...optionsServiceStub.options(),
-            availabilitySource: 'megamek',
-        });
-        service.setFilter('availabilityFrom', ['Requisition']);
-        service.searchText.set('Test');
-        service.filteredUnits();
-
-        expect((service as any).workerSearchActive()).toBeTrue();
-        expect(loggerStub.info).toHaveBeenCalledWith('Unit search worker startup: enabled');
-
-        const corpusVersion = (service as any).getWorkerCorpusVersion();
-        const snapshot = (service as any).getWorkerCorpusSnapshot(corpusVersion);
-        const request = (service as any).buildWorkerSearchRequest(corpusVersion);
-
-        (service as any).searchWorkerClient.submit(snapshot, request);
-
-        const initMessage = worker.messages.at(-1) as any;
-
-        worker.emit({ type: 'ready', corpusVersion: initMessage.snapshot.corpusVersion });
-        await flushAsyncWork();
-
-        const executeMessage = worker.messages.filter((message: any) => message.type === 'execute').at(-1) as any;
-        expect(executeMessage).toBeTruthy();
-        expect(executeMessage.request.executionQuery).not.toContain('from=Requisition');
-
-        worker.emit({
-            type: 'result',
-            revision: executeMessage.request.revision,
-            corpusVersion: executeMessage.request.corpusVersion,
-            telemetryQuery: executeMessage.request.telemetryQuery,
-            entries: bundle.units.units.map((unit) => ({ unitUuid: unit.uuid })),
-            stages: [],
-            totalMs: 1,
-            unitCount: bundle.units.units.length,
-            isComplex: false,
-        });
-        await flushAsyncWork();
-
-        expect(service.filteredUnits().map(unit => unit.name)).toEqual(['Test Mek']);
-    });
-
-    it('updates MegaMek worker post-filters when faction or era changes', async () => {
-        const worker = new FakeSearchWorker();
-        const bundle = createStandaloneBundle();
-        bundle.units.units[0].name = 'BattleMaster C3';
-        bundle.units.units[0].chassis = 'BattleMaster';
-        bundle.units.units[0].model = 'C3';
-        bundle.units.units[1].name = 'Common Dominion Mek';
-        bundle.units.units[1].chassis = 'Common Dominion';
-        bundle.units.units[1].model = 'CDM-1';
-        bundle.units.units[1].type = 'Mek';
-        bundle.units.units[1].subtype = 'BattleMek';
-        bundle.units.units[1].moveType = 'Biped';
-        bundle.units.units[1].as = {
-            ...bundle.units.units[1].as,
-            TP: 'BM',
-        };
-        bundle.eras.eras = [
-            {
-                id: 1,
-                name: 'ilClan',
-                img: '',
-                years: {
-                    from: 3151,
-                    to: 9999,
-                },
-                units: [1, 2],
-                factions: [],
-            },
-            {
-                id: 2,
-                name: 'Dark Age',
-                img: '',
-                years: {
-                    from: 3131,
-                    to: 3150,
-                },
-                units: [1],
-                factions: [],
-            },
-        ];
-        bundle.factions.factions = [
-            {
-                id: 1,
-                name: 'Rasalhague Dominion',
-                group: 'IS Clan',
-                img: '',
-                eras: {
-                    1: new Set([1, 2]),
-                    2: new Set([1]),
-                },
-            },
-            {
-                id: 2,
-                name: 'Clan Protectorate',
-                group: 'IS Clan',
-                img: '',
-                eras: {
-                    1: new Set([1]),
-                },
-            },
-        ];
-
-        const { dataService, service, optionsServiceStub } = createService(bundle, {
-            workerFactory: () => worker,
-        });
-        spyOn(dataService, 'getMegaMekAvailabilityRecords').and.returnValue([
-            {
-                n: 'BattleMaster C3',
-                e: {
-                    '1': {
-                        '1': [35, 0],
-                        '2': [65, 0],
-                    },
-                    '2': {
-                        '1': [65, 0],
-                    },
-                },
-            },
-            {
-                n: 'Common Dominion Mek',
-                e: {
-                    '1': {
-                        '1': [65, 0],
-                    },
-                },
-            },
-        ]);
-        spyOn(dataService, 'getMegaMekAvailabilityRecordForUnit').and.callFake((unit: Pick<UnitSummary, 'name'>) => {
-            return dataService.getMegaMekAvailabilityRecords().find((record) => record.n === unit.name);
-        });
-
-        const rasalhagueDominion = {
-            'Rasalhague Dominion': {
-                name: 'Rasalhague Dominion',
-                state: 'or',
-                count: 1,
-            },
-        };
-        const clanProtectorate = {
-            'Clan Protectorate': {
-                name: 'Clan Protectorate',
-                state: 'or',
-                count: 1,
-            },
-        };
-
-        await flushAsyncWork();
-
-        optionsServiceStub.options.set({
-            ...optionsServiceStub.options(),
-            availabilitySource: 'megamek',
-        });
-        service.setFilter('type', ['Mek']);
-        service.setFilter('era', ['ilClan']);
-        service.setFilter('faction', rasalhagueDominion);
-        service.setFilter('availabilityRarity', ['Common']);
-        service.filteredUnits();
-
-        expect((service as any).workerSearchActive()).toBeTrue();
-
-        const corpusVersion = (service as any).getWorkerCorpusVersion();
-        const snapshot = (service as any).getWorkerCorpusSnapshot(corpusVersion);
-        const request = (service as any).buildWorkerSearchRequest(corpusVersion);
-
-        expect(request.executionQuery).not.toContain('era=ilClan');
-        expect(request.executionQuery).not.toContain('faction="Rasalhague Dominion"');
-        expect(request.executionQuery.toLowerCase()).not.toContain('rarity');
-
-        (service as any).searchWorkerClient.submit(snapshot, request);
-
-        const initMessage = worker.messages.at(-1) as any;
-        worker.emit({ type: 'ready', corpusVersion: initMessage.snapshot.corpusVersion });
-        await flushAsyncWork();
-
-        const firstExecuteMessage = worker.messages.filter((message: any) => message.type === 'execute').at(-1) as any;
-        expect(firstExecuteMessage.request.executionQuery).not.toContain('era=ilClan');
-        expect(firstExecuteMessage.request.executionQuery).not.toContain('faction="Rasalhague Dominion"');
-        expect(firstExecuteMessage.request.executionQuery.toLowerCase()).not.toContain('rarity');
-
-        worker.emit({
-            type: 'result',
-            revision: firstExecuteMessage.request.revision,
-            corpusVersion: firstExecuteMessage.request.corpusVersion,
-            telemetryQuery: firstExecuteMessage.request.telemetryQuery,
-            entries: createWorkerEntries(bundle, ['BattleMaster C3', 'Common Dominion Mek']),
-            stages: [],
-            totalMs: 1,
-            unitCount: bundle.units.units.length,
-            isComplex: false,
-        });
-        await flushAsyncWork();
-
-        expect(service.filteredUnits().map((unit) => unit.name)).toEqual(['Common Dominion Mek']);
-
-        service.setFilter('faction', clanProtectorate);
-        await flushAsyncWork();
-
-        expect(service.filteredUnits().map((unit) => unit.name)).toEqual(['BattleMaster C3']);
-
-        service.setFilter('era', ['Dark Age']);
-        service.setFilter('faction', rasalhagueDominion);
-        await flushAsyncWork();
-
-        expect(service.filteredUnits().map((unit) => unit.name)).toEqual(['BattleMaster C3']);
-    });
-
-    it('reapplies MegaMek worker post-filters when the scoped rarity mode changes', async () => {
-        const worker = new FakeSearchWorker();
-        const bundle = createStandaloneBundle();
-        bundle.units.units[0].name = 'BattleMaster C3';
-        bundle.units.units[0].chassis = 'BattleMaster';
-        bundle.units.units[0].model = 'C3';
-        bundle.units.units[1].name = 'Other Unit';
-        bundle.units.units[1].chassis = 'Other Unit';
-        bundle.units.units[1].model = 'OTH-1';
-        bundle.eras.eras = [
-            {
-                id: 1,
-                name: 'ilClan',
-                img: '',
-                years: {
-                    from: 3151,
-                    to: 9999,
-                },
-                units: [1, 2],
-                factions: [],
-            },
-        ];
-        bundle.factions.factions = [
-            {
-                id: 1,
-                name: 'Rasalhague Dominion',
-                group: 'IS Clan',
-                img: '',
-                eras: {
-                    1: new Set([1]),
-                },
-            },
-            {
-                id: 2,
-                name: 'Clan Protectorate',
-                group: 'IS Clan',
-                img: '',
-                eras: {
-                    1: new Set([1]),
-                },
-            },
-        ];
-
-        const { dataService, service, optionsServiceStub } = createService(bundle, {
-            workerFactory: () => worker,
-        });
-        spyOn(dataService, 'getMegaMekAvailabilityRecords').and.returnValue([
-            {
-                n: 'BattleMaster C3',
-                e: {
-                    '1': {
-                        '1': [15, 0],
-                        '2': [65, 0],
-                    },
-                },
-            },
-        ]);
-        spyOn(dataService, 'getMegaMekAvailabilityRecordForUnit').and.callFake((unit: Pick<UnitSummary, 'name'>) => {
-            return dataService.getMegaMekAvailabilityRecords().find((record) => record.n === unit.name);
-        });
-
-        await flushAsyncWork();
-
-        optionsServiceStub.options.set({
-            ...optionsServiceStub.options(),
-            availabilitySource: 'megamek',
-            megaMekAvailabilityFiltersUseAllScopedOptions: true,
-        });
-        service.searchText.set('BattleMaster');
-        service.setFilter('era', ['ilClan']);
-        service.setFilter('availabilityRarity', ['Very Rare']);
-        service.filteredUnits();
-
-        const corpusVersion = (service as any).getWorkerCorpusVersion();
-        const snapshot = (service as any).getWorkerCorpusSnapshot(corpusVersion);
-        const request = (service as any).buildWorkerSearchRequest(corpusVersion);
-
-        (service as any).searchWorkerClient.submit(snapshot, request);
-
-        const initMessage = worker.messages.at(-1) as any;
-        worker.emit({ type: 'ready', corpusVersion: initMessage.snapshot.corpusVersion });
-        await flushAsyncWork();
-
-        const firstExecuteMessage = worker.messages.filter((message: any) => message.type === 'execute').at(-1) as any;
-        worker.emit({
-            type: 'result',
-            revision: firstExecuteMessage.request.revision,
-            corpusVersion: firstExecuteMessage.request.corpusVersion,
-            telemetryQuery: firstExecuteMessage.request.telemetryQuery,
-            entries: createWorkerEntries(bundle, ['BattleMaster C3']),
-            stages: [],
-            totalMs: 1,
-            unitCount: bundle.units.units.length,
-            isComplex: false,
-        });
-        await flushAsyncWork();
-
-        expect(service.filteredUnits().map((unit) => unit.name)).toEqual(['BattleMaster C3']);
-
-        optionsServiceStub.options.set({
-            ...optionsServiceStub.options(),
-            megaMekAvailabilityFiltersUseAllScopedOptions: false,
-        });
-        await flushAsyncWork();
-
-        expect(service.filteredUnits()).toEqual([]);
-    });
-
-    it('keeps MegaMek-backed availability filters on the main thread while MUL worker search stays active', async () => {
-        const worker = new FakeSearchWorker();
-        const bundle = createStandaloneBundle();
-        bundle.units.units[0].name = 'Rare Salvage Crab';
-        bundle.units.units[0].chassis = 'Rare Salvage Crab';
-        bundle.units.units[0].model = 'RSC-1';
-        bundle.units.units[1].name = 'Common Requisition Crab';
-        bundle.units.units[1].chassis = 'Common Requisition Crab';
-        bundle.units.units[1].model = 'CPC-1';
-        bundle.eras.eras[0].units = [1, 2];
-        bundle.factions.factions[0].eras[1] = new Set([1, 2]);
-
-        const { dataService, service } = createService(bundle, {
-            workerFactory: () => worker,
-        });
-        spyOn(dataService, 'getMegaMekAvailabilityRecords').and.returnValue([
-            {
-                n: 'Rare Salvage Crab',
-                e: {
-                    '1': {
-                        '1': [0, 35],
-                    },
-                },
-            },
-            {
-                n: 'Common Requisition Crab',
-                e: {
-                    '1': {
-                        '1': [65, 0],
-                    },
-                },
-            },
-        ]);
-        spyOn(dataService, 'getMegaMekAvailabilityRecordForUnit').and.callFake((unit: Pick<UnitSummary, 'name'>) => {
-            return dataService.getMegaMekAvailabilityRecords().find((record) => record.n === unit.name);
-        });
-
-        await flushAsyncWork();
-
-        service.setFilter('availabilityFrom', ['Salvage']);
-        service.setFilter('availabilityRarity', ['Rare']);
-        service.searchText.set('Crab');
-        service.filteredUnits();
-
-        expect((service as any).workerSearchActive()).toBeTrue();
-
-        const corpusVersion = (service as any).getWorkerCorpusVersion();
-        const snapshot = (service as any).getWorkerCorpusSnapshot(corpusVersion);
-        const request = (service as any).buildWorkerSearchRequest(corpusVersion);
-
-        expect(request.executionQuery.toLowerCase()).not.toContain('from');
-        expect(request.executionQuery.toLowerCase()).not.toContain('rarity');
-
-        (service as any).searchWorkerClient.submit(snapshot, request);
-
-        const initMessage = worker.messages.at(-1) as any;
-        worker.emit({ type: 'ready', corpusVersion: initMessage.snapshot.corpusVersion });
-        await flushAsyncWork();
-
-        const executeMessage = worker.messages.filter((message: any) => message.type === 'execute').at(-1) as any;
-        expect(executeMessage.request.executionQuery.toLowerCase()).not.toContain('from');
-        expect(executeMessage.request.executionQuery.toLowerCase()).not.toContain('rarity');
-
-        worker.emit({
-            type: 'result',
-            revision: executeMessage.request.revision,
-            corpusVersion: executeMessage.request.corpusVersion,
-            telemetryQuery: executeMessage.request.telemetryQuery,
-            entries: createWorkerEntries(bundle, ['Rare Salvage Crab', 'Common Requisition Crab']),
-            stages: [],
-            totalMs: 1,
-            unitCount: bundle.units.units.length,
-            isComplex: false,
-        });
-        await flushAsyncWork();
-
-        expect(service.filteredUnits().map((unit) => unit.name)).toEqual(['Rare Salvage Crab']);
-    });
-
-    it('keeps MUL worker rarity post-filters scoped to the selected era and faction', async () => {
-        const worker = new FakeSearchWorker();
-        const bundle = createStandaloneBundle();
-        bundle.units.units[0].name = 'BattleMaster C3';
-        bundle.units.units[0].chassis = 'BattleMaster';
-        bundle.units.units[0].model = 'C3';
-        bundle.units.units[1].name = 'Common Dominion Mek';
-        bundle.units.units[1].chassis = 'Common Dominion';
-        bundle.units.units[1].model = 'CDM-1';
-        bundle.units.units[1].type = 'Mek';
-        bundle.units.units[1].subtype = 'BattleMek';
-        bundle.units.units[1].moveType = 'Biped';
-        bundle.units.units[1].as = {
-            ...bundle.units.units[1].as,
-            TP: 'BM',
-        };
-        bundle.eras.eras = [{
-            id: 1,
-            name: 'ilClan',
-            img: '',
-            years: {
-                from: 3151,
-                to: 9999,
-            },
-            units: [1, 2],
-            factions: [],
-        }];
-        bundle.factions.factions = [
-            {
-                id: 1,
-                name: 'Rasalhague Dominion',
-                group: 'IS Clan',
-                img: '',
-                eras: {
-                    1: new Set([1, 2]),
-                },
-            },
-            {
-                id: 2,
-                name: 'Clan Protectorate',
-                group: 'IS Clan',
-                img: '',
-                eras: {
-                    1: new Set([1]),
-                },
-            },
-        ];
-
-        const { dataService, service } = createService(bundle, {
-            workerFactory: () => worker,
-        });
-        spyOn(dataService, 'getMegaMekAvailabilityRecords').and.returnValue([
-            {
-                n: 'BattleMaster C3',
-                e: {
-                    '1': {
-                        '1': [35, 0],
-                        '2': [65, 0],
-                    },
-                },
-            },
-            {
-                n: 'Common Dominion Mek',
-                e: {
-                    '1': {
-                        '1': [65, 0],
-                    },
-                },
-            },
-        ]);
-        spyOn(dataService, 'getMegaMekAvailabilityRecordForUnit').and.callFake((unit: Pick<UnitSummary, 'name'>) => {
-            return dataService.getMegaMekAvailabilityRecords().find((record) => record.n === unit.name);
-        });
-
-        await flushAsyncWork();
-
-        service.setFilter('era', ['ilClan']);
-        service.setFilter('faction', {
-            'Rasalhague Dominion': {
-                name: 'Rasalhague Dominion',
-                state: 'or',
-                count: 1,
-            },
-        });
-        service.setFilter('availabilityRarity', ['Common']);
-        service.filteredUnits();
-
-        expect((service as any).workerSearchActive()).toBeTrue();
-
-        const corpusVersion = (service as any).getWorkerCorpusVersion();
-        const snapshot = (service as any).getWorkerCorpusSnapshot(corpusVersion);
-        const request = (service as any).buildWorkerSearchRequest(corpusVersion);
-
-        expect(request.executionQuery).toContain('era=ilClan');
-        expect(request.executionQuery).toContain('faction="Rasalhague Dominion"');
-        expect(request.executionQuery.toLowerCase()).not.toContain('rarity');
-
-        (service as any).searchWorkerClient.submit(snapshot, request);
-
-        const initMessage = worker.messages.at(-1) as any;
-        worker.emit({ type: 'ready', corpusVersion: initMessage.snapshot.corpusVersion });
-        await flushAsyncWork();
-
-        const executeMessage = worker.messages.filter((message: any) => message.type === 'execute').at(-1) as any;
-        expect(executeMessage.request.executionQuery).toContain('era=ilClan');
-        expect(executeMessage.request.executionQuery).toContain('faction="Rasalhague Dominion"');
-        expect(executeMessage.request.executionQuery.toLowerCase()).not.toContain('rarity');
-
-        worker.emit({
-            type: 'result',
-            revision: executeMessage.request.revision,
-            corpusVersion: executeMessage.request.corpusVersion,
-            telemetryQuery: executeMessage.request.telemetryQuery,
-            entries: createWorkerEntries(bundle, ['BattleMaster C3', 'Common Dominion Mek']),
-            stages: [],
-            totalMs: 1,
-            unitCount: bundle.units.units.length,
-            isComplex: false,
-        });
-        await flushAsyncWork();
-
-        expect(service.filteredUnits().map((unit) => unit.name)).toEqual(['Common Dominion Mek']);
-    });
-
-    it('keeps MUL worker rarity post-filters scoped when text search narrows results to a single unit', async () => {
-        const worker = new FakeSearchWorker();
-        const bundle = createStandaloneBundle();
-        bundle.units.units[0].name = 'BattleMaster C3';
-        bundle.units.units[0].chassis = 'BattleMaster';
-        bundle.units.units[0].model = 'C3';
-        bundle.eras.eras = [{
-            id: 1,
-            name: 'ilClan',
-            img: '',
-            years: {
-                from: 3151,
-                to: 9999,
-            },
-            units: [1],
-            factions: [],
-        }];
-        bundle.factions.factions = [
-            {
-                id: 1,
-                name: 'Rasalhague Dominion',
-                group: 'IS Clan',
-                img: '',
-                eras: {
-                    1: new Set([1]),
-                },
-            },
-            {
-                id: 2,
-                name: 'Clan Protectorate',
-                group: 'IS Clan',
-                img: '',
-                eras: {
-                    1: new Set([1]),
-                },
-            },
-        ];
-
-        const { dataService, service } = createService(bundle, {
-            workerFactory: () => worker,
-        });
-        spyOn(dataService, 'getMegaMekAvailabilityRecords').and.returnValue([
-            {
-                n: 'BattleMaster C3',
-                e: {
-                    '1': {
-                        '1': [35, 0],
-                        '2': [65, 0],
-                    },
-                },
-            },
-        ]);
-        spyOn(dataService, 'getMegaMekAvailabilityRecordForUnit').and.callFake((unit: Pick<UnitSummary, 'name'>) => {
-            return dataService.getMegaMekAvailabilityRecords().find((record) => record.n === unit.name);
-        });
-
-        await flushAsyncWork();
-
-        service.searchText.set('BattleMaster');
-        service.setFilter('era', ['ilClan']);
-        service.setFilter('faction', {
-            'Rasalhague Dominion': {
-                name: 'Rasalhague Dominion',
-                state: 'or',
-                count: 1,
-            },
-        });
-        service.setFilter('availabilityRarity', ['Common']);
-        service.filteredUnits();
-
-        expect((service as any).workerSearchActive()).toBeTrue();
-
-        const corpusVersion = (service as any).getWorkerCorpusVersion();
-        const snapshot = (service as any).getWorkerCorpusSnapshot(corpusVersion);
-        const request = (service as any).buildWorkerSearchRequest(corpusVersion);
-
-        expect(request.executionQuery).toContain('BattleMaster');
-        expect(request.executionQuery).toContain('era=ilClan');
-        expect(request.executionQuery).toContain('faction="Rasalhague Dominion"');
-        expect(request.executionQuery.toLowerCase()).not.toContain('rarity');
-
-        (service as any).searchWorkerClient.submit(snapshot, request);
-
-        const initMessage = worker.messages.at(-1) as any;
-        worker.emit({ type: 'ready', corpusVersion: initMessage.snapshot.corpusVersion });
-        await flushAsyncWork();
-
-        const executeMessage = worker.messages.filter((message: any) => message.type === 'execute').at(-1) as any;
-        expect(executeMessage.request.executionQuery).toContain('BattleMaster');
-        expect(executeMessage.request.executionQuery).toContain('era=ilClan');
-        expect(executeMessage.request.executionQuery).toContain('faction="Rasalhague Dominion"');
-        expect(executeMessage.request.executionQuery.toLowerCase()).not.toContain('rarity');
-
-        worker.emit({
-            type: 'result',
-            revision: executeMessage.request.revision,
-            corpusVersion: executeMessage.request.corpusVersion,
-            telemetryQuery: executeMessage.request.telemetryQuery,
-            entries: createWorkerEntries(bundle, ['BattleMaster C3']),
-            stages: [],
-            totalMs: 1,
-            unitCount: bundle.units.units.length,
-            isComplex: false,
-        });
-        await flushAsyncWork();
-
-        expect(service.filteredUnits().map((unit) => unit.name)).toEqual([]);
-    });
-
-    it('filters MUL semantic rarity queries after worker results', async () => {
-        const worker = new FakeSearchWorker();
-        const bundle = createStandaloneBundle();
-        bundle.units.units[0].name = 'Very Common Crab';
-        bundle.units.units[0].chassis = 'Very Common Crab';
-        bundle.units.units[0].model = 'VCC-1';
-        bundle.units.units[1].name = 'Unknown Crab';
-        bundle.units.units[1].chassis = 'Unknown Crab';
-        bundle.units.units[1].model = 'UNC-1';
-        bundle.eras.eras[0].units = [1, 2];
-        bundle.factions.factions[0].eras[1] = new Set([1, 2]);
-
-        const { dataService, service } = createService(bundle, {
-            workerFactory: () => worker,
-        });
-        spyOn(dataService, 'getMegaMekAvailabilityRecords').and.returnValue([
-            {
-                n: 'Very Common Crab',
-                e: {
-                    '1': {
-                        '1': [85, 0],
-                    },
-                },
-            },
-        ]);
-        spyOn(dataService, 'getMegaMekAvailabilityRecordForUnit').and.callFake((unit: Pick<UnitSummary, 'name'>) => {
-            return dataService.getMegaMekAvailabilityRecords().find((record) => record.n === unit.name);
-        });
-
-        await flushAsyncWork();
-
-        service.searchText.set('crab rarity="very common"');
-        service.filteredUnits();
-
-        expect((service as any).workerSearchActive()).toBeTrue();
-
-        const corpusVersion = (service as any).getWorkerCorpusVersion();
-        const snapshot = (service as any).getWorkerCorpusSnapshot(corpusVersion);
-        const request = (service as any).buildWorkerSearchRequest(corpusVersion);
-
-        expect(request.executionQuery.toLowerCase()).not.toContain('rarity');
-
-        (service as any).searchWorkerClient.submit(snapshot, request);
-
-        const initMessage = worker.messages.at(-1) as any;
-        worker.emit({ type: 'ready', corpusVersion: initMessage.snapshot.corpusVersion });
-        await flushAsyncWork();
-
-        const executeMessage = worker.messages.filter((message: any) => message.type === 'execute').at(-1) as any;
-        expect(executeMessage.request.executionQuery.toLowerCase()).not.toContain('rarity');
-
-        worker.emit({
-            type: 'result',
-            revision: executeMessage.request.revision,
-            corpusVersion: executeMessage.request.corpusVersion,
-            telemetryQuery: executeMessage.request.telemetryQuery,
-            entries: createWorkerEntries(bundle, ['Very Common Crab', 'Unknown Crab']),
-            stages: [],
-            totalMs: 1,
-            unitCount: bundle.units.units.length,
-            isComplex: false,
-        });
-        await flushAsyncWork();
-
-        expect(service.filteredUnits().map((unit) => unit.name)).toEqual(['Very Common Crab']);
-    });
-
-    it('uses sync fallback results while MegaMek availability worker filters are pending', async () => {
-        const worker = new FakeSearchWorker();
-        const bundle = createStandaloneBundle();
-        bundle.units.units[0].name = 'Rare Salvage Crab';
-        bundle.units.units[0].chassis = 'Rare Salvage Crab';
-        bundle.units.units[0].model = 'RSC-1';
-        bundle.units.units[1].name = 'Common Salvage Crab';
-        bundle.units.units[1].chassis = 'Common Salvage Crab';
-        bundle.units.units[1].model = 'CSC-1';
-        bundle.eras.eras[0].units = [1, 2];
-        bundle.factions.factions[0].eras[1] = new Set([1, 2]);
-
-        const { dataService, service, optionsServiceStub } = createService(bundle, {
-            workerFactory: () => worker,
-        });
-        spyOn(dataService, 'getMegaMekAvailabilityRecords').and.returnValue([
-            {
-                n: 'Rare Salvage Crab',
-                e: {
-                    '1': {
-                        '1': [0, 35],
-                    },
-                },
-            },
-            {
-                n: 'Common Salvage Crab',
-                e: {
-                    '1': {
-                        '1': [0, 65],
-                    },
-                },
-            },
-        ]);
-        spyOn(dataService, 'getMegaMekAvailabilityRecordForUnit').and.callFake((unit: Pick<UnitSummary, 'name'>) => {
-            return dataService.getMegaMekAvailabilityRecords().find((record) => record.n === unit.name);
-        });
-
-        await flushAsyncWork();
-
-        optionsServiceStub.options.set({
-            ...optionsServiceStub.options(),
-            availabilitySource: 'megamek',
-        });
-        service.setFilter('availabilityFrom', ['Salvage']);
-        service.setFilter('availabilityRarity', ['Rare']);
-        service.searchText.set('Crab');
-        await flushAsyncWork();
-
-        const corpusVersion = (service as any).getWorkerCorpusVersion();
-        const snapshot = (service as any).getWorkerCorpusSnapshot(corpusVersion);
-        const request = (service as any).buildWorkerSearchRequest(corpusVersion);
-
-        (service as any).workerRequestRevision.set(request.revision);
-        (service as any).searchWorkerClient.submit(snapshot, request);
-
-        expect((service as any).workerSearchActive()).toBeTrue();
-        expect(service.isSearchSettled()).toBeFalse();
-        expect(service.filteredUnits().map((unit) => unit.name)).toEqual(['Rare Salvage Crab']);
-        expect(service.forceGeneratorEligibleUnits().map((unit) => unit.name)).toEqual(['Rare Salvage Crab']);
-    });
-
-    it('filters Unknown rarity on the main thread after worker results', async () => {
-        const worker = new FakeSearchWorker();
-        const bundle = createStandaloneBundle();
-        bundle.units.units[0].name = 'Known Unit';
-        bundle.units.units[0].chassis = 'Known Unit';
-        bundle.units.units[0].model = 'KNO-1';
-        bundle.units.units[1].name = 'Unknown Unit';
-        bundle.units.units[1].chassis = 'Unknown Unit';
-        bundle.units.units[1].model = 'UNK-1';
-        bundle.eras.eras[0].units = [1, 2];
-        bundle.factions.factions[0].eras[1] = new Set([1, 2]);
-
-        const { dataService, service, optionsServiceStub } = createService(bundle, {
-            workerFactory: () => worker,
-        });
-        spyOn(dataService, 'getMegaMekAvailabilityRecords').and.returnValue([
-            {
-                n: 'Known Unit',
-                e: {
-                    '1': {
-                        '1': [85, 0],
-                    },
-                },
-            },
-        ]);
-        spyOn(dataService, 'getMegaMekAvailabilityRecordForUnit').and.callFake((unit: Pick<UnitSummary, 'name'>) => {
-            return dataService.getMegaMekAvailabilityRecords().find((record) => record.n === unit.name);
-        });
-
-        await flushAsyncWork();
-
-        optionsServiceStub.options.set({
-            ...optionsServiceStub.options(),
-            availabilitySource: 'megamek',
-        });
-        service.setFilter('availabilityRarity', ['Unknown']);
-        service.searchText.set('Unit');
-        service.filteredUnits();
-
-        expect((service as any).workerSearchActive()).toBeTrue();
-
-        const corpusVersion = (service as any).getWorkerCorpusVersion();
-        const snapshot = (service as any).getWorkerCorpusSnapshot(corpusVersion);
-        const request = (service as any).buildWorkerSearchRequest(corpusVersion);
-
-        (service as any).searchWorkerClient.submit(snapshot, request);
-
-        const initMessage = worker.messages.at(-1) as any;
-        worker.emit({ type: 'ready', corpusVersion: initMessage.snapshot.corpusVersion });
-        await flushAsyncWork();
-
-        const executeMessage = worker.messages.filter((message: any) => message.type === 'execute').at(-1) as any;
-        worker.emit({
-            type: 'result',
-            revision: executeMessage.request.revision,
-            corpusVersion: executeMessage.request.corpusVersion,
-            telemetryQuery: executeMessage.request.telemetryQuery,
-            entries: createWorkerEntries(bundle, ['Known Unit', 'Unknown Unit']),
-            stages: [],
-            totalMs: 1,
-            unitCount: bundle.units.units.length,
-            isComplex: false,
-        });
-        await flushAsyncWork();
-
-        expect(service.filteredUnits().map((unit) => unit.name)).toEqual(['Unknown Unit']);
-    });
-
-    it('falls back to sync execution for complex MegaMek semantic queries', async () => {
-        const worker = new FakeSearchWorker();
-        const bundle = createStandaloneBundle();
-        const { service, optionsServiceStub } = createService(bundle, {
-            workerFactory: () => worker,
-        });
-
-        await flushAsyncWork();
-
-        optionsServiceStub.options.set({
-            ...optionsServiceStub.options(),
-            availabilitySource: 'megamek',
-        });
-        service.searchText.set('Test OR from=Requisition');
-        service.filteredUnits();
-
-        expect((service as any).workerSearchActive()).toBeFalse();
-    });
-
-    it('falls back to sync execution for complex MUL semantic availability queries', async () => {
-        const worker = new FakeSearchWorker();
-        const bundle = createStandaloneBundle();
-        bundle.units.units[0].name = 'Very Common Crab';
-        bundle.units.units[0].chassis = 'Very Common Crab';
-        bundle.units.units[0].model = 'VCC-1';
-        bundle.units.units[1].name = 'Unknown Crab';
-        bundle.units.units[1].chassis = 'Unknown Crab';
-        bundle.units.units[1].model = 'UNC-1';
-        bundle.eras.eras[0].units = [1, 2];
-        bundle.factions.factions[0].eras[1] = new Set([1, 2]);
-
-        const { dataService, service } = createService(bundle, {
-            workerFactory: () => worker,
-        });
-        spyOn(dataService, 'getMegaMekAvailabilityRecords').and.returnValue([
-            {
-                n: 'Very Common Crab',
-                e: {
-                    '1': {
-                        '1': [85, 0],
-                    },
-                },
-            },
-        ]);
-        spyOn(dataService, 'getMegaMekAvailabilityRecordForUnit').and.callFake((unit: Pick<UnitSummary, 'name'>) => {
-            return dataService.getMegaMekAvailabilityRecords().find((record) => record.n === unit.name);
-        });
-
-        await flushAsyncWork();
-
-        service.searchText.set('NoMatch OR rarity="very common"');
-        service.filteredUnits();
-
-        expect((service as any).workerSearchActive()).toBeFalse();
-        expect(service.filteredUnits().map((unit) => unit.name)).toEqual(['Very Common Crab']);
-    });
-
-    it('re-sorts worker results by MegaMek rarity on the main thread', async () => {
-        const worker = new FakeSearchWorker();
-        const bundle = createStandaloneBundle();
-        const lowUnit = bundle.units.units[0];
-        const highUnit = bundle.units.units[1];
-        const unknownUnit = createTestUnit({
-            mul1id: 3,
-            name: 'Unknown Unit',
-            chassis: 'Unknown Unit',
-            model: 'UNK-1',
-        });
-
-        lowUnit.name = 'Low Unit';
-        lowUnit.chassis = 'Low Unit';
-        lowUnit.model = 'LOW-1';
-        highUnit.name = 'High Unit';
-        highUnit.chassis = 'High Unit';
-        highUnit.model = 'HIGH-1';
-        bundle.units.units.push(unknownUnit);
-        bundle.eras.eras[0].units = [1, 2, 3];
-        bundle.factions.factions[0].eras[1] = new Set([1, 2, 3]);
-
-        const { dataService, service } = createService(bundle, {
-            workerFactory: () => worker,
-        });
-        spyOn(dataService, 'getMegaMekAvailabilityRecords').and.returnValue([
-            {
-                n: lowUnit.name,
-                e: {
-                    '1': {
-                        '1': [25, 0],
-                    },
-                },
-            },
-            {
-                n: highUnit.name,
-                e: {
-                    '1': {
-                        '1': [45, 5],
-                    },
-                },
-            },
-        ]);
-        spyOn(dataService, 'getMegaMekAvailabilityRecordForUnit').and.callFake((unit: Pick<UnitSummary, 'name'>) => {
-            return dataService.getMegaMekAvailabilityRecords().find((record) => record.n === unit.name);
-        });
-
-        await flushAsyncWork();
-
-        service.setSortOrder(MEGAMEK_RARITY_PRODUCTION_SORT_KEY);
-        service.setSortDirection('desc');
-
-        const corpusVersion = (service as any).getWorkerCorpusVersion();
-        const snapshot = (service as any).getWorkerCorpusSnapshot(corpusVersion);
-        const request = (service as any).buildWorkerSearchRequest(corpusVersion);
-
-        (service as any).searchWorkerClient.submit(snapshot, request);
-
-        const initMessage = worker.messages.at(-1) as any;
-        expect(initMessage).toBeTruthy();
-
-        worker.emit({ type: 'ready', corpusVersion: initMessage.snapshot.corpusVersion });
-        await flushAsyncWork();
-
-        const executeMessage = worker.messages.filter((message: any) => message.type === 'execute').at(-1) as any;
-        expect(executeMessage?.request.sortKey).toBe('');
-
-        worker.emit({
-            type: 'result',
-            revision: executeMessage.request.revision,
-            corpusVersion: executeMessage.request.corpusVersion,
-            telemetryQuery: executeMessage.request.telemetryQuery,
-            entries: createWorkerEntries(bundle, ['Low Unit', 'Unknown Unit', 'High Unit']),
-            stages: [],
-            totalMs: 1,
-            unitCount: bundle.units.units.length,
-            isComplex: false,
-        });
-        await flushAsyncWork();
-
-        expect(service.filteredUnits().map(unit => unit.name)).toEqual(['High Unit', 'Low Unit', 'Unknown Unit']);
-    });
-
-    it('logs when the search worker is unavailable at startup', () => {
-        const { loggerStub } = createService(createStandaloneBundle());
-
-        expect(loggerStub.info).toHaveBeenCalledWith('Unit search worker startup: disabled');
     });
 
     it('keeps indexed faction self and co-matches available for multistate AND selections', () => {
@@ -4746,7 +3425,7 @@ describe('UnitSearchFiltersService search telemetry', () => {
         ];
 
         const { dataService, service, optionsServiceStub } = createService(bundle);
-        spyOn(dataService, 'getMegaMekAvailabilityRecords').and.returnValue([
+        stubMegaMekAvailabilityRecords(dataService, [
             {
                 n: bundle.units.units[0].name,
                 e: {
@@ -4765,9 +3444,6 @@ describe('UnitSearchFiltersService search telemetry', () => {
                 },
             },
         ]);
-        spyOn(dataService, 'getMegaMekAvailabilityRecordForUnit').and.callFake((unit: Pick<UnitSummary, 'name'>) => {
-            return dataService.getMegaMekAvailabilityRecords().find((record) => record.n === unit.name);
-        });
 
         optionsServiceStub.options.set({
             ...optionsServiceStub.options(),
@@ -4817,114 +3493,6 @@ describe('UnitSearchFiltersService search telemetry', () => {
         expect(sourceA).toEqual(jasmine.objectContaining({ name: 'SRC-A', available: true }));
         expect(sourceC).toEqual(jasmine.objectContaining({ name: 'SRC-C', available: true }));
         expect(sourceB).toEqual(jasmine.objectContaining({ name: 'SRC-B', available: false }));
-    });
-
-    it('applies Alpha Strike special minima when calculating self-filter drilldowns', () => {
-        const bundle = createStandaloneBundle();
-        bundle.units.units[0].as.specials = ['AC1/3/1', 'AFC'];
-        bundle.units.units[1].as.specials = ['AC1/4/1', 'TAG'];
-        bundle.units.units.push(createTestUnit({
-            mul1id: 3,
-            name: 'Nested AC',
-            as: {
-                ...createTestUnit({}).as,
-                specials: ['TUR(2/2/2,AC1/5/1)', 'TSM'],
-            },
-        }));
-
-        const { service, gameServiceStub } = createService(bundle);
-        gameServiceStub.currentGameSystem.set(GameSystem.ALPHA_STRIKE);
-        service.setFilter('as.specials', {
-            AC: {
-                name: 'AC',
-                state: 'and',
-                count: 1,
-                minimumValues: [null, 4, null],
-            },
-        });
-
-        expect(service.filteredUnits().map(unit => unit.name).sort()).toEqual(['Nested AC', 'Test Tank']);
-
-        const options = (service.advOptions()['as.specials']?.options ?? [])
-            .filter((option): option is { name: string; available?: boolean } => typeof option !== 'number');
-        expect(options.find(option => option.name === 'AC')).toEqual(jasmine.objectContaining({ available: true }));
-        expect(options.find(option => option.name === 'TAG')).toEqual(jasmine.objectContaining({ available: true }));
-        expect(options.find(option => option.name === 'TSM')).toEqual(jasmine.objectContaining({ available: true }));
-        expect(options.find(option => option.name === 'AFC')).toEqual(jasmine.objectContaining({ available: false }));
-
-        service.setFilter('as.specials', {
-            AC: {
-                name: 'AC',
-                state: 'and',
-                count: 1,
-                minimumValues: [null, 4, null],
-            },
-            TAG: {
-                name: 'TAG',
-                state: 'and',
-                count: 1,
-            },
-        });
-        expect(service.filteredUnits().map(unit => unit.name)).toEqual(['Test Tank']);
-    });
-
-    it('preserves repeated specials clauses when building the equivalent worker query', () => {
-        const bundle = createStandaloneBundle();
-        bundle.units.units[0].as.specials = ['AC1/5/1'];
-        bundle.units.units[1].as.specials = ['AC1/1/4'];
-        bundle.units.units.push(createTestUnit({
-            mul1id: 3,
-            name: 'Both AC Ranges',
-            as: {
-                ...createTestUnit({}).as,
-                specials: ['AC1/5/4'],
-            },
-        }));
-
-        const { service, gameServiceStub } = createService(bundle);
-        gameServiceStub.currentGameSystem.set(GameSystem.ALPHA_STRIKE);
-        service.searchText.set('specials&="AC*/>=4/*" specials&="AC*/*/>=3"');
-
-        expect(service.filteredUnits().map(unit => unit.name)).toEqual(['Both AC Ranges']);
-
-        const request = (service as any).buildWorkerSearchRequest((service as any).getWorkerCorpusVersion());
-        expect(request.executionQuery).toBe('specials&="AC*/>=4/*" specials&="AC*/*/>=3"');
-    });
-
-    it('calculates specials drilldowns against NOT-only selections', () => {
-        const bundle = createStandaloneBundle();
-        bundle.units.units[0].as.specials = ['ECM', 'TAG'];
-        bundle.units.units[1].as.specials = ['AC2/2/2'];
-
-        const { service, gameServiceStub } = createService(bundle);
-        gameServiceStub.currentGameSystem.set(GameSystem.ALPHA_STRIKE);
-        service.setFilter('as.specials', {
-            ECM: {
-                name: 'ECM',
-                state: 'not',
-                count: 1,
-            },
-        });
-
-        expect(service.filteredUnits().map(unit => unit.name)).toEqual(['Test Tank']);
-        const options = (service.advOptions()['as.specials']?.options ?? [])
-            .filter((option): option is { name: string; available?: boolean } => typeof option !== 'number');
-        expect(options.find(option => option.name === 'AC')).toEqual(jasmine.objectContaining({ available: true }));
-        expect(options.find(option => option.name === 'TAG')).toEqual(jasmine.objectContaining({ available: false }));
-
-        service.setFilter('as.specials', {
-            ECM: {
-                name: 'ECM',
-                state: 'not',
-                count: 1,
-            },
-            TAG: {
-                name: 'TAG',
-                state: 'or',
-                count: 1,
-            },
-        });
-        expect(service.filteredUnits()).toEqual([]);
     });
 
     it('does not throw when stale multistate era state is present', () => {
@@ -4978,11 +3546,10 @@ describe('UnitSearchFiltersService search telemetry', () => {
             },
         }];
 
-        const { service } = createService(bundle);
         const params = new URLSearchParams();
         params.set('filters', 'source:src-a|faction:test faction|era:succession wars');
-
-        service.applySearchParamsFromUrl(params, { expandView: false });
+        const { service } = createService(bundle, { initialParams: params });
+        TestBed.tick();
 
         expect(service.filterState()['source']?.value).toEqual({
             'SRC-A': {
@@ -5013,10 +3580,10 @@ describe('UnitSearchFiltersService search telemetry', () => {
             return;
         }
 
-        const { service, optionsServiceStub } = createService(buildSmallBundle(benchmarkBundle));
-        optionsServiceStub.options.update(options => ({ ...options, unitSearchViewMode: 'chassis' }));
-
-        service.applySearchParamsFromUrl(new URLSearchParams('view=table'), { expandView: false });
+        const { service, optionsServiceStub } = createService(buildSmallBundle(benchmarkBundle), {
+            initialParams: new URLSearchParams('view=table'),
+            unitSearchViewMode: 'chassis',
+        });
 
         expect(service.viewMode()).toBe('list');
         expect(service.expandedView()).toBeFalse();
@@ -5029,33 +3596,14 @@ describe('UnitSearchFiltersService search telemetry', () => {
             return;
         }
 
-        const { service, optionsServiceStub } = createService(buildSmallBundle(benchmarkBundle));
-        optionsServiceStub.options.update(options => ({ ...options, unitSearchViewMode: 'chassis' }));
-
-        service.applySearchParamsFromUrl(
-            new URLSearchParams('view=table&expanded=true'),
-            { expandView: false },
-        );
+        const { service, optionsServiceStub } = createService(buildSmallBundle(benchmarkBundle), {
+            initialParams: new URLSearchParams('view=table&expanded=true'),
+            unitSearchViewMode: 'chassis',
+        });
 
         expect(service.viewMode()).toBe('table');
         expect(service.expandedView()).toBeTrue();
         expect(optionsServiceStub.options().unitSearchViewMode).toBe('chassis');
-    });
-
-    it('replaces stale expanded and view state when applying a compact URL', () => {
-        if (!benchmarkBundle) {
-            pending('Real unit data could not be loaded for the URL view test.');
-            return;
-        }
-
-        const { service } = createService(buildSmallBundle(benchmarkBundle));
-        service.expandedView.set(true);
-        service.setViewMode('table');
-
-        service.applySearchParamsFromUrl(new URLSearchParams(), { expandView: false });
-
-        expect(service.expandedView()).toBeFalse();
-        expect(service.viewMode()).toBe('list');
     });
 
     it('loads legacy comma-containing Alpha Strike specials from URL params end to end', () => {
@@ -5069,13 +3617,11 @@ describe('UnitSearchFiltersService search telemetry', () => {
         bundle.units.units[0].as.specials = ['IF2'];
         bundle.units.units[1].as.specials = [special];
 
-        const { service, gameServiceStub } = createService(bundle);
-        gameServiceStub.currentGameSystem.set(GameSystem.ALPHA_STRIKE);
-
         const params = new URLSearchParams();
         params.set('filters', `as.specials:${special}`);
-
-        service.applySearchParamsFromUrl(params, { expandView: false });
+        const { service, gameServiceStub } = createService(bundle, { initialParams: params });
+        gameServiceStub.currentGameSystem.set(GameSystem.AS);
+        TestBed.tick();
 
         expect(service.filterState()['as.specials']?.value).toEqual({
             [special]: {
@@ -5088,78 +3634,11 @@ describe('UnitSearchFiltersService search telemetry', () => {
         expect(service.queryParameters()['filters']).toBe(`as.specials:"${special}"`);
     });
 
-    it('filters canonical Alpha Strike specials by populated minimum damage bands', () => {
-        const bundle = createStandaloneBundle();
-        bundle.units.units[0].as.specials = ['AC2/2/2'];
-        bundle.units.units[1].as.specials = ['TUR(3/3/3,AC1/1/4)'];
-
-        const { service, gameServiceStub } = createService(bundle);
-        gameServiceStub.currentGameSystem.set(GameSystem.ALPHA_STRIKE);
-
-        const acOption = (service.advOptions()['as.specials']?.options ?? [])
-            .filter(option => typeof option !== 'number')
-            .find(option => option.name === 'AC');
-        expect(acOption?.minimumFieldLabels).toEqual(['S', 'M', 'L']);
-
-        service.setFilter('as.specials', {
-            AC: {
-                name: 'AC',
-                state: 'or',
-                count: 1,
-                minimumValues: [null, null, 3],
-            },
-        });
-
-        expect(service.filteredUnits().map(unit => unit.name)).toEqual(['Test Tank']);
-        expect(service.queryParameters()['filters']).toBe('as.specials:AC^//3');
-    });
-
-    it('matches units when the selected rulebooks cover a complete bucket', () => {
-        const bundle = createStandaloneBundle();
-        bundle.units.units[0].name = 'Unit A';
-        bundle.units.units[0].rulesRefs = [['Core'], ['TW', 'IO:AE']];
-        bundle.units.units[1].name = 'Unit B';
-        bundle.units.units[1].rulesRefs = [['TW', 'Shrap01', 'AAA'], ['TM', 'Shrap01']];
-
-        const { service } = createService(bundle);
-        const rulebookOptions = service.advOptions()['rulesRefs']?.options ?? [];
-        expect(rulebookOptions.filter(option => typeof option !== 'number').map(option => option.name))
-            .toEqual(['Core', 'TM', 'TW', 'AAA', 'IO:AE', 'Shrap01']);
-
-        service.setFilter('rulesRefs', ['Core']);
-        expect(service.filteredUnits().map(unit => unit.name)).toEqual(['Unit A']);
-
-        service.setFilter('rulesRefs', ['TW', 'Shrap01']);
-        expect(service.filteredUnits().map(unit => unit.name)).toEqual([]);
-
-        service.setFilter('rulesRefs', ['TW']);
-        expect(service.filteredUnits().map(unit => unit.name)).toEqual([]);
-
-        service.setFilter('rulesRefs', ['TW', 'IO:AE']);
-        expect(service.filteredUnits().map(unit => unit.name)).toEqual(['Unit A']);
-
-        service.setFilter('rulesRefs', ['TW', 'Shrap01', 'AAA']);
-        expect(service.filteredUnits().map(unit => unit.name)).toEqual(['Unit B']);
-
-        service.setFilter('rulesRefs', ['IO:AE']);
-        expect(service.filteredUnits().map(unit => unit.name)).toEqual(['Unit A']);
-
-        service.setFilter('rulesRefs', ['Shrap01']);
-        expect(service.filteredUnits().map(unit => unit.name)).toEqual(['Unit B']);
-
-        service.setFilter('rulesRefs', ['AAA']);
-        expect(service.filteredUnits().map(unit => unit.name)).toEqual([]);
-    });
-
-    it('declares indexed dropdown capabilities for rules references, source, faction, and era', () => {
-        const rulesRefsConfig = getAdvancedFilterConfigByKey('rulesRefs');
+    it('declares indexed dropdown capabilities for source, faction, and era', () => {
         const sourceConfig = getAdvancedFilterConfigByKey('source');
         const factionConfig = getAdvancedFilterConfigByKey('faction');
         const eraConfig = getAdvancedFilterConfigByKey('era');
 
-        expect(rulesRefsConfig?.multistate).toBeFalsy();
-        expect(usesIndexedDropdownUniverse(rulesRefsConfig)).toBeTrue();
-        expect(usesIndexedDropdownAvailability(rulesRefsConfig)).toBeTrue();
         expect(usesIndexedDropdownUniverse(sourceConfig)).toBeTrue();
         expect(usesIndexedDropdownAvailability(sourceConfig)).toBeTrue();
         expect(usesIndexedDropdownUniverse(factionConfig)).toBeTrue();
@@ -5299,42 +3778,6 @@ describe('UnitSearchFiltersService search telemetry', () => {
         expect(service.filteredUnits().map(unit => unit.name)).toEqual(['LRM Carrier']);
     });
 
-    it('serializes worker execution queries for component counts as minimum constraints', () => {
-        if (!benchmarkBundle || benchmarkBundle.units.units.length < 2) {
-            pending('Real unit data could not be loaded for the worker quantity test.');
-            return;
-        }
-
-        const worker = new FakeSearchWorker();
-        const bundle = buildSmallBundle(benchmarkBundle);
-        bundle.units.units[0].name = 'LRM Boat';
-        bundle.units.units[0].chassis = 'LRM Boat';
-        bundle.units.units[0].comp = [
-            { id: 'lrm5-left', q: 2, n: 'LRM 5', t: 'M', p: 0, l: 'LT' } as any,
-            { id: 'lrm5-right', q: 4, n: 'LRM 5', t: 'M', p: 0, l: 'RT' } as any,
-        ];
-        bundle.units.units[1].name = 'Single LRM Scout';
-        bundle.units.units[1].chassis = 'Single LRM Scout';
-        bundle.units.units[1].comp = [{ id: 'lrm5-single', q: 1, n: 'LRM 5', t: 'M', p: 0, l: 'RA' } as any];
-
-        const { service } = createService(bundle, {
-            workerFactory: () => worker,
-        });
-
-        service.setFilter('componentName', {
-            'LRM 5': {
-                name: 'LRM 5',
-                state: 'or',
-                count: 2,
-            },
-        });
-
-        const request = (service as any).buildWorkerSearchRequest((service as any).getWorkerCorpusVersion());
-
-        expect(request.executionQuery).toContain('equipment="LRM 5:>=2"');
-
-    });
-
     it('matches mixed component count and AND equipment semantic filters', () => {
         if (!benchmarkBundle || benchmarkBundle.units.units.length < 2) {
             pending('Real unit data could not be loaded for the equipment AND test.');
@@ -5360,128 +3803,6 @@ describe('UnitSearchFiltersService search telemetry', () => {
         service.searchText.set('equipment="LRM 5:>=6" equipment&="LRM 5 Ammo"');
 
         expect(service.filteredUnits().map(unit => unit.name)).toEqual(['LRM Ammo Carrier']);
-    });
-
-    it('serializes mixed component OR and AND selections into separate worker tokens', () => {
-        if (!benchmarkBundle || benchmarkBundle.units.units.length < 2) {
-            pending('Real unit data could not be loaded for the worker quantity test.');
-            return;
-        }
-
-        const worker = new FakeSearchWorker();
-        const bundle = buildSmallBundle(benchmarkBundle);
-        bundle.units.units[0].comp = [
-            { id: 'lrm5-left', q: 2, n: 'LRM 5', t: 'M', p: 0, l: 'LT' } as any,
-            { id: 'lrm5-right', q: 4, n: 'LRM 5', t: 'M', p: 0, l: 'RT' } as any,
-            { id: 'lrm5-ammo', q: 1, n: 'LRM 5 Ammo', t: 'A', p: 0, l: 'CT' } as any,
-        ];
-
-        const { service } = createService(bundle, {
-            workerFactory: () => worker,
-        });
-
-        service.setFilter('componentName', {
-            'LRM 5': {
-                name: 'LRM 5',
-                state: 'or',
-                count: 6,
-            },
-            'LRM 5 Ammo': {
-                name: 'LRM 5 Ammo',
-                state: 'and',
-                count: 1,
-            },
-        });
-
-        const request = (service as any).buildWorkerSearchRequest((service as any).getWorkerCorpusVersion());
-
-        expect(request.executionQuery).toContain('equipment="LRM 5:>=6"');
-        expect(request.executionQuery).toContain('equipment&="LRM 5 Ammo"');
-    });
-
-    it('preserves semantic-only chassis filters in worker execution queries', () => {
-        const worker = new FakeSearchWorker();
-        const bundle = createStandaloneBundle();
-        bundle.units.units[0].name = 'Longbow Prime';
-        bundle.units.units[0].chassis = 'Longbow';
-        bundle.units.units[1].name = 'Catapult Prime';
-        bundle.units.units[1].chassis = 'Catapult';
-
-        const { service } = createService(bundle, {
-            workerFactory: () => worker,
-        });
-
-        service.searchText.set('chassis="Longbow"');
-
-        const request = (service as any).buildWorkerSearchRequest((service as any).getWorkerCorpusVersion());
-
-        expect(request.executionQuery).toContain('chassis="Longbow"');
-    });
-
-    it('serializes multistate era selections into worker execution queries', () => {
-        const bundle = createStandaloneBundle();
-        bundle.eras.eras = [
-            ...bundle.eras.eras,
-            {
-                id: 2,
-                name: 'Jihad',
-                img: '',
-                years: {
-                    from: 3067,
-                    to: 3080,
-                },
-                units: [1],
-                factions: [],
-            },
-        ];
-        bundle.factions.factions[0].eras = {
-            1: new Set([1, 2]),
-            2: new Set([1]),
-        };
-
-        const { service } = createService(bundle);
-
-        service.setFilter('era', {
-            'Succession Wars': {
-                name: 'Succession Wars',
-                state: 'or',
-                count: 1,
-            },
-            Jihad: {
-                name: 'Jihad',
-                state: 'and',
-                count: 1,
-            },
-        });
-
-        const request = (service as any).buildWorkerSearchRequest((service as any).getWorkerCorpusVersion());
-
-        expect(request.executionQuery).toContain('era="Succession Wars"');
-        expect(request.executionQuery).toContain('era&=Jihad');
-    });
-
-    it('keeps MUL era and faction filters in worker execution queries while stripping availability filters', () => {
-        const bundle = createStandaloneBundle();
-
-        const { service } = createService(bundle);
-
-        service.setFilter('era', ['Succession Wars']);
-        service.setFilter('faction', {
-            'Test Faction': {
-                name: 'Test Faction',
-                state: 'or',
-                count: 1,
-            },
-        });
-        service.setFilter('availabilityFrom', ['Requisition']);
-        service.setFilter('availabilityRarity', ['Common']);
-
-        const request = (service as any).buildWorkerSearchRequest((service as any).getWorkerCorpusVersion());
-
-        expect(request.executionQuery).toContain('era="Succession Wars"');
-        expect(request.executionQuery).toContain('faction="Test Faction"');
-        expect(request.executionQuery.toLowerCase()).not.toContain('from');
-        expect(request.executionQuery.toLowerCase()).not.toContain('rarity');
     });
 
     it('canonicalizes semantic dropdown values to existing option casing', () => {
@@ -5512,7 +3833,7 @@ describe('UnitSearchFiltersService search telemetry', () => {
         bundle.units.units[1].as = { ...bundle.units.units[1].as, PV: 40 };
 
         const { service, gameServiceStub } = createService(bundle);
-        gameServiceStub.currentGameSystem.set(GameSystem.CLASSIC);
+        gameServiceStub.currentGameSystem.set(GameSystem.CBT);
 
         const advOptions = service.advOptions();
 
@@ -5531,7 +3852,7 @@ describe('UnitSearchFiltersService search telemetry', () => {
         bundle.units.units[1].as = { ...bundle.units.units[1].as, PV: 40 };
 
         const { service, gameServiceStub } = createService(bundle);
-        gameServiceStub.currentGameSystem.set(GameSystem.CLASSIC);
+        gameServiceStub.currentGameSystem.set(GameSystem.CBT);
 
         service.setFilter('as.PV', [20, 30]);
 
@@ -5549,7 +3870,7 @@ describe('UnitSearchFiltersService search telemetry', () => {
         bundle.units.units[1].as = { ...bundle.units.units[1].as, PV: 40 };
 
         const { service, gameServiceStub } = createService(bundle);
-        gameServiceStub.currentGameSystem.set(GameSystem.CLASSIC);
+        gameServiceStub.currentGameSystem.set(GameSystem.CBT);
 
         service.searchText.set('pv=20-30');
 
@@ -5684,10 +4005,6 @@ describe('UnitSearchFiltersService search telemetry', () => {
         await flushAsyncWork();
 
         expect(service.filteredUnits().map(unit => unit.name)).toEqual(['Test Mek']);
-
-        const workerSnapshot = (service as any).getWorkerCorpusSnapshot((service as any).getWorkerCorpusVersion());
-        expect(workerSnapshot.factionEraIndex['Clan Invasion']?.['Clan Coyote']).toEqual([bundle.units.units[0].uuid]);
-        expect(workerSnapshot.factionEraIndex['Jihad']?.['Clan Coyote']).toEqual([bundle.units.units[1].uuid]);
     });
 
     it('evaluates exclusive semantic faction filters within a UI-selected era', async () => {
@@ -5716,18 +4033,14 @@ describe('UnitSearchFiltersService search telemetry', () => {
                 name: 'Clan Coyote',
                 group: 'IS Clan',
                 img: '',
-                eras: {
-                    1: new Set([1, 2]),
-                },
+                eras: { 1: new Set([1, 2]) },
             },
             {
                 id: 2,
                 name: 'Federated Suns',
                 group: 'Inner Sphere',
                 img: '',
-                eras: {
-                    2: new Set([2]),
-                },
+                eras: { 2: new Set([2]) },
             },
         ];
 
@@ -6071,9 +4384,10 @@ describe('UnitSearchFiltersService search telemetry', () => {
         const testMek = bundle.units.units.find(unit => unit.name === 'Test Mek')!;
         const testTank = bundle.units.units.find(unit => unit.name === 'Test Tank')!;
         const { dataService, service } = createService(bundle);
-        const initialTagIds = dataService.getIndexedUnitIds('_tags', 'tag-a');
+        const searchIndex = TestBed.inject(UnitSearchIndexService);
+        const initialTagIds = searchIndex.getIndexedUnitIds('_tags', 'tag-a');
 
-        expect(initialTagIds?.has(bundle.units.units[0].uuid)).toBeTrue();
+        expect(initialTagIds?.has(testMek.uuid)).toBeTrue();
 
         (dataService as any).applyTagDataToUnits({
             tags: {
@@ -6092,15 +4406,15 @@ describe('UnitSearchFiltersService search telemetry', () => {
             formatVersion: 5,
         });
 
-        const indexedAlphaIds = dataService.getIndexedUnitIds('_tags', 'alpha-tag');
-        const indexedBetaIds = dataService.getIndexedUnitIds('_tags', 'beta-tag');
-        const dropdownUniverse = dataService.getDropdownOptionUniverse('_tags').map(option => option.name);
+        const indexedAlphaIds = searchIndex.getIndexedUnitIds('_tags', 'alpha-tag');
+        const indexedBetaIds = searchIndex.getIndexedUnitIds('_tags', 'beta-tag');
+        const dropdownUniverse = searchIndex.getDropdownOptionUniverse('_tags').map(option => option.name);
         const tagOptions = service.advOptions()['_tags']?.options ?? [];
         const namedTagOptions = tagOptions.filter(option => typeof option !== 'number');
 
-        expect(dataService.getIndexedUnitIds('_tags', 'tag-a')).toBeUndefined();
-        expect(indexedAlphaIds?.has(bundle.units.units[0].uuid)).toBeTrue();
-        expect(indexedBetaIds?.has(bundle.units.units[1].uuid)).toBeTrue();
+        expect(searchIndex.getIndexedUnitIds('_tags', 'tag-a')).toBeUndefined();
+        expect(indexedAlphaIds?.has(testMek.uuid)).toBeTrue();
+        expect(indexedBetaIds?.has(testTank.uuid)).toBeTrue();
         expect(dropdownUniverse).toEqual(['alpha-tag', 'beta-tag']);
         expect(namedTagOptions.map(option => option.name)).toEqual(['alpha-tag', 'beta-tag']);
     });
@@ -6151,7 +4465,7 @@ describe('UnitSearchFiltersService search telemetry', () => {
         }
 
         const { service, gameServiceStub } = createService(buildSmallBundle(benchmarkBundle));
-        gameServiceStub.currentGameSystem.set(GameSystem.ALPHA_STRIKE);
+        gameServiceStub.currentGameSystem.set(GameSystem.AS);
         service.setFilter('as.TP', ['BM']);
 
         const specialsOptions = service.advOptions()['as.specials']?.options ?? [];
@@ -6162,37 +4476,6 @@ describe('UnitSearchFiltersService search telemetry', () => {
         expect(namedSpecialsOptions.length).toBe(2);
         expect(availableSpecial).toEqual(jasmine.objectContaining({ name: 'ECM', available: true }));
         expect(unavailableSpecial).toEqual(jasmine.objectContaining({ name: 'TAG', available: false }));
-    });
-
-    xit('captures advOptions telemetry with per-filter timings', async () => {
-        if (!benchmarkBundle || benchmarkBundle.units.units.length === 0) {
-            pending('Real unit data could not be loaded for the advOptions telemetry test.');
-            return;
-        }
-
-        const { service } = createService();
-        service.searchText.set('crab');
-        service.setFilter('type', ['Mek']);
-
-        const advOptions = service.advOptions();
-        expect(Object.keys(advOptions).length).toBeGreaterThan(0);
-        expect(service.advOptionsTelemetry()).toBeNull();
-
-        await Promise.resolve();
-
-        const telemetry = service.advOptionsTelemetry();
-        const componentStage = telemetry?.filters.find(stage => stage.key === 'componentName');
-
-        expect(telemetry).not.toBeNull();
-        expect(telemetry?.query).toBe('crab');
-        expect(telemetry?.baseUnitCount).toBe(10000);
-        expect(telemetry?.textFilteredUnitCount).toBeLessThanOrEqual(telemetry?.baseUnitCount ?? 0);
-        expect(telemetry?.visibleFilterCount).toBeGreaterThan(0);
-        expect(componentStage).toEqual(jasmine.objectContaining({ key: 'componentName', type: 'dropdown' }));
-        expect(componentStage?.optionCount).toBeGreaterThan(0);
-        expect(componentStage?.contextUnitCount).toBeGreaterThan(0);
-        expect(componentStage?.contextDerivationMs).toBeGreaterThanOrEqual(0);
-        expect(componentStage?.contextStrategy).toBe('fully-filtered');
     });
 
     it('captures excluded-filter context derivation telemetry for interacted filters', async () => {
@@ -6262,451 +4545,139 @@ describe('UnitSearchFiltersService search telemetry', () => {
         expect(threeFilters.excluded).toBe(3);
     });
 
-    // Manual diagnostic benchmark: run with xit -> it to enable
-    xit('benchmarks advOptions telemetry for componentName, source, role, faction, and era filters', async () => {
-        if (!sharedService) {
-            pending('Real unit data could not be loaded for the advOptions filter benchmark test.');
-            return;
-        }
-
-        const service = sharedService;
-        service.resetFilters();
-
-        const pickFirstAvailableOption = (service: UnitSearchFiltersService, key: string): string => {
-            const filter = service.advOptions()[key];
-            if (!filter || filter.type !== 'dropdown') {
-                throw new Error(`Expected dropdown filter for ${key}`);
-            }
-
-            const option = filter.options.find(entry => entry.available !== false);
-            if (!option) {
-                throw new Error(`Expected at least one available option for ${key}`);
-            }
-
-            return option.name;
-        };
-
-        const selectedValues = {
-            componentName: pickFirstAvailableOption(service, 'componentName'),
-            source: pickFirstAvailableOption(service, 'source'),
-            role: pickFirstAvailableOption(service, 'role'),
-            faction: pickFirstAvailableOption(service, 'faction'),
-            era: pickFirstAvailableOption(service, 'era'),
-        };
-
-        const measureScenario = async (
-            label: string,
-            configure: (service: UnitSearchFiltersService, selectedValues: {
-                componentName: string;
-                source: string;
-                role: string;
-                faction: string;
-                era: string;
-            }) => void,
-        ) => {
-            service.resetFilters();
-            await flushAsyncWork();
-
-            configure(service, selectedValues);
-
-            const filteredUnits = service.filteredUnits();
-            const advOptions = service.advOptions();
-            expect(Object.keys(advOptions).length).toBeGreaterThan(0);
-
-            await flushAsyncWork();
-
-            const telemetry = service.advOptionsTelemetry();
-            expect(telemetry).not.toBeNull();
-
-            const filters = telemetry?.filters ?? [];
-            return {
-                label,
-                selectedValue: selectedValues[label as keyof typeof selectedValues],
-                resultCount: filteredUnits.length,
-                totalMs: Number((telemetry?.totalMs ?? 0).toFixed(2)),
-                totalContextDerivationMs: Number(filters.reduce((sum, stage) => sum + stage.contextDerivationMs, 0).toFixed(2)),
-                slowestContextStages: filters
-                    .slice()
-                    .sort((a, b) => b.contextDerivationMs - a.contextDerivationMs)
-                    .slice(0, 5)
-                    .map(stage => ({
-                        key: stage.key,
-                        strategy: stage.contextStrategy,
-                        contextDerivationMs: Number(stage.contextDerivationMs.toFixed(2)),
-                        contextUnitCount: stage.contextUnitCount,
-                    })),
-            };
-        };
-
-        const report = [
-            await measureScenario('componentName', (service, selectedValues) => {
-                service.setFilter('componentName', {
-                    [selectedValues.componentName]: {
-                        name: selectedValues.componentName,
-                        state: 'or',
-                        count: 1,
-                    },
-                });
-            }),
-            await measureScenario('source', (service, selectedValues) => {
-                service.setFilter('source', {
-                    [selectedValues.source]: {
-                        name: selectedValues.source,
-                        state: 'or',
-                        count: 1,
-                    },
-                });
-            }),
-            await measureScenario('role', (service, selectedValues) => {
-                service.setFilter('role', [selectedValues.role]);
-            }),
-            await measureScenario('faction', (service, selectedValues) => {
-                service.setFilter('faction', {
-                    [selectedValues.faction]: {
-                        name: selectedValues.faction,
-                        state: 'or',
-                        count: 1,
-                    },
-                });
-            }),
-            await measureScenario('era', (service, selectedValues) => {
-                service.setFilter('era', [selectedValues.era]);
-            }),
-        ];
-
-        console.info('ADV_OPTIONS_FILTER_BENCH', JSON.stringify(report));
-
-        expect(report.length).toBe(5);
-        expect(report.every(entry => entry.totalMs >= 0)).toBeTrue();
-    });
-
-    // Manual diagnostic benchmark: run with xit -> it to enable
-    xit('benchmarks synthetic MegaMek rarity sorting across 50,000 units', async () => {
-        const setupStartedAt = performance.now();
-        const scenario = buildSyntheticMegaMekRarityBenchmarkScenario(50000);
-        const { dataService, service } = createService(scenario.bundle);
-
-        spyOn(dataService, 'getMegaMekAvailabilityRecords').and.returnValue(scenario.availabilityRecords);
-        spyOn(dataService, 'getMegaMekAvailabilityRecordForUnit').and.callFake((unit: Pick<UnitSummary, 'name'>) => {
-            return scenario.availabilityRecordsByName.get(unit.name);
-        });
-
-        (service as any).slowSearchTelemetryThresholdMs = 0;
-        service.setSortOrder('name');
-        service.filteredUnits();
-        await flushAsyncWork();
-        const setupMs = performance.now() - setupStartedAt;
-
-        service.setSortOrder(MEGAMEK_RARITY_PRODUCTION_SORT_KEY);
-        service.setSortDirection('desc');
-        service.searchText.set('');
-
-        const coldStartedAt = performance.now();
-        const coldFilteredUnits = service.filteredUnits();
-        const coldElapsedMs = performance.now() - coldStartedAt;
-
-        await flushAsyncWork();
-
-        const coldTelemetry = service.searchTelemetry();
-        const coldSortStage = coldTelemetry?.stages.find(stage => stage.name === 'sort');
-
-        service.setSortOrder('name');
-        service.filteredUnits();
-        await flushAsyncWork();
-
-        service.setSortOrder(MEGAMEK_RARITY_PRODUCTION_SORT_KEY);
-
-        const warmStartedAt = performance.now();
-        const filteredUnits = service.filteredUnits();
-        const warmElapsedMs = performance.now() - warmStartedAt;
-
-        await flushAsyncWork();
-
-        const telemetry = service.searchTelemetry();
-        const sortStage = telemetry?.stages.find(stage => stage.name === 'sort');
-        const topRecord = scenario.availabilityRecordsByName.get(filteredUnits[0]?.name ?? '');
-        const topScore = Math.max(topRecord?.e['1']?.['1']?.[0] ?? -1, topRecord?.e['1']?.['1']?.[1] ?? -1);
-
-        console.info('MEGAMEK_RARITY_SORT_BENCH', JSON.stringify({
-            unitCount: scenario.bundle.units.units.length,
-            resultCount: filteredUnits.length,
-            setupMs: Number(setupMs.toFixed(2)),
-            coldTotalMs: Number(coldElapsedMs.toFixed(2)),
-            coldTelemetryTotalMs: Number((coldTelemetry?.totalMs ?? 0).toFixed(2)),
-            coldSortMs: Number((coldSortStage?.durationMs ?? 0).toFixed(2)),
-            warmTotalMs: Number(warmElapsedMs.toFixed(2)),
-            warmTelemetryTotalMs: Number((telemetry?.totalMs ?? 0).toFixed(2)),
-            warmSortMs: Number((sortStage?.durationMs ?? 0).toFixed(2)),
-            topScore,
+    it('applies Alpha Strike special minima when calculating self-filter drilldowns', () => {
+        const bundle = createStandaloneBundle();
+        bundle.units.units[0].as.specials = ['AC1/3/1', 'AFC'];
+        bundle.units.units[1].as.specials = ['AC1/4/1', 'TAG'];
+        bundle.units.units.push(createTestUnit({
+            mul1id: 3,
+            name: 'Nested AC',
+            as: { ...createTestUnit({}).as, specials: ['TUR(2/2/2,AC1/5/1)', 'TSM'] },
         }));
 
-        expect(coldFilteredUnits.length).toBe(50000);
-        expect(filteredUnits.length).toBe(50000);
-        expect(telemetry?.unitCount).toBe(50000);
-        expect(sortStage).toBeDefined();
-        expect(topScore).toBe(scenario.expectedTopScore);
-    });
-
-    xit('does not write to logger signals synchronously while filteredUnits is computing', async () => {
-        if (!benchmarkBundle || benchmarkBundle.units.units.length === 0) {
-            pending('Real unit data could not be loaded for the logger regression test.');
-            return;
-        }
-
-        const { service, logger } = createService(undefined, { useRealLogger: true });
-        const loggerService = logger as LoggerService;
-        spyOn(console, 'log');
-        (service as any).slowSearchTelemetryThresholdMs = 0;
-
-        service.searchText.set('crab bv=1000-3000');
-
-        expect(() => service.filteredUnits()).not.toThrow();
-        expect(service.searchTelemetry()).toBeNull();
-
-        await Promise.resolve();
-
-        expect(service.searchTelemetry()).not.toBeNull();
-        expect(loggerService.logs().some(entry => entry.message.includes('Unit search telemetry:'))).toBeTrue();
-    });
-
-    it('uses worker results when a worker factory is provided', async () => {
-        if (!benchmarkBundle || benchmarkBundle.units.units.length < 2) {
-            pending('Real unit data could not be loaded for the worker integration test.');
-            return;
-        }
-
-        const worker = new FakeSearchWorker();
-        const bundle = buildSmallBundle(benchmarkBundle);
-        const { service } = createService(bundle, {
-            workerFactory: () => worker,
+        const { service, gameServiceStub } = createService(bundle);
+        gameServiceStub.currentGameSystem.set(GameSystem.AS);
+        service.setFilter('as.specials', {
+            AC: { name: 'AC', state: 'and', count: 1, minimumValues: [null, 4, null] },
         });
 
-        service.searchText.set('Test Mek');
-        service.filteredUnits();
-        expect((service as any).workerSearchEnabled()).toBeTrue();
-        const corpusVersion = (service as any).getWorkerCorpusVersion();
-        const snapshot = (service as any).getWorkerCorpusSnapshot(corpusVersion);
-        const request = (service as any).buildWorkerSearchRequest(corpusVersion);
-        (service as any).searchWorkerClient.submit(snapshot, request);
+        expect(service.filteredUnits().map(unit => unit.name).sort()).toEqual(['Nested AC', 'Test Tank']);
+        const options = (service.advOptions()['as.specials']?.options ?? [])
+            .filter((option): option is { name: string; available?: boolean } => typeof option !== 'number');
+        expect(options.find(option => option.name === 'AC')).toEqual(jasmine.objectContaining({ available: true }));
+        expect(options.find(option => option.name === 'TAG')).toEqual(jasmine.objectContaining({ available: true }));
+        expect(options.find(option => option.name === 'TSM')).toEqual(jasmine.objectContaining({ available: true }));
+        expect(options.find(option => option.name === 'AFC')).toEqual(jasmine.objectContaining({ available: false }));
 
-        const initMessage = worker.messages.at(-1) as any;
-        expect(initMessage).toBeTruthy();
-
-        worker.emit({ type: 'ready', corpusVersion: initMessage.snapshot.corpusVersion });
-        await flushAsyncWork();
-
-        const executeMessage = worker.messages.filter((message: any) => message.type === 'execute').at(-1) as any;
-        expect(executeMessage).toBeTruthy();
-
-        worker.emit({
-            type: 'result',
-            revision: executeMessage.request.revision,
-            corpusVersion: executeMessage.request.corpusVersion,
-            telemetryQuery: executeMessage.request.telemetryQuery,
-            entries: [{ unitUuid: bundle.units.units[0].uuid }],
-            stages: [],
-            totalMs: 1,
-            unitCount: 2,
-            isComplex: false,
+        service.setFilter('as.specials', {
+            AC: { name: 'AC', state: 'and', count: 1, minimumValues: [null, 4, null] },
+            TAG: { name: 'TAG', state: 'and', count: 1 },
         });
-        await flushAsyncWork();
-
-        expect(service.filteredUnits().map(unit => unit.name)).toEqual(['Test Mek']);
-    });
-
-    it('recomputes worker normalization metadata with the wrong match kind', async () => {
-        const worker = new FakeSearchWorker();
-        const bundle = createStandaloneBundle();
-        const unit = bundle.units.units[0];
-        const { service } = createService(bundle, { workerFactory: () => worker });
-        service.setBudgetMode('bv-normalization');
-        service.filteredUnits();
-
-        const corpusVersion = (service as any).getWorkerCorpusVersion();
-        const snapshot = (service as any).getWorkerCorpusSnapshot(corpusVersion);
-        const request = (service as any).buildWorkerSearchRequest(corpusVersion);
-        (service as any).searchWorkerClient.submit(snapshot, request);
-        const initMessage = worker.messages.at(-1) as any;
-        worker.emit({ type: 'ready', corpusVersion: initMessage.snapshot.corpusVersion });
-        await flushAsyncWork();
-        const executeMessage = worker.messages.filter((message: any) => message.type === 'execute').at(-1) as any;
-
-        worker.emit({
-            type: 'result',
-            revision: executeMessage.request.revision,
-            corpusVersion: executeMessage.request.corpusVersion,
-            telemetryQuery: executeMessage.request.telemetryQuery,
-            entries: [{
-                unitUuid: unit.uuid,
-                match: { kind: 'pv', adjustedValue: unit.as.PV, skill: 8 },
-            }],
-            stages: [],
-            totalMs: 1,
-            unitCount: bundle.units.units.length,
-            isComplex: false,
-        });
-        await flushAsyncWork();
-
-        expect(service.filteredUnits().map(result => result.name)).toContain(unit.name);
-        expect(service.getSearchResultPilotContext(unit).kind).toBe('bv');
-    });
-
-    it('ignores stale worker results and applies only the latest response', async () => {
-        if (!benchmarkBundle || benchmarkBundle.units.units.length < 2) {
-            pending('Real unit data could not be loaded for the worker integration test.');
-            return;
-        }
-
-        const worker = new FakeSearchWorker();
-        const bundle = buildSmallBundle(benchmarkBundle);
-        const { service } = createService(bundle, {
-            workerFactory: () => worker,
-        });
-
-        service.searchText.set('Test Mek');
-        service.filteredUnits();
-        expect((service as any).workerSearchEnabled()).toBeTrue();
-        const initialCorpusVersion = (service as any).getWorkerCorpusVersion();
-        const initialSnapshot = (service as any).getWorkerCorpusSnapshot(initialCorpusVersion);
-        const initialRequest = (service as any).buildWorkerSearchRequest(initialCorpusVersion);
-        (service as any).searchWorkerClient.submit(initialSnapshot, initialRequest);
-
-        const initMessage = worker.messages.at(-1) as any;
-        worker.emit({ type: 'ready', corpusVersion: initMessage.snapshot.corpusVersion });
-        await flushAsyncWork();
-
-        const firstExecute = worker.messages.filter((message: any) => message.type === 'execute').at(-1) as any;
-        service.searchText.set('Test Tank');
-        service.filteredUnits();
-        const nextCorpusVersion = (service as any).getWorkerCorpusVersion();
-        const nextSnapshot = (service as any).getWorkerCorpusSnapshot(nextCorpusVersion);
-        const nextRequest = (service as any).buildWorkerSearchRequest(nextCorpusVersion);
-        (service as any).searchWorkerClient.submit(nextSnapshot, nextRequest);
-        const secondExecute = worker.messages.filter((message: any) => message.type === 'execute').at(-1) as any;
-
-        worker.emit({
-            type: 'result',
-            revision: firstExecute.request.revision,
-            corpusVersion: firstExecute.request.corpusVersion,
-            telemetryQuery: firstExecute.request.telemetryQuery,
-            entries: [{ unitUuid: bundle.units.units[0].uuid }],
-            stages: [],
-            totalMs: 1,
-            unitCount: 2,
-            isComplex: false,
-        });
-        await flushAsyncWork();
-
-        expect(service.filteredUnits()).toEqual([]);
-
-        worker.emit({
-            type: 'result',
-            revision: secondExecute.request.revision,
-            corpusVersion: secondExecute.request.corpusVersion,
-            telemetryQuery: secondExecute.request.telemetryQuery,
-            entries: [{ unitUuid: bundle.units.units[1].uuid }],
-            stages: [],
-            totalMs: 1,
-            unitCount: 2,
-            isComplex: false,
-        });
-        await flushAsyncWork();
-
         expect(service.filteredUnits().map(unit => unit.name)).toEqual(['Test Tank']);
     });
 
-    it('resubmits worker searches when the text query changes', async () => {
-        if (!benchmarkBundle || benchmarkBundle.units.units.length < 2) {
-            pending('Real unit data could not be loaded for the worker integration test.');
-            return;
-        }
+    it('preserves repeated specials clauses', () => {
+        const bundle = createStandaloneBundle();
+        bundle.units.units[0].as.specials = ['AC1/5/1'];
+        bundle.units.units[1].as.specials = ['AC1/1/4'];
+        bundle.units.units.push(createTestUnit({
+            mul1id: 3,
+            name: 'Both AC Ranges',
+            as: { ...createTestUnit({}).as, specials: ['AC1/5/4'] },
+        }));
 
-        const worker = new FakeSearchWorker();
-        const bundle = buildSmallBundle(benchmarkBundle);
-        bundle.units.units[0].name = 'BattleMaster C3';
-        bundle.units.units[0].chassis = 'BattleMaster C3';
-        bundle.units.units[0].model = 'BLR-1C3';
-        bundle.units.units[1].name = 'Awesome PPC';
-        bundle.units.units[1].chassis = 'Awesome PPC';
-        bundle.units.units[1].model = 'AWS-8Q';
+        const { service, gameServiceStub } = createService(bundle);
+        gameServiceStub.currentGameSystem.set(GameSystem.AS);
+        service.searchText.set('specials&="AC*/>=4/*" specials&="AC*/*/>=3"');
 
-        const { service } = createService(bundle, {
-            workerFactory: () => worker,
-        });
-
-        service.filteredUnits();
-        await flushAsyncWork();
-
-        const initialCorpusVersion = (service as any).getWorkerCorpusVersion();
-        const initialSnapshot = (service as any).getWorkerCorpusSnapshot(initialCorpusVersion);
-        const initialRequest = (service as any).buildWorkerSearchRequest(initialCorpusVersion);
-        (service as any).searchWorkerClient.submit(initialSnapshot, initialRequest);
-
-        const initMessage = worker.messages.at(-1) as any;
-        worker.emit({ type: 'ready', corpusVersion: initMessage.snapshot.corpusVersion });
-        await flushAsyncWork();
-
-        const initialExecute = worker.messages.filter((message: any) => message.type === 'execute').at(-1) as any;
-        worker.emit({
-            type: 'result',
-            revision: initialExecute.request.revision,
-            corpusVersion: initialExecute.request.corpusVersion,
-            telemetryQuery: initialExecute.request.telemetryQuery,
-            entries: bundle.units.units.map((unit) => ({ unitUuid: unit.uuid })),
-            stages: [],
-            totalMs: 1,
-            unitCount: bundle.units.units.length,
-            isComplex: false,
-        });
-        await flushAsyncWork();
-
-        expect(service.filteredUnits().map((unit) => unit.name)).toEqual(['BattleMaster C3', 'Awesome PPC']);
-
-        service.setSearchText('battlemaster c3');
-        service.filteredUnits();
-        await flushAsyncWork();
-
-        const updatedExecute = worker.messages.filter((message: any) => message.type === 'execute').at(-1) as any;
-        expect(updatedExecute.request.revision).toBeGreaterThan(initialExecute.request.revision);
-        expect(updatedExecute.request.telemetryQuery).toBe('battlemaster c3');
-
-        worker.emit({
-            type: 'result',
-            revision: updatedExecute.request.revision,
-            corpusVersion: updatedExecute.request.corpusVersion,
-            telemetryQuery: updatedExecute.request.telemetryQuery,
-            entries: createWorkerEntries(bundle, ['BattleMaster C3']),
-            stages: [],
-            totalMs: 1,
-            unitCount: bundle.units.units.length,
-            isComplex: false,
-        });
-        await flushAsyncWork();
-
-        expect(service.filteredUnits().map((unit) => unit.name)).toEqual(['BattleMaster C3']);
+        expect(service.filteredUnits().map(unit => unit.name)).toEqual(['Both AC Ranges']);
     });
 
-    it('falls back to synchronous execution when the worker fails', async () => {
-        if (!benchmarkBundle || benchmarkBundle.units.units.length < 2) {
-            pending('Real unit data could not be loaded for the worker integration test.');
-            return;
-        }
+    it('calculates specials drilldowns against NOT-only selections', () => {
+        const bundle = createStandaloneBundle();
+        bundle.units.units[0].as.specials = ['ECM', 'TAG'];
+        bundle.units.units[1].as.specials = ['AC2/2/2'];
 
-        const worker = new FakeSearchWorker();
-        const { service } = createService(buildSmallBundle(benchmarkBundle), {
-            workerFactory: () => worker,
+        const { service, gameServiceStub } = createService(bundle);
+        gameServiceStub.currentGameSystem.set(GameSystem.AS);
+        service.setFilter('as.specials', {
+            ECM: { name: 'ECM', state: 'not', count: 1 },
         });
 
-        service.searchText.set('type=Mek');
-        service.filteredUnits();
-        expect((service as any).workerSearchEnabled()).toBeTrue();
-        const corpusVersion = (service as any).getWorkerCorpusVersion();
-        const snapshot = (service as any).getWorkerCorpusSnapshot(corpusVersion);
-        const request = (service as any).buildWorkerSearchRequest(corpusVersion);
-        (service as any).searchWorkerClient.submit(snapshot, request);
-        worker.fail('boom');
-        await flushAsyncWork();
+        expect(service.filteredUnits().map(unit => unit.name)).toEqual(['Test Tank']);
+        const options = (service.advOptions()['as.specials']?.options ?? [])
+            .filter((option): option is { name: string; available?: boolean } => typeof option !== 'number');
+        expect(options.find(option => option.name === 'AC')).toEqual(jasmine.objectContaining({ available: true }));
+        expect(options.find(option => option.name === 'TAG')).toEqual(jasmine.objectContaining({ available: false }));
 
-        expect(service.filteredUnits().map(unit => unit.name)).toEqual(['Test Mek']);
+        service.setFilter('as.specials', {
+            ECM: { name: 'ECM', state: 'not', count: 1 },
+            TAG: { name: 'TAG', state: 'or', count: 1 },
+        });
+        expect(service.filteredUnits()).toEqual([]);
     });
+
+    it('filters canonical Alpha Strike specials by populated minimum damage bands', () => {
+        const bundle = createStandaloneBundle();
+        bundle.units.units[0].as.specials = ['AC2/2/2'];
+        bundle.units.units[1].as.specials = ['TUR(3/3/3,AC1/1/4)'];
+
+        const { service, gameServiceStub } = createService(bundle);
+        gameServiceStub.currentGameSystem.set(GameSystem.AS);
+        const acOption = (service.advOptions()['as.specials']?.options ?? [])
+            .filter(option => typeof option !== 'number')
+            .find(option => option.name === 'AC');
+        expect(acOption?.minimumFieldLabels).toEqual(['S', 'M', 'L']);
+
+        service.setFilter('as.specials', {
+            AC: { name: 'AC', state: 'or', count: 1, minimumValues: [null, null, 3] },
+        });
+
+        expect(service.filteredUnits().map(unit => unit.name)).toEqual(['Test Tank']);
+        expect(service.queryParameters()['filters']).toBe('as.specials:AC^//3');
+    });
+
+    it('matches units when the selected rulebooks cover a complete bucket', () => {
+        const bundle = createStandaloneBundle();
+        bundle.units.units[0].name = 'Unit A';
+        bundle.units.units[0].rulesRefs = [['Core'], ['TW', 'IO:AE']];
+        bundle.units.units[1].name = 'Unit B';
+        bundle.units.units[1].rulesRefs = [['TW', 'Shrap01', 'AAA'], ['TM', 'Shrap01']];
+
+        const { service } = createService(bundle);
+        const rulebookOptions = service.advOptions()['rulesRefs']?.options ?? [];
+        expect(rulebookOptions.filter(option => typeof option !== 'number').map(option => option.name))
+            .toEqual(['Core', 'TM', 'TW', 'AAA', 'IO:AE', 'Shrap01']);
+
+        const expectMatches = (selected: string[], names: string[]) => {
+            service.setFilter('rulesRefs', selected);
+            expect(service.filteredUnits().map(unit => unit.name)).toEqual(names);
+        };
+        expectMatches(['Core'], ['Unit A']);
+        expectMatches(['TW', 'Shrap01'], []);
+        expectMatches(['TW'], []);
+        expectMatches(['TW', 'IO:AE'], ['Unit A']);
+        expectMatches(['TW', 'Shrap01', 'AAA'], ['Unit B']);
+        expectMatches(['IO:AE'], ['Unit A']);
+        expectMatches(['Shrap01'], ['Unit B']);
+        expectMatches(['AAA'], []);
+    });
+
+    it('declares indexed dropdown capabilities for rules references, source, faction, and era', () => {
+        const rulesRefsConfig = getAdvancedFilterConfigByKey('rulesRefs');
+        const sourceConfig = getAdvancedFilterConfigByKey('source');
+        const factionConfig = getAdvancedFilterConfigByKey('faction');
+        const eraConfig = getAdvancedFilterConfigByKey('era');
+
+        expect(rulesRefsConfig?.multistate).toBeFalsy();
+        expect(usesIndexedDropdownUniverse(rulesRefsConfig)).toBeTrue();
+        expect(usesIndexedDropdownAvailability(rulesRefsConfig)).toBeTrue();
+        expect(usesIndexedDropdownUniverse(sourceConfig)).toBeTrue();
+        expect(usesIndexedDropdownAvailability(sourceConfig)).toBeTrue();
+        expect(usesIndexedDropdownUniverse(factionConfig)).toBeTrue();
+        expect(usesIndexedDropdownAvailability(factionConfig)).toBeTrue();
+        expect(usesIndexedDropdownUniverse(eraConfig)).toBeTrue();
+        expect(usesIndexedDropdownAvailability(eraConfig)).toBeTrue();
+    });
+
 });

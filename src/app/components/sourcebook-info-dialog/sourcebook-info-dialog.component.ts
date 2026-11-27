@@ -2,7 +2,6 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 // Author: Drake
 
-import { CommonModule } from '@angular/common';
 import { type AfterViewInit, ChangeDetectionStrategy, Component, type ElementRef, inject, viewChild } from '@angular/core';
 import { DialogRef, DIALOG_DATA } from '@angular/cdk/dialog';
 import type { Sourcebook } from '../../models/sourcebook.model';
@@ -27,7 +26,7 @@ export interface SourcebookInfoDialogData {
 @Component({
     selector: 'sourcebook-info-dialog',
     changeDetection: ChangeDetectionStrategy.OnPush,
-    imports: [CommonModule, BaseDialogComponent],
+    imports: [BaseDialogComponent],
     host: {
         class: 'fullscreen-dialog-host'
     },

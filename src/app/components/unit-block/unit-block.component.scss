@@ -13,11 +13,8 @@
     opacity: 0.5;
 }
 
-.group-commander-icon {
+commander-icon {
     width: 25px;
-    height: auto;
-    transform: rotate(180deg);
-    flex-shrink: 0;
 }
 
 .unit-square.compact-mode {
@@ -160,7 +157,7 @@
         top: 2px;
         left: 2px;
 
-        .group-commander-icon {
+        commander-icon {
             width: 16px;
         }
     }
@@ -227,18 +224,16 @@
         font-weight: bold;
     }
 
+    // Inline flow: the badges follow the last word of a wrapped name.
     .unit-name-line {
-        display: flex;
         min-width: 0;
-        align-items: center;
-        gap: 4px;
         line-height: 1.2;
+        overflow-wrap: anywhere;
 
-        .unit-alias,
-        .chassis {
-            min-width: 0;
-            overflow: hidden;
-            text-overflow: ellipsis;
+        edge-badge,
+        unit-notification-badges {
+            margin-left: 4px;
+            vertical-align: middle;
         }
     }
 
@@ -267,7 +262,10 @@
         }
     }
 
+    // The pilot name moves below the chassis as a whole.
     .unit-alias.thin {
+        display: inline-block;
+        max-width: 100%;
         font-size: 0.9em;
         font-weight: normal;
     }
@@ -541,4 +539,9 @@
         background-color: var(--move-sprint);
         color: var(--move-on-light);
     }
+}
+.pilot-info.vacant {
+    border: 1px dashed var(--text-color-secondary);
+    color: var(--text-color-secondary);
+    .icon { opacity: 0.5; }
 }

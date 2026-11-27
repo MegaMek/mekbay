@@ -6,8 +6,10 @@ import {
   AmmoEquipment,
   Equipment,
   WeaponEquipment,
+  formatEquipmentName,
 } from '../../equipment.model';
 import type { BaseEntity } from '../base-entity';
+import type { CBTGameRules } from '../../rules/game-rules';
 import { getEquipmentBV } from '../utils/equipment-bv';
 import { getEquipmentCost } from '../utils/cost/equipment-pricing';
 import { getEquipmentTonnage } from '../utils/equipment-tonnage';
@@ -106,10 +108,16 @@ export interface EntityMountedEquipmentInit {
   /** Anti-Personnel Mount weapon */
   isAPM?: boolean;
 
+  /** Conventional infantry platoon weapon (BLK Primary/Secondary/disposableWeapon) */
+  platoonWeapon?: PlatoonWeaponRole;
+
   /** Ammo: shot count */
   shotsCount?: number;
 
 }
+
+/** `disposable`: the one-shot weapon every trooper carries (TO:AuE p. 116), a separate mount as in MegaMek. */
+export type PlatoonWeaponRole = 'primary' | 'secondary' | 'disposable';
 
 /** Input accepted when installing equipment; entity ownership supplies identity. */
 export type EntityMountedEquipmentInput = Omit<EntityMountedEquipmentInit, 'mountId'>;
@@ -131,6 +139,7 @@ export class EntityMountedEquipment implements EntityMountedEquipmentInit {
   isDWP?: boolean;
   isSSWM?: boolean;
   isAPM?: boolean;
+  platoonWeapon?: PlatoonWeaponRole;
   shotsCount?: number;
   constructor(data: EntityMountedEquipmentInit, owner?: BaseEntity) {
     Object.assign(this, data);
@@ -158,6 +167,31 @@ export class EntityMountedEquipment implements EntityMountedEquipmentInit {
 
   get placedCriticalSlotCount(): number {
     return this.placements?.length ?? 0;
+  }
+
+  /** Canonical user-facing name for this installed equipment mount. */
+  displayName(includeAmmoShots = false, includeBodyMount = true): string {
+    const name = this.equipment
+      ? formatEquipmentName(this.equipment, includeAmmoShots ? this.getAmmoShots() : undefined)
+      : this.equipmentId;
+    const modifiers: string[] = [];
+    if (this.rearMounted) modifiers.push('R');
+
+    const turret = this.turretType === 'sponson'
+      ? 'S'
+      : this.turretType === 'pintle'
+        ? 'P'
+        : this.turretMounted || this.turretType === 'standard'
+          ? 'T'
+          : null;
+    if (turret !== null) modifiers.push(turret);
+
+    if (this.baMountLocation === 'Body' && includeBodyMount) modifiers.push('Body');
+    else if (this.baMountLocation === 'Turret' && !modifiers.includes('T')) modifiers.push('T');
+    if (this.isSSWM) modifiers.push('SSW: Trooper 1');
+    if (this.isDWP) modifiers.push('DWP');
+
+    return modifiers.length === 0 ? name : `${name} (${modifiers.join(', ')})`;
   }
 
   withAddedPlacement(placement: MountPlacement, primaryLocation = this.location): EntityMountedEquipment {
@@ -193,6 +227,12 @@ export class EntityMountedEquipment implements EntityMountedEquipmentInit {
     return [...new Set(this.placements?.map(placement => placement.location) ?? [this.location])];
   }
 
+  /** The occupied locations, the mount's own location first, as a split mount is printed and listed (LT/LA). */
+  getOccupiedLocationsMainFirst(): readonly string[] {
+    const occupied = this.getOccupiedLocations();
+    return occupied.includes(this.location) ? [this.location, ...occupied.filter(code => code !== this.location)] : occupied;
+  }
+
   get isSplitAcrossLocations(): boolean {
     return this.getOccupiedLocations().length > 1;
   }
@@ -218,8 +258,8 @@ export class EntityMountedEquipment implements EntityMountedEquipmentInit {
     return resolvePhysicalWeaponDamage(this.equipment, this.owner.tonnage());
   }
 
-  getBV(entity: BaseEntity): number {
-    return getEquipmentBV(entity, this);
+  getBV(entity: BaseEntity, gameRules?: CBTGameRules): number {
+    return getEquipmentBV(entity, this, gameRules);
   }
 
   getTonnage(entity: BaseEntity): number | undefined {

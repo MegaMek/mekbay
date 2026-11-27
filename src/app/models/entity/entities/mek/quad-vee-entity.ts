@@ -30,7 +30,7 @@ export class QuadVeeEntity extends QuadMekEntity {
     return 'QuadVee';
   }
 
-  protected override getSystemSlotsForLocation(location: string): CriticalSlotView[] {
+  override getSystemSlotsForLocation(location: string): CriticalSlotView[] {
     const slots = super.getSystemSlotsForLocation(location);
     if (location === 'FLL' || location === 'FRL' || location === 'RLL' || location === 'RRL') {
       slots[4] = systemSlot('Conversion Gear');

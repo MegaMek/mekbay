@@ -1,0 +1,6 @@
+@use './heat-palette' as heat;
+@media screen {
+  .mekbay-sheet:not(.print-preview) .heat {
+    @include heat.colors;
+  }
+}

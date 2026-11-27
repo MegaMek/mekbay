@@ -1,0 +1,36 @@
+@use '../construction-topology-panels';
+
+:host {
+  display: block;
+  margin-top: 12px;
+}
+.fields {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+  gap: 12px;
+}
+.bt-input {
+  height: 34px;
+}
+.base-level-field {
+  grid-column: 1 / -1;
+  display: grid;
+  gap: 6px;
+}
+.base-level-controls {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.base-level-controls .bt-input {
+  flex: 1;
+  width: 0;
+}
+.automatic-toggle {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+.base-level-field .hint {
+  margin: 0;
+}

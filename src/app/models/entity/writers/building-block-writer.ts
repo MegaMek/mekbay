@@ -2,12 +2,11 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 // Author: Drake
 
-import { EntityFluff } from '../types';
+import { EntityFluff, STRUCTURE_TYPE, type EntityMountedEquipment } from '../types';
 import {
   encodeBlkArmorTechLevel,
   encodeBlkArmorTechRating,
   encodeBlkArmorType,
-  encodeBlkTechRating,
   encodeBlkEngineType,
   encodeBlkTechLevel,
 } from '../parsers/blk-codec';
@@ -16,6 +15,9 @@ import type { MountedArmor } from '../components';
 import type { SupportVehicle } from '../entities/support-vehicle';
 import { serializeTransporterLines } from '../parsers/transporter-codec';
 import type { EncodeEquipmentOptions } from './equipment-encoder';
+import { isSupportVehicleBarArmor } from '../../construction-equipment.model';
+import { blkEquipmentOrder } from '../utils/blk-equipment-order';
+import { formatForceGeneratorAvailability } from '../types/force-generator-availability';
 
 /**
  * Serialises BLK tag-based format.
@@ -30,7 +32,8 @@ import type { EncodeEquipmentOptions } from './equipment-encoder';
  * ```
  */
 export class BuildingBlockWriter {
-  private readonly lines: string[] = [];
+  // MegaMek leaves one blank row between its ignored comment header and BLK data.
+  private readonly lines: string[] = [''];
 
   /**
    * Add a single block with one or more values.
@@ -40,9 +43,12 @@ export class BuildingBlockWriter {
    * @param values One or more values to write between the tags
    */
   addBlock(tag: string, ...values: (string | number)[]): void {
+    assertSafeTag(tag);
     this.lines.push(`<${tag}>`);
     for (const v of values) {
-      this.lines.push(String(v));
+      const value = String(v);
+      assertRepresentableValue(tag, value);
+      this.lines.push(value);
     }
     this.lines.push(`</${tag}>`);
     this.lines.push('');
@@ -75,8 +81,8 @@ export class BuildingBlockWriter {
   /**
    * Serialise all accumulated blocks to a single string.
    */
-  toString(): string {
-    return this.lines.join('\n');
+  toString(trailingNewlines = 2): string {
+    return `${this.lines.join('\n').replace(/\n+$/u, '')}${'\n'.repeat(trailingNewlines)}`;
   }
 }
 
@@ -95,10 +101,13 @@ export class BuildingBlockWriter {
  */
 export function writeIdentity(w: BuildingBlockWriter, entity: BaseEntity, unitType: string): void {
   w.addBlock('UUID', entity.uuid());
+  if (entity.refitFromUUID() && entity.refitFromUUID() != entity.uuid()) {
+    w.addBlock('refitFromUUID', entity.refitFromUUID()!);
+  }
   w.addBlock('UnitType', unitType);
   w.addBlock('Name', entity.chassis());
   w.addBlock('Model', entity.model());
-  if (entity.mulId() >= 0) w.addBlock('mul id:', entity.mulId());
+  if ((entity.mulId() ?? 0) > 0) w.addBlock('mul id:', entity.mulId()!);
 }
 
 /**
@@ -107,26 +116,30 @@ export function writeIdentity(w: BuildingBlockWriter, entity: BaseEntity, unitTy
  */
 export function writeYearTechMeta(w: BuildingBlockWriter, entity: BaseEntity): void {
   w.addBlock('year', entity.year());
-  if (entity.originalBuildYear() >= 0) w.addBlock('originalBuildYear', entity.originalBuildYear());
-  w.addBlock('type', encodeBlkTechLevel({
-    techBase: entity.techBase(),
-    rulesLevel: entity.rulesLevel(),
-    mixedTech: entity.mixedTech(),
-  }));
+  if (entity.originalBuildYear() >= 0 && entity.originalBuildYear() !== entity.year())
+    w.addBlock('originalBuildYear', entity.originalBuildYear());
+  w.addBlock(
+    'type',
+    encodeBlkTechLevel({
+      techBase: entity.techBase(),
+      rulesLevel: entity.rulesLevel(),
+      mixedTech: entity.mixedTech(),
+    }),
+  );
   if (entity.role()) w.addBlock('role', entity.role());
+  w.addBlockIfPresent('availability', entity.forceGeneratorAvailability().map(formatForceGeneratorAvailability));
+  if (entity.missionRoles()) w.addBlock('missionroles', entity.missionRoles());
+  const caseOptOut = entity.clanCaseOptOutLocations();
+  if (caseOptOut.size) w.addBlock('clancaseoptedoutlocs', ...caseOptOut);
 
   // ── Quirks ──
   const quirks = entity.quirks();
   if (quirks.length > 0) {
-    w.addBlock('quirks', ...quirks.map(q =>
-      q.value === undefined ? q.quirk.key : `${q.quirk.key}:${q.value}`
-    ));
+    w.addBlock('quirks', ...quirks.map((q) => (q.value === undefined ? q.quirk.key : `${q.quirk.key}:${q.value}`)));
   }
   const wqs = entity.weaponQuirks();
   if (wqs.length > 0) {
-    w.addBlock('weaponQuirks', ...wqs.map(wq =>
-      `${wq.name}:${wq.location}:${wq.slot}:${wq.weaponName}`
-    ));
+    w.addBlock('weaponQuirks', ...wqs.map((wq) => `${wq.name}:${wq.location}:${wq.slot}:${wq.weaponName}`));
   }
 }
 
@@ -173,15 +186,21 @@ export function writeArmorBlocks(
   // Patchwork armor: write per-location blocks instead of global tech rating/level
   if (!armor && patchworkLocs) {
     for (const loc of patchworkLocs) {
-      const locationArmor = entity.armorLocations.includes(loc)
-        ? entity.armorAt(loc)
-        : virtualPatchworkArmor?.get(loc);
+      const locationArmor = entity.armorLocations.includes(loc) ? entity.armorAt(loc) : virtualPatchworkArmor?.get(loc);
       if (locationArmor) {
         w.addBlock(`${loc}_armor_type`, encodeBlkArmorType(locationArmor.type));
-        w.addBlock(`${loc}_armor_tech`, locationArmor.techBase === 'Clan'
-          ? 'Clan'
-          : locationArmor.techBase === 'IS' ? 'Inner Sphere' : '(Unknown Technology Base)');
+        w.addBlock(
+          `${loc}_armor_tech`,
+          locationArmor.techBase === 'Clan'
+            ? 'Clan'
+            : locationArmor.techBase === 'IS'
+              ? 'Inner Sphere'
+              : '(Unknown Technology Base)',
+        );
         w.addBlock(`${loc}_armor_tech_rating`, encodeBlkArmorTechRating(locationArmor));
+        if (entity.isSupportVehicle() && isSupportVehicleBarArmor(locationArmor.armor)) {
+          w.addBlock(`${loc}_barrating`, locationArmor.armor.bar);
+        }
       } else {
         // MegaMek writes sentinel values for patchwork pseudo-locations without armor.
         w.addBlock(`${loc}_armor_type`, -1);
@@ -198,11 +217,8 @@ export function writeArmorBlocks(
 }
 
 /** Write BAR only when the installed armor is support-vehicle BAR armor. */
-export function writeSupportVehicleBarRating(
-  w: BuildingBlockWriter,
-  entity: BaseEntity & SupportVehicle,
-): void {
-  if (entity.uniformArmor()?.armor.hasFlag('F_SUPPORT_VEE_BAR_ARMOR')) {
+export function writeSupportVehicleBarRating(w: BuildingBlockWriter, entity: BaseEntity & SupportVehicle): void {
+  if (isSupportVehicleBarArmor(entity.uniformArmor()?.armor)) {
     w.addBlock('barrating', entity.barRating());
   }
 }
@@ -212,9 +228,10 @@ export function writeSupportVehicleBarRating(
  */
 export function writeInternalType(w: BuildingBlockWriter, entity: BaseEntity): void {
   const uniformStructure = entity.uniformStructureMaterial();
-  const structureTypeId: number = uniformStructure?.structure.structureTypeId
-    ?? (entity.structureByLocation().size > 0 ? 0 : -1);
-  if (structureTypeId !== 0) {
+  const structureTypeId: number =
+    uniformStructure?.structure.structureTypeId ??
+    (entity.structureByLocation().size > 0 ? STRUCTURE_TYPE.STANDARD : -1);
+  if (structureTypeId !== STRUCTURE_TYPE.STANDARD) {
     w.addBlock('internal_type', structureTypeId);
   }
 }
@@ -229,10 +246,7 @@ export function writeOmni(w: BuildingBlockWriter, entity: BaseEntity): void {
 /**
  * Write engine_type and clan_engine blocks.
  */
-export function writeEngine(
-  w: BuildingBlockWriter,
-  entity: BaseEntity,
-): void {
+export function writeEngine(w: BuildingBlockWriter, entity: BaseEntity): void {
   const me = entity.mountedEngine();
   if (!me) {
     w.addBlock('engine_type', 0); // "None" engine type code
@@ -242,7 +256,7 @@ export function writeEngine(
   // clan_engine: written when engine's clan flag differs from what the parser
   // would infer from the entity chassis tech base.
   const impliedClan = entity.techBase() === 'Clan';
-  if (me.techBase === 'Clan' !== impliedClan) {
+  if ((me.techBase === 'Clan') !== impliedClan) {
     w.addBlock('clan_engine', me.techBase === 'Clan' ? 'true' : 'false');
   }
 }
@@ -255,21 +269,25 @@ export function writeEquipmentByLocation(
   w: BuildingBlockWriter,
   entity: BaseEntity,
   equipTags: [string, string][],
-  encodeLineFn: (m: any, opts: any) => string,
+  encodeLineFn: (mount: EntityMountedEquipment, options: EncodeEquipmentOptions) => string,
   writeEmpty = false,
   encodeOptions: EncodeEquipmentOptions = { blkMode: true },
 ): Map<string, string[]> {
   const mountsByLoc = new Map<string, string[]>();
-  const weaponBayStarts = new Set(entity.equipmentBays()
-    .filter(bay => bay.kind === 'weapon-bay')
-    .flatMap(bay => bay.mounts.length > 0 ? [bay.mounts[0].mountId] : []));
-  for (const m of entity.equipment()) {
+  const weaponBays = entity.equipmentBays().filter((bay) => bay.kind === 'weapon-bay');
+  const weaponBayStarts = new Set(weaponBays.flatMap((bay) => (bay.weapons[0] ? [bay.weapons[0].mountId] : [])));
+  for (const m of blkEquipmentOrder(entity)) {
     let lines = mountsByLoc.get(m.location);
-    if (!lines) { lines = []; mountsByLoc.set(m.location, lines); }
-    lines.push(encodeLineFn(m, {
-      ...encodeOptions,
-      startsWeaponBay: weaponBayStarts.has(m.mountId),
-    }));
+    if (!lines) {
+      lines = [];
+      mountsByLoc.set(m.location, lines);
+    }
+    lines.push(
+      encodeLineFn(m, {
+        ...encodeOptions,
+        startsWeaponBay: weaponBayStarts.has(m.mountId),
+      }),
+    );
   }
 
   for (const [blkTag, locCode] of equipTags) {
@@ -299,11 +317,11 @@ export function writeEquipmentByLocation(
  * lines inside (matching MegaMek's getBlock() output).
  */
 export function writeFluffBlocks(w: BuildingBlockWriter, fluff: EntityFluff): void {
-  if (fluff.capabilities)  w.addBlock('capabilities', fluff.capabilities);
-  if (fluff.overview)      w.addBlock('overview', fluff.overview);
-  if (fluff.deployment)    w.addBlock('deployment', fluff.deployment);
-  if (fluff.history)       w.addBlock('history', fluff.history);
-  if (fluff.manufacturer)  w.addBlock('manufacturer', fluff.manufacturer);
+  if (fluff.capabilities) w.addBlock('capabilities', fluff.capabilities);
+  if (fluff.overview) w.addBlock('overview', fluff.overview);
+  if (fluff.deployment) w.addBlock('deployment', fluff.deployment);
+  if (fluff.history) w.addBlock('history', fluff.history);
+  if (fluff.manufacturer) w.addBlock('manufacturer', fluff.manufacturer);
   if (fluff.primaryFactory) w.addBlock('primaryFactory', fluff.primaryFactory);
 
   // Unified block format: <systemManufacturers>\nKEY:VALUE\n...</systemManufacturers>
@@ -320,18 +338,72 @@ export function writeFluffBlocks(w: BuildingBlockWriter, fluff: EntityFluff): vo
     }
   }
 
-  if (fluff.notes)         w.addBlock('notes', fluff.notes);
-  if (fluff.fluffDate)     w.addBlock('fluffDate', fluff.fluffDate);
-  if (fluff.use)           w.addBlock('use', fluff.use);
-  if (fluff.length)        w.addBlock('length', fluff.length);
-  if (fluff.width)         w.addBlock('width', fluff.width);
-  if (fluff.height)        w.addBlock('height', fluff.height);
+  if (fluff.notes) w.addBlock('notes', fluff.notes);
+  if (fluff.fluffDate) w.addBlock('fluffDate', fluff.fluffDate);
+  if (fluff.use) w.addBlock('use', fluff.use);
+  if (fluff.length) w.addBlock('length', fluff.length);
+  if (fluff.width) w.addBlock('width', fluff.width);
+  if (fluff.height) w.addBlock('height', fluff.height);
 }
 
-/** Write source and publication blocks. */
+/** Write source, publication, and construction-faction blocks. */
 export function writeSource(w: BuildingBlockWriter, entity: BaseEntity): void {
-  if (entity.source().length > 0) w.addBlock('source', entity.source().map(source => source.abbrev).join(','));
-  if (entity.published().length > 0) w.addBlock('published', entity.published().map(source => source.abbrev).join(','));
+  if (entity.source().length > 0)
+    w.addBlock(
+      'source',
+      entity
+        .source()
+        .map((source) => source.abbrev)
+        .join(','),
+    );
+  if (entity.published().length > 0)
+    w.addBlock(
+      'published',
+      entity
+        .published()
+        .map((source) => source.abbrev)
+        .join(','),
+    );
+  if (entity.faction() !== 'None') w.addBlock('faction', entity.faction());
+}
+
+export class UnrepresentableBlkValueError extends Error {
+  readonly code = 'UNREPRESENTABLE_BLK_VALUE' as const;
+
+  constructor(
+    readonly tag: string,
+    message: string,
+  ) {
+    super(message);
+    this.name = 'UnrepresentableBlkValueError';
+  }
+}
+
+function assertSafeTag(tag: string): void {
+  if (!tag || tag.length > 256 || /[<>\r\n\u0000-\u001f\u007f]/u.test(tag)) {
+    throw new UnrepresentableBlkValueError(tag, `Invalid BLK tag: ${JSON.stringify(tag)}`);
+  }
+}
+
+function assertRepresentableValue(tag: string, value: string): void {
+  if (value.includes('\u0000')) {
+    throw new UnrepresentableBlkValueError(tag, `BLK <${tag}> contains a NUL byte`);
+  }
+  const closing = `</${tag}>`.toLowerCase();
+  if (value.split(/\r\n|\n|\r/u).some((line) => line.trim().toLowerCase() === closing)) {
+    throw new UnrepresentableBlkValueError(tag, `BLK <${tag}> cannot contain its own closing tag as a value line`);
+  }
+}
+
+/**
+ * Write embedded presentation bytes at the canonical end of a BLK document.
+ * These are import/export facts only; catalog image resolution never derives
+ * or persists them into a unit summary.
+ */
+export function writeEmbeddedImages(w: BuildingBlockWriter, entity: BaseEntity): void {
+  if (entity.iconEncoded()) w.addBlock('icon', entity.iconEncoded());
+  if (entity.iconPath()) w.addBlock('iconpath', entity.iconPath());
+  if (entity.fluffImageEncoded()) w.addBlock('fluffimage', entity.fluffImageEncoded());
 }
 
 /**

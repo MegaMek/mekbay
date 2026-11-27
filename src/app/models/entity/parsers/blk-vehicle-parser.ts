@@ -12,6 +12,7 @@ import { SupportVtolEntity } from '../entities/vehicle/support-vtol-entity';
 import { LargeSupportTankEntity } from '../entities/vehicle/large-support-tank-entity';
 import {
   LocationArmor,
+  ICE_FUEL_TYPES,
   VALID_FUEL_TYPES,
   VALID_VEHICLE_MOTIVE_TYPES,
   locationArmor,
@@ -23,7 +24,7 @@ import {
   LST_EXTRA_EQUIP_TAGS,
   LST_ARMOR_LOCS,
   ordinaryVehicleArmorLocations,
-  SUPERHEAVY_ARMOR_LOCS,
+  superheavyVehicleArmorLocations,
   VEHICLE_EQUIP_TAGS,
   VTOL_ARMOR_LOCS,
 } from './blk-constants';
@@ -123,9 +124,9 @@ export function parseBlkVehicle(bb: BuildingBlock, ctx: ParseContext): VehicleEn
 
   // ── Fuel ──
   if (bb.exists('fuelType')) {
+    // BLKTankFile: a fuel name MegaMek does not know is read as petrochemicals.
     const fuelType = bb.getFirstString('fuelType');
-    ctx.validateEnum('fuelType', fuelType, VALID_FUEL_TYPES, 'fuel type');
-    entity.fuelType.set(fuelType);
+    entity.fuelType.set(ctx.validateEnum('fuelType', fuelType, VALID_FUEL_TYPES, 'fuel type') ? fuelType : ICE_FUEL_TYPES[0]);
   }
 
   // ── Trailer / No Control Systems ──
@@ -137,13 +138,15 @@ export function parseBlkVehicle(bb: BuildingBlock, ctx: ParseContext): VehicleEn
   }
 
   // ── Extra seats ──
-  if (bb.exists('extraSeats')) {
+  if (bb.exists('extra_seats')) {
+    entity.extraSeats.set(bb.getFirstInt('extra_seats'));
+  } else if (bb.exists('extraSeats')) {
     entity.extraSeats.set(bb.getFirstInt('extraSeats'));
   }
 
   // ── Armor ──
   if (entity.isSupportVehicle()) parseBlkSupportArmor(bb, entity, ctx);
-  else parseBlkArmor(bb, entity, ctx);
+  else parseBlkArmor(bb, entity, ctx, { patchworkLocs: entity.armorLocations });
 
   if (bb.exists('armor')) {
     const ints = bb.getDataAsInt('armor');
@@ -167,9 +170,11 @@ export function parseBlkVehicle(bb: BuildingBlock, ctx: ParseContext): VehicleEn
         entity.hasTurret.set(true);
       }
     } else if (entity.isSuperHeavy() && !(entity instanceof VtolEntity)) {
-      // Superheavy Tank: Front, Front Right, Front Left, Rear Right, Rear Left, Rear[, Turret[, Rear Turret]]
-      for (let i = 0; i < SUPERHEAVY_ARMOR_LOCS.length && i < ints.length; i++) {
-        armorMap.set(SUPERHEAVY_ARMOR_LOCS[i], locationArmor(ints[i]));
+      // Superheavy Tank: Front, Front Right, Front Left, Rear Right, Rear Left,
+      // Rear[, Turret] or Rear[, Rear Turret, Front Turret].
+      const locations = superheavyVehicleArmorLocations(ints.length);
+      for (let i = 0; i < locations.length && i < ints.length; i++) {
+        armorMap.set(locations[i], locationArmor(ints[i]));
       }
       if (ints.length >= 7 && !entity.hasTurret()) {
         entity.hasTurret.set(true);
@@ -205,7 +210,7 @@ export function parseBlkVehicle(bb: BuildingBlock, ctx: ParseContext): VehicleEn
       sv.engineTechRating.set(bb.getFirstInt('engine_tech_rating'));
     }
     if (bb.exists('fuel')) {
-      sv.fuel.set(parseFloat(bb.getDataAsString('fuel')[0] || '0'));
+      sv.fuel.set(bb.getFirstDouble('fuel'));
     }
   }
 

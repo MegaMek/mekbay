@@ -4,9 +4,8 @@
 
 import { TestBed } from '@angular/core/testing';
 import { GameSystem } from '../../models/common.model';
-import { LoadForceEntry } from '../../models/load-force-entry.model';
+import { createForcePreviewEntryData } from '../../models/force-preview.model';
 import type { UnitSummary } from '../../models/unit-summary.model';
-import { DataService } from '../../services/data.service';
 import { UnitSearchIndexService } from '../../services/unit-search-index.service';
 import { createEmptyUnit } from '../../testing/unit-test-helpers';
 import { ForceRadarPanelComponent } from './force-radar-panel.component';
@@ -16,13 +15,13 @@ describe('ForceRadarPanelComponent', () => {
     beforeEach(() => {
         index = new UnitSearchIndexService();
         TestBed.configureTestingModule({ imports: [ForceRadarPanelComponent], providers: [
-            { provide: DataService, useValue: { getUnitStats: (unit: UnitSummary) => index.getUnitStats(unit) } },
+            { provide: UnitSearchIndexService, useValue: index },
         ] });
     });
 
-    function render(units: UnitSummary[], type = GameSystem.CLASSIC) {
+    function render(units: UnitSummary[], type = GameSystem.CBT) {
         const fixture = TestBed.createComponent(ForceRadarPanelComponent);
-        fixture.componentRef.setInput('force', new LoadForceEntry({ type,
+        fixture.componentRef.setInput('force', createForcePreviewEntryData({ type,
             groups: [{ units: units.map(unit => ({ unit, destroyed: false })) }] }));
         fixture.detectChanges();
         return fixture;
@@ -36,7 +35,7 @@ describe('ForceRadarPanelComponent', () => {
         }));
         const sh = createEmptyUnit({ armor: 800, internal: 100, run2: 3, jump: 0,
             weightClass: 'Colossal/Super-Heavy' });
-        index.prepareUnits([...standard, sh]);
+        index.commitPreparedCatalogIndexes(index.prepareCatalogIndexes([...standard, sh], [], []));
         const fixture = render([standard[0], standard[19], sh]);
         const axes = fixture.componentInstance.chartAxes();
         expect(axes.find(axis => axis.key === 'mobility')!.max).toBe(31);
@@ -48,7 +47,7 @@ describe('ForceRadarPanelComponent', () => {
         const units = Array.from({ length: 20 }, (_, i) => createEmptyUnit({
             run2: i === 19 ? 40 : 10, jump: 0,
         }));
-        index.prepareUnits(units);
+        index.commitPreparedCatalogIndexes(index.prepareCatalogIndexes(units, [], []));
         const fixture = render([units[19]]);
         const axis = fixture.componentInstance.chartAxes()[0];
         expect(axis.max).toBe(10);
@@ -72,7 +71,7 @@ describe('ForceRadarPanelComponent', () => {
         const sh = createEmptyUnit({ run2: 2, jump: 0, armor: 800, internal: 0,
             weightClass: 'Colossal/Super-Heavy' });
         const vehicle = createEmptyUnit({ run2: 20, jump: 0, armor: 10, internal: 0, as: { TP: 'CV' } });
-        index.prepareUnits([low, high, sh, vehicle]);
+        index.commitPreparedCatalogIndexes(index.prepareCatalogIndexes([low, high, sh, vehicle], [], []));
         const fixture = render([low, low, sh, vehicle]);
         const component = fixture.componentInstance;
         const [mobility, endurance] = component.averageAxes();
@@ -94,7 +93,7 @@ describe('ForceRadarPanelComponent', () => {
 
     it('compares hovered units against their own bucket regardless of force size', () => {
         const unit = createEmptyUnit({ run2: 10, jump: 0 });
-        index.prepareUnits([unit]);
+        index.commitPreparedCatalogIndexes(index.prepareCatalogIndexes([unit], [], []));
         const fixture = render(Array(12).fill(unit));
         fixture.componentRef.setInput('hoveredUnit', unit);
         fixture.detectChanges();
@@ -110,7 +109,7 @@ describe('ForceRadarPanelComponent', () => {
         const mek = createEmptyUnit({ run2: 10, jump: 0 });
         const sh = createEmptyUnit({ run2: 3, jump: 0, weightClass: 'Colossal/Super-Heavy' });
         const vehicle = createEmptyUnit({ run2: 8, jump: 0, as: { TP: 'CV' } });
-        index.prepareUnits([mek, sh, vehicle]);
+        index.commitPreparedCatalogIndexes(index.prepareCatalogIndexes([mek, sh, vehicle], [], []));
         const fixture = render([mek, sh, vehicle]);
         for (const unit of [mek, sh, vehicle]) {
             fixture.componentRef.setInput('hoveredUnit', unit);
@@ -125,8 +124,8 @@ describe('ForceRadarPanelComponent', () => {
         const units = Array.from({ length: 100 }, (_, i) => createEmptyUnit({
             as: { TP: 'BA', dmg: { dmgL: i === 99 ? '0*' : '0' } },
         }));
-        index.prepareUnits(units);
-        const fixture = render([units[99]], GameSystem.ALPHA_STRIKE);
+        index.commitPreparedCatalogIndexes(index.prepareCatalogIndexes(units, [], []));
+        const fixture = render([units[99]], GameSystem.AS);
         const axis = fixture.componentInstance.chartAxes().find(axis => axis.key === 'asDmgL')!;
         expect(axis.available).toBeTrue();
         expect(axis.max).toBe(0);
@@ -141,8 +140,8 @@ describe('ForceRadarPanelComponent', () => {
     it('distinguishes missing data from genuine zero capability, including mixed forces', () => {
         const fighter = createEmptyUnit({ as: { TP: 'AF', TMM: null } });
         const mek = createEmptyUnit({ as: { TP: 'BM', TMM: 0 } });
-        index.prepareUnits([fighter, mek]);
-        const fixture = render([fighter, mek], GameSystem.ALPHA_STRIKE);
+        index.commitPreparedCatalogIndexes(index.prepareCatalogIndexes([fighter, mek], [], []));
+        const fixture = render([fighter, mek], GameSystem.AS);
         expect(fixture.componentInstance.chartAxes()[0].comparisonText).toBe('N/A');
         expect(fixture.componentInstance.averageAxes()[0].available).toBeFalse();
         expect(fixture.componentInstance.averagePath().match(/M/g)!.length).toBe(3);
@@ -152,7 +151,7 @@ describe('ForceRadarPanelComponent', () => {
         fixture.componentRef.setInput('hoveredUnit', fighter);
         fixture.detectChanges();
         expect(fixture.componentInstance.hoveredUnitAxes()[0].comparisonText).toBe('N/A');
-        const zero = render([mek], GameSystem.ALPHA_STRIKE).componentInstance.chartAxes()[0];
+        const zero = render([mek], GameSystem.AS).componentInstance.chartAxes()[0];
         expect(zero.available).toBeTrue();
         expect(zero.comparisonText).toBe('0 / 0');
         expect(zero.ratio).toBe(0);
@@ -163,5 +162,17 @@ describe('ForceRadarPanelComponent', () => {
         expect(fixture.componentInstance.hasUnits()).toBeFalse();
         expect(fixture.componentInstance.averagePath().trim()).toBe('');
         expect(fixture.nativeElement.textContent).toContain('No units to chart.');
+    });
+
+    it('shows unavailable AS axes for native units with no AS conversion', () => {
+        const unit = createEmptyUnit({ entityType: 'BuildingEntity', as: { TP: 'XX' } });
+        index.commitPreparedCatalogIndexes(index.prepareCatalogIndexes([unit], [], []));
+        const fixture = render([unit], GameSystem.AS);
+        fixture.componentRef.setInput('hoveredUnit', unit);
+        fixture.detectChanges();
+        for (const axis of [...fixture.componentInstance.chartAxes(), ...fixture.componentInstance.hoveredUnitAxes()]) {
+            expect(axis.available).toBeFalse();
+            expect(axis.comparisonText).toBe('N/A');
+        }
     });
 });

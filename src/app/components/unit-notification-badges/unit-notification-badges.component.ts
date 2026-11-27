@@ -1,27 +1,58 @@
 // Copyright (C) 2026 The MegaMek Team
 // SPDX-License-Identifier: GPL-3.0-or-later
-// Author: Drake
 
 import { ChangeDetectionStrategy, Component, computed, input, output } from '@angular/core';
-import { TooltipDirective } from '../../directives/tooltip.directive';
-import type { CBTForceUnit } from '../../models/cbt-force-unit.model';
-import {
-    buildFallTooltip,
-    buildPendingNotificationSummary,
-    type PendingNotificationSummary,
-    type UnitNotificationKind,
-} from './unit-notification-tooltip.util';
 
-export type { UnitNotificationKind } from './unit-notification-tooltip.util';
+import { TooltipDirective } from '../../directives/tooltip.directive';
+import type { TooltipLine } from '../tooltip/tooltip.component';
+import type {
+    RuntimeUnitNotificationKind,
+    RuntimeUnitNotificationSnapshot,
+} from './unit-notification-runtime.util';
+
+export type UnitNotificationKind = RuntimeUnitNotificationKind;
 
 export interface UnitNotificationActivation {
-    kind: UnitNotificationKind;
-    event: Event;
+    readonly kind: UnitNotificationKind;
+    readonly event: Event;
+}
+
+export interface RuntimePendingNotificationSummary {
+    readonly kind: UnitNotificationKind;
+    readonly count: number;
+    readonly tooltip: readonly TooltipLine[];
+}
+
+/** Direct Entity/runtime equivalent of origin/next's actionable unit badges. */
+export function projectRuntimePendingNotification(
+    snapshot: RuntimeUnitNotificationSnapshot | null | undefined,
+): RuntimePendingNotificationSummary | null {
+    if (!snapshot) return null;
+    const events = snapshot.pendingEvents.filter(event => event.count > 0);
+    const count = events.reduce((total, event) => total + event.count, 0);
+    if (count === 0) return null;
+    const ordered = [
+        ...events.filter(event => event.kind === 'fall'),
+        ...events.filter(event => event.kind === 'unit-check'),
+        ...events.filter(event => event.kind === 'critical-chance' || event.kind === 'critical-hit'),
+        ...events.filter(event => event.kind === 'crippling'),
+        ...events.filter(event => event.kind === 'psr'),
+    ];
+    return Object.freeze({
+        kind: ordered[0]!.kind,
+        count,
+        tooltip: Object.freeze(ordered.flatMap(event => event.tooltip)),
+    });
+}
+
+export function projectRuntimeFallTooltip(
+    snapshot: RuntimeUnitNotificationSnapshot | null | undefined,
+): readonly TooltipLine[] | null {
+    return snapshot?.automaticFallTooltip ?? null;
 }
 
 @Component({
     selector: 'unit-notification-badges',
-    standalone: true,
     imports: [TooltipDirective],
     changeDetection: ChangeDetectionStrategy.OnPush,
     templateUrl: './unit-notification-badges.component.html',
@@ -34,20 +65,20 @@ export interface UnitNotificationActivation {
     },
 })
 export class UnitNotificationBadgesComponent {
-    unit = input<CBTForceUnit | null>(null);
-    display = input<'inline' | 'overlay'>('inline');
-    interactive = input(false);
-    activated = output<UnitNotificationActivation>();
+    readonly snapshot = input<RuntimeUnitNotificationSnapshot | null>(null);
+    readonly display = input<'inline' | 'overlay'>('inline');
+    readonly interactive = input(false);
+    readonly activated = output<UnitNotificationActivation>();
 
-    pendingFallCount = computed(() => this.unit()?.pendingFallCount?.() ?? 0);
-    hasPendingFalls = computed(() => this.pendingFallCount() > 0);
-    fallTooltip = computed(() => buildFallTooltip(this.unit()));
-    hasAutoFall = computed(() => !this.hasPendingFalls() && this.fallTooltip() !== null);
+    readonly fallTooltip = computed(() => projectRuntimeFallTooltip(this.snapshot()));
+    readonly pendingNotification = computed(() => projectRuntimePendingNotification(this.snapshot()));
+    readonly hasPendingFalls = computed(() =>
+        this.snapshot()?.pendingEvents.some(event => event.kind === 'fall' && event.count > 0) === true);
+    readonly hasAutoFall = computed(() => !this.hasPendingFalls() && this.fallTooltip() !== null);
+    readonly hasNotifications = computed(() =>
+        this.hasAutoFall() || this.pendingNotification() !== null);
 
-    pendingNotification = computed(() => buildPendingNotificationSummary(this.unit()));
-    hasNotifications = computed(() => this.hasAutoFall() || this.pendingNotification() !== null);
-
-    pendingNotificationAriaLabel(notification: PendingNotificationSummary): string {
+    pendingNotificationAriaLabel(notification: RuntimePendingNotificationSummary): string {
         const eventLabel = notification.count === 1 ? 'event' : 'events';
         const next = NOTIFICATION_KIND_LABELS[notification.kind];
         return `${this.interactive() ? 'Resume' : ''} ${notification.count} pending ${eventLabel}; next: ${next}`.trim();
@@ -68,6 +99,7 @@ export class UnitNotificationBadgesComponent {
 
 const NOTIFICATION_KIND_LABELS: Readonly<Record<UnitNotificationKind, string>> = {
     fall: 'fall damage',
+    crippling: 'crippling destruction test',
     psr: 'PSR checks',
     'critical-chance': 'critical chance',
     'critical-hit': 'critical hit',

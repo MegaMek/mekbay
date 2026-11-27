@@ -4,11 +4,12 @@
 
 import { ArmorEquipment, createEquipment } from '../../../equipment.model';
 import { MountedArmor } from '../../components';
-import { TestSupportNavalEntity, TestSupportTankEntity } from '../../testing/test-entities';
+import { TestSupportNavalEntity, TestSupportTankEntity, TestTankEntity } from '../../testing/test-entities';
 import { createTestEquipmentRegistry } from '../../testing/test-equipment-registry';
 import { addTestEquipment } from '../../testing/test-mounted-equipment';
 import { calculateSupportVehicleArmorWeight, calculateSupportVehicleStructureWeight } from './support-vehicle-weight';
 import { calculateSupportVehicleWeightBreakdown } from './support-vehicle-weight';
+import { calculateVehicleTurretWeight } from './vehicle-weight';
 
 describe('support vehicle construction mass', () => {
   it('rounds small support chassis upward to kilograms', () => {
@@ -17,6 +18,19 @@ describe('support vehicle construction mass', () => {
     entity.motiveType.set('Wheeled');
     entity.structuralTechRating.set(3);
     expect(calculateSupportVehicleStructureWeight(entity)).toBe(0.48);
+  });
+
+  it('weighs turrets with the combat-vehicle rule, to the kilogram only under 5 tons (TM pp. 98, 241)', () => {
+    const item = createEquipment({ id: 'Turret Item', name: 'Turret Item', type: 'misc', stats: { tonnage: 0.25 } });
+    const turretWeight = (entity: TestSupportTankEntity | TestTankEntity, tonnage: number) => {
+      entity.setTonnage(tonnage);
+      entity.hasTurret.set(true);
+      addTestEquipment(entity, item, { location: 'Turret' });
+      return calculateVehicleTurretWeight(entity, false);
+    };
+    expect(turretWeight(new TestSupportTankEntity(), 4)).toBe(0.025);
+    expect(turretWeight(new TestSupportTankEntity(), 10)).toBe(0.5);
+    expect(turretWeight(new TestTankEntity(), 10)).toBe(0.5);
   });
 
   it('uses the large naval chassis factor', () => {

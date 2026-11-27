@@ -32,17 +32,17 @@ describe('unit data table utilities', () => {
         const sortOptions = [{ key: 'heat', label: 'Heat' }];
 
         expect(getUnitDataTableSortSlotHeader(
-            GameSystem.ALPHA_STRIKE,
+            GameSystem.AS,
             'as.dmg._dmgM',
             sortOptions,
         )).toBeNull();
         expect(getUnitDataTableSortSlotHeader(
-            GameSystem.CLASSIC,
+            GameSystem.CBT,
             'jump',
             sortOptions,
         )).toBeNull();
         expect(getUnitDataTableSortSlotHeader(
-            GameSystem.CLASSIC,
+            GameSystem.CBT,
             'heat',
             sortOptions,
         )).toBe('Heat');
@@ -50,7 +50,7 @@ describe('unit data table utilities', () => {
         expect(isUnitDataTableSortActive('as.dmg._dmgL', 'as.damage')).toBeTrue();
     });
 
-    it('builds the Classic column set with caller-specific crew and trailing columns', () => {
+    it('builds the CBT column set with caller-specific crew and trailing columns', () => {
         const unit = {
             type: 'Mek',
             subtype: 'BattleMek',
@@ -79,7 +79,7 @@ describe('unit data table utilities', () => {
         };
 
         const columns = buildUnitDataTableColumns<TestRow>({
-            gameSystem: GameSystem.CLASSIC,
+            gameSystem: GameSystem.CBT,
             getUnit: row => row.unit,
             isSortActive: key => key === 'movement',
             templates,
@@ -98,7 +98,7 @@ describe('unit data table utilities', () => {
         expect(columns.find(column => column.id === 'type')?.value?.({ unit: null }, 0)).toBe('');
     });
 
-    it('builds the Alpha Strike column set without Classic-only stats', () => {
+    it('builds the Alpha Strike column set without CBT-only stats', () => {
         const skillColumn: DataTableColumn<TestRow> = {
             id: 'skill',
             header: 'Skill',
@@ -106,7 +106,7 @@ describe('unit data table utilities', () => {
         };
 
         const columns = buildUnitDataTableColumns<TestRow>({
-            gameSystem: GameSystem.ALPHA_STRIKE,
+            gameSystem: GameSystem.AS,
             getUnit: row => row.unit,
             isSortActive: () => false,
             templates,

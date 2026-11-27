@@ -53,6 +53,29 @@
     }
 }
 
+// unit-block normally uses display: contents; a drop target needs its own bounds.
+unit-block.crew-drop-target {
+    display: block;
+    min-width: 0;
+}
+
+.crew-drop-target.cdk-drop-list-receiving {
+    outline: 1px dashed var(--bt-yellow);
+    outline-offset: -1px;
+}
+
+// The pilot goes into the unit: its frame lights up, nothing is inserted around it.
+.crew-drop-target.cdk-drop-list-dragging {
+    outline: 2px solid var(--bt-yellow);
+    outline-offset: -2px;
+    background: var(--bt-yellow-background);
+}
+
+// The dragged card is a clone from the reserve list, outside this component's scope.
+.crew-drop-target ::ng-deep .cdk-drag-placeholder {
+    display: none;
+}
+
 // Force-level drop list container
 .forces-drop-list {
     display: flex;
@@ -150,14 +173,6 @@
 
     &:hover {
         color: var(--text-color);
-    }
-
-    svg {
-        transition: transform 0.2s ease;
-    }
-
-    svg.collapsed {
-        transform: rotate(-90deg);
     }
 
     &.group-toggle {
@@ -371,16 +386,6 @@
 
     &:hover {
         opacity: 1;
-    }
-
-    svg {
-        width: 14px;
-        height: 14px;
-        transition: transform 0.2s;
-
-        &.collapsed {
-            transform: rotate(-90deg);
-        }
     }
 
     .mini-collapsed-count {

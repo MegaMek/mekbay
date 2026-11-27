@@ -20,7 +20,6 @@ export type OAuthProviderPickerDialogResult = OAuthProvider | 'dismiss';
 
 @Component({
     selector: 'oauth-provider-picker-dialog',
-    standalone: true,
     changeDetection: ChangeDetectionStrategy.OnPush,
     host: {
         class: 'fullscreen-dialog-host glass'

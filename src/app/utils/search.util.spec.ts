@@ -2,9 +2,32 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 // Author: Drake
 
-import { highlightMatches, matchesSearch, parseSearchQuery } from './search.util';
+import { createSearchMatcher, highlightMatches, matchesSearch, parseSearchQuery } from './search.util';
+import { removeAccents } from './string.util';
 
 describe('search.util', () => {
+    it('keeps the compiled matcher equivalent when catalog text is already normalized', () => {
+        const cases = [
+            { query: "wolf's dragoons", text: 'Wolf’s Dragoons', expected: true },
+            { query: 'whm6r', text: 'Warhammer WHM-6R', expected: true },
+            { query: 'yaolien', text: 'Yao Lien YOL-4C', expected: true },
+            { query: 'enyo', text: 'Yao Lien YOL-4C', expected: false },
+            { query: 'atlas,locust;shadow hawk', text: 'Shadow Hawk SHD-2H', expected: true },
+            { query: 'atlas,locust;shadow hawk', text: 'Warhammer WHM-6R', expected: false },
+        ];
+
+        for (const testCase of cases) {
+            const tokens = parseSearchQuery(testCase.query);
+            const normalizedText = removeAccents(testCase.text.toLowerCase());
+            const matcher = createSearchMatcher(tokens, true, true);
+
+            expect(matcher(normalizedText))
+                .withContext(`${testCase.query} against ${testCase.text}`)
+                .toBe(testCase.expected);
+            expect(matcher(normalizedText)).toBe(matchesSearch(testCase.text, tokens, true));
+        }
+    });
+
     it('matches apostrophe variants when alphanumeric normalization is enabled', () => {
         const query = parseSearchQuery("wolf's dragoons");
 

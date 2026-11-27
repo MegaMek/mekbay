@@ -1,274 +1,83 @@
 // Copyright (C) 2026 The MegaMek Team
 // SPDX-License-Identifier: GPL-3.0-or-later
-// Author: Drake
+import { systemDamageId } from '../../../models/rules/system-damage-rules';
 
-import { signal } from '@angular/core';
-import { TestBed } from '@angular/core/testing';
 import { Overlay } from '@angular/cdk/overlay';
+import { TestBed } from '@angular/core/testing';
 import { Subject } from 'rxjs';
-import { CORE_2026_GAME_RULES, TW_GAME_RULES } from '../../../models/rules/game-rules';
-import { DataService } from '../../../services/data.service';
-import { CBTEndTurnService } from '../../../services/cbt-end-turn.service';
-import { CBTPhaseResolutionService } from '../../../services/cbt-phase-resolution.service';
+import { componentIdForMount } from '../../../models/runtime/unit-runtime-index';
+
+import {
+TestAeroSpaceFighterEntity,
+TestBattleArmorEntity,
+TestBipedMekEntity,
+TestTankEntity,
+} from '../../../models/entity/testing/test-entities';
+import type { CBTForceMember,CBTMekForceMember } from '../../../models/force-member.model';
+import { buildNonMekRuntimeIndex } from '../../../models/runtime/non-mek-runtime-index';
+
+import { addTestEquipmentWithFlags } from '../../../models/entity/testing/test-mounted-equipment';
+import { ESCALATING_FAILURE_HANDLER_ID } from '../../../models/runtime/component-escalating-failure';
+import {
+createPristineMekHeatStateV2,
+type MekHeatSourceV2,
+} from '../../../models/runtime/mek-heat-state-v2';
+import {
+createPristineMekMovementPsrStateV2,
+type MekMovementModeV2,
+} from '../../../models/runtime/mek-movement-psr-v2';
+import type { MekTurnPanelSnapshot } from '../../../models/runtime/mek-turn-panel';
+import { createPristineMekTurnStateV2 } from '../../../models/runtime/mek-turn-state-v2';
+import {
+createPristineNonMekUnitState,
+projectNonMekEscalatingFailureInteractions,
+} from '../../../models/runtime/non-mek-unit-instance';
 import { DialogsService } from '../../../services/dialogs.service';
-import { EquipmentInteractionRegistryService } from '../../../services/equipment-interaction-registry.service';
+import { OptionsService } from '../../../services/options.service';
 import { OverlayManagerService } from '../../../services/overlay-manager.service';
 import { ToastService } from '../../../services/toast.service';
-import { PageInteractionOverlayComponent } from './page-interaction-overlay.component';
 import { STANDING_UP_REVIEW_ONLY } from './page-standing-up-panel.component';
 import { PageTurnSummaryPanelComponent } from './page-turn-summary-panel.component';
-import type { MotiveModeOption, MotiveModes } from '../../../models/motiveModes.model';
+import { PRISTINE_TURN_HEAT_LEDGER } from '../../../models/runtime/turn-heat-ledger';
 
 describe('PageTurnSummaryPanelComponent', () => {
-    it('hides heat controls for null measurements while retaining measured zero', () => {
-        const heat = signal<number | null>(null);
-        const unit = { getUnit: () => ({ heat: heat() }) };
-        TestBed.configureTestingModule({
-            providers: [
-                { provide: PageInteractionOverlayComponent, useValue: { unit: signal(unit), force: signal(null) } },
-                { provide: OverlayManagerService, useValue: {} },
-                { provide: Overlay, useValue: {} },
-                { provide: EquipmentInteractionRegistryService, useValue: { getRegistry: () => ({}) } },
-                { provide: ToastService, useValue: {} },
-                { provide: DialogsService, useValue: {} },
-                { provide: DataService, useValue: {} },
-                { provide: CBTEndTurnService, useValue: {} },
-                { provide: CBTPhaseResolutionService, useValue: {} },
-            ],
-        });
-        const component = TestBed.runInInjectionContext(() => new PageTurnSummaryPanelComponent());
-        expect(component.tracksHeat()).toBeFalse();
-        heat.set(0);
-        expect(component.tracksHeat()).toBeTrue();
-    });
-
-    it('distinguishes an Immobile unit from one with only Stationary available', () => {
-        const immobile = signal(false);
-        const rulesId = signal<'core2026' | 'tw'>('core2026');
-        const moveMode = signal<MotiveModes | null>(null);
-        const availableMotiveModes = signal<MotiveModeOption[]>([
-            { mode: 'stationary', label: 'Stationary', psr: false },
-        ]);
-        const markPhaseStateChanged = jasmine.createSpy('markPhaseStateChanged');
-        const turnState = {
-            dirty: signal(false),
-            airborne: signal<boolean | null>(false),
-            moveMode,
-            moveDistance: signal<number | null>(5),
-            carefulStand: signal(false),
-            applyMovePSR: signal(true),
-            markPhaseStateChanged,
-        };
-        const unit = {
-            get gameRules() {
-                return rulesId() === 'tw' ? TW_GAME_RULES : CORE_2026_GAME_RULES;
-            },
-            getCondition: (condition: string) => condition === 'immobile' && immobile(),
-            canTakeActiveActions: () => true,
-            getUnit: () => ({
-                type: 'Mek',
-                subtype: 'BattleMek',
-                moveType: 'Biped',
-                jump: 0,
-                umu: 0,
-            }),
-            rules: {
-                getAttackMovementModifier: () => 0,
-                getCommittedDamageMovementModePSRCheck: () => null,
-            },
-            getAvailableMotiveModes: () => availableMotiveModes(),
-            turnState: () => turnState,
-        };
-
-        TestBed.configureTestingModule({
-            imports: [PageTurnSummaryPanelComponent],
-            providers: [
-                { provide: PageInteractionOverlayComponent, useValue: { unit: signal(unit), force: signal(null) } },
-                { provide: OverlayManagerService, useValue: { closeManagedOverlay: () => undefined } },
-                { provide: Overlay, useValue: {} },
-                { provide: EquipmentInteractionRegistryService, useValue: { getRegistry: () => ({}) } },
-                { provide: ToastService, useValue: {} },
-                { provide: DialogsService, useValue: {} },
-                { provide: DataService, useValue: {} },
-            ],
-        });
-        const fixture = TestBed.createComponent(PageTurnSummaryPanelComponent);
-        const component = fixture.componentInstance;
-        Object.assign(component, {
-            dirty: () => false,
-            phaseDirty: () => false,
-            damageReceived: () => 0,
-            hasPSRChecks: () => false,
-            falling: () => false,
-            PSRChecksCount: () => 0,
-            controlRollShortLabel: () => 'PSR',
-            prone: () => false,
-            canStandUp: () => false,
-            standAttempts: () => 0,
-            standUpRequiresPSR: () => false,
-            getTotalTargetModifierAsDefender: () => '0',
-            defenseTargetModifierTooltip: () => null,
-            spotting: () => false,
-            cover: () => undefined,
-            waterDepth: () => '',
-            buildingLevel: () => '',
-            coverModifierLabel: () => null,
-            spottingModifierLabel: () => null,
-            tracksHeat: () => false,
-            heatRows: () => [],
-            psrModifiers: () => [],
-            equipmentTrackControlRows: () => [],
-            airborne: () => false,
-            canSwitchAirborneMode: () => false,
-            moveDistance: () => 5,
-            moveCapacity: () => 0,
-            moveMin: () => 0,
-            moveMax: () => 0,
-            moveDistanceTicks: () => [0],
-            hasMoveDistance: () => true,
-            overDistance: () => true,
-        });
-
-        expect(component.immobile()).toBeFalse();
-        expect(component.onlyStationaryMoveMode()).toBeTrue();
-
-        component.selectMove('stationary');
-
-        expect(moveMode()).toBe('stationary');
-        expect(markPhaseStateChanged).toHaveBeenCalledTimes(1);
-        moveMode.set(null);
-
+    it('distinguishes Core Immobile from an otherwise stationary-only unit', () => {
+        const harness = turnMember(turnSnapshot());
+        const fixture = createComponent(harness.member, overlayManager());
         fixture.detectChanges();
 
         expect(fixture.nativeElement.querySelectorAll('.move-button').length).toBe(1);
         expect(fixture.nativeElement.querySelector('.move-button.stationary-only')).not.toBeNull();
-        expect(fixture.nativeElement.querySelector('.move-mode-row.crowded')).toBeNull();
         expect(fixture.nativeElement.querySelector('.immobile-status')).toBeNull();
 
-        immobile.set(true);
+        harness.set(turnSnapshot({ immobile: true }));
         fixture.detectChanges();
-
-        expect(component.immobile()).toBeTrue();
-        expect(fixture.nativeElement.querySelector('.end-turn-action')).not.toBeNull();
         expect(fixture.nativeElement.querySelector('.move-button')).toBeNull();
         expect(fixture.nativeElement.querySelector('.immobile-status')?.textContent.trim())
             .toBe('Unit is immobile');
 
-        rulesId.set('tw');
+        harness.set(turnSnapshot({ rulesFlavor: 'total-warfare', immobile: true }));
         fixture.detectChanges();
-
-        expect(component.immobile()).toBeTrue();
-        expect(component.showImmobileStatus()).toBeFalse();
-        expect(fixture.nativeElement.querySelector('.end-turn-action')).toBeNull();
         expect(fixture.nativeElement.querySelector('.immobile-status')).toBeNull();
-        expect(fixture.nativeElement.querySelectorAll('.move-button').length).toBe(1);
         expect(fixture.nativeElement.querySelector('.move-button.stationary-only')).not.toBeNull();
 
-        rulesId.set('core2026');
-        moveMode.set('run');
+        harness.set(turnSnapshot({ immobile: true, selectedMode: 'run', distance: 5 }));
         fixture.detectChanges();
-
         expect(fixture.nativeElement.querySelector('.immobile-status')?.textContent.trim())
             .toBe('Unit is immobile');
         expect(Array.from<HTMLElement>(fixture.nativeElement.querySelectorAll('.move-button'))
-            .map(button => button.textContent?.trim())).toEqual(['', 'Run']);
-        expect(fixture.nativeElement.querySelector('.move-button.selected')?.textContent.trim()).toBe('Run');
+            .map(button => button.textContent?.replace(/\s+/gu, ' ').trim())).toEqual(['', 'Run+2']);
+        expect(fixture.nativeElement.querySelector('.move-button.selected')?.textContent.replace(/\s+/gu, ' ').trim())
+            .toBe('Run+2');
+        expect(fixture.nativeElement.querySelector('.move-allowance')).toBeNull();
         expect(fixture.nativeElement.querySelector('hex-slider')).not.toBeNull();
-        expect(fixture.nativeElement.querySelector('.hex.danger')?.textContent.trim()).toBe('5');
-
-        availableMotiveModes.set([
-            { mode: 'stationary', label: 'Stationary' },
-            { mode: 'walk', label: 'Walk' },
-            { mode: 'run', label: 'Run' },
-            { mode: 'sprint', label: 'Sprint' },
-            { mode: 'jump', label: 'Jump' },
-        ]);
-        fixture.detectChanges();
-
-        expect(fixture.nativeElement.querySelector('.move-mode-row.crowded')).not.toBeNull();
-        expect(fixture.nativeElement.querySelectorAll('.move-mode-row .move-button').length).toBe(5);
     });
 
-    it('clears attacks and spotting when Sprint is selected', () => {
-        const moveMode = signal<MotiveModes | null>(null);
-        const spotting = signal(true);
-        const clearInventoryControlSelection = jasmine.createSpy('clearInventoryControlSelection');
-        const markPhaseStateChanged = jasmine.createSpy('markPhaseStateChanged');
-        const turnState = {
-            moveMode,
-            effectiveMoveMode: () => moveMode(),
-            moveDistance: signal<number | null>(null),
-            minDistanceCurrentMoveMode: () => 0,
-            carefulStand: signal(false),
-            spotting,
-            applyMovePSR: signal(true),
-            markPhaseStateChanged,
-        };
-        const unit = {
-            canTakeActiveActions: () => true,
-            clearInventoryControlSelection,
-            turnState: () => turnState,
-        };
-
-        TestBed.configureTestingModule({
-            imports: [PageTurnSummaryPanelComponent],
-            providers: [
-                { provide: PageInteractionOverlayComponent, useValue: { unit: signal(unit), force: signal(null) } },
-                { provide: OverlayManagerService, useValue: { closeManagedOverlay: () => undefined } },
-                { provide: Overlay, useValue: {} },
-                { provide: EquipmentInteractionRegistryService, useValue: { getRegistry: () => ({}) } },
-                { provide: ToastService, useValue: {} },
-                { provide: DialogsService, useValue: {} },
-                { provide: DataService, useValue: {} },
-            ],
-        });
-        const component = TestBed.createComponent(PageTurnSummaryPanelComponent).componentInstance;
-        Object.assign(component, { prone: () => false });
-
-        expect(component.canSpot()).toBeTrue();
-
-        component.selectMove('sprint');
-
-        expect(moveMode()).toBe('sprint');
-        expect(spotting()).toBeFalse();
-        expect(component.canSpot()).toBeFalse();
-        expect(clearInventoryControlSelection).toHaveBeenCalledTimes(1);
-        expect(markPhaseStateChanged).toHaveBeenCalledTimes(1);
-    });
-
-    it('reports spent stand-attempt MP and reopens the standing dialog without changing the attempt', () => {
-        const attempts = signal<number | undefined>(1);
-        const getMovementPointsSpent = jasmine.createSpy('getMovementPointsSpent').and.returnValue(2);
-        const turnState = { standAttempts: attempts };
-        const unit = {
-            id: 'unit-1',
-            rules: { getMovementPointsSpent },
-            turnState: () => turnState,
-        };
-        const standingOverlayClosed = new Subject<void>();
-        const overlayManager = {
-            has: jasmine.createSpy('has').and.returnValue(false),
-            closeManagedOverlay: jasmine.createSpy('closeManagedOverlay'),
-            createManagedOverlay: jasmine.createSpy('createManagedOverlay').and.returnValue({
-                closed: standingOverlayClosed,
-            }),
-            blockCloseUntil: jasmine.createSpy('blockCloseUntil'),
-            unblockClose: jasmine.createSpy('unblockClose'),
-        };
-
-        TestBed.configureTestingModule({
-            imports: [PageTurnSummaryPanelComponent],
-            providers: [
-                { provide: PageInteractionOverlayComponent, useValue: { unit: signal(unit), force: signal(null) } },
-                { provide: OverlayManagerService, useValue: overlayManager },
-                { provide: Overlay, useValue: { scrollStrategies: { block: () => ({}) } } },
-                { provide: EquipmentInteractionRegistryService, useValue: { getRegistry: () => ({}) } },
-                { provide: ToastService, useValue: {} },
-                { provide: DialogsService, useValue: {} },
-                { provide: DataService, useValue: {} },
-            ],
-        });
-        const component = TestBed.createComponent(PageTurnSummaryPanelComponent).componentInstance;
+    it('reviews spent stand-attempt MP without mutating the attempt', () => {
+        const manager = overlayManager();
+        const harness = turnMember(turnSnapshot({ attempts: 1 }));
+        const fixture = createComponent(harness.member, manager);
+        const component = fixture.componentInstance;
         const event = { stopPropagation: jasmine.createSpy('stopPropagation') } as unknown as MouseEvent;
 
         expect(component.standAttempts()).toBe(1);
@@ -276,169 +85,766 @@ describe('PageTurnSummaryPanelComponent', () => {
 
         component.reviewStandAttempts(event);
 
-        expect(event.stopPropagation).toHaveBeenCalled();
-        expect(attempts()).toBe(1);
-        expect(overlayManager.createManagedOverlay).toHaveBeenCalled();
-        expect(overlayManager.createManagedOverlay.calls.mostRecent().args[0]).toBe('standingUp-unit-1');
-        const portal = overlayManager.createManagedOverlay.calls.mostRecent().args[2];
+        expect(event.stopPropagation).toHaveBeenCalledTimes(1);
+        expect(harness.dispatch).not.toHaveBeenCalled();
+        expect(manager.createManagedOverlay).toHaveBeenCalled();
+        const portal = manager.createManagedOverlay.calls.mostRecent().args[2];
         expect(portal.injector.get(STANDING_UP_REVIEW_ONLY)).toBeTrue();
-        expect(overlayManager.blockCloseUntil).toHaveBeenCalledOnceWith('turnSummary-unit-1');
-        expect(overlayManager.closeManagedOverlay).not.toHaveBeenCalledWith('turnSummary-unit-1');
+        expect(manager.blockCloseUntil).toHaveBeenCalledOnceWith('turnSummary-mek-1');
 
-        standingOverlayClosed.next();
-
-        expect(overlayManager.unblockClose).toHaveBeenCalledOnceWith('turnSummary-unit-1');
-        expect(overlayManager.closeManagedOverlay).not.toHaveBeenCalledWith('turnSummary-unit-1');
+        manager.closed.next();
+        expect(manager.unblockClose).toHaveBeenCalledOnceWith('turnSummary-mek-1');
     });
 
-    it('shows phase actions for dirty phase state and resolves the selected scope', async () => {
-        const currentDirty = signal(false);
-        const otherDirty = signal(false);
-        const currentUnit = {
-            id: 'unit-a',
-            gameRules: TW_GAME_RULES,
-            getCondition: () => false,
-            turnState: () => ({
-                dirty: currentDirty,
-                dirtyPhase: currentDirty,
-            }),
-        };
-        const otherUnit = {
-            id: 'unit-b',
-            gameRules: TW_GAME_RULES,
-            getCondition: () => false,
-            turnState: () => ({
-                dirty: otherDirty,
-                dirtyPhase: otherDirty,
-            }),
-        };
-        const forceUnits = signal([currentUnit]);
-        const force = { units: forceUnits };
-        const closeManagedOverlay = jasmine.createSpy('closeManagedOverlay');
-        const blockCloseUntil = jasmine.createSpy('blockCloseUntil');
-        const unblockClose = jasmine.createSpy('unblockClose');
-        const resolvePhase = jasmine.createSpy('endPhase').and.resolveTo(true);
-        const endTurn = jasmine.createSpy('endTurn').and.resolveTo(undefined);
-        const requestConfirmation = jasmine.createSpy('requestConfirmation').and.resolveTo(true);
+    it('colors a movement button only when that exact action requires a PSR', () => {
+        const base = turnSnapshot({ selectedMode: 'run', distance: 0 });
+        if (base.movement.kind !== 'supported') throw new Error('Turn fixture movement must be supported');
+        const supportedMovement = base.movement;
+        const runWarning = { code: 'MOVEMENT_IMPAIRED' as const, message: 'Movement is impaired' };
+        const withRunCheck = (requiresPilotCheck: boolean) => ({
+            ...base,
+            movement: {
+                ...supportedMovement,
+                actions: supportedMovement.actions.map(action => action.kind === 'run'
+                    ? {
+                        ...action,
+                        legal: true,
+                        maximumMp: 2,
+                        warnings: [runWarning],
+                        requiresPilotCheck,
+                    }
+                    : action),
+            },
+        }) as MekTurnPanelSnapshot;
+        const harness = turnMember(withRunCheck(false));
+        const fixture = createComponent(harness.member, overlayManager());
+        fixture.detectChanges();
 
-        TestBed.configureTestingModule({
-            imports: [PageTurnSummaryPanelComponent],
-            providers: [
-                {
-                    provide: PageInteractionOverlayComponent,
-                    useValue: { unit: signal(currentUnit), force: signal(force) },
-                },
-                {
-                    provide: OverlayManagerService,
-                    useValue: { closeManagedOverlay, blockCloseUntil, unblockClose },
-                },
-                { provide: Overlay, useValue: {} },
-                { provide: EquipmentInteractionRegistryService, useValue: { getRegistry: () => ({}) } },
-                { provide: ToastService, useValue: {} },
-                { provide: DialogsService, useValue: { requestConfirmation } },
-                { provide: DataService, useValue: {} },
-                { provide: CBTEndTurnService, useValue: { endTurn } },
-                { provide: CBTPhaseResolutionService, useValue: { endPhase: resolvePhase } },
-            ],
+        const runButton = () => Array.from<HTMLElement>(
+            fixture.nativeElement.querySelectorAll('.move-button'),
+        ).find(button => button.textContent?.includes('Run'))!;
+        expect(runButton().classList.contains('danger')).toBeFalse();
+
+        harness.set(withRunCheck(true));
+        fixture.detectChanges();
+        expect(runButton().classList.contains('danger')).toBeTrue();
+    });
+
+    it('opens the roll panel at once for an immediate check and holds the movement until it is rolled', async () => {
+        const base = turnSnapshot();
+        if (base.movement.kind !== 'supported') throw new Error('Turn fixture movement must be supported');
+        const runAction = { kind: 'run' as const, legal: true, minimumMp: 0, maximumMp: 5, reasons: [], warnings: [] };
+        const ready = { ...base, movement: { ...base.movement, actions: [...base.movement.actions, runAction] } };
+        const declared = turnSnapshot({ selectedMode: 'run', distance: 0 });
+        const immediateCheck = {
+            checkId: 'mek-psr:2:0', producingRevision: 2, ordinal: 0, reason: 'Running with damaged gyro',
+            status: 'pending', immediate: true, targetNumber: 8,
+            source: { sourceKind: 'movement', triggerKind: 'move-damaged-gyro', witness: '{}', criticalSlotIds: [], locationIds: [] },
+        };
+        const harness = turnMember(ready as MekTurnPanelSnapshot);
+        harness.dispatch.and.callFake(async () => {
+            harness.set({ ...declared, movementState: { ...declared.movementState, checks: [immediateCheck] } } as MekTurnPanelSnapshot);
+            return { accepted: true, changed: true };
         });
-        const fixture = TestBed.createComponent(PageTurnSummaryPanelComponent);
+        const manager = overlayManager();
+        const fixture = createComponent(harness.member, manager);
         const component = fixture.componentInstance;
-        Object.assign(component, {
-            dirty: () => false,
-            damageReceived: () => 0,
-            hasPSRChecks: () => false,
-            falling: () => false,
-            PSRChecksCount: () => 0,
-            controlRollShortLabel: () => 'PSR',
-            showImmobileStatus: () => false,
-            showMovementControls: () => true,
-            canSwitchAirborneMode: () => false,
-            airborne: () => false,
-            moveModes: () => [],
-            onlyStationaryMoveMode: () => false,
-            currentMoveMode: () => null,
-            prone: () => false,
-            canStandUp: () => false,
-            standAttempts: () => 0,
-            standUpRequiresPSR: () => false,
-            equipmentTrackControlRows: () => [],
-            spotting: () => false,
-            canSpot: () => false,
-            spottingModifierLabel: () => null,
-            defenseTargetModifierTooltip: () => null,
-            getTotalTargetModifierAsDefender: () => '+0',
-            cover: () => undefined,
-            waterDepth: () => '',
-            buildingLevel: () => '',
-            coverModifierLabel: () => null,
-            tracksHeat: () => false,
-            heatRows: () => [],
-            psrModifiers: () => [],
-        });
+
+        component.selectMove('run');
+        await new Promise(resolve => setTimeout(resolve));
+
+        expect(harness.dispatch).toHaveBeenCalledOnceWith('mek-1', jasmine.objectContaining({ type: 'declare-mek-movement' }));
+        expect(manager.createManagedOverlay.calls.mostRecent().args[0]).toBe('psrWarning-mek-1');
+        // Not even the declared mode may be retracted until the roll is made.
+        expect(component.isMoveModeDisabled('run')).toBeTrue();
+    });
+
+    it('marks a movement row as crowded when more than four modes are visible', () => {
+        const base = turnSnapshot();
+        if (base.movement.kind !== 'supported') throw new Error('Turn fixture movement must be supported');
+        const template = base.movement.actions[0];
+        const crowded = {
+            ...base,
+            movement: {
+                ...base.movement,
+                actions: (['stationary', 'walk', 'run', 'sprint', 'jump'] as const).map(kind => ({
+                    ...template,
+                    kind,
+                    legal: true,
+                    minimumMp: 0,
+                    maximumMp: kind === 'stationary' ? 0 : 5,
+                })),
+            },
+        } as MekTurnPanelSnapshot;
+        const fixture = createComponent(turnMember(crowded).member, overlayManager());
 
         fixture.detectChanges();
+
+        expect(fixture.nativeElement.querySelector('.move-mode-row.crowded')).not.toBeNull();
+        expect(fixture.nativeElement.querySelectorAll('.move-mode-row .move-button').length).toBe(5);
+    });
+
+    it('shows the current and all-unit phase/turn scopes only while they are actionable', () => {
+        const harness = turnMember(turnSnapshot(), 2);
+        const fixture = createComponent(harness.member, overlayManager());
+        fixture.detectChanges();
+
         expect(fixture.nativeElement.querySelector('.phase-actions')).toBeNull();
+        expect(fixture.nativeElement.querySelectorAll('.turn-actions button').length).toBe(0);
 
-        currentDirty.set(true);
-        fixture.detectChanges();
-        let phaseButtons = fixture.nativeElement.querySelectorAll('.phase-actions button');
-        expect(phaseButtons.length).toBe(1);
-        expect(phaseButtons[0].textContent.trim().toLowerCase()).toBe('end phase');
-        expect(fixture.nativeElement.querySelector('.all-units-action')).toBeNull();
-
-        forceUnits.set([currentUnit, otherUnit]);
-        fixture.detectChanges();
-        phaseButtons = fixture.nativeElement.querySelectorAll('.phase-actions button');
-        expect(phaseButtons.length).toBe(2);
-        expect(phaseButtons[0].textContent.trim().toLowerCase()).toBe('end phase');
-        expect(phaseButtons[1].textContent.trim().toLowerCase()).toBe('all units');
-        expect(fixture.nativeElement.querySelector('.all-units-action')).not.toBeNull();
-
-        const currentEvent = jasmine.createSpyObj<MouseEvent>('event', ['stopPropagation']);
-        await component.endPhase(currentEvent);
-
-        expect(currentEvent.stopPropagation).toHaveBeenCalledTimes(1);
-        expect(closeManagedOverlay).toHaveBeenCalledWith('turnSummary-unit-a');
-        expect(resolvePhase).toHaveBeenCalledOnceWith(currentUnit);
-
-        resolvePhase.calls.reset();
-        closeManagedOverlay.calls.reset();
-        blockCloseUntil.calls.reset();
-        unblockClose.calls.reset();
-        currentDirty.set(false);
-        otherDirty.set(true);
+        const dirty = turnSnapshot({ selectedMode: 'run', distance: 2 });
+        harness.set({
+            ...dirty,
+            hasPendingCombat: true,
+            hasPendingPhaseChanges: true,
+            movementState: {
+                ...dirty.movementState,
+                damageThisPhase: 1,
+            },
+        } as MekTurnPanelSnapshot);
         fixture.detectChanges();
 
-        const remainingPhaseButtons = fixture.nativeElement.querySelectorAll('.phase-actions button');
-        expect(remainingPhaseButtons.length).toBe(1);
-        expect(remainingPhaseButtons[0].textContent.trim().toLowerCase()).toBe('all units');
+        const phaseActions = Array.from<HTMLButtonElement>(
+            fixture.nativeElement.querySelectorAll('.phase-actions button'),
+        );
+        const turnActions = Array.from<HTMLButtonElement>(
+            fixture.nativeElement.querySelectorAll('.turn-actions button'),
+        );
+        expect(phaseActions.map(button => button.textContent?.trim())).toEqual([
+            'End Phase',
+            'All Units',
+        ]);
+        expect(turnActions.map(button => button.textContent?.trim())).toEqual([
+            'End Turn',
+            'All Units',
+        ]);
+        expect([...phaseActions, ...turnActions].every(button =>
+            button.querySelector('.turn-action-icon') !== null)).toBeTrue();
+    });
 
-        const allEvent = jasmine.createSpyObj<MouseEvent>('event', ['stopPropagation']);
-        await component.endPhaseForAll(allEvent);
+    it('keeps End Turn actionable while a cancelled workflow is resumable', () => {
+        const harness = turnMember(turnSnapshot());
+        const fixture = createComponent(harness.member, overlayManager());
+        fixture.detectChanges();
 
-        expect(allEvent.stopPropagation).toHaveBeenCalledTimes(1);
-        expect(blockCloseUntil).toHaveBeenCalledOnceWith('turnSummary-unit-a');
-        expect(unblockClose).toHaveBeenCalledOnceWith('turnSummary-unit-a');
-        expect(requestConfirmation).toHaveBeenCalledOnceWith(
+        harness.setPendingEndTurn(true);
+        fixture.detectChanges();
+
+        const turnActions = Array.from<HTMLButtonElement>(
+            fixture.nativeElement.querySelectorAll('.turn-actions button'),
+        );
+        expect(turnActions.map(button => button.textContent?.trim())).toEqual([
+            'End Turn',
+        ]);
+    });
+
+    it('shows End Turn for an otherwise idle immobile Core 2026 unit', () => {
+        const harness = turnMember(turnSnapshot({ immobile: true }));
+        const fixture = createComponent(harness.member, overlayManager());
+        fixture.detectChanges();
+
+        const turnActions = Array.from<HTMLButtonElement>(
+            fixture.nativeElement.querySelectorAll('.turn-actions button'),
+        );
+        expect(turnActions.map(button => button.textContent?.trim())).toEqual(['End Turn']);
+    });
+
+    it('dispatches selected and force-wide phase boundaries through the V2 owner', async () => {
+        const base = turnSnapshot({ selectedMode: 'run', distance: 2 });
+        const harness = turnMember({
+            ...base,
+            hasPendingCombat: true,
+            hasPendingPhaseChanges: true,
+            movementState: { ...base.movementState, damageThisPhase: 1 },
+        } as MekTurnPanelSnapshot);
+        const manager = overlayManager();
+        const fixture = createComponent(harness.member, manager);
+        fixture.detectChanges();
+        const event = jasmine.createSpyObj<MouseEvent>('event', ['stopPropagation']);
+
+        await fixture.componentInstance.endPhase(event);
+
+        expect(event.stopPropagation).toHaveBeenCalledTimes(1);
+        expect(harness.dispatch).toHaveBeenCalledOnceWith('mek-1', jasmine.objectContaining({
+            type: 'end-phase',
+        }));
+        expect(manager.closeManagedOverlay).toHaveBeenCalledWith('turnSummary-mek-1');
+
+        harness.dispatch.calls.reset();
+        manager.closeManagedOverlay.calls.reset();
+        const dialogs = TestBed.inject(DialogsService) as jasmine.SpyObj<DialogsService>;
+        await fixture.componentInstance.endPhaseForAll(event);
+
+        expect(dialogs.requestConfirmation).toHaveBeenCalledWith(
             'Are you sure you want to end the phase for all units?',
             'End Phase',
-            'info'
+            'info',
         );
-        expect(closeManagedOverlay).toHaveBeenCalledWith('turnSummary-unit-a');
-        expect(resolvePhase).toHaveBeenCalledOnceWith([currentUnit, otherUnit]);
+        expect(manager.blockCloseUntil).toHaveBeenCalledWith('turnSummary-mek-1');
+        expect(manager.unblockClose).toHaveBeenCalledWith('turnSummary-mek-1');
+        expect(manager.closeManagedOverlay).toHaveBeenCalledWith('turnSummary-mek-1');
+        expect(harness.member.force.endPhaseForAllUnits).toHaveBeenCalledTimes(1);
+    });
 
-        requestConfirmation.calls.reset();
-        blockCloseUntil.calls.reset();
-        unblockClose.calls.reset();
-        const endTurnEvent = jasmine.createSpyObj<MouseEvent>('event', ['stopPropagation']);
-        await component.endTurnForAll(endTurnEvent);
+    it('keeps the Mek PSR modifier breakdown in the turn-summary overlay', () => {
+        const base = turnSnapshot();
+        if (base.movement.kind !== 'supported') throw new Error('Turn fixture movement must be supported');
+        const withPsrModifier = {
+            ...base,
+            movement: {
+                ...base.movement,
+                permanentPsrModifiers: [{ modifier: 1, reason: 'Torso-mounted cockpit' }],
+                phasePsrModifiers: [{ modifier: 1, reason: 'Torso-mounted cockpit' }],
+            },
+        } as MekTurnPanelSnapshot;
+        const fixture = createComponent(turnMember(withPsrModifier).member, overlayManager());
+        fixture.detectChanges();
 
-        expect(endTurnEvent.stopPropagation).toHaveBeenCalledTimes(1);
-        expect(requestConfirmation).toHaveBeenCalledOnceWith(
-            'Are you sure you want to end the turn for all units?',
-            'End Turn',
-            'info'
+        expect(fixture.nativeElement.querySelector('.control-roll-section')?.textContent)
+            .toContain('Torso-mounted cockpit');
+    });
+
+    it('shows a zero spotting modifier as +0 instead of an empty badge', () => {
+        const fixture = createComponent(turnMember({ ...turnSnapshot(), spottingModifier: 0 }).member, overlayManager());
+        fixture.detectChanges();
+
+        const badge = fixture.nativeElement.querySelector('.spotting-button .modifier-badge') as HTMLElement;
+        expect(badge.textContent?.trim()).toBe('+0');
+        expect(badge.classList.contains('empty-modifier')).toBeFalse();
+    });
+
+    it('records a manual TAG spot with an operational mount', () => {
+        const harness = entityTurnMember([], false, 'available');
+        const fixture = createComponent(harness.member, overlayManager());
+        fixture.detectChanges();
+        const tagButton = Array.from<HTMLButtonElement>(fixture.nativeElement.querySelectorAll('button'))
+            .find(button => button.textContent?.includes('Spotted via TAG'))!;
+        expect(tagButton.disabled).toBeFalse();
+        tagButton.click();
+        expect(harness.dispatch).toHaveBeenCalledOnceWith('tank-1', { type: 'set-spotting', spotting: 'tag' });
+    });
+
+    it('shows the ordinary spotting modifier when TAG spotting is selected', () => {
+        const base = turnSnapshot();
+        const active = createComponent(turnMember({ ...base, turn: { ...base.turn, spotting: 'tag' } }).member, overlayManager());
+        active.detectChanges();
+        expect(active.nativeElement.querySelector('.spotting-button .modifier-badge').textContent.trim()).toBe('+1');
+        expect(active.nativeElement.querySelector('.spotting-button').getAttribute('aria-pressed')).toBe('false');
+    });
+
+    it('cannot report a new TAG hit using a destroyed mount', () => {
+        const damaged = entityTurnMember([], false, 'destroyed');
+        const unavailable = createComponent(damaged.member, overlayManager());
+        unavailable.detectChanges();
+        const disabledButton = Array.from<HTMLButtonElement>(unavailable.nativeElement.querySelectorAll('button'))
+            .find(button => button.textContent?.includes('Spotted via TAG'))!;
+        expect(disabledButton.disabled).toBeTrue();
+        unavailable.componentInstance.toggleSpotting('tag');
+        expect(damaged.dispatch).not.toHaveBeenCalled();
+    });
+
+    it('uses the shared turn panel for direct vehicle Entity movement', () => {
+        const manager = overlayManager();
+        const harness = entityTurnMember();
+        const fixture = createComponent(harness.member, manager);
+        fixture.detectChanges();
+
+        const labels = Array.from<HTMLElement>(fixture.nativeElement.querySelectorAll('.move-button'))
+            .map(button => button.textContent?.replace(/\s+/gu, ' ').trim())
+            .filter(Boolean);
+        expect(labels).toEqual(['Cruise+1', 'Flank+2']);
+        expect(fixture.nativeElement.querySelector('.spotting-button')).not.toBeNull();
+        expect(fixture.nativeElement.querySelector('.cover-control')).not.toBeNull();
+        expect(fixture.nativeElement.querySelector('[aria-label="Defense"]')).not.toBeNull();
+
+        fixture.componentInstance.toggleSpotting();
+        expect(harness.dispatch).toHaveBeenCalledOnceWith('tank-1', {
+            type: 'set-spotting',
+            spotting: true,
+        });
+        harness.dispatch.calls.reset();
+
+        fixture.componentInstance.selectCover('heavy');
+        expect(harness.dispatch).toHaveBeenCalledOnceWith('tank-1', {
+            type: 'set-cover',
+            cover: 'heavy',
+        });
+        harness.dispatch.calls.reset();
+
+        fixture.componentInstance.selectMove('walk');
+
+        expect(harness.dispatch).toHaveBeenCalledOnceWith('tank-1', {
+            type: 'set-movement',
+            movement: { mode: 'walk', distance: 0, boosterComponentIds: [] },
+        });
+    });
+
+    it('renders and dispatches origin/next escalating-equipment controls for non-Meks', () => {
+        const harness = entityTurnMember([], true);
+        const fixture = createComponent(harness.member, overlayManager());
+        fixture.detectChanges();
+
+        const row = fixture.nativeElement.querySelector('.equipment-track-row') as HTMLElement;
+        expect(row.querySelector('.equipment-track-label')?.textContent?.trim())
+            .toBe('Test F_MASC:S_SUPERCHARGER');
+        const buttons = Array.from<HTMLButtonElement>(row.querySelectorAll('.equipment-track-button'));
+        expect(buttons.map(button => button.textContent?.trim())).toEqual([
+            '3+', '5+', '7+', '10+', '11+', '✖',
+        ]);
+
+        buttons[0]!.click();
+
+        expect(harness.dispatchEquipmentChoice).toHaveBeenCalledOnceWith({
+            instanceId: 'tank-1',
+            entityUuid: harness.member.entity.uuid(),
+            componentId: harness.boosterComponentId,
+            handlerId: ESCALATING_FAILURE_HANDLER_ID,
+            value: 0,
+        });
+    });
+
+    it('uses origin/next DSR labels and Entity-derived vehicle control modifiers', () => {
+        const harness = entityTurnMember([systemDamageId('commander'), systemDamageId('motive', 2)]);
+        const fixture = createComponent(harness.member, overlayManager());
+        fixture.detectChanges();
+        const component = fixture.componentInstance;
+
+        expect(component.controlRollShortLabel()).toBe('DSR');
+        expect(component.controlRollFullLabel()).toBe('Driving Skill Rolls');
+        expect(component.psrModifiers()).toEqual([
+            { modifier: 1, reason: 'Commander hit' },
+            { modifier: 2, reason: 'Motive system hit' },
+        ]);
+        const section = Array.from<HTMLElement>(
+            fixture.nativeElement.querySelectorAll('.summary-section'),
+        ).find(candidate => candidate.querySelector('.section-title')?.textContent?.trim()
+            === 'DSR Modifiers');
+        expect(section?.textContent?.replace(/\s+/gu, ' ').trim())
+            .toContain('Commander hit +1');
+        expect(section?.textContent?.replace(/\s+/gu, ' ').trim())
+            .toContain('Motive system hit +2');
+    });
+
+    it('uses Entity movement capacity and the Battle Armor defense modifier', () => {
+        const harness = battleArmorTurnMember();
+        const fixture = createComponent(harness.member, overlayManager());
+        fixture.detectChanges();
+        const component = fixture.componentInstance;
+
+        expect(component.moveCapacity()).toBe(3);
+        expect(component.moveMin()).toBe(1);
+        expect(component.moveMax()).toBe(3);
+        expect(component.getTotalTargetModifierAsDefender()).toBe('+2');
+        expect(component.defenseTargetModifierTooltip()).toContain(
+            jasmine.objectContaining({ label: 'Jumped', value: '+1' }),
         );
-        expect(endTurn).toHaveBeenCalledOnceWith([currentUnit, otherUnit]);
+        expect(component.defenseTargetModifierTooltip()).toContain(
+            jasmine.objectContaining({ label: 'Battle Armor', value: '+1' }),
+        );
+    });
+
+    it('hides heat controls for a ground vehicle that does not track heat', () => {
+        const fixture = createComponent(entityTurnMember().member, overlayManager());
+        fixture.detectChanges();
+
+        expect(fixture.componentInstance.tracksHeat()).toBeFalse();
+        expect(fixture.nativeElement.querySelector('.heat-section')).toBeNull();
+    });
+
+    it('shows direct aerospace heat as the same contextual source rows as origin/next', () => {
+        const harness = aeroTurnMember();
+        const fixture = createComponent(harness.member, overlayManager());
+        fixture.detectChanges();
+        const text = (fixture.nativeElement as HTMLElement).textContent?.replace(/\s+/gu, ' ') ?? '';
+
+        expect(fixture.componentInstance.tracksHeat()).toBeTrue();
+        expect(text).toContain('Weapons: +7');
+        expect(text).not.toContain('Current:');
+        expect(text).not.toContain('Dissipation:');
+    });
+
+    it('shows contextual Mek heat with detailed equipment sources only when nonzero', () => {
+        const projected = (sources: readonly MekHeatSourceV2[]): MekTurnPanelSnapshot => ({
+            ...turnSnapshot(),
+            heatProjection: {
+                kind: 'supported',
+                projection: {
+                    current: 0,
+                    sources,
+                    committedSources: sources,
+                    capacity: 10,
+                    underwaterBonus: 0,
+                    ledger: PRISTINE_TURN_HEAT_LEDGER, dissipationBalance: 10,
+                    remainingDissipation: 10,
+                    generated: sources.reduce((total, source) => total + source.value, 0),
+                    dissipated: 0,
+                    projected: sources.reduce((total, source) => total + source.value, 0),
+                    delta: sources.reduce((total, source) => total + source.value, 0),
+                    hasPendingResolution: sources.some(source => source.value !== 0),
+                    hasPendingSettlement: sources.some(source => source.value !== 0),
+                },
+            },
+        } as MekTurnPanelSnapshot);
+        const harness = turnMember(projected([
+            { id: 'movement', label: 'Movement', value: 0 },
+        ]));
+        const fixture = createComponent(harness.member, overlayManager());
+        fixture.detectChanges();
+        const heatTitle = () => Array.from<HTMLElement>(fixture.nativeElement.querySelectorAll('.section-title'))
+            .find(title => title.textContent?.trim() === 'Heat');
+
+        expect(heatTitle()).toBeUndefined();
+
+        harness.set(projected([
+            { id: 'stealth', label: 'Stealth', value: 10, group: 'Equipment' },
+            { id: 'nova', label: 'Nova CEWS', value: 2, group: 'Equipment' },
+        ]));
+        fixture.detectChanges();
+        const text = heatTitle()?.parentElement?.textContent?.replace(/\s+/gu, ' ') ?? '';
+        expect(text).toContain('Stealth: +10');
+        expect(text).toContain('Nova CEWS: +2');
+        expect(text).not.toContain('Equipment');
     });
 });
+
+function createComponent(member: CBTForceMember, manager: ReturnType<typeof overlayManager>) {
+    TestBed.configureTestingModule({
+        imports: [PageTurnSummaryPanelComponent],
+        providers: [
+            { provide: OptionsService, useValue: {
+                options: () => ({ trackPhaseAndTurn: true }),
+                cbtAutomationMode: () => 'no',
+            } },
+            { provide: ToastService, useValue: { showToast: jasmine.createSpy('showToast') } },
+            { provide: DialogsService, useValue: {
+                requestConfirmation: jasmine.createSpy('requestConfirmation').and.resolveTo(true),
+            } },
+            { provide: OverlayManagerService, useValue: manager },
+            { provide: Overlay, useValue: { scrollStrategies: { block: () => ({}) } } },
+        ],
+    });
+    const fixture = TestBed.createComponent(PageTurnSummaryPanelComponent);
+    fixture.componentRef.setInput('member', member);
+    return fixture;
+}
+
+function entityTurnMember(
+    damageTrackSheetIds: readonly ReturnType<typeof systemDamageId>[] = [],
+    withSupercharger = false,
+    tagStatus?: 'available' | 'destroyed',
+) {
+    const changed = new Subject<void>();
+    const entity = new TestTankEntity();
+    entity.setTonnage(40);
+    entity.originalWalkMP.set(4);
+    const boosterComponentId = withSupercharger
+        ? componentIdForMount(addTestEquipmentWithFlags(
+            entity,
+            ['F_MASC', 'S_SUPERCHARGER'],
+            { location: entity.locationOrder[0] },
+        ))
+        : undefined;
+    if (tagStatus) addTestEquipmentWithFlags(entity, 'F_TAG', { location: entity.locationOrder[0] });
+    const index = buildNonMekRuntimeIndex(entity);
+    const pristine = createPristineNonMekUnitState(entity);
+    const damageTracks = new Map(pristine.damageTracks);
+    for (const damageTrackId of damageTrackSheetIds) {
+        const track = index.damageTracks.get(damageTrackId);
+        if (!track) throw new Error(`Missing test vehicle damage track ${damageTrackId}`);
+        damageTracks.set(track.id, { hits: 1, hitTimestamps: [damageTracks.size + 1] });
+    }
+    const snapshot = {
+        instanceId: 'tank-1',
+        entity,
+        index,
+        sourceRef: {},
+        ruleset: 'core-2026' as const,
+        state: { ...pristine, damageTracks },
+        query: {
+            hasPendingPhaseChanges: () => false,
+            destroyed: () => false,
+            hasCondition: () => false,
+            componentStatus: () => tagStatus ?? 'available',
+        },
+    };
+    const dispatch = jasmine.createSpy('dispatchUnitCommand').and.resolveTo({
+        accepted: true,
+        changed: true,
+        state: snapshot.state,
+    });
+    const dispatchEquipmentChoice = jasmine.createSpy('dispatchEquipmentChoice').and.resolveTo({
+        accepted: true,
+        changed: true,
+    });
+    let member!: CBTForceMember;
+    const force = {
+        changed,
+        sessionChanged: new Subject<void>(),
+        members: () => [member],
+        getUnitSnapshot: () => snapshot,
+        getEquipmentPanelSnapshot: () => ({ components: [], physicalAttacks: [] }),
+        getEquipmentInteractions: (_instanceId: string, choiceSurface?: 'inventory' | 'turn-summary') =>
+            projectNonMekEscalatingFailureInteractions(
+                entity,
+                index,
+                snapshot.state,
+                snapshot.ruleset,
+                choiceSurface,
+            ).map(interaction => ({
+                componentId: interaction.componentId,
+                componentLabel: interaction.componentLabel,
+                choices: interaction.choices.map(choice => ({
+                    ...choice,
+                    command: {
+                        instanceId: 'tank-1',
+                        entityUuid: entity.uuid(),
+                        componentId: interaction.componentId,
+                        handlerId: ESCALATING_FAILURE_HANDLER_ID,
+                        value: choice.value,
+                    },
+                    interactionKind: 'escalating-failure' as const,
+                    active: choice.active === true,
+                    disabled: choice.disabled === true,
+                })),
+            })),
+        hasRuntimeHistoryForUnitTurn: () => false,
+        hasPendingEndTurnForUnit: () => false,
+        dispatchUnitCommand: dispatch,
+        dispatchEquipmentChoice,
+    };
+    member = {
+        kind: 'cbt',
+        id: 'tank-1',
+        entity,
+        force,
+    } as unknown as CBTForceMember;
+    return {
+        member,
+        dispatch,
+        dispatchEquipmentChoice,
+        boosterComponentId,
+    };
+}
+
+function battleArmorTurnMember() {
+    const changed = new Subject<void>();
+    const entity = new TestBattleArmorEntity();
+    entity.originalWalkMP.set(1);
+    entity.propulsionMP.set(3);
+    entity.motiveType.set('Jump');
+    const pristine = createPristineNonMekUnitState(entity);
+    const state = {
+        ...pristine,
+        turn: {
+            ...pristine.turn,
+            movement: { mode: 'jump' as const, distance: 1, boosterComponentIds: [] },
+        },
+    };
+    const snapshot = {
+        instanceId: 'battle-armor-1',
+        entity,
+        index: buildNonMekRuntimeIndex(entity),
+        sourceRef: {},
+        ruleset: 'core-2026' as const,
+        state,
+        query: { hasPendingPhaseChanges: () => false },
+    };
+    let member!: CBTForceMember;
+    const force = {
+        changed,
+        sessionChanged: new Subject<void>(),
+        members: () => [member],
+        getUnitSnapshot: () => snapshot,
+        getEquipmentPanelSnapshot: () => ({ components: [], physicalAttacks: [] }),
+        getEquipmentInteractions: () => [],
+        hasRuntimeHistoryForUnitTurn: () => false,
+        dispatchUnitCommand: jasmine.createSpy('dispatchUnitCommand'),
+        hasPendingEndTurnForUnit: () => false,
+    };
+    member = {
+        kind: 'cbt',
+        id: 'battle-armor-1',
+        entity,
+        force,
+    } as unknown as CBTForceMember;
+    return { member };
+}
+
+function aeroTurnMember() {
+    const changed = new Subject<void>();
+    const entity = new TestAeroSpaceFighterEntity();
+    entity.structuralIntegrity.set(8);
+    entity.heatSinkCount.set(10);
+    entity.heatSinkType.set('Double');
+    const pristine = createPristineNonMekUnitState(entity);
+    const snapshot = {
+        instanceId: 'aero-1',
+        entity,
+        index: buildNonMekRuntimeIndex(entity),
+        sourceRef: {},
+        ruleset: 'core-2026' as const,
+        state: {
+            ...pristine,
+            heat: { current: 8, previous: 0, pendingOverride: 19, heatsinksOff: 2 },
+            turn: { ...pristine.turn, weaponsHeat: 7 },
+        },
+        query: { hasPendingPhaseChanges: () => false },
+    };
+    let member!: CBTForceMember;
+    const force = {
+        changed,
+        sessionChanged: new Subject<void>(),
+        members: () => [member],
+        getUnitSnapshot: () => snapshot,
+        getEquipmentPanelSnapshot: () => ({ components: [], physicalAttacks: [] }),
+        getEquipmentInteractions: () => [],
+        hasRuntimeHistoryForUnitTurn: () => false,
+        hasPendingEndTurnForUnit: () => false,
+        dispatchUnitCommand: jasmine.createSpy('dispatchUnitCommand'),
+    };
+    member = {
+        kind: 'cbt',
+        id: 'aero-1',
+        entity,
+        force,
+    } as unknown as CBTForceMember;
+    return { member };
+}
+
+function overlayManager() {
+    const closed = new Subject<void>();
+    return {
+        closed,
+        has: jasmine.createSpy('has').and.returnValue(false),
+        createManagedOverlay: jasmine.createSpy('createManagedOverlay').and.returnValue({ closed }),
+        closeManagedOverlay: jasmine.createSpy('closeManagedOverlay'),
+        blockCloseUntil: jasmine.createSpy('blockCloseUntil'),
+        unblockClose: jasmine.createSpy('unblockClose'),
+    };
+}
+
+function turnMember(initial: MekTurnPanelSnapshot, memberCount = 1) {
+    const changed = new Subject<void>();
+    const entity = new TestBipedMekEntity();
+    let current = initial;
+    let pendingEndTurn = false;
+    const dispatch = jasmine.createSpy('dispatchUnitCommand').and.resolveTo({
+        accepted: true,
+        changed: false,
+        revision: current.stateRevision,
+    });
+    let member!: CBTMekForceMember;
+    const force = {
+        changed,
+        sessionChanged: new Subject<void>(),
+        members: () => Array.from({ length: memberCount }, (_value, index) => index === 0
+            ? member
+            : { ...member, id: `mek-${index + 1}` }),
+        getMekTurnPanelSnapshot: () => current,
+        getUnitSnapshot: () => ({ query: { hasPendingPhaseChanges: () => current.hasPendingPhaseChanges } }),
+        getEquipmentPanelSnapshot: () => ({ components: [], physicalAttacks: [] }),
+        getEquipmentInteractions: () => [],
+        dispatchUnitCommand: dispatch,
+        hasRuntimeHistoryForUnitTurn: () => false,
+        hasPendingEndTurnForUnit: () => pendingEndTurn,
+        endPhaseForAllUnits: jasmine.createSpy('endPhaseForAllUnits').and.resolveTo({
+            accepted: true,
+            changed: true,
+            atomic: false,
+            results: [],
+        }),
+        endTurnForAllUnits: jasmine.createSpy('endTurnForAllUnits').and.resolveTo({
+            accepted: true,
+            changed: true,
+            atomic: false,
+            results: [],
+        }),
+    };
+    member = {
+        kind: 'cbt',
+        id: 'mek-1',
+        entity,
+        force,
+    } as unknown as CBTMekForceMember;
+    return {
+        member,
+        dispatch,
+        set: (snapshot: MekTurnPanelSnapshot) => {
+            current = snapshot;
+            changed.next();
+        },
+        setPendingEndTurn: (pending: boolean) => {
+            pendingEndTurn = pending;
+            changed.next();
+        },
+    };
+}
+
+function turnSnapshot(options: {
+    readonly rulesFlavor?: 'core-2026' | 'total-warfare';
+    readonly immobile?: boolean;
+    readonly selectedMode?: MekMovementModeV2;
+    readonly distance?: number;
+    readonly attempts?: number;
+} = {}): MekTurnPanelSnapshot {
+    const rulesFlavor = options.rulesFlavor ?? 'core-2026';
+    const attempts = options.attempts ?? 0;
+    const movement = options.selectedMode === undefined ? null : {
+        mode: options.selectedMode,
+        distance: options.distance ?? 0,
+        boosterComponentIds: [],
+    };
+    const actions = [
+        { kind: 'stationary' as const, legal: true, minimumMp: 0, maximumMp: 0, reasons: [], warnings: [] },
+        ...(options.selectedMode === 'run'
+            ? [{ kind: 'run' as const, legal: false, minimumMp: 0, maximumMp: 0, reasons: [], warnings: [] }]
+            : []),
+        ...(attempts > 0
+            ? [{ kind: 'get-up' as const, legal: true, reasons: [], warnings: [] }]
+            : []),
+    ];
+    return {
+        entityUuid: 'entity:mek-1',
+        stateRevision: 1,
+        movement: {
+            kind: 'supported',
+            rulesFlavor,
+            immobile: options.immobile ?? false,
+            actions,
+            permanentPsrModifiers: [],
+            phasePsrModifiers: [],
+            standing: {
+                attempts,
+                carefulStand: false,
+                movementPointsSpent: attempts * 2,
+                movementMode: 'walk',
+                requiresPilotCheck: true,
+                targetNumber: 7,
+                standingModifier: rulesFlavor === 'core-2026' ? -1 : 0,
+                supportsCarefulStand: rulesFlavor === 'total-warfare',
+                canCarefulStand: rulesFlavor === 'total-warfare',
+                attemptLimit: null,
+            },
+        },
+        movementState: {
+            ...createPristineMekMovementPsrStateV2(),
+            movement,
+            standAttempts: attempts,
+        },
+        ruleChecks: [],
+        activeBoosterComponentIds: [],
+        attackMovementModifiers: { stationary: 0, walk: 1, run: 2, sprint: 0, jump: 3, UMU: 3 },
+        defenseModifierBreakdown: [],
+        defenseModifierTotal: { modifier: 0 },
+        canTakeActiveActions: true,
+        spottingModifier: 1,
+        turn: createPristineMekTurnStateV2(),
+        cover: { partiallyUnderwater: false, submerged: false, building: { level: null, modifier: 0 } },
+        heat: createPristineMekHeatStateV2(),
+        heatProjection: { kind: 'unsupported', blockers: ['fixture'] },
+        conditions: attempts > 0 ? ['prone'] : [],
+        conversion: { mode: 'mek', modes: [] },
+        hasPendingCombat: false,
+        hasPendingPhaseChanges: false,
+    } as unknown as MekTurnPanelSnapshot;
+}

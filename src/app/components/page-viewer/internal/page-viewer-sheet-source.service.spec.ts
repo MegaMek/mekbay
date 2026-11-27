@@ -1,0 +1,211 @@
+// Copyright (C) 2026 The MegaMek Team
+// SPDX-License-Identifier: GPL-3.0-or-later
+
+import {
+    TestQuadMekEntity,
+    TestTankEntity,
+} from '../../../models/entity/testing/test-entities';
+import type { CBTForce } from '../../../models/cbt-force.model';
+import type { CBTRuleset } from '../../../models/cbt-ruleset.model';
+import { CBTForceMember } from '../../../models/force-member.model';
+import { TestBed } from '@angular/core/testing';
+import { signal } from '@angular/core';
+import { OptionsService } from '../../../services/options.service';
+import { UnitFluffImageService } from '../../../services/catalogs/unit-fluff-image.service';
+import type { RecordSheetGroupWeapons, RecordSheetPipLayout } from '../../../models/options.model';
+import { RecordSheetSourceService } from '../../../services/record-sheet-source.service';
+import { RecordSheetSvgGenerator } from '../../../utils/sheets/record-sheet-svg-generator';
+import type { PageViewerMember } from './types';
+import { PageViewerSheetSourceService } from './page-viewer-sheet-source.service';
+
+describe('PageViewerSheetSourceService', () => {
+    let source: jasmine.SpyObj<Pick<RecordSheetSourceService, 'load'>>;
+    let service: PageViewerSheetSourceService;
+    const options = signal<{ recordSheetPipLayout: RecordSheetPipLayout; recordSheetGroupWeapons: RecordSheetGroupWeapons; printAllOptions: { paperSize: 'a4' | 'letter' }; CBTRules: CBTRuleset }>({ recordSheetPipLayout: 'classic', recordSheetGroupWeapons: 'disabled', printAllOptions: { paperSize: 'letter' }, CBTRules: 'total-warfare' });
+
+    beforeEach(() => {
+        options.set({ recordSheetPipLayout: 'classic', recordSheetGroupWeapons: 'disabled', printAllOptions: { paperSize: 'letter' }, CBTRules: 'total-warfare' });
+        source = jasmine.createSpyObj('RecordSheetSourceService', ['load']);
+        source.load.and.callFake(async (entity, options) => ({
+            svgs: [await RecordSheetSvgGenerator.generate(entity, { ruleset: 'total-warfare', ...options })],
+        }));
+        TestBed.configureTestingModule({
+            providers: [
+                PageViewerSheetSourceService,
+                { provide: UnitFluffImageService, useValue: { initialize: async () => undefined, loadEntityUrl: async () => null } },
+                { provide: RecordSheetSourceService, useValue: source },
+                { provide: OptionsService, useValue: { options } },
+            ],
+        });
+        service = TestBed.inject(PageViewerSheetSourceService);
+    });
+
+    it('regenerates a cached member when global paper size changes', async () => {
+        const member = createMember('Tank', new TestTankEntity());
+        await service.load(member);
+        const letter = member.recordSheet();
+        options.update(value => ({ ...value, printAllOptions: { paperSize: 'a4' } }));
+        await service.load(member);
+        expect(member.recordSheet()).not.toBe(letter);
+        expect(member.recordSheet()?.getAttribute('viewBox')).toBe('0 0 595.276 841.89');
+        expect(source.load.calls.mostRecent().args[1]).toEqual({ pipLayout: 'classic', showQuirks: true, groupWeapons: false, format: 'a4', pageFormat: 'a4', fluffImageUrl: null, ruleset: 'total-warfare' });
+    });
+
+    it('regenerates a cached sheet when local artwork changes or is purged', async () => {
+        const member = createMember('Tank', new TestTankEntity());
+        const image = spyOn(TestBed.inject(UnitFluffImageService), 'loadEntityUrl').and.resolveTo('blob:first');
+        await service.load(member); const before = member.recordSheet();
+        image.and.resolveTo('blob:replacement');
+        await service.load(member); expect(member.recordSheet()).not.toBe(before);
+        const replaced = member.recordSheet(); image.and.resolveTo(null);
+        await service.load(member); expect(member.recordSheet()).not.toBe(replaced);
+        expect(source.load.calls.mostRecent().args[1]?.fluffImageUrl).toBeNull();
+    });
+
+    it('generates and retains a Mek sheet from the admitted Entity snapshot', async () => {
+        const entity = new TestQuadMekEntity();
+        entity.chassis.set('Scorpion');
+        const member = createMember('Mek', entity);
+        await service.load(member);
+
+        expect(member.recordSheet()?.dataset['mekbayGenerated']).toBe('1');
+        expect(member.recordSheet()?.hasAttribute('aria-label')).toBeFalse();
+        expect(member.recordSheet()?.querySelector(':scope > title')).toBeNull();
+        expect(member.force.getUnitSnapshot).toHaveBeenCalledOnceWith(member.id);
+    });
+
+    it('loads non-Mek CBT members through the generic Entity snapshot', async () => {
+        const entity = new TestTankEntity();
+        entity.chassis.set('Vedette');
+        const member = createMember('Tank', entity);
+        await service.load(member);
+
+        expect(member.recordSheet()?.dataset['mekbaySheetKind']).toBe('tank-letter');
+        expect(member.force.getUnitSnapshot).toHaveBeenCalledOnceWith(member.id);
+    });
+
+    it('retains one generated sheet for exactly the member lifetime', async () => {
+        const entity = new TestTankEntity();
+        const member = createMember('Tank', entity);
+        await service.load(member);
+        const first = member.recordSheet();
+        await service.load(member);
+
+        expect(member.recordSheet()).toBe(first);
+        expect(source.load).toHaveBeenCalledTimes(1);
+
+        const replacement = createMember('Tank', entity);
+        await service.load(replacement);
+
+        expect(replacement.recordSheet()).not.toBe(first);
+        expect(source.load).toHaveBeenCalledTimes(2);
+    });
+
+    it('uses the admitted ruleset independently of global preferences and regenerates when admission changes', async () => {
+        const entity = new TestTankEntity();
+        const member = createMember('Tank', entity);
+        const snapshot = member.force.getUnitSnapshot as jasmine.Spy;
+        snapshot.and.returnValue({ entity, ruleset: 'core-2026' });
+        await service.load(member);
+        const core = member.recordSheet();
+        expect(source.load.calls.mostRecent().args[1]?.ruleset).toBe('core-2026');
+
+        snapshot.and.returnValue({ entity, ruleset: 'total-warfare' });
+        options.update(value => ({ ...value, CBTRules: 'core-2026' }));
+        await service.load(member);
+        expect(source.load.calls.mostRecent().args[1]?.ruleset).toBe('total-warfare');
+        expect(member.recordSheet()).not.toBe(core);
+        expect(source.load).toHaveBeenCalledTimes(2);
+    });
+
+    it('retains every generated page and decorates multi-page sheets with flip controls', async () => {
+        const member = createMember('Tank', new TestTankEntity());
+        const front = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
+        const reverse = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
+        const unsupportedThirdPage = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
+        front.setAttribute('viewBox', '0 0 612 792');
+        reverse.setAttribute('viewBox', '0 0 612 792');
+        unsupportedThirdPage.setAttribute('viewBox', '0 0 612 792');
+        source.load.and.resolveTo({ svgs: [front, reverse, unsupportedThirdPage] });
+
+        await service.load(member);
+
+        expect(member.recordSheets()).toEqual([front, reverse]);
+        expect(front.querySelector('.record-sheet-page-flip-control')?.getAttribute('aria-label'))
+            .toBe('Show record sheet page 2 of 2');
+        expect(reverse.querySelector('.record-sheet-page-flip-control')?.getAttribute('aria-label'))
+            .toBe('Show record sheet page 1 of 2');
+        const frontPageFlip = front.querySelector('.record-sheet-page-flip-control');
+        expect(frontPageFlip?.getAttribute('transform')).toBe('translate(572 752)');
+        expect(frontPageFlip?.querySelector('polygon')?.getAttribute('points')).toBe('0,40 40,0 40,40');
+        expect(frontPageFlip?.querySelector('text')?.textContent).toBe('1/2');
+        expect(reverse.querySelector('.record-sheet-page-flip-control text')?.textContent).toBe('2/2');
+        expect(unsupportedThirdPage.querySelector('.record-sheet-page-flip-control')).toBeNull();
+    });
+
+    it('coalesces concurrent generation on the member', async () => {
+        const member = createMember('Mek', new TestQuadMekEntity());
+
+        await Promise.all([service.load(member), service.load(member), service.load(member)]);
+
+        expect(source.load).toHaveBeenCalledTimes(1);
+    });
+
+    it('regenerates cached pages using the changed pip layout preference', async () => {
+        const member = createMember('Tank', new TestTankEntity());
+        await service.load(member);
+        const first = member.recordSheet();
+        options.update(value => ({ ...value, recordSheetPipLayout: 'rail' }));
+        await service.load(member);
+        expect(member.recordSheet()).not.toBe(first);
+        expect(source.load.calls.mostRecent().args[1]).toEqual({ pipLayout: 'rail', showQuirks: true, groupWeapons: false, format: 'letter', pageFormat: 'letter', fluffImageUrl: null, ruleset: 'total-warfare' });
+    });
+
+    it('regenerates cached pages when identical weapons become grouped or ungrouped', async () => {
+        const member = createMember('Tank', new TestTankEntity());
+        await service.load(member);
+        const ungrouped = member.recordSheet();
+        expect(ungrouped?.querySelector('[data-mekbay-inventory-block]')).toBeNull();
+
+        // "Only previews" leaves live sheets ungrouped.
+        options.update(value => ({ ...value, recordSheetGroupWeapons: 'previews' }));
+        await service.load(member);
+        expect(member.recordSheet()).toBe(ungrouped);
+
+        options.update(value => ({ ...value, recordSheetGroupWeapons: 'enabled' }));
+        await service.load(member);
+        const grouped = member.recordSheet();
+        expect(grouped).not.toBe(ungrouped);
+        expect(grouped?.querySelector('[data-mekbay-inventory-block]')).not.toBeNull();
+        expect(source.load.calls.mostRecent().args[1]?.groupWeapons).toBeTrue();
+
+        options.update(value => ({ ...value, recordSheetGroupWeapons: 'previews' }));
+        await service.load(member);
+        expect(member.recordSheet()).not.toBe(grouped);
+        expect(member.recordSheet()?.querySelector('[data-mekbay-inventory-block]')).toBeNull();
+    });
+
+    it('allows the member to retry after generation fails', async () => {
+        const member = createMember('Tank', new TestTankEntity());
+        source.load.and.rejectWith(new Error('generation failed'));
+
+        await expectAsync(service.load(member)).toBeRejectedWithError('generation failed');
+
+        source.load.and.callFake(async (entity, options) => ({
+            svgs: [await RecordSheetSvgGenerator.generate(entity, { ruleset: 'total-warfare', ...options })],
+        }));
+        await service.load(member);
+
+        expect(member.recordSheet()).not.toBeNull();
+        expect(source.load).toHaveBeenCalledTimes(2);
+    });
+});
+
+function createMember(entityType: 'Mek' | 'Tank', entity: TestQuadMekEntity | TestTankEntity): PageViewerMember {
+    const getUnitSnapshot = jasmine.createSpy('getUnitSnapshot').and.returnValue({ entity, ruleset: 'total-warfare' });
+    const force = {
+        getUnitSnapshot,
+        getEquipmentPanelSnapshot: () => null,
+    } as unknown as CBTForce;
+    return new CBTForceMember(`unit-${entityType}`, force, entity);
+}

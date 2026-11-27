@@ -14,6 +14,9 @@ import {
   WarShipEntity,
 } from '../../../entities';
 import { infantryDamageDivisor } from '../../battle-value/infantry-rules';
+import { modularArmorPoints } from '../../../../modular-armor.model';
+import { supportVehicleBarRating } from '../../../entities/support-vehicle';
+import { STRUCTURE_TYPE } from '../../../types/structure';
 
 const AS_MEK_STRUCTURE: readonly (readonly number[])[] = [
   [1,1,2,2,3,3,3,4,4,5,5,5,6,6,6,7,7,8,8,8,8,9,9,10,10,10,11,11,11,12,12,13,13,13,14,14,14,15,15],
@@ -44,12 +47,13 @@ export function alphaStrikeArmor(entity: BaseEntity): number {
     let modifier = type === 'COMMERCIAL' ? 0.5
       : type === 'FERRO_LAMELLOR' ? 1.2
       : type === 'HARDENED' ? 2 : 1;
-    if (entity.isSupportVehicle() && entity.barRating() < 9 && type !== 'COMMERCIAL') {
-      modifier *= entity.barRating() / 10;
+    // ASArmStrConverter uses one reference facing's BAR for the whole conversion.
+    if (entity.isSupportVehicle() && supportVehicleBarRating(entity) < 9 && type !== 'COMMERCIAL') {
+      modifier *= supportVehicleBarRating(entity) / 10;
     }
     points += Math.max(0, armor.front * modifier) + Math.max(0, armor.rear * modifier);
   }
-  points += entity.equipment().filter(mount => mount.equipment?.hasFlag('F_MODULAR_ARMOR')).length * 10;
+  points += modularArmorPoints(entity.equipment());
   return entity instanceof JumpShipEntity ? Math.round(points * 0.33) : Math.round(points / 30);
 }
 
@@ -58,8 +62,8 @@ export function alphaStrikeStructure(entity: BaseEntity): number {
     const weightIndex = Math.trunc(entity.tonnage() / 5) - 2;
     let structure = AS_MEK_STRUCTURE[mekEngineIndex(entity)]?.[weightIndex] ?? -1;
     const typeId = entity.uniformStructureMaterial()?.structure.structureTypeId;
-    if (typeId === 5) structure = Math.ceil(structure * 0.5);
-    else if (typeId === 4) structure *= 2;
+    if (typeId === STRUCTURE_TYPE.COMPOSITE) structure = Math.ceil(structure * 0.5);
+    else if (typeId === STRUCTURE_TYPE.REINFORCED) structure *= 2;
     return structure;
   }
   if (entity instanceof WarShipEntity) return entity.structuralIntegrity();
@@ -68,6 +72,19 @@ export function alphaStrikeStructure(entity: BaseEntity): number {
   if (entity instanceof VehicleEntity) return vehicleStructure(entity);
   if (entity instanceof AeroEntity) return Math.ceil(entity.structuralIntegrity() * 0.5);
   return -1;
+}
+
+function mekEngineIndex(entity: MekEntity): number {
+  const engine = entity.mountedEngine();
+  const clan = engine.techBase === 'Clan';
+  const large = engine.isLarge;
+  switch (engine.type()) {
+    case 'Compact': return clan ? 0 : 1;
+    case 'Light': return clan ? 0 : large ? 4 : 3;
+    case 'XL': return clan ? (large ? 4 : 3) : 4;
+    case 'XXL': return clan ? (large ? 7 : 5) : large ? 8 : 6;
+    default: return clan ? 0 : large ? 2 : 0;
+  }
 }
 
 function vehicleStructure(entity: VehicleEntity): number {
@@ -84,19 +101,6 @@ function vehicleStructure(entity: VehicleEntity): number {
     ? entity.totalInternalPoints() - 1
     : entity.totalInternalPoints();
   return Math.ceil(internalPoints / divisor);
-}
-
-function mekEngineIndex(entity: MekEntity): number {
-  const engine = entity.mountedEngine();
-  const clan = engine.techBase === 'Clan';
-  const large = engine.isLarge;
-  switch (engine.type()) {
-    case 'Compact': return clan ? 0 : 1;
-    case 'Light': return clan ? 0 : large ? 4 : 3;
-    case 'XL': return clan ? (large ? 4 : 3) : 4;
-    case 'XXL': return clan ? (large ? 7 : 5) : large ? 8 : 6;
-    default: return clan ? 0 : large ? 2 : 0;
-  }
 }
 
 export function alphaStrikeRoundUp(value: number): number {

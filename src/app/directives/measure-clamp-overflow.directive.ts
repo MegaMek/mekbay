@@ -13,7 +13,6 @@ import { DestroyRef, Directive, ElementRef, afterNextRender, effect, inject, inp
  */
 @Directive({
     selector: '[measureClampOverflow]',
-    standalone: true,
 })
 export class MeasureClampOverflowDirective {
     readonly text = input('', { alias: 'measureClampOverflow' });

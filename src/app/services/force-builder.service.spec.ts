@@ -2,26 +2,39 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 // Author: Drake
 
-import { signal } from '@angular/core';
-import { of } from 'rxjs';
+import { Injector, provideZonelessChangeDetection, signal } from '@angular/core';
+import { TestBed } from '@angular/core/testing';
+import { of, Subject } from 'rxjs';
 import { GameSystem } from '../models/common.model';
 import type { Faction } from '../models/factions.model';
 import { Force, type UnitGroup } from '../models/force.model';
 import type { ForceUnit } from '../models/force-unit.model';
-import { LoadForceEntry } from '../models/load-force-entry.model';
+import { createForcePreviewEntryData } from '../models/force-preview.model';
 import type { UnitSummary } from '../models/unit-summary.model';
-import type { FormationTypeDefinition } from '../utils/formation-type.model';
+import type { FormationTypeDefinition } from '../utils/formation/formation-type.model';
 import { createEmptyForceNameWords } from '../models/force-name-words.model';
-import { LanceTypeIdentifierUtil } from '../utils/lance-type-identifier.util';
+import { FormationAnalyzer } from '../utils/formation/formation-analysis.util';
 import { ForceBuilderService } from './force-builder.service';
+import { ForceImportService } from './force-import.service';
+import { ForceWorkspaceCommandsService } from './force-workspace-commands.service';
+import { ForceDialogsService } from './force-dialogs.service';
+import { ForceRemoteSyncService } from './force-remote-sync.service';
+import { ForceSlotLifecycleService } from './force-slot-lifecycle.service';
+import { ForceFormationService } from './force-formation.service';
+import { ForceUnitAdmissionService } from './force-unit-admission.service';
 import { CBTForce } from '../models/cbt-force.model';
-import { CBTForceUnit } from '../models/cbt-force-unit.model';
-import type { InventoryControlRuntimeTarget } from '../models/inventory-control-runtime-state.model';
+import { CBTForceMember } from '../models/force-member.model';
 import type { SerializedForce } from '../models/force-serialization';
-import type { UnitCover } from '../models/unit-cover.model';
-import { CORE_2026_GAME_RULES } from '../models/rules/game-rules';
-import { Equipment } from '../models/equipment.model';
-import { MountedEquipment } from '../models/mounted-equipment.model';
+import { createEmptyCBTForceForTest, createTestMekEntity } from '../testing/unit-test-helpers';
+import { OptionsService } from './options.service';
+import { DataService } from './data.service';
+import { ForceOperationService } from './force-operation.service';
+import { ForcePersistenceService } from './force-persistence.service';
+import { ForceUrlStateService } from './force-url-state.service';
+import { ForceWorkspaceStateService } from './force-workspace-state.service';
+import { InventoryControlOpforService } from './inventory-control-opfor.service';
+import { LoggerService } from './logger.service';
+import { ToastService } from './toast.service';
 
 function createFaction(id: number, name: string): Faction {
     return {
@@ -55,41 +68,60 @@ function createUnit(): UnitSummary {
 
 function createSerializedForce(overrides: Partial<SerializedForce> = {}): SerializedForce {
     return {
-        version: 1,
+        version: 2,
         timestamp: '2026-08-06T20:00:00.000Z',
         instanceId: 'force-1',
-        type: GameSystem.ALPHA_STRIKE,
+        type: GameSystem.AS,
         name: 'Test Force',
         groups: [],
         ...overrides,
     };
 }
 
+function deferred<T>() {
+    let resolve!: (value: T | PromiseLike<T>) => void;
+    let reject!: (reason?: unknown) => void;
+    const promise = new Promise<T>((resolvePromise, rejectPromise) => {
+        resolve = resolvePromise;
+        reject = rejectPromise;
+    });
+    return { promise, resolve, reject };
+}
+
 function createHarness(formation: FormationTypeDefinition, factions: Faction[]) {
-    const service = Object.create(ForceBuilderService.prototype) as any;
+    const service = Object.create(ForceWorkspaceCommandsService.prototype) as any;
     const selectedUnit = signal<ForceUnit | null>(null);
     const groupUnits = signal<ForceUnit[]>([]);
     const forceUnits: ForceUnit[] = [];
     const group = {
         formation: signal<FormationTypeDefinition | null>(null),
-        formationTargetGroupId: signal<string | null>(null),
         formationLock: false,
         formationHistory: new Set<string>(['previous-automatic-match']),
         units: groupUnits,
-    } as UnitGroup;
+        formationUnits: () => groupUnits(),
+    } as unknown as UnitGroup;
     const force = {
-        gameSystem: GameSystem.ALPHA_STRIKE,
+        gameSystem: GameSystem.AS,
         faction: signal<Faction | null>(null),
         factionLock: false,
         era: signal(null),
         eraLock: false,
         units: () => forceUnits,
+        members: () => forceUnits,
+        membersInGroup: (targetGroup: UnitGroup) => targetGroup.units(),
         groups: () => [group],
+        updateGroup: jasmine.createSpy('updateGroup').and.callFake(async (targetGroup: UnitGroup, patch: any) => {
+            if (Object.prototype.hasOwnProperty.call(patch, 'formation')) targetGroup.formation.set(patch.formation);
+            if (Object.prototype.hasOwnProperty.call(patch, 'formationLock')) {
+                targetGroup.formationLock = patch.formationLock || undefined;
+            }
+            return true;
+        }),
         addUnit: jasmine.createSpy('addUnit').and.callFake((unit: UnitSummary, targetGroup: UnitGroup = group) => {
             const forceUnit = {
                 id: `unit-${forceUnits.length + 1}`,
                 force,
-                getUnit: () => unit,
+                getSummary: () => unit,
                 getGroup: () => targetGroup,
             } as unknown as ForceUnit;
             forceUnits.push(forceUnit);
@@ -108,23 +140,36 @@ function createHarness(formation: FormationTypeDefinition, factions: Faction[]) 
         getFactions: () => factions,
         getForceNameWords: () => createEmptyForceNameWords(),
     };
-    service.injector = {
+    const formations = Object.create(ForceFormationService.prototype) as any;
+    formations.dataService = service.dataService;
+    formations.injector = {
         get: () => filtersService,
     };
     service.layoutService = {
         openMenu: jasmine.createSpy('openMenu'),
     };
+    service.injector = {
+        get: () => ({ requestClosePanels: jasmine.createSpy('requestClosePanels') }),
+    };
     service.toastService = {
         showToast: jasmine.createSpy('showToast'),
     };
-    service.unitAvailabilitySource = {
+    formations.unitAvailabilitySource = {
         createForceAvailabilityContextForUnits: () => ({}) as any,
     };
-    service.selectedUnit = selectedUnit;
-    service.smartCurrentForce = () => force;
-    service.reconcileASFormationAssignments = jasmine.createSpy('reconcileASFormationAssignments');
-
-    return { service, force, group, filtersService };
+    formations.dialogsService = { createDialog: jasmine.createSpy('createDialog') };
+    formations.reconcileASFormationAssignments = jasmine.createSpy('reconcileASFormationAssignments');
+    service.formations = formations;
+    service.workspace = {
+        selectedUnit,
+        smartCurrentForce: () => force,
+        selectUnit: (unit: ForceUnit | null) => selectedUnit.set(unit),
+    };
+    service.unitAdmission = {
+        admit: ({ summary, group: targetGroup }: { summary: UnitSummary; group?: UnitGroup }) =>
+            Promise.resolve(force.addUnit(summary, targetGroup)),
+    };
+    return { service, formations, force, group, filtersService };
 }
 
 describe('ForceBuilderService formation filter integration', () => {
@@ -136,7 +181,7 @@ describe('ForceBuilderService formation filter integration', () => {
 
         await service.addUnit(createUnit());
 
-        expect(filtersService.getActiveFormationTargetDefinition).toHaveBeenCalledWith(GameSystem.ALPHA_STRIKE);
+        expect(filtersService.getActiveFormationTargetDefinition).toHaveBeenCalledWith(GameSystem.AS);
         expect(group.formation()).toBe(formation);
         expect(group.formationLock).toBeTrue();
         expect(group.formationHistory.size).toBe(0);
@@ -147,22 +192,36 @@ describe('ForceBuilderService formation filter integration', () => {
     it('restores group formations from generated force preview entries', async () => {
         const lightFireFormation = createFormation('light-fire-lance');
         const automaticFormation = createFormation('automatic-lance');
-        spyOn(LanceTypeIdentifierUtil, 'getDefinitionById').and.callFake((formationId: string) => (
+        spyOn(FormationAnalyzer, 'getDefinitionById').and.callFake((formationId: string) => (
             formationId === lightFireFormation.id ? lightFireFormation : null
         ));
 
-        const service = Object.create(ForceBuilderService.prototype) as any;
+        const service = Object.create(ForceImportService.prototype) as any;
         const groupsSignal = signal<UnitGroup[]>([]);
         const createdForceUnits: ForceUnit[] = [];
         const addUnitLoadingStates: boolean[] = [];
         const force = {
             name: 'Generated Test Force',
-            gameSystem: GameSystem.ALPHA_STRIKE,
+            gameSystem: GameSystem.AS,
             loading: false,
             instanceId: signal<string | null>(null),
             faction: signal<Faction | null>(null),
             era: signal(null),
             groups: groupsSignal,
+            units: () => createdForceUnits,
+            members: () => createdForceUnits,
+            membersInGroup: (group: UnitGroup) => group.units(),
+            updateGroup: jasmine.createSpy('updateGroup').and.callFake(async (group: UnitGroup, patch: any) => {
+                if (Object.prototype.hasOwnProperty.call(patch, 'formation')) group.formation.set(patch.formation);
+                if (Object.prototype.hasOwnProperty.call(patch, 'formationLock')) {
+                    group.formationLock = patch.formationLock || undefined;
+                }
+                return true;
+            }),
+            removeGroup: jasmine.createSpy('removeGroup').and.callFake(async (group: UnitGroup) => {
+                groupsSignal.set(groupsSignal().filter(candidate => candidate !== group));
+                return true;
+            }),
             addGroup: jasmine.createSpy('addGroup').and.callFake((name: string | undefined) => {
                 if (!force.loading) {
                     force.instanceId.set('saved-during-add-group');
@@ -190,15 +249,17 @@ describe('ForceBuilderService formation filter integration', () => {
         const faction = createFaction(1, 'Mercenary');
         const era = { id: 3151, name: 'ilClan', years: {} } as any;
         const firstUnit = createUnit();
-        const secondUnit = { ...createUnit(), id: 2, name: 'Second Mek' } as UnitSummary;
+        const secondUnit = { ...createUnit(), mul1id: 2, name: 'Second Mek' } as UnitSummary;
 
-        service.createNewForce = jasmine.createSpy('createNewForce').and.resolveTo(force);
-        service.addUnit = jasmine.createSpy('addUnit').and.callFake(async (
-            unit: UnitSummary,
-            _gunnerySkill: number | undefined,
-            _pilotingSkill: number | undefined,
-            targetGroup: UnitGroup,
-        ) => {
+        service.builder = {
+            createNewForce: jasmine.createSpy('createNewForce').and.resolveTo(force),
+        };
+        service.workspace = { selectUnit: jasmine.createSpy('selectUnit') };
+        service.admission = {
+            admit: jasmine.createSpy('admit').and.callFake(async ({
+                summary: unit,
+                group: targetGroup,
+            }: { summary: UnitSummary; group: UnitGroup }) => {
             addUnitLoadingStates.push(force.loading);
             if (!force.loading) {
                 force.instanceId.set('saved-during-add-unit');
@@ -207,19 +268,23 @@ describe('ForceBuilderService formation filter integration', () => {
             targetGroup.formationHistory.add(automaticFormation.id);
             const forceUnit = {
                 id: `unit-${createdForceUnits.length + 1}`,
-                getUnit: () => unit,
+                getSummary: () => unit,
             } as ForceUnit;
             createdForceUnits.push(forceUnit);
             targetGroup.units.set([...targetGroup.units(), forceUnit]);
             return forceUnit;
-        });
-        service.applyGeneratedUnitOverrides = jasmine.createSpy('applyGeneratedUnitOverrides');
-        service.reconcileASFormationAssignments = jasmine.createSpy('reconcileASFormationAssignments');
-        service.selectUnit = jasmine.createSpy('selectUnit');
+            }),
+        };
+        service.crewTransfers = {
+            applyGeneratedOverrides: jasmine.createSpy('applyGeneratedOverrides'),
+        };
+        service.formations = {
+            reconcileASFormationAssignments: jasmine.createSpy('reconcileASFormationAssignments'),
+        };
 
-        const entry = new LoadForceEntry({
+        const entry = createForcePreviewEntryData({
             name: 'Generated Test Force',
-            type: GameSystem.ALPHA_STRIKE,
+            type: GameSystem.AS,
             faction,
             era,
             groups: [
@@ -247,105 +312,183 @@ describe('ForceBuilderService formation filter integration', () => {
         expect(groupsSignal().map((group) => group.formation())).toEqual([lightFireFormation, null]);
         expect(groupsSignal().map((group) => [...group.formationHistory])).toEqual([[lightFireFormation.id], []]);
         expect(groupsSignal().map((group) => group.formationLock)).toEqual([undefined, undefined]);
-        expect(service.reconcileASFormationAssignments).toHaveBeenCalledTimes(2);
-    });
-});
-
-describe('ForceBuilderService unit cloning', () => {
-    it('initializes fixed Piloting for every crew member on a CBT clone', async () => {
-        const service = Object.create(ForceBuilderService.prototype) as any;
-        const unitData = {
-            ...createUnit(),
-            type: 'Infantry',
-            subtype: 'Conventional Infantry',
-            canAntiMech: false,
-        } as UnitSummary;
-        const crew = [
-            { setSkill: jasmine.createSpy('setSkill0') },
-            { setSkill: jasmine.createSpy('setSkill1') },
-        ];
-        const clone = Object.create(CBTForceUnit.prototype) as CBTForceUnit;
-        Object.assign(clone, {
-            id: 'clone',
-            disabledSaving: false,
-            getCrewMembers: () => crew,
-        });
-        const groupUnits = signal<ForceUnit[]>([]);
-        const group = {
-            units: groupUnits,
-            reorderUnit: jasmine.createSpy('reorderUnit'),
-        } as unknown as UnitGroup;
-        const force = {
-            readOnly: () => false,
-            addUnit: jasmine.createSpy('addUnit').and.callFake(() => {
-                groupUnits.set([...groupUnits(), clone]);
-                return clone;
-            }),
-        } as unknown as Force;
-        const source = {
-            id: 'source',
-            force,
-            getUnit: () => unitData,
-            getGroup: () => group,
-        } as unknown as ForceUnit;
-        groupUnits.set([source]);
-        service.selectUnit = jasmine.createSpy('selectUnit');
-        service.toastService = { showToast: jasmine.createSpy('showToast') };
-
-        const result = await service.cloneUnit(source);
-
-        expect(result).toBe(clone);
-        expect(crew[0].setSkill).toHaveBeenCalledOnceWith('piloting', 8);
-        expect(crew[1].setSkill).toHaveBeenCalledOnceWith('piloting', 8);
-        expect(clone.disabledSaving).toBeFalse();
-    });
-});
-
-describe('ForceBuilderService unit conversion', () => {
-    it('starts loading a converted unit immediately', () => {
-        const service = Object.create(ForceBuilderService.prototype) as any;
-        const sourceData = createUnit();
-        const convertedUnit = {
-            disabledSaving: false,
-            load: jasmine.createSpy('load').and.resolveTo(),
-        } as unknown as ForceUnit;
-        const sourceForce = { gameSystem: GameSystem.ALPHA_STRIKE } as Force;
-        const targetForce = {
-            gameSystem: GameSystem.CLASSIC,
-            createCompatibleUnit: jasmine.createSpy('createCompatibleUnit').and.returnValue(convertedUnit),
-        } as unknown as Force;
-
-        service.dataService = {
-            getUnitByName: jasmine.createSpy('getUnitByName').and.returnValue(sourceData),
-        };
-        service.transferPilotDataCrossSystem = jasmine.createSpy('transferPilotDataCrossSystem');
-        service.logger = { error: jasmine.createSpy('error') };
-
-        const result = service.convertUnitForForce(
-            { getUnit: () => sourceData } as ForceUnit,
-            sourceForce,
-            targetForce,
-        );
-
-        expect(result).toBe(convertedUnit);
-        expect(convertedUnit.load).toHaveBeenCalledTimes(1);
+        expect(service.formations.reconcileASFormationAssignments).toHaveBeenCalledTimes(2);
     });
 });
 
 describe('ForceBuilderService remote force updates', () => {
-    function createUpdateHarness(currentData: SerializedForce) {
-        const service = Object.create(ForceBuilderService.prototype) as any;
-        const targetForce = {
-            timestamp: currentData.timestamp,
-            owned: signal(currentData.owned !== false),
-            instanceId: signal(currentData.instanceId),
-            update: jasmine.createSpy('update'),
-            units: () => [],
+    beforeEach(() => {
+        spyOn(Force, 'commitWholeOwnerRetirements').and.callFake((entries, prepare) => {
+            const authorities = entries.map(() => Object.freeze({})) as any;
+            const finalize = prepare?.(authorities) ?? (() => undefined);
+            if (!finalize) return false;
+            for (const entry of entries) {
+                if (!entry.force.commitWholeOwnerRetirement(entry.token, () => () => undefined)) return false;
+            }
+            finalize();
+            return true;
+        });
+    });
+
+    function revisionFromSerialized(data: SerializedForce): number | undefined {
+        return data.cbt?.forceRevision;
+    }
+
+    function createRemoteForce(
+        data: SerializedForce,
+        units: ForceUnit[] = [],
+        groups: UnitGroup[] = [],
+    ): Force {
+        let lifecycle: 'active' | 'pending' | 'retired' = 'active';
+        let pendingToken: object | null = null;
+        let replacementAuthority: object | null = null;
+        let replacementAuthorityConsumed = false;
+        const fingerprintBindings = new WeakMap<object, {
+            readonly timestamp: string | null;
+            readonly name: string;
+            readonly owned: boolean;
+            readonly groups: readonly {
+                readonly group: UnitGroup;
+                readonly id: string;
+                readonly units: readonly ForceUnit[];
+            }[];
+            readonly revision: number | undefined;
+        }>();
+        const force = {
+            name: data.name,
+            gameSystem: data.type,
+            timestamp: data.timestamp,
+            owned: signal(data.owned !== false),
+            readOnly: () => lifecycle === 'retired' || !force.owned(),
+            instanceId: signal(data.instanceId),
+            groups: () => groups,
+            units: () => units,
+            members: () => units,
+            membersInGroup: (group: UnitGroup) => group.units(),
+            changed: new Subject<void>(),
+            displayName: () => data.name,
+            serialize: () => ({
+                ...structuredClone(data),
+                name: force.name,
+                timestamp: force.timestamp ?? data.timestamp,
+                owned: force.owned(),
+            }),
+            hasCBTForceV2: () => data.cbt !== undefined,
+            getCBTForceV2Revision: () => revisionFromSerialized(data),
+            getWholeOwnerPersistentAuthoritySnapshotJson: () => JSON.stringify({
+                ...structuredClone(data),
+                name: force.name,
+                timestamp: force.timestamp,
+                owned: force.owned(),
+            }),
+            isWholeOwnerActive: () => lifecycle === 'active',
+            isWholeOwnerRetired: () => lifecycle === 'retired',
+            captureWholeOwnerAuthorityFingerprint: () => {
+                const fingerprint = Object.freeze({});
+                fingerprintBindings.set(fingerprint, {
+                    timestamp: force.timestamp,
+                    name: force.name,
+                    owned: force.owned(),
+                    groups: groups.map(group => ({
+                        group,
+                        id: group.id,
+                        units: [...group.units()],
+                    })),
+                    revision: revisionFromSerialized(data),
+                });
+                return fingerprint;
+            },
+            isWholeOwnerAuthorityFingerprintCurrent: (fingerprint: object) => {
+                const binding = fingerprintBindings.get(fingerprint);
+                return lifecycle !== 'retired'
+                    && binding !== undefined
+                    && binding.timestamp === force.timestamp
+                    && binding.name === force.name
+                    && binding.owned === force.owned()
+                    && binding.revision === revisionFromSerialized(data)
+                    && binding.groups.length === groups.length
+                    && binding.groups.every((entry, index) => entry.group === groups[index]
+                        && entry.id === groups[index].id
+                        && entry.units.length === groups[index].units().length
+                        && entry.units.every((unit, unitIndex) => unit === groups[index].units()[unitIndex]));
+            },
+            beginWholeOwnerRetirement: () => {
+                if (lifecycle !== 'active') return null;
+                lifecycle = 'pending';
+                pendingToken = Object.freeze({});
+                return Object.freeze({ token: pendingToken, ready: Promise.resolve(true) });
+            },
+            commitWholeOwnerRetirement: (
+                token: object,
+                prepareReplacement: (authority: object) => (() => void) | null = () => () => undefined,
+            ) => {
+                if (lifecycle !== 'pending' || token !== pendingToken) return false;
+                replacementAuthority = Object.freeze({});
+                replacementAuthorityConsumed = false;
+                let finalize: (() => void) | null = null;
+                try {
+                    finalize = prepareReplacement(replacementAuthority);
+                } finally {
+                    replacementAuthority = null;
+                }
+                if (!finalize) return false;
+                lifecycle = 'retired';
+                pendingToken = null;
+                finalize();
+                return true;
+            },
+            consumeWholeOwnerReplacementCommitAuthority: (authority: object) => {
+                if (authority !== replacementAuthority || replacementAuthorityConsumed) return false;
+                replacementAuthorityConsumed = true;
+                return true;
+            },
+            cancelWholeOwnerRetirement: (token: object) => {
+                if (lifecycle !== 'pending' || token !== pendingToken) return;
+                lifecycle = 'active';
+                pendingToken = null;
+            },
         } as unknown as Force;
-        service.dataService = {
+        return force;
+    }
+
+    function createUpdateHarness(
+        currentData: SerializedForce,
+        units: ForceUnit[] = [],
+        groups: UnitGroup[] = [],
+    ) {
+        const service = Object.create(ForceBuilderService.prototype) as any;
+        const targetForce = createRemoteForce(currentData, units, groups);
+        const expectedSlot = { force: targetForce, alignment: 'friendly', changeSub: null };
+        const loadedForces = signal<any[]>([expectedSlot]);
+        const selectedUnit = signal<ForceUnit | null>(null);
+        service.forcePersistence = {
             saveForce: jasmine.createSpy('saveForce').and.resolveTo(),
+            queueForceAutosave: jasmine.createSpy('queueForceAutosave'),
             saveForceAndWaitForCloud: jasmine.createSpy('saveForceAndWaitForCloud').and.resolveTo(),
-            saveSerializedForceToLocalStorage: jasmine.createSpy('saveSerializedForceToLocalStorage'),
+            drainForceAuthorityPersistence: jasmine.createSpy('drainForceAuthorityPersistence').and.resolveTo(true),
+            prepareForceAuthorityRemoval: jasmine.createSpy('prepareForceAuthorityRemoval')
+                .and.returnValue(() => undefined),
+            stageRemoteForceSnapshot: jasmine.createSpy('stageRemoteForceSnapshot').and.callFake(
+                async (serialized: SerializedForce) => Object.freeze({ force: createRemoteForce(serialized) }),
+            ),
+            acceptRemoteForceSnapshot: jasmine.createSpy('acceptRemoteForceSnapshot').and.resolveTo(),
+            prepareRemoteForceSnapshotAcceptance: jasmine.createSpy('prepareRemoteForceSnapshotAcceptance').and.callFake(
+                (staged: { force: Force }) => Object.freeze({ force: staged.force }),
+            ),
+            commitPreparedRemoteForceReplacement: jasmine.createSpy('commitPreparedRemoteForceReplacement').and.callFake(
+                (prepared: { force: Force }, predecessor: Force, authority: object) => {
+                    if (!predecessor.consumeWholeOwnerReplacementCommitAuthority(authority as any)) {
+                        return Object.freeze({ accepted: false, reason: 'PREDECESSOR_NOT_RETIRED' });
+                    }
+                    return Object.freeze({
+                        accepted: true,
+                        finalize: () => service.forcePersistence.acceptRemoteForceSnapshot(prepared),
+                        persistence: () => Promise.resolve(),
+                    });
+                },
+            ),
+            discardPreparedRemoteForceAcceptance: jasmine.createSpy('discardPreparedRemoteForceAcceptance'),
+            discardRemoteForceSnapshot: jasmine.createSpy('discardRemoteForceSnapshot'),
         };
         service.logger = {
             warn: jasmine.createSpy('warn'),
@@ -357,85 +500,143 @@ describe('ForceBuilderService remote force updates', () => {
         service.dialogsService = {
             createDialog: jasmine.createSpy('createDialog'),
         };
-        service.urlStateInitialized = signal(true);
-        service.selectedUnit = () => null;
-        service.followLastModifiedUnit = () => false;
-        service.getForceSlot = () => undefined;
-        service.remoteForceUpdated$ = { next: jasmine.createSpy('next') };
-        service.remoteConflictQueue = Promise.resolve();
-        return { service, targetForce };
+        service.forceUrl = {
+            setSynchronizationEnabled: jasmine.createSpy('setSynchronizationEnabled'),
+            clearQuery: jasmine.createSpy('clearQuery'),
+        };
+        service.forceDialogs = {
+            promptSaveForceIfNeeded: jasmine.createSpy('promptSaveForceIfNeeded').and.resolveTo(true),
+            promptSaveAll: jasmine.createSpy('promptSaveAll').and.resolveTo(true),
+        };
+        service.workspace = {
+            loadedForces,
+            alignmentFilter: signal<'friendly' | 'enemy' | 'all'>('friendly'),
+            selectedUnit,
+            followLastModifiedUnit: signal(false),
+            getForceSlot: (force: Force) => loadedForces().find(slot => slot.force === force),
+            selectUnit: jasmine.createSpy('selectUnit').and.callFake((unit: ForceUnit | null) => selectedUnit.set(unit)),
+        };
+        service.operations = {
+            clearIfNoForces: jasmine.createSpy('clearIfNoForces'),
+            promptSaveIfChanged: jasmine.createSpy('promptSaveIfChanged').and.resolveTo(true),
+        };
+        const slotLifecycle = Object.create(ForceSlotLifecycleService.prototype) as any;
+        slotLifecycle.forcePersistence = service.forcePersistence;
+        slotLifecycle.logger = service.logger;
+        slotLifecycle.workspace = service.workspace;
+        slotLifecycle.teardownForceSlot = jasmine.createSpy('teardownForceSlot');
+        slotLifecycle.setupForceSlot = jasmine.createSpy('setupForceSlot').and.callFake(
+            (force: Force, alignment: string) => ({ force, alignment, changeSub: null }),
+        );
+        slotLifecycle.activateForceSlot = jasmine.createSpy('activateForceSlot');
+        slotLifecycle.disposeDetachedForceSlot = jasmine.createSpy('disposeDetachedForceSlot');
+        service.slotLifecycle = slotLifecycle;
+        const remoteSync = Object.create(ForceRemoteSyncService.prototype) as any;
+        for (const dependency of ['forcePersistence', 'logger', 'optionsService', 'dialogsService', 'toastService', 'forceUrl']) {
+            Object.defineProperty(remoteSync, dependency, {
+                configurable: true,
+                get: () => service[dependency],
+                set: value => { service[dependency] = value; },
+            });
+        }
+        remoteSync.configuredWorkspace = {
+            loadedForces,
+            selectedUnit,
+            followLastModifiedUnit: () => service.workspace.followLastModifiedUnit(),
+            getForceSlot: (force: Force) => service.workspace.getForceSlot(force),
+            setupForceSlot: (force: Force, alignment: string, activate: boolean) => service.slotLifecycle.setupForceSlot(force, alignment, activate),
+            activateForceSlot: (slot: any) => service.slotLifecycle.activateForceSlot(slot),
+            teardownForceSlot: (slot: any) => service.slotLifecycle.teardownForceSlot(slot),
+            disposeDetachedForceSlot: (slot: any) => service.slotLifecycle.disposeDetachedForceSlot(slot),
+            selectUnit: (unit: ForceUnit | null) => service.workspace.selectUnit(unit),
+        };
+        remoteSync.remoteForceReceiptGeneration = new Map<string, number>();
+        remoteSync.remoteForcePublicationQueue = new Map<string, Promise<void>>();
+        remoteSync.remoteForceUpdated$ = { next: jasmine.createSpy('next') };
+        remoteSync.remoteConflictQueue = Promise.resolve();
+        return { service, remoteSync, targetForce, expectedSlot, loadedForces, selectedUnit };
     }
 
     it('skips a same-timestamp remote snapshot', async () => {
         const currentData = createSerializedForce();
-        const { service, targetForce } = createUpdateHarness(currentData);
+        const { service, remoteSync, targetForce } = createUpdateHarness(currentData);
 
-        await service.reconcileRemoteForce(targetForce, createSerializedForce());
+        await remoteSync.reconcileRemoteForce(targetForce, createSerializedForce());
 
-        expect(targetForce.update).not.toHaveBeenCalled();
-        expect(service.dataService.saveSerializedForceToLocalStorage).not.toHaveBeenCalled();
+        expect(service.forcePersistence.acceptRemoteForceSnapshot).not.toHaveBeenCalled();
+        expect(service.forcePersistence.discardRemoteForceSnapshot).toHaveBeenCalledTimes(1);
+    });
+
+    it('keeps a viewed force read-only when its owner publishes an update', async () => {
+        const { service, remoteSync, targetForce } = createUpdateHarness(createSerializedForce({ owned: false }));
+
+        // The owner's payload never carries `owned`; decoding alone would default it to true.
+        await remoteSync.reconcileRemoteForce(targetForce, createSerializedForce({
+            timestamp: '2026-08-06T20:01:00.000Z',
+        }));
+
+        expect(service.forcePersistence.stageRemoteForceSnapshot)
+            .toHaveBeenCalledWith(jasmine.objectContaining({ owned: false }));
     });
 
     it('skips an older remote snapshot', async () => {
         const currentData = createSerializedForce();
-        const { service, targetForce } = createUpdateHarness(currentData);
+        const { service, remoteSync, targetForce } = createUpdateHarness(currentData);
 
-        await service.reconcileRemoteForce(targetForce, createSerializedForce({
+        await remoteSync.reconcileRemoteForce(targetForce, createSerializedForce({
             timestamp: '2026-08-06T19:59:00.000Z',
             name: 'Older Force',
         }));
 
-        expect(targetForce.update).not.toHaveBeenCalled();
+        expect(service.forcePersistence.acceptRemoteForceSnapshot).not.toHaveBeenCalled();
     });
 
     it('ignores a remote snapshot when its timestamp cannot be compared', async () => {
         const currentData = createSerializedForce();
-        const { service, targetForce } = createUpdateHarness(currentData);
+        const { service, remoteSync, targetForce } = createUpdateHarness(currentData);
 
         targetForce.timestamp = null;
-        await service.reconcileRemoteForce(targetForce, createSerializedForce());
+        await remoteSync.reconcileRemoteForce(targetForce, createSerializedForce());
 
         targetForce.timestamp = currentData.timestamp;
-        await service.reconcileRemoteForce(targetForce, createSerializedForce({
+        await remoteSync.reconcileRemoteForce(targetForce, createSerializedForce({
             timestamp: 'not-a-timestamp',
             name: 'Invalid Remote Force',
         }));
 
-        expect(targetForce.update).not.toHaveBeenCalled();
-        expect(service.dataService.saveForce).not.toHaveBeenCalled();
-        expect(service.dataService.saveForceAndWaitForCloud).not.toHaveBeenCalled();
-        expect(service.dataService.saveSerializedForceToLocalStorage).not.toHaveBeenCalled();
+        expect(service.forcePersistence.acceptRemoteForceSnapshot).not.toHaveBeenCalled();
+        expect(service.forcePersistence.saveForce).not.toHaveBeenCalled();
+        expect(service.forcePersistence.saveForceAndWaitForCloud).not.toHaveBeenCalled();
+        expect(service.forcePersistence.discardRemoteForceSnapshot).toHaveBeenCalledTimes(2);
     });
 
     it('serializes reconnect conflict dialogs across forces', async () => {
         const currentData = createSerializedForce();
-        const { service, targetForce: firstForce } = createUpdateHarness(currentData);
-        const secondForce = {
-            timestamp: currentData.timestamp,
-            owned: signal(true),
-            instanceId: signal('force-2'),
-            update: jasmine.createSpy('update'),
-            units: () => [],
-        } as unknown as Force;
+        const { service, remoteSync, targetForce: firstForce } = createUpdateHarness(currentData);
+        const secondForce = createRemoteForce(createSerializedForce({ instanceId: 'force-2' }));
+        service.workspace.loadedForces.update((slots: any[]) => [
+            ...slots,
+            { force: secondForce, alignment: 'hostile', changeSub: null },
+        ]);
         service.optionsService.options = () => ({ enableForceSyncConflictDialog: true });
 
         let releaseFirstConflict!: () => void;
         const firstConflictReleased = new Promise<void>(resolve => {
             releaseFirstConflict = resolve;
         });
-        const conflictSpy = spyOn(service, 'handleRemoteForceConflict').and.callFake(async (force: Force) => {
+        const conflictSpy = spyOn(remoteSync, 'handleRemoteForceConflict').and.callFake(async (force: Force) => {
             if (force === firstForce) {
                 await firstConflictReleased;
             }
         });
 
-        const firstPromise = service.reconcileRemoteForce(firstForce, createSerializedForce({
+        const firstPromise = remoteSync.reconcileRemoteForce(firstForce, createSerializedForce({
             timestamp: '2026-08-06T20:01:00.000Z',
         }), 'reconnect');
         await new Promise<void>(resolve => setTimeout(resolve, 0));
-        expect(conflictSpy).toHaveBeenCalledOnceWith(firstForce, jasmine.anything());
+        expect(conflictSpy).toHaveBeenCalledOnceWith(firstForce, jasmine.anything(), jasmine.any(Number));
 
-        const secondPromise = service.reconcileRemoteForce(secondForce, createSerializedForce({
+        const secondPromise = remoteSync.reconcileRemoteForce(secondForce, createSerializedForce({
             instanceId: 'force-2',
             timestamp: '2026-08-06T20:02:00.000Z',
         }), 'reconnect');
@@ -451,628 +652,652 @@ describe('ForceBuilderService remote force updates', () => {
 
     it('pushes the local force when reconnect finds an older owned snapshot', async () => {
         const currentData = createSerializedForce();
-        const { service, targetForce } = createUpdateHarness(currentData);
+        const { service, remoteSync, targetForce } = createUpdateHarness(currentData);
 
-        await service.reconcileRemoteForce(targetForce, createSerializedForce({
+        await remoteSync.reconcileRemoteForce(targetForce, createSerializedForce({
             timestamp: '2026-08-06T19:59:00.000Z',
         }), 'reconnect');
 
-        expect(targetForce.update).not.toHaveBeenCalled();
-        expect(service.dataService.saveForceAndWaitForCloud).toHaveBeenCalledOnceWith(targetForce);
-        expect(service.dataService.saveSerializedForceToLocalStorage).not.toHaveBeenCalled();
+        expect(service.forcePersistence.saveForceAndWaitForCloud).toHaveBeenCalledOnceWith(targetForce);
+        expect(service.forcePersistence.acceptRemoteForceSnapshot).not.toHaveBeenCalled();
     });
 
     it('does not push a local-only force when reconnect finds an older snapshot', async () => {
         const currentData = createSerializedForce({ owned: false });
-        const { service, targetForce } = createUpdateHarness(currentData);
+        const { service, remoteSync, targetForce } = createUpdateHarness(currentData);
 
-        await service.reconcileRemoteForce(targetForce, createSerializedForce({
+        await remoteSync.reconcileRemoteForce(targetForce, createSerializedForce({
             timestamp: '2026-08-06T19:59:00.000Z',
         }), 'reconnect');
 
-        expect(targetForce.update).not.toHaveBeenCalled();
-        expect(service.dataService.saveForce).not.toHaveBeenCalled();
+        expect(service.forcePersistence.saveForce).not.toHaveBeenCalled();
+        expect(service.forcePersistence.acceptRemoteForceSnapshot).not.toHaveBeenCalled();
     });
 
     it('applies a newer reconnect snapshot without pushing local state', async () => {
         const currentData = createSerializedForce();
-        const { service, targetForce } = createUpdateHarness(currentData);
+        const { service, remoteSync, targetForce } = createUpdateHarness(currentData);
         const incomingData = createSerializedForce({
             timestamp: '2026-08-06T20:01:00.000Z',
         });
 
-        await service.reconcileRemoteForce(targetForce, incomingData, 'reconnect');
+        await remoteSync.reconcileRemoteForce(targetForce, incomingData, 'reconnect');
 
-        expect(targetForce.update).toHaveBeenCalledOnceWith(incomingData);
-        expect(service.dataService.saveForce).not.toHaveBeenCalled();
+        const replacement = service.workspace.loadedForces()[0].force;
+        expect(replacement).not.toBe(targetForce);
+        expect(replacement.timestamp).toBe(incomingData.timestamp);
+        expect(service.forcePersistence.acceptRemoteForceSnapshot).toHaveBeenCalledTimes(1);
+        expect(service.slotLifecycle.teardownForceSlot).toHaveBeenCalledOnceWith(jasmine.objectContaining({ force: targetForce }));
+        expect(remoteSync.remoteForceUpdated$.next).toHaveBeenCalledWith({ force: replacement, alignment: 'friendly' });
+        expect(service.forcePersistence.saveForce).not.toHaveBeenCalled();
         expect(service.dialogsService.createDialog).not.toHaveBeenCalled();
     });
 
     it('opens the conflict dialog when the reconnect option is enabled', async () => {
         const currentData = createSerializedForce();
-        const { service, targetForce } = createUpdateHarness(currentData);
+        const { service, remoteSync, targetForce } = createUpdateHarness(currentData);
         const incomingData = createSerializedForce({
             timestamp: '2026-08-06T20:01:00.000Z',
         });
         service.optionsService.options = () => ({ enableForceSyncConflictDialog: true });
-        spyOn(service, 'handleRemoteForceConflict').and.resolveTo();
+        spyOn(remoteSync, 'handleRemoteForceConflict').and.resolveTo();
 
-        await service.reconcileRemoteForce(targetForce, incomingData, 'reconnect');
+        await remoteSync.reconcileRemoteForce(targetForce, incomingData, 'reconnect');
 
-        expect(service.handleRemoteForceConflict).toHaveBeenCalledOnceWith(targetForce, incomingData);
-        expect(targetForce.update).not.toHaveBeenCalled();
-    });
-});
-
-describe('ForceBuilderService CBT crew editing', () => {
-    function createCrewMember(id: number, name: string, gunnery: number, piloting: number) {
-        return {
-            getId: () => id,
-            getName: () => name,
-            getSkill: (skillType: 'gunnery' | 'piloting', asf = false) => {
-                if (asf) return skillType === 'gunnery' ? gunnery + 1 : piloting + 1;
-                return skillType === 'gunnery' ? gunnery : piloting;
-            },
-            setName: jasmine.createSpy(`setName${id}`),
-            setSkill: jasmine.createSpy(`setSkill${id}`),
-        };
-    }
-
-    function createClassicHarness(
-        crew: ReturnType<typeof createCrewMember>[],
-        result: unknown,
-        baseUnit: any = { type: 'Mek', subtype: 'Land-Air BattleMek' },
-    ) {
-        const service = Object.create(ForceBuilderService.prototype) as any;
-        let dialogData: any;
-        service.dialogsService = {
-            createDialog: jasmine.createSpy('createDialog').and.callFake((_component: unknown, config: any) => {
-                dialogData = config.data;
-                return { closed: of(result) };
-            }),
-        };
-        service.toastService = { showToast: jasmine.createSpy('showToast') };
-
-        const unit = Object.create(CBTForceUnit.prototype) as any;
-        Object.defineProperty(unit, 'force', {
-            value: { faction: () => ({ id: 27 }), era: () => ({ years: { from: 3050 } }) },
-            configurable: true,
-        });
-        Object.assign(unit, {
-            id: 'unit-1',
-            disabledSaving: false,
-            readOnly: () => false,
-            getUnit: () => baseUnit,
-            getCrewMembers: () => crew,
-            getGroup: () => null,
-            commander: () => false,
-            getPreSkillBv: () => 1200,
-            setFormationCommander: jasmine.createSpy('setFormationCommander'),
-            setModified: jasmine.createSpy('setModified'),
-        });
-
-        return { service, unit, dialogData: () => dialogData };
-    }
-
-    it('opens one dialog with all crew and applies every returned member', async () => {
-        const crew = [createCrewMember(0, 'Pilot', 4, 2), createCrewMember(1, 'Gunner', 3, 5)];
-        const result = {
-            crew: [
-                { id: 0, name: 'New Pilot', gunnery: 2, piloting: 3, asfGunnery: 1, asfPiloting: 2 },
-                { id: 1, name: 'New Gunner', gunnery: 1, piloting: 4, asfGunnery: 2, asfPiloting: 3 },
-                { id: 99, name: 'Unknown', gunnery: 0, piloting: 0 },
-            ],
-            commander: true,
-        };
-        const { service, unit, dialogData } = createClassicHarness(crew, result);
-
-        await service.editPilotOfUnit(unit);
-
-        expect(dialogData().crew).toEqual([
-            { id: 0, name: 'Pilot', gunnery: 4, piloting: 2, asfGunnery: 5, asfPiloting: 3 },
-            { id: 1, name: 'Gunner', gunnery: 3, piloting: 5, asfGunnery: 4, asfPiloting: 6 },
-        ]);
-        expect(dialogData().preSkillBv).toBe(1200);
-        expect(crew[0].setName).toHaveBeenCalledOnceWith('New Pilot');
-        expect(crew[0].setSkill).toHaveBeenCalledWith('gunnery', 2);
-        expect(crew[0].setSkill).toHaveBeenCalledWith('piloting', 3);
-        expect(crew[0].setSkill).toHaveBeenCalledWith('gunnery', 1, true);
-        expect(crew[0].setSkill).toHaveBeenCalledWith('piloting', 2, true);
-        expect(crew[1].setName).toHaveBeenCalledOnceWith('New Gunner');
-        expect(unit.setModified).toHaveBeenCalledTimes(1);
-        expect(unit.disabledSaving).toBeFalse();
-        expect(unit.setFormationCommander).toHaveBeenCalledOnceWith(true);
-    });
-
-    it('does not mutate or mark unchanged crew', async () => {
-        const crew = [createCrewMember(0, 'Pilot', 4, 5)];
-        const { service, unit } = createClassicHarness(crew, {
-            crew: [{ id: 0, name: 'Pilot', gunnery: 4, piloting: 5 }],
-            commander: false,
-        });
-
-        await service.editPilotOfUnit(unit);
-
-        expect(crew[0].setName).not.toHaveBeenCalled();
-        expect(crew[0].setSkill).not.toHaveBeenCalled();
-        expect(unit.setModified).not.toHaveBeenCalled();
-    });
-
-    it('enforces fixed Piloting when applying a dialog result', async () => {
-        const crew = [createCrewMember(0, 'Pilot', 4, 5)];
-        const { service, unit } = createClassicHarness(crew, {
-            crew: [{ id: 0, name: 'Pilot', gunnery: 4, piloting: 0 }],
-            commander: false,
-        }, { type: 'ProtoMek', subtype: 'ProtoMek' });
-
-        await service.editPilotOfUnit(unit);
-
-        expect(crew[0].setSkill).not.toHaveBeenCalledWith('piloting', 0);
-        expect(crew[0].setSkill).not.toHaveBeenCalledWith('piloting', 5);
-    });
-
-    it('rejects crewless CBT units before opening a dialog', async () => {
-        const { service, unit } = createClassicHarness([], null);
-
-        await service.editPilotOfUnit(unit);
-
-        expect(service.dialogsService.createDialog).not.toHaveBeenCalled();
-        expect(service.toastService.showToast).toHaveBeenCalledOnceWith('This unit has no crew to edit.', 'error');
-    });
-});
-
-describe('ForceBuilderService OPFOR inventory target synchronization', () => {
-    function createOpforHarness() {
-        const service = Object.create(ForceBuilderService.prototype) as ForceBuilderService;
-        let targets: InventoryControlRuntimeTarget[] = [];
-        const enabled = signal(true);
-        const force = {
-            inventoryControlOpforEnabled: enabled,
-            getInventoryControlTargets: () => targets,
-            replaceInventoryControlTargets: jasmine.createSpy('replaceInventoryControlTargets').and.callFake(
-                (nextTargets: InventoryControlRuntimeTarget[]) => targets = nextTargets
-            ),
-            units: () => []
-        } as unknown as CBTForce;
-        spyOn(service, 'isInventoryControlOpforAvailable').and.returnValue(true);
-
-        return {
-            service,
-            force,
-            enabled,
-            targets: () => targets,
-            setTargets: (nextTargets: InventoryControlRuntimeTarget[]) => targets = nextTargets
-        };
-    }
-
-    function createEnemyUnit(id: string, name: string, definition: Partial<UnitSummary> = {}, cover?: UnitCover): CBTForceUnit {
-        return {
-            id,
-            destroyed: false,
-            gameRules: CORE_2026_GAME_RULES,
-            getDisplayName: () => name,
-            getUnit: () => ({
-                type: 'Mek',
-                subtype: 'BattleMek',
-                moveType: 'Biped',
-                tons: 50,
-                weightClass: 'Medium',
-                ...definition
-            } as UnitSummary),
-            getCondition: () => false,
-            getInventory: () => [],
-            isEquipmentOperational: () => true,
-            getActiveNarcWaterLayers: () => ({ aboveWater: false, underwater: false }),
-            turnState: () => ({
-                moveMode: signal(null),
-                effectiveMoveMode: signal(null),
-                moveDistance: signal<number | null>(0),
-                airborne: signal<boolean | null>(false),
-                cover: signal<UnitCover | undefined>(cover)
-            })
-        } as unknown as CBTForceUnit;
-    }
-
-    function createStealthEnemyUnit(id: string, name: string): CBTForceUnit {
-        const unit = createEnemyUnit(id, name);
-        const stealth = new MountedEquipment({
-            owner: unit,
-            id: `${id}-stealth`,
-            name: 'Stealth Armor',
-            equipment: new Equipment({
-                id: 'IS Stealth',
-                name: 'Stealth',
-                type: 'misc',
-                flags: ['F_STEALTH'],
-                modes: ['Off', 'On'],
-            }),
-            states: new Map([['state', 'enabled']]),
-        });
-        const ecm = new MountedEquipment({
-            owner: unit,
-            id: `${id}-ecm`,
-            name: 'ECM Suite',
-            equipment: new Equipment({
-                id: 'IS ECM Suite',
-                name: 'ECM Suite',
-                type: 'misc',
-                flags: ['F_ECM'],
-            }),
-            states: new Map(),
-        });
-        Object.defineProperty(unit, 'getInventory', { value: () => [stealth, ecm] });
-        return unit;
-    }
-
-    function createAlignedCBTForce(units: CBTForceUnit[] = []): CBTForce {
-        return Object.assign(Object.create(CBTForce.prototype), {
-            units: () => units,
-            inventoryControlOpforEnabled: signal(false)
-        }) as CBTForce;
-    }
-
-    function configureLoadedForces(
-        service: ForceBuilderService,
-        slots: Array<{ force: Force; alignment: 'friendly' | 'enemy' }>
-    ): void {
-        (service as any).loadedForces = signal(slots.map(slot => ({ ...slot, changeSub: null })));
-    }
-
-    it('resolves enemy CBT units as OPFOR for a friendly force', () => {
-        const service = Object.create(ForceBuilderService.prototype) as ForceBuilderService;
-        const friendlyUnit = createEnemyUnit('friendly-1', 'Friendly');
-        const firstEnemyUnit = createEnemyUnit('enemy-1', 'First Enemy');
-        const secondEnemyUnit = createEnemyUnit('enemy-2', 'Second Enemy');
-        const source = createAlignedCBTForce([friendlyUnit]);
-        const friendlyPeer = createAlignedCBTForce([createEnemyUnit('friendly-2', 'Friendly Peer')]);
-        const firstEnemy = createAlignedCBTForce([firstEnemyUnit]);
-        const secondEnemy = createAlignedCBTForce([secondEnemyUnit]);
-        configureLoadedForces(service, [
-            { force: source, alignment: 'friendly' },
-            { force: friendlyPeer, alignment: 'friendly' },
-            { force: firstEnemy, alignment: 'enemy' },
-            { force: secondEnemy, alignment: 'enemy' }
-        ]);
-
-        expect(service.isInventoryControlOpforAvailable(source)).toBeTrue();
-        expect((service as any).opposingCBTUnits(source)).toEqual([firstEnemyUnit, secondEnemyUnit]);
-    });
-
-    it('resolves all non-enemy CBT units as OPFOR for an enemy force', () => {
-        const service = Object.create(ForceBuilderService.prototype) as ForceBuilderService;
-        const firstFriendlyUnit = createEnemyUnit('friendly-1', 'First Friendly');
-        const secondFriendlyUnit = createEnemyUnit('friendly-2', 'Second Friendly');
-        const sourceUnit = createEnemyUnit('enemy-1', 'Source Enemy');
-        const enemyPeerUnit = createEnemyUnit('enemy-2', 'Enemy Peer');
-        const firstFriendly = createAlignedCBTForce([firstFriendlyUnit]);
-        const secondFriendly = createAlignedCBTForce([secondFriendlyUnit]);
-        const source = createAlignedCBTForce([sourceUnit]);
-        const enemyPeer = createAlignedCBTForce([enemyPeerUnit]);
-        configureLoadedForces(service, [
-            { force: firstFriendly, alignment: 'friendly' },
-            { force: source, alignment: 'enemy' },
-            { force: enemyPeer, alignment: 'enemy' },
-            { force: secondFriendly, alignment: 'friendly' }
-        ]);
-
-        expect(service.isInventoryControlOpforAvailable(source)).toBeTrue();
-        expect((service as any).opposingCBTUnits(source)).toEqual([firstFriendlyUnit, secondFriendlyUnit]);
-    });
-
-    it('enables an enemy force OPFOR toggle with friendly CBT units', () => {
-        const service = Object.create(ForceBuilderService.prototype) as ForceBuilderService;
-        const friendlyUnit = createEnemyUnit('friendly-1', 'Friendly');
-        const friendly = createAlignedCBTForce([friendlyUnit]);
-        const source = createAlignedCBTForce([createEnemyUnit('enemy-1', 'Enemy')]);
-        configureLoadedForces(service, [
-            { force: source, alignment: 'enemy' },
-            { force: friendly, alignment: 'friendly' }
-        ]);
-        const synchronize = spyOn<any>(service, 'syncOpforInventoryTargets');
-
-        service.setInventoryControlOpforEnabled(source, true);
-
-        expect(source.inventoryControlOpforEnabled()).toBeTrue();
-        expect(synchronize).toHaveBeenCalledOnceWith(source, [friendlyUnit]);
-    });
-
-    it('does not expose OPFOR for unloaded forces or forces with only same-side CBT peers', () => {
-        const service = Object.create(ForceBuilderService.prototype) as ForceBuilderService;
-        const source = createAlignedCBTForce();
-        const friendlyPeer = createAlignedCBTForce();
-        const unloaded = createAlignedCBTForce();
-        configureLoadedForces(service, [
-            { force: source, alignment: 'friendly' },
-            { force: friendlyPeer, alignment: 'friendly' }
-        ]);
-
-        expect(service.isInventoryControlOpforAvailable(source)).toBeFalse();
-        expect(service.isInventoryControlOpforAvailable(unloaded)).toBeFalse();
-        expect((service as any).opposingCBTUnits(source)).toEqual([]);
-    });
-
-    it('does not treat a non-CBT opposing force as inventory-control OPFOR', () => {
-        const service = Object.create(ForceBuilderService.prototype) as ForceBuilderService;
-        const source = createAlignedCBTForce();
-        const alphaStrikeForce = { units: () => [] } as unknown as Force;
-        configureLoadedForces(service, [
-            { force: source, alignment: 'enemy' },
-            { force: alphaStrikeForce, alignment: 'friendly' }
-        ]);
-
-        expect(service.isInventoryControlOpforAvailable(source)).toBeFalse();
-        expect((service as any).opposingCBTUnits(source)).toEqual([]);
-    });
-
-    it('keeps OPFOR available when the opposing CBT force is empty', () => {
-        const service = Object.create(ForceBuilderService.prototype) as ForceBuilderService;
-        const source = createAlignedCBTForce();
-        const emptyEnemy = createAlignedCBTForce();
-        configureLoadedForces(service, [
-            { force: source, alignment: 'friendly' },
-            { force: emptyEnemy, alignment: 'enemy' }
-        ]);
-
-        expect(service.isInventoryControlOpforAvailable(source)).toBeTrue();
-        expect((service as any).opposingCBTUnits(source)).toEqual([]);
-    });
-
-    it('imports enemy units and synchronizes only shared identity and target state', () => {
-        const harness = createOpforHarness();
-        const enemy = createEnemyUnit('enemy-1', 'Atlas AS7-D');
-
-        (harness.service as any).syncOpforInventoryTargets(harness.force, [enemy]);
-        const imported = harness.targets()[0];
-        expect(imported).toEqual(jasmine.objectContaining({
-            id: 'opfor:enemy-1',
-            name: 'Atlas AS7-D',
-            source: 'opfor',
-            readOnly: true,
-            unitType: 'mek-biped',
-            distance: 1
-        }));
-
-        harness.setTargets([{ ...imported, distance: 12, c3Distance: 7, useC3: true }]);
-        harness.targets()[0].color = '#abcdef';
-        const renamedVehicle = createEnemyUnit('enemy-1', 'Demolisher', {
-            type: 'Tank',
-            subtype: 'Combat Vehicle'
-        });
-        (harness.service as any).syncOpforInventoryTargets(harness.force, [renamedVehicle]);
-
-        expect(harness.targets()[0]).toEqual(jasmine.objectContaining({
-            id: 'opfor:enemy-1',
-            name: 'Demolisher',
-            color: '#abcdef',
-            unitType: 'vehicle',
-            distance: 1,
-            tnModifier: 0
-        }));
-        expect(harness.targets()[0].c3Distance).toBeUndefined();
-        expect(harness.targets()[0].useC3).toBeUndefined();
-    });
-
-    it('does not replace semantically unchanged OPFOR targets with different property order', () => {
-        const harness = createOpforHarness();
-        const enemy = createEnemyUnit('enemy-1', 'Atlas AS7-D');
-        (harness.service as any).syncOpforInventoryTargets(harness.force, [enemy]);
-        const imported = harness.targets()[0];
-        harness.setTargets([{
-            tnModifier: imported.tnModifier,
-            distance: imported.distance,
-            tnCalculator: {
-                largeTarget: imported.tnCalculator?.largeTarget,
-                targetHeight: imported.tnCalculator?.targetHeight,
-                skidding: imported.tnCalculator?.skidding,
-                targetMovementBracket: imported.tnCalculator?.targetMovementBracket,
-                targetMovementDistance: imported.tnCalculator?.targetMovementDistance,
-                isAirborne: imported.tnCalculator?.isAirborne,
-                targetHexCover: imported.tnCalculator?.targetHexCover,
-                waterDepth: imported.tnCalculator?.waterDepth,
-                buildingCover: imported.tnCalculator?.buildingCover,
-                narcAboveWater: imported.tnCalculator?.narcAboveWater,
-                narcUnderwater: imported.tnCalculator?.narcUnderwater,
-                tagged: imported.tnCalculator?.tagged
-            },
-            unitType: imported.unitType,
-            readOnly: imported.readOnly,
-            source: imported.source,
-            color: imported.color,
-            name: imported.name,
-            letter: imported.letter,
-            id: imported.id
-        }]);
-
-        (harness.service as any).syncOpforInventoryTargets(harness.force, [enemy]);
-
-        expect(harness.force.replaceInventoryControlTargets).toHaveBeenCalledTimes(1);
-    });
-
-    it('converges when an unchanged OPFOR target has a nested stealth profile', () => {
-        const harness = createOpforHarness();
-        const enemy = createStealthEnemyUnit('enemy-1', 'Stealth Atlas');
-
-        (harness.service as any).syncOpforInventoryTargets(harness.force, [enemy]);
-
-        expect(harness.targets()[0].tnCalculator?.stealth).toEqual({
-            short: 0,
-            medium: 1,
-            long: 2,
-            secondaryTargetRestricted: true,
-            conventionalInfantry: { short: 0, medium: 0, long: 0 },
-        });
-        const replacementSpy = harness.force.replaceInventoryControlTargets as jasmine.Spy;
-        replacementSpy.calls.reset();
-
-        (harness.service as any).syncOpforInventoryTargets(harness.force, [enemy]);
-
-        expect(replacementSpy).not.toHaveBeenCalled();
-    });
-
-    it('disables OPFOR and reports target synchronization failures', () => {
-        const harness = createOpforHarness();
-        const showToast = jasmine.createSpy('showToast');
-        const logError = jasmine.createSpy('error');
-        (harness.service as any).toastService = { showToast };
-        (harness.service as any).logger = { error: logError };
-        const manualTarget: InventoryControlRuntimeTarget = {
-            id: 'manual', letter: 'A', name: 'Manual', color: '#000', source: 'manual', distance: 1, tnModifier: 0,
-        };
-        harness.setTargets([
-            manualTarget,
-            { id: 'opfor:stale', letter: 'B', name: 'Stale', color: '#fff', source: 'opfor', distance: 1, tnModifier: 0 },
-        ]);
-        const enemy = createEnemyUnit('enemy-1', 'Broken Target');
-        enemy.getDisplayName = () => { throw new Error('bad target'); };
-
-        (harness.service as any).syncOpforInventoryTargets(harness.force, [enemy]);
-
-        expect(harness.enabled()).toBeFalse();
-        expect(harness.targets()).toEqual([manualTarget]);
-        expect(logError).toHaveBeenCalledWith(jasmine.stringContaining('bad target'));
-        expect(showToast).toHaveBeenCalledOnceWith(
-            'Unable to synchronize OPFOR targets. OPFOR targeting was disabled.',
-            'error',
-            'opfor-target-sync-error'
+        expect(remoteSync.handleRemoteForceConflict).toHaveBeenCalledOnceWith(
+            targetForce,
+            incomingData,
+            jasmine.any(Number),
         );
+        expect(service.forcePersistence.acceptRemoteForceSnapshot).not.toHaveBeenCalled();
+        // The queue re-stages its retained bytes against the owner that is live
+        // when the dialog actually executes; both detached tokens are released.
+        expect(service.forcePersistence.discardRemoteForceSnapshot).toHaveBeenCalledTimes(2);
     });
 
-    it('synchronizes unit cover into linked target state', () => {
-        const harness = createOpforHarness();
+    it('re-arbitrates after delayed staging and rejects a snapshot older than the current live slot', async () => {
+        const currentData = createSerializedForce();
+        const { service, remoteSync, targetForce } = createUpdateHarness(currentData);
+        let releaseStage!: (staged: { force: Force }) => void;
+        service.forcePersistence.stageRemoteForceSnapshot.and.returnValue(new Promise(resolve => {
+            releaseStage = resolve;
+        }));
 
-        (harness.service as any).syncOpforInventoryTargets(
-            harness.force,
-            [createEnemyUnit('enemy-1', 'Submerged Atlas', {}, 'underwater-depth-1')]
+        const incoming = createSerializedForce({ timestamp: '2026-08-06T20:03:00.000Z' });
+        const reconciliation = remoteSync.reconcileRemoteForce(targetForce, incoming);
+        targetForce.timestamp = '2026-08-06T20:02:00.000Z';
+        releaseStage({ force: createRemoteForce(incoming) });
+        await reconciliation;
+
+        expect(service.forcePersistence.acceptRemoteForceSnapshot).not.toHaveBeenCalled();
+        expect(service.workspace.loadedForces()[0].force).toBe(targetForce);
+        expect(service.forcePersistence.discardRemoteForceSnapshot).toHaveBeenCalledTimes(1);
+    });
+
+    it('does not overwrite an edit made while an explicit conflict snapshot is staging', async () => {
+        const current = createSerializedForce();
+        const incoming = createSerializedForce({ timestamp: '2026-08-06T20:03:00.000Z' });
+        const { service, remoteSync, targetForce, expectedSlot } = createUpdateHarness(current);
+        let releaseStage!: (staged: { force: Force }) => void;
+        service.forcePersistence.stageRemoteForceSnapshot.and.returnValue(new Promise(resolve => {
+            releaseStage = resolve;
+        }));
+
+        const application = remoteSync.applyRemotePersistenceSnapshot(targetForce, incoming);
+        targetForce.timestamp = '2026-08-06T20:02:00.000Z';
+        releaseStage({ force: createRemoteForce(incoming) });
+
+        expect(await application).toBeNull();
+        expect(service.workspace.loadedForces()[0]).toBe(expectedSlot);
+        expect(service.forcePersistence.acceptRemoteForceSnapshot).not.toHaveBeenCalled();
+        expect(service.forcePersistence.discardRemoteForceSnapshot).toHaveBeenCalledTimes(1);
+    });
+
+    it('treats equal-time divergent CBT revisions as a remote authority update', async () => {
+        const timestamp = '2026-08-06T20:00:00.000Z';
+        const local = createSerializedForce({
+            type: GameSystem.CBT,
+            timestamp,
+            cbt: createEmptyCBTForceForTest('force-1', 1),
+        });
+        const incoming = createSerializedForce({
+            type: GameSystem.CBT,
+            timestamp,
+            cbt: createEmptyCBTForceForTest('force-1', 2),
+        });
+        const { service, remoteSync, targetForce } = createUpdateHarness(local);
+
+        await remoteSync.reconcileRemoteForce(targetForce, incoming);
+
+        expect(service.forcePersistence.acceptRemoteForceSnapshot).toHaveBeenCalledTimes(1);
+        expect(service.workspace.loadedForces()[0].force.getCBTForceV2Revision()).toBe(2);
+    });
+
+    it('compares equal-time CBT snapshots exactly', async () => {
+        const timestamp = '2026-08-06T20:00:00.000Z';
+        const envelope = (marker: string) => {
+            const base = createEmptyCBTForceForTest('force-1');
+            return {
+                ...base,
+                roster: {
+                    groups: [{ groupId: `group:${marker}`, order: 0, members: [] }],
+                },
+            };
+        };
+        const local = createSerializedForce({
+            type: GameSystem.CBT,
+            timestamp,
+            cbt: envelope('local'),
+        });
+        const { service, remoteSync, targetForce } = createUpdateHarness(local);
+
+        await remoteSync.reconcileRemoteForce(targetForce, structuredClone(local));
+        expect(service.forcePersistence.acceptRemoteForceSnapshot).not.toHaveBeenCalled();
+
+        const incoming = createSerializedForce({
+            type: GameSystem.CBT,
+            timestamp,
+            cbt: envelope('remote'),
+        });
+        await remoteSync.reconcileRemoteForce(targetForce, incoming);
+
+        expect(service.forcePersistence.acceptRemoteForceSnapshot).toHaveBeenCalledTimes(1);
+        expect(service.workspace.loadedForces()[0].force.serialize().cbt).toEqual(incoming.cbt);
+    });
+
+    it('keeps the later-observed equal-time publication when staging finishes out of order', async () => {
+        const current = createSerializedForce();
+        const first = createSerializedForce({
+            timestamp: '2026-08-06T20:01:00.000Z',
+            name: 'First Receipt',
+        });
+        const second = createSerializedForce({
+            timestamp: first.timestamp,
+            name: 'Second Receipt',
+        });
+        const { service, remoteSync, targetForce } = createUpdateHarness(current);
+        const firstStage = deferred<{ force: Force }>();
+        const secondStage = deferred<{ force: Force }>();
+        service.forcePersistence.stageRemoteForceSnapshot.and.returnValues(
+            firstStage.promise,
+            secondStage.promise,
         );
 
-        expect(harness.targets()[0].tnCalculator).toEqual(jasmine.objectContaining({
-            targetHexCover: 'none',
-            waterDepth: 'underwater-depth-1',
-        }));
+        const firstReconciliation = remoteSync.reconcileRemoteForce(targetForce, first);
+        const secondReconciliation = remoteSync.reconcileRemoteForce(targetForce, second);
+        secondStage.resolve({ force: createRemoteForce(second) });
+        await secondReconciliation;
+        firstStage.resolve({ force: createRemoteForce(first) });
+        await firstReconciliation;
 
-        (harness.service as any).syncOpforInventoryTargets(
-            harness.force,
-            [createEnemyUnit('enemy-1', 'Atlas in Building', {}, 'building-2')]
-        );
-
-        expect(harness.targets()[0].tnCalculator).toEqual(jasmine.objectContaining({
-            targetHexCover: 'none',
-            waterDepth: undefined,
-            buildingCover: 'building-2',
-        }));
+        expect(service.workspace.loadedForces()[0].force.displayName()).toBe('Second Receipt');
+        expect(service.forcePersistence.acceptRemoteForceSnapshot).toHaveBeenCalledTimes(1);
     });
 
-    it('does not rewrite targets after adding a manual target beside existing OPFOR', () => {
-        const harness = createOpforHarness();
-        const enemy = createEnemyUnit('enemy-1', 'Atlas');
-        (harness.service as any).syncOpforInventoryTargets(harness.force, [enemy]);
-        const linkedTarget = harness.targets()[0];
-        harness.setTargets([linkedTarget, {
-            id: 'B',
-            letter: 'B',
-            name: 'Target B',
-            color: '#fff',
-            source: 'manual',
-            unitType: 'mek-biped',
-            distance: 1,
-            tnModifier: 0
-        }]);
-        const replacementSpy = harness.force.replaceInventoryControlTargets as jasmine.Spy;
-        replacementSpy.calls.reset();
+    it('lets a later receipt publish after an older receipt releases retirement', async () => {
+        const current = createSerializedForce();
+        const first = createSerializedForce({
+            timestamp: '2026-08-06T20:01:00.000Z',
+            name: 'First Receipt',
+        });
+        const second = createSerializedForce({
+            timestamp: first.timestamp,
+            name: 'Second Receipt',
+        });
+        const { service, remoteSync, targetForce } = createUpdateHarness(current);
+        const drain = deferred<boolean>();
+        const beginRetirement = targetForce.beginWholeOwnerRetirement.bind(targetForce);
+        let beginCount = 0;
+        spyOn(targetForce, 'beginWholeOwnerRetirement').and.callFake(() => {
+            const handle = beginRetirement();
+            if (!handle) return null;
+            beginCount += 1;
+            return beginCount === 1
+                ? { token: handle.token, ready: drain.promise }
+                : handle;
+        });
 
-        (harness.service as any).syncOpforInventoryTargets(harness.force, [enemy]);
+        const firstReconciliation = remoteSync.reconcileRemoteForce(targetForce, first);
+        for (let index = 0; index < 12 && beginCount === 0; index += 1) await Promise.resolve();
+        const secondReconciliation = remoteSync.reconcileRemoteForce(targetForce, second);
+        for (let index = 0; index < 4; index += 1) await Promise.resolve();
+        drain.resolve(true);
+        await Promise.all([firstReconciliation, secondReconciliation]);
 
-        expect(replacementSpy).not.toHaveBeenCalled();
-        expect(harness.targets().map(target => [target.id, target.letter])).toEqual([
-            ['opfor:enemy-1', 'A'],
-            ['B', 'B']
-        ]);
+        expect(service.workspace.loadedForces()[0].force.displayName()).toBe('Second Receipt');
+        expect(service.forcePersistence.acceptRemoteForceSnapshot).toHaveBeenCalledTimes(1);
     });
 
-    it('keeps linked letters stable and converges after manual target deletions', () => {
-        const harness = createOpforHarness();
-        const enemies = [
-            createEnemyUnit('enemy-1', 'Atlas'),
-            createEnemyUnit('enemy-2', 'Marauder')
-        ];
-        (harness.service as any).syncOpforInventoryTargets(harness.force, enemies);
-        const linkedTargets = harness.targets();
-        expect(linkedTargets.map(target => target.letter)).toEqual(['A', 'B']);
+    it('does not swap the slot when staged-token acceptance throws synchronously', async () => {
+        const { service, remoteSync, targetForce, expectedSlot } = createUpdateHarness(createSerializedForce());
+        service.forcePersistence.commitPreparedRemoteForceReplacement.and.callFake(() => {
+            throw new Error('already consumed');
+        });
 
-        const manualTargets = ['C', 'D', 'E', 'F', 'G'].map(letter => ({
-            id: letter,
-            letter,
-            name: `Target ${letter}`,
-            color: '#fff',
-            source: 'manual' as const,
-            distance: 1,
-            tnModifier: 0
+        await expectAsync(remoteSync.reconcileRemoteForce(targetForce, createSerializedForce({
+            timestamp: '2026-08-06T20:01:00.000Z',
+        }))).toBeRejectedWithError('already consumed');
+
+        expect(service.workspace.loadedForces()[0]).toBe(expectedSlot);
+        expect(service.slotLifecycle.teardownForceSlot).not.toHaveBeenCalled();
+        expect(service.slotLifecycle.setupForceSlot).toHaveBeenCalledTimes(1);
+    });
+
+    it('rejects replacement-slot setup failure before retirement or acceptance', async () => {
+        const { service, remoteSync, targetForce, expectedSlot } = createUpdateHarness(createSerializedForce());
+        const beginRetirement = spyOn(targetForce, 'beginWholeOwnerRetirement').and.callThrough();
+        service.slotLifecycle.setupForceSlot.and.throwError('subscription setup failed');
+
+        await remoteSync.reconcileRemoteForce(targetForce, createSerializedForce({
+            timestamp: '2026-08-06T20:01:00.000Z',
         }));
-        harness.setTargets([...linkedTargets, ...manualTargets]);
-        (harness.service as any).syncOpforInventoryTargets(harness.force, enemies);
-        expect(harness.targets().filter(target => target.source === 'opfor').map(target => target.letter)).toEqual(['A', 'B']);
 
-        for (const letter of ['C', 'D', 'E', 'F', 'G']) {
-            harness.setTargets(harness.targets().filter(target => target.id !== letter));
-            (harness.service as any).syncOpforInventoryTargets(harness.force, enemies);
-            const replacementSpy = harness.force.replaceInventoryControlTargets as jasmine.Spy;
-            const replacementCount = replacementSpy.calls.count();
-            (harness.service as any).syncOpforInventoryTargets(harness.force, enemies);
+        expect(beginRetirement).not.toHaveBeenCalled();
+        expect(service.forcePersistence.prepareRemoteForceSnapshotAcceptance).not.toHaveBeenCalled();
+        expect(service.workspace.loadedForces()[0]).toBe(expectedSlot);
+        expect(service.slotLifecycle.teardownForceSlot).not.toHaveBeenCalled();
+    });
 
-            const currentTargets = harness.targets();
-            expect(new Set(currentTargets.map(target => target.letter)).size).toBe(currentTargets.length);
-            expect(currentTargets.filter(target => target.source === 'opfor').map(target => target.letter)).toEqual(['A', 'B']);
-            expect(replacementSpy.calls.count()).toBe(replacementCount);
+    it('preserves exact-ID formation history in a detached Set across replacement', async () => {
+        const previousHistory = new Set<string>(['old-formation']);
+        const previousGroup = {
+            id: 'group-1',
+            formationHistory: previousHistory,
+            units: signal<ForceUnit[]>([]),
+        } as unknown as UnitGroup;
+        const replacementGroup = {
+            id: 'group-1',
+            formationHistory: new Set<string>(['remote-transient']),
+            units: signal<ForceUnit[]>([]),
+        } as unknown as UnitGroup;
+        const current = createSerializedForce();
+        const incoming = createSerializedForce({ timestamp: '2026-08-06T20:01:00.000Z' });
+        const { service, remoteSync, targetForce } = createUpdateHarness(current, [], [previousGroup]);
+        const replacement = createRemoteForce(incoming, [], [replacementGroup]);
+        service.forcePersistence.stageRemoteForceSnapshot.and.resolveTo(Object.freeze({ force: replacement }));
+
+        await remoteSync.reconcileRemoteForce(targetForce, incoming);
+
+        expect([...replacementGroup.formationHistory]).toEqual(['old-formation']);
+        expect(replacementGroup.formationHistory).not.toBe(previousHistory);
+        previousHistory.add('later-old-mutation');
+        expect([...replacementGroup.formationHistory]).toEqual(['old-formation']);
+    });
+
+    it('waits for retirement drain and captures the final formation history before publication', async () => {
+        const history = new Set<string>(['before-drain']);
+        const previousGroup = {
+            id: 'group-drain',
+            formationHistory: history,
+            units: signal<ForceUnit[]>([]),
+        } as unknown as UnitGroup;
+        const replacementGroup = {
+            id: 'group-drain',
+            formationHistory: new Set<string>(),
+            units: signal<ForceUnit[]>([]),
+        } as unknown as UnitGroup;
+        const current = createSerializedForce();
+        const incoming = createSerializedForce({ timestamp: '2026-08-06T20:01:00.000Z' });
+        const { service, remoteSync, targetForce, expectedSlot } = createUpdateHarness(current, [], [previousGroup]);
+        const replacement = createRemoteForce(incoming, [], [replacementGroup]);
+        service.forcePersistence.stageRemoteForceSnapshot.and.resolveTo(Object.freeze({ force: replacement }));
+        const drain = deferred<boolean>();
+        const beginRetirement = targetForce.beginWholeOwnerRetirement.bind(targetForce);
+        spyOn(targetForce, 'beginWholeOwnerRetirement').and.callFake(() => {
+            const handle = beginRetirement();
+            return handle ? { token: handle.token, ready: drain.promise } : null;
+        });
+
+        const reconciliation = remoteSync.reconcileRemoteForce(targetForce, incoming);
+        for (let index = 0;
+            index < 8 && service.forcePersistence.prepareRemoteForceSnapshotAcceptance.calls.count() === 0;
+            index += 1) {
+            await Promise.resolve();
         }
+        expect(service.workspace.loadedForces()[0]).toBe(expectedSlot);
+        expect(service.forcePersistence.commitPreparedRemoteForceReplacement).not.toHaveBeenCalled();
+
+        history.add('during-drain');
+        drain.resolve(true);
+        await reconciliation;
+
+        expect([...replacementGroup.formationHistory]).toEqual(['before-drain', 'during-drain']);
+        expect(service.workspace.loadedForces()[0].force).toBe(replacement);
     });
 
-    it('removes departed enemies without disturbing manual targets', () => {
-        const harness = createOpforHarness();
-        const manualTarget = {
-            id: 'manual-1',
-            letter: 'A',
-            name: 'Objective',
-            color: '#fff',
-            unitType: 'vehicle',
-            distance: 4,
-            tnModifier: 0
-        } as InventoryControlRuntimeTarget;
-        harness.setTargets([manualTarget]);
+    it('cancels retirement on cyclic formation history without publishing the replacement', async () => {
+        const cyclicHistory = new Set<any>();
+        cyclicHistory.add(cyclicHistory);
+        const previousGroup = {
+            id: 'group-cycle',
+            formationHistory: cyclicHistory,
+            units: signal<ForceUnit[]>([]),
+        } as unknown as UnitGroup;
+        const replacementGroup = {
+            id: 'group-cycle',
+            formationHistory: new Set<string>(),
+            units: signal<ForceUnit[]>([]),
+        } as unknown as UnitGroup;
+        const current = createSerializedForce();
+        const incoming = createSerializedForce({ timestamp: '2026-08-06T20:01:00.000Z' });
+        const { service, remoteSync, targetForce, expectedSlot } = createUpdateHarness(current, [], [previousGroup]);
+        const replacement = createRemoteForce(incoming, [], [replacementGroup]);
+        service.forcePersistence.stageRemoteForceSnapshot.and.resolveTo(Object.freeze({ force: replacement }));
+        const cancelRetirement = spyOn(targetForce, 'cancelWholeOwnerRetirement').and.callThrough();
 
-        (harness.service as any).syncOpforInventoryTargets(
-            harness.force,
-            [createEnemyUnit('enemy-1', 'Atlas')]
-        );
-        expect(harness.targets().length).toBe(2);
+        await remoteSync.reconcileRemoteForce(targetForce, incoming);
 
-        (harness.service as any).syncOpforInventoryTargets(harness.force, []);
-        expect(harness.targets()).toEqual([manualTarget]);
+        expect(cancelRetirement).toHaveBeenCalledTimes(1);
+        expect(service.forcePersistence.commitPreparedRemoteForceReplacement).not.toHaveBeenCalled();
+        expect(service.workspace.loadedForces()[0]).toBe(expectedSlot);
+        expect(service.logger.error).toHaveBeenCalledWith(jasmine.stringMatching(/transient force session state/u));
     });
 
-    it('removes derived targets when OPFOR synchronization is disabled', () => {
-        const harness = createOpforHarness();
-        (harness.service as any).syncOpforInventoryTargets(
-            harness.force,
-            [createEnemyUnit('enemy-1', 'Atlas')]
-        );
+    it('keeps the replacement published when retired-slot teardown throws', async () => {
+        const current = createSerializedForce();
+        const incoming = createSerializedForce({ timestamp: '2026-08-06T20:01:00.000Z' });
+        const { service, remoteSync, targetForce } = createUpdateHarness(current);
+        service.slotLifecycle.teardownForceSlot.and.throwError('hostile teardown');
 
-        harness.enabled.set(false);
-        (harness.service as any).syncOpforInventoryTargets(
-            harness.force,
-            [createEnemyUnit('enemy-1', 'Atlas')]
-        );
+        await remoteSync.reconcileRemoteForce(targetForce, incoming);
 
-        expect(harness.targets()).toEqual([]);
+        expect(service.workspace.loadedForces()[0].force).not.toBe(targetForce);
+        expect(service.logger.warn).toHaveBeenCalledWith(jasmine.stringMatching(/Could not tear down retired force slot/u));
+        expect(remoteSync.remoteForceUpdated$.next).toHaveBeenCalledTimes(1);
     });
+
+    it('remaps selection and subscriptions to the replacement object graph', async () => {
+        const oldUnit = { id: 'unit-1' } as unknown as ForceUnit;
+        const newUnit = { id: 'unit-1', updatedTs: 0 } as unknown as ForceUnit;
+        const current = createSerializedForce();
+        const incoming = createSerializedForce({ timestamp: '2026-08-06T20:01:00.000Z' });
+        const { service, remoteSync, targetForce, selectedUnit } = createUpdateHarness(current, [oldUnit]);
+        selectedUnit.set(oldUnit);
+        const replacement = createRemoteForce(incoming, [newUnit]);
+        service.forcePersistence.stageRemoteForceSnapshot.and.resolveTo(Object.freeze({ force: replacement }));
+
+        await remoteSync.reconcileRemoteForce(targetForce, incoming);
+
+        expect(selectedUnit()).toBe(newUnit);
+        expect(service.workspace.selectUnit).toHaveBeenCalledOnceWith(newUnit);
+        expect(service.slotLifecycle.setupForceSlot).toHaveBeenCalledOnceWith(replacement, 'friendly', false);
+        expect(service.workspace.loadedForces()[0].force).toBe(replacement);
+    });
+
+    it('remaps a selected unit when follow-latest is enabled but every replacement timestamp is pristine', async () => {
+        const oldUnit = { id: 'unit-pristine' } as unknown as ForceUnit;
+        const newUnit = { id: 'unit-pristine', updatedTs: 0 } as unknown as ForceUnit;
+        const current = createSerializedForce();
+        const incoming = createSerializedForce({ timestamp: '2026-08-06T20:01:00.000Z' });
+        const { service, remoteSync, targetForce, selectedUnit } = createUpdateHarness(current, [oldUnit]);
+        selectedUnit.set(oldUnit);
+        service.workspace.followLastModifiedUnit = () => true;
+        const replacement = createRemoteForce(incoming, [newUnit]);
+        service.forcePersistence.stageRemoteForceSnapshot.and.resolveTo(Object.freeze({ force: replacement }));
+
+        await remoteSync.reconcileRemoteForce(targetForce, incoming);
+
+        expect(selectedUnit()).toBe(newUnit);
+        expect(service.workspace.selectUnit).toHaveBeenCalledOnceWith(newUnit);
+    });
+
+    for (const initialId of [null, 'force-dormant']) {
+        it(`activates a dormant slot and subscribes when its ID is available (initial ID: ${initialId})`, async () => {
+            const service = Object.create(ForceSlotLifecycleService.prototype) as any;
+            service.activationPlans = new WeakMap();
+            service.forcePersistence = {
+                saveForce: jasmine.createSpy('saveForce').and.resolveTo(),
+                queueForceAutosave: jasmine.createSpy('queueForceAutosave'),
+                activateForceAuthority: jasmine.createSpy('activateForceAuthority').and.returnValue(true),
+                saveForceMissingFromCloud: jasmine.createSpy('saveForceMissingFromCloud').and.resolveTo(),
+            };
+            service.wsService = {
+                subscribeToForceUpdates: jasmine.createSpy('subscribeToForceUpdates').and.resolveTo(),
+            };
+            service.remoteSync = { reconcileRemoteForce: jasmine.createSpy('reconcileRemoteForce') };
+            service.logger = {
+                info: jasmine.createSpy('info'),
+                warn: jasmine.createSpy('warn'),
+                error: jasmine.createSpy('error'),
+            };
+            const changed = new Subject<void>();
+            const instanceId = signal<string | null>(initialId);
+            const force = {
+                changed,
+                owned: () => true,
+                instanceId,
+                displayName: () => 'Dormant Force',
+            } as unknown as Force;
+
+            const slot = service.setupForceSlot(force, 'friendly', false);
+            changed.next();
+            expect(service.forcePersistence.saveForce).not.toHaveBeenCalled();
+            expect(service.forcePersistence.activateForceAuthority).not.toHaveBeenCalled();
+
+            service.activateForceSlot(slot);
+            expect(service.forcePersistence.activateForceAuthority).toHaveBeenCalledOnceWith(force);
+            expect(service.wsService.subscribeToForceUpdates).toHaveBeenCalledTimes(initialId === null ? 0 : 1);
+            instanceId.set('force-dormant');
+            changed.next();
+            expect(service.forcePersistence.activateForceAuthority).toHaveBeenCalledTimes(2);
+            expect(service.forcePersistence.queueForceAutosave).toHaveBeenCalledOnceWith(force);
+            expect(service.forcePersistence.saveForce).not.toHaveBeenCalled();
+            expect(service.wsService.subscribeToForceUpdates).toHaveBeenCalledTimes(1);
+            const onRemoteUpdate = service.wsService.subscribeToForceUpdates.calls.mostRecent().args[1];
+            await onRemoteUpdate(null, 'reconnect');
+            expect(service.forcePersistence.saveForceMissingFromCloud).toHaveBeenCalledOnceWith(force);
+            expect(service.remoteSync.reconcileRemoteForce).not.toHaveBeenCalled();
+            changed.next();
+            expect(service.wsService.subscribeToForceUpdates).toHaveBeenCalledTimes(1);
+        });
+    }
+
+    it('rejects duplicate durable live unit IDs before beginning retirement', async () => {
+        const first = { id: 'duplicate-unit' } as ForceUnit;
+        const second = { id: 'duplicate-unit' } as ForceUnit;
+        const group = {
+            id: 'group-1',
+            formationHistory: new Set<string>(),
+            units: signal<ForceUnit[]>([first, second]),
+        } as unknown as UnitGroup;
+        const { service, remoteSync, targetForce, expectedSlot } = createUpdateHarness(
+            createSerializedForce(),
+            [first, second],
+            [group],
+        );
+        const beginRetirement = spyOn(targetForce, 'beginWholeOwnerRetirement').and.callThrough();
+
+        await remoteSync.reconcileRemoteForce(targetForce, createSerializedForce({
+            timestamp: '2026-08-06T20:01:00.000Z',
+        }));
+
+        expect(beginRetirement).not.toHaveBeenCalled();
+        expect(service.forcePersistence.prepareRemoteForceSnapshotAcceptance).not.toHaveBeenCalled();
+        expect(service.workspace.loadedForces()[0]).toBe(expectedSlot);
+        expect(service.logger.error).toHaveBeenCalledWith(jasmine.stringMatching(/duplicate durable unit ID/u));
+    });
+
+    it('waits for an owner drain before removing and tearing down its exact slot', async () => {
+        const { service, targetForce, expectedSlot } = createUpdateHarness(createSerializedForce());
+        service.forceDialogs.promptSaveForceIfNeeded = jasmine.createSpy('prompt').and.resolveTo(true);
+        const drain = deferred<boolean>();
+        const beginRetirement = targetForce.beginWholeOwnerRetirement.bind(targetForce);
+        spyOn(targetForce, 'beginWholeOwnerRetirement').and.callFake(() => {
+            const handle = beginRetirement();
+            return handle ? { token: handle.token, ready: drain.promise } : null;
+        });
+
+        const removal = service.removeLoadedForce(targetForce);
+        await Promise.resolve();
+        expect(service.workspace.loadedForces()[0]).toBe(expectedSlot);
+        expect(service.slotLifecycle.teardownForceSlot).not.toHaveBeenCalled();
+
+        drain.resolve(true);
+        expect(await removal).toBeTrue();
+        expect(service.workspace.loadedForces()).toEqual([]);
+        expect(service.slotLifecycle.teardownForceSlot).toHaveBeenCalledOnceWith(expectedSlot);
+    });
+
+    it('retries removal with a fresh retirement after a drained CBT acknowledgement refreshes authority', async () => {
+        const { service, targetForce, expectedSlot } = createUpdateHarness(createSerializedForce());
+        service.forcePersistence.drainForceAuthorityPersistence.and.returnValues(
+            Promise.resolve(false),
+            Promise.resolve(true),
+        );
+        const beginRetirement = spyOn(targetForce, 'beginWholeOwnerRetirement').and.callThrough();
+
+        expect(await service.removeLoadedForce(targetForce, { skipPrompt: true })).toBeTrue();
+
+        expect(beginRetirement).toHaveBeenCalledTimes(2);
+        expect(service.forcePersistence.drainForceAuthorityPersistence).toHaveBeenCalledTimes(2);
+        expect(service.workspace.loadedForces()).toEqual([]);
+        expect(service.slotLifecycle.teardownForceSlot).toHaveBeenCalledOnceWith(expectedSlot);
+    });
+
+    it('drains in-flight source persistence before publishing a conflict clone', async () => {
+        const { service, remoteSync, targetForce, expectedSlot } = createUpdateHarness(createSerializedForce());
+        const cloned = createRemoteForce(createSerializedForce({
+            instanceId: 'force-conflict-clone',
+            name: 'Conflict Clone',
+        }));
+        (cloned as any).setName = jasmine.createSpy('setCloneName');
+        (targetForce as any).cloneForPersistence = jasmine.createSpy('cloneForPersistence').and.resolveTo(cloned);
+        const drain = deferred<boolean>();
+        service.forcePersistence.drainForceAuthorityPersistence.and.returnValue(drain.promise);
+        const fingerprint = targetForce.captureWholeOwnerAuthorityFingerprint();
+
+        const cloning = remoteSync.replaceConflictForceWithClone(
+            targetForce,
+            expectedSlot,
+            'friendly',
+            fingerprint,
+            () => true,
+        );
+        for (let index = 0;
+            index < 12 && service.forcePersistence.drainForceAuthorityPersistence.calls.count() === 0;
+            index += 1) await Promise.resolve();
+        expect(service.workspace.loadedForces()[0]).toBe(expectedSlot);
+        expect(service.forcePersistence.prepareForceAuthorityRemoval).not.toHaveBeenCalled();
+
+        drain.resolve(true);
+        expect(await cloning).toBe(cloned);
+
+        expect(service.forcePersistence.drainForceAuthorityPersistence).toHaveBeenCalledTimes(1);
+        expect(service.forcePersistence.prepareForceAuthorityRemoval).toHaveBeenCalledTimes(1);
+        expect(service.workspace.loadedForces()[0].force).toBe(cloned);
+        expect(service.slotLifecycle.teardownForceSlot).toHaveBeenCalledOnceWith(expectedSlot);
+    });
+
+    it('preserves the exact existing owner when loadForce narrows multiple slots', async () => {
+        const { service, targetForce, expectedSlot } = createUpdateHarness(createSerializedForce());
+        const otherForce = createRemoteForce(createSerializedForce({ instanceId: 'force-other' }));
+        const otherSlot = { force: otherForce, alignment: 'enemy', changeSub: null };
+        service.workspace.loadedForces.set([expectedSlot, otherSlot]);
+        service.addLoadedForce = jasmine.createSpy('addLoadedForce');
+
+        expect(await service.loadForce(targetForce)).toBeTrue();
+
+        expect(service.workspace.loadedForces()).toEqual([expectedSlot]);
+        expect(targetForce.isWholeOwnerActive()).toBeTrue();
+        expect(otherForce.isWholeOwnerRetired()).toBeTrue();
+        expect(service.slotLifecycle.teardownForceSlot).toHaveBeenCalledOnceWith(otherSlot);
+        expect(service.addLoadedForce).not.toHaveBeenCalled();
+    });
+
+    it('moves a selection from a retiring slot onto the preserved exact owner', async () => {
+        const preservedUnit = { id: 'preserved-unit' } as unknown as ForceUnit;
+        const retiringUnit = { id: 'retiring-unit' } as unknown as ForceUnit;
+        const { service, targetForce, expectedSlot, selectedUnit } = createUpdateHarness(
+            createSerializedForce(),
+            [preservedUnit],
+        );
+        const retiringForce = createRemoteForce(
+            createSerializedForce({ instanceId: 'force-retiring-selection' }),
+            [retiringUnit],
+        );
+        const retiringSlot = { force: retiringForce, alignment: 'enemy', changeSub: null };
+        service.workspace.loadedForces.set([expectedSlot, retiringSlot]);
+        selectedUnit.set(retiringUnit);
+
+        expect(await service.loadForce(targetForce)).toBeTrue();
+
+        expect(service.workspace.loadedForces()).toEqual([expectedSlot]);
+        expect(selectedUnit()).toBe(preservedUnit);
+        expect(retiringForce.isWholeOwnerRetired()).toBeTrue();
+    });
+
+    it('rejects a permanently retired owner before slot setup', async () => {
+        const { service } = createUpdateHarness(createSerializedForce());
+        const retired = createRemoteForce(createSerializedForce({ instanceId: 'force-retired' }));
+        const retirement = retired.beginWholeOwnerRetirement();
+        expect(retirement).not.toBeNull();
+        expect(await retirement!.ready).toBeTrue();
+        expect(retired.commitWholeOwnerRetirement(retirement!.token, () => () => undefined)).toBeTrue();
+        service.slotLifecycle.setupForceSlot.calls.reset();
+
+        expect(service.addLoadedForce(retired)).toBeFalse();
+        expect(service.slotLifecycle.setupForceSlot).not.toHaveBeenCalled();
+        expect(service.workspace.loadedForces().some((slot: any) => slot.force === retired)).toBeFalse();
+    });
+
+    it('does not redirect an exact selection from another force that reuses the same unit ID', async () => {
+        const removedUnit = { id: 'shared-unit-id' } as ForceUnit;
+        const selectedOtherUnit = { id: 'shared-unit-id' } as ForceUnit;
+        const { service, targetForce, expectedSlot, selectedUnit } = createUpdateHarness(
+            createSerializedForce(),
+            [removedUnit],
+        );
+        const otherForce = createRemoteForce(
+            createSerializedForce({ instanceId: 'force-other' }),
+            [selectedOtherUnit],
+        );
+        const otherSlot = { force: otherForce, alignment: 'enemy', changeSub: null };
+        service.workspace.loadedForces.set([expectedSlot, otherSlot]);
+        selectedUnit.set(selectedOtherUnit);
+
+        expect(await service.removeLoadedForce(targetForce, { skipPrompt: true })).toBeTrue();
+
+        expect(selectedUnit()).toBe(selectedOtherUnit);
+        expect(service.workspace.loadedForces()).toEqual([otherSlot]);
+    });
+
+    it('blocks removal when a requested save rejects', async () => {
+        const service = Object.create(ForceDialogsService.prototype) as any;
+        const force = {
+            instanceId: () => null,
+            units: () => [{}],
+            members: () => [{}],
+        } as unknown as Force;
+        service.dialogs = {
+            createDialog: jasmine.createSpy('createDialog').and.returnValue({ closed: of('yes') }),
+        };
+        service.forcePersistence = {
+            saveForce: jasmine.createSpy('saveForce'),
+            hasDurableForceIdentity: jasmine.createSpy('hasDurableForceIdentity').and.returnValue(false),
+            saveForceAndWaitForCloud: jasmine.createSpy('saveForceAndWaitForCloud')
+                .and.rejectWith(new Error('storage unavailable')),
+        };
+        service.logger = { error: jasmine.createSpy('error') };
+        service.toast = { showToast: jasmine.createSpy('showToast') };
+
+        expect(await service.promptSaveForceIfNeeded(force)).toBeFalse();
+        expect(service.forcePersistence.saveForce).not.toHaveBeenCalled();
+        expect(service.forcePersistence.saveForceAndWaitForCloud).toHaveBeenCalledOnceWith(force);
+        expect(service.toast.showToast).toHaveBeenCalledWith(
+            'The force could not be saved. It was not removed.',
+            'error',
+        );
+    });
+
 });
 
-describe('ForceBuilderService load dialog', () => {
+describe('ForceImportService load dialog', () => {
     it('loads a source force from the dialog without resolving its empty instanceId', async () => {
-        const service = Object.create(ForceBuilderService.prototype) as any;
+        const service = Object.create(ForceImportService.prototype) as any;
         const sourceForce = Object.create(Force.prototype) as Force;
-        sourceForce.instanceId = signal<string | null>(null);
+        (sourceForce as any).instanceId = signal<string | null>(null);
 
-        service.dialogsService = {
+        service.dialogs = {
             createDialog: jasmine.createSpy('createDialog').and.returnValue({
                 closed: of({
                     result: sourceForce,
@@ -1081,15 +1306,240 @@ describe('ForceBuilderService load dialog', () => {
                 }),
             }),
         };
-        service.dataService = {
+        service.forcePersistence = {
             getForce: jasmine.createSpy('getForce'),
         };
-        service.loadForce = jasmine.createSpy('loadForce').and.resolveTo(true);
+        service.builder = {
+            loadForce: jasmine.createSpy('loadForce').and.resolveTo(true),
+        };
 
         await service.showLoadForceDialog();
 
-        expect(service.dataService.getForce).not.toHaveBeenCalled();
-        expect(service.loadForce).toHaveBeenCalledOnceWith(sourceForce);
+        expect(service.forcePersistence.getForce).not.toHaveBeenCalled();
+        expect(service.builder.loadForce).toHaveBeenCalledOnceWith(sourceForce);
         expect(sourceForce.instanceId()).toBeNull();
+    });
+
+    it('resolves a saved entry once before adding the loaded force', async () => {
+        const service = Object.create(ForceImportService.prototype) as any;
+        const entry = createForcePreviewEntryData({ instanceId: 'saved-force' });
+        const loadedForce = Object.create(Force.prototype) as Force;
+
+        service.dialogs = {
+            createDialog: jasmine.createSpy('createDialog').and.returnValue({
+                closed: of({
+                    result: entry,
+                    mode: 'add',
+                    alignment: 'enemy',
+                }),
+            }),
+        };
+        service.forcePersistence = {
+            getForce: jasmine.createSpy('getForce').and.resolveTo(loadedForce),
+        };
+        service.builder = {
+            addForce: jasmine.createSpy('addForce').and.resolveTo(true),
+        };
+
+        await service.showLoadForceDialog();
+
+        expect(service.forcePersistence.getForce).toHaveBeenCalledOnceWith('saved-force', false);
+        expect(service.builder.addForce).toHaveBeenCalledOnceWith(loadedForce, 'enemy');
+    });
+});
+
+describe('ForceBuilderService production V2 unit selection', () => {
+    it('admits an eligible native Mek as one retained V2 owner', async () => {
+        const unit = {
+            ...createUnit(),
+            uuid: '019f6767-0dcb-7bb8-992f-aef08202f5e1',
+            provider: 'mm-data',
+            origin: 'megamek',
+            entityType: 'Mek',
+            type: 'Mek',
+            subtype: 'BattleMek',
+            hash: 'AAAAAAAAAAAAAAAAAAAAAAAAAAA',
+        } as unknown as UnitSummary;
+        const instanceId = 'unit:production-v2';
+        const force = new CBTForce('Force', {} as never, Injector.create({
+            providers: [{
+                provide: OptionsService,
+                useValue: {
+                    options: () => ({
+                        CBTRules: 'core-2026',
+                        CBTOptionalRules: { forcedWithdrawal: false, sprinting: false, hotLoadedAmmo: false },
+                    }),
+                },
+            }],
+        }));
+        const admit = spyOn(force, 'admitRetainedUnit').and.resolveTo({ kind: 'admitted', instanceId });
+        const member = new CBTForceMember(instanceId, force, createTestMekEntity({
+            uuid: unit.uuid,
+            chassis: unit.chassis,
+            model: unit.model,
+        }));
+        spyOn(force, 'getCBTMember').and.returnValue(member);
+        spyOn(force, 'getRosterGroupId').and.callFake(() => force.groups()[0]?.id ?? null);
+        spyOn(force, 'queryCanonicalRoster').and.returnValue({
+            kind: 'available',
+            snapshot: {
+                members: [{ instanceId }],
+            },
+        } as never);
+
+        const service = Object.create(ForceWorkspaceCommandsService.prototype) as any;
+        const selectedUnit = signal<any>(null);
+        service.workspace = {
+            smartCurrentForce: () => force,
+            selectedUnit,
+            selectUnit: (unit: unknown) => selectedUnit.set(unit),
+        };
+        service.layoutService = { openMenu: jasmine.createSpy('openMenu') };
+        const requestClosePanels = jasmine.createSpy('requestClosePanels');
+        service.injector = { get: () => ({ requestClosePanels }) };
+        service.logger = jasmine.createSpyObj('LoggerService', ['info', 'error']);
+        service.toastService = jasmine.createSpyObj('ToastService', ['showToast']);
+        service.unitNames = jasmine.createSpyObj('UnitNameService', { name: unit.name });
+        const unitAdmission = Object.create(ForceUnitAdmissionService.prototype) as any;
+        service.unitAdmission = unitAdmission;
+        service.formations = {
+            generateFactionAndForceNameIfNeeded: jasmine.createSpy('generateFactionAndForceNameIfNeeded'),
+            applyFormationFilterToGroup: jasmine.createSpy('applyFormationFilterToGroup'),
+            assignFormationIfNeeded: jasmine.createSpy('assignFormationIfNeeded'),
+        };
+
+        const result = await service.addUnit(unit, 3, 4, undefined, GameSystem.CBT);
+
+        expect(result).toEqual(jasmine.objectContaining({
+            kind: 'cbt', id: instanceId, force, entity: member.entity,
+        }));
+        expect(admit).toHaveBeenCalledOnceWith(jasmine.objectContaining({
+            uuid: unit.uuid,
+            deployment: { id: 'force-builder-default' },
+            crewSkills: { gunnery: 3, piloting: 4 },
+            targetRosterGroupId: force.groups()[0].id,
+        }));
+        expect(selectedUnit()).toBe(result);
+        expect(service.layoutService.openMenu).toHaveBeenCalledTimes(1);
+        expect(requestClosePanels)
+            .toHaveBeenCalledOnceWith({ exitExpandedView: true });
+        expect(service.formations.generateFactionAndForceNameIfNeeded).toHaveBeenCalledOnceWith(force, true);
+    });
+});
+
+describe('ForceBuilderService rules switch', () => {
+    function loadedCBTForce(name: string, bound = true, dropped: { unit: string; items: string[] }[] = []) {
+        const force = Object.create(CBTForce.prototype) as any;
+        force.displayName = () => name;
+        force.install = jasmine.createSpy(`${name} install`).and.resolveTo(true);
+        force.prepareScenarioRebind = jasmine.createSpy('prepareScenarioRebind').and.callFake(async () =>
+            bound ? { bound, dropped, install: force.install } : { bound });
+        return force as CBTForce & { prepareScenarioRebind: jasmine.Spy; install: jasmine.Spy };
+    }
+
+    function createService(forces: readonly CBTForce[]) {
+        const options = signal({
+            CBTRules: 'core-2026',
+            CBTOptionalRules: { forcedWithdrawal: true, sprinting: false, hotLoadedAmmo: false },
+        } as any);
+        const optionsService = {
+            initialized: signal(true),
+            options,
+            setOption: jasmine.createSpy('setOption').and.callFake(async (key: string, value: unknown) => {
+                options.update(current => ({ ...current, [key]: value }));
+            }),
+        };
+        const toast = { showToast: jasmine.createSpy('showToast') };
+        TestBed.configureTestingModule({
+            providers: [
+                provideZonelessChangeDetection(),
+                { provide: LoggerService, useValue: jasmine.createSpyObj('LoggerService', ['error', 'warn']) },
+                { provide: DataService, useValue: {} },
+                { provide: ForcePersistenceService, useValue: {} },
+                { provide: ForceOperationService, useValue: { configure: () => undefined } },
+                { provide: InventoryControlOpforService, useValue: { connect: () => undefined } },
+                { provide: ForceUrlStateService, useValue: { configure: () => undefined, start: () => undefined } },
+                { provide: ForceDialogsService, useValue: {} },
+                { provide: ForceWorkspaceStateService, useValue: {
+                    loadedForces: signal(forces.map(force => ({ force, alignment: 'friendly' }))),
+                } },
+                { provide: ForceSlotLifecycleService, useValue: {} },
+                { provide: OptionsService, useValue: optionsService },
+                { provide: ToastService, useValue: toast },
+            ],
+        });
+        const service = TestBed.inject(ForceBuilderService);
+        return { service, optionsService, toast };
+    }
+
+    async function settled(): Promise<void> {
+        TestBed.flushEffects();
+        for (let index = 0; index < 10; index += 1) await Promise.resolve();
+    }
+
+    it('saves the rules and rebinds every loaded force live, preparing all before installing any', async () => {
+        const alpha = loadedCBTForce('Alpha');
+        const bravo = loadedCBTForce('Bravo');
+        const { service, optionsService, toast } = createService([alpha, bravo]);
+        await settled();
+        const order: string[] = [];
+        for (const [name, force] of [['Alpha', alpha], ['Bravo', bravo]] as const) {
+            force.prepareScenarioRebind.calls.reset();
+            force.install.and.callFake(async () => { order.push(`install ${name}`); return true; });
+            force.prepareScenarioRebind.and.callFake(async () => {
+                order.push(`prepare ${name}`);
+                return { bound: true, dropped: [], install: force.install };
+            });
+        }
+
+        expect(await service.switchCBTRules('total-warfare')).toBeTrue();
+
+        expect(optionsService.setOption).toHaveBeenCalledOnceWith('CBTRules', 'total-warfare');
+        expect(alpha.prepareScenarioRebind).toHaveBeenCalledWith(jasmine.objectContaining({ ruleset: 'total-warfare' }));
+        expect(order.slice(0, 4)).toEqual(['prepare Alpha', 'prepare Bravo', 'install Alpha', 'install Bravo']);
+        expect(toast.showToast).not.toHaveBeenCalled();
+    });
+
+    it('keeps the saved rules when they are already in play, still checking every force plays them', async () => {
+        const alpha = loadedCBTForce('Alpha');
+        const { service, optionsService } = createService([alpha]);
+        await settled();
+        alpha.prepareScenarioRebind.calls.reset();
+
+        expect(await service.switchCBTRules('core-2026')).toBeTrue();
+        await settled();
+
+        expect(optionsService.setOption).not.toHaveBeenCalled();
+        // The saved option is no proof that every force plays it: a force that failed to bind earlier would not.
+        expect(alpha.prepareScenarioRebind).toHaveBeenCalledOnceWith(jasmine.objectContaining({ ruleset: 'core-2026' }));
+    });
+
+    it('switches all forces or none: a force that cannot switch leaves the others uninstalled and keeps the saved rules', async () => {
+        const alpha = loadedCBTForce('Alpha', true, [{ unit: 'Atlas', items: ['Ultra AC/5'] }]);
+        const bravo = loadedCBTForce('Bravo', false);
+        const { service, optionsService, toast } = createService([alpha, bravo]);
+        await settled();
+        alpha.install.calls.reset();
+        toast.showToast.calls.reset();
+
+        expect(await service.switchCBTRules('total-warfare')).toBeFalse();
+
+        expect(alpha.install).not.toHaveBeenCalled();
+        expect(optionsService.setOption).not.toHaveBeenCalled();
+        expect(toast.showToast).toHaveBeenCalledOnceWith(
+            'Bravo could not switch to Total Warfare, so every force keeps Core 2026.',
+            'error',
+        );
+    });
+
+    it('reports a force that cannot play the rules the options hold', async () => {
+        const alpha = loadedCBTForce('Alpha', false);
+        const { toast } = createService([alpha]);
+        await settled();
+
+        expect(toast.showToast).toHaveBeenCalledOnceWith(
+            'Alpha could not switch to the current rules and keeps its previous rules.',
+            'error',
+        );
     });
 });

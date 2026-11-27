@@ -7,7 +7,6 @@ import {
     buildReferenceTableView,
     defaultReferenceTableOption,
     FULL_CLUSTER_SIZES,
-    hasUnitDefaultReferenceTables,
     REFERENCE_TABLE_GROUPS,
     resolveReferenceTableRoll,
     type ReferenceTableBuildContext,
@@ -69,8 +68,6 @@ describe('reference-table-definition', () => {
         expect(defaultReferenceTableOption({ type: 'Infantry', subtype: 'Battle Armor' })).toBe('infantry-battle-armor');
         expect(defaultReferenceTableOption({ type: 'Infantry', subtype: 'Conventional Infantry' }))
             .toBe('infantry-conventional');
-        expect(hasUnitDefaultReferenceTables({ type: 'Tank' })).toBeTrue();
-        expect(hasUnitDefaultReferenceTables({ type: 'Aero' })).toBeFalse();
     });
 
     it('resolves Mek, physical, and merged cluster rolls through the same API', () => {

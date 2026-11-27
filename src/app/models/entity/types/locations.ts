@@ -10,6 +10,8 @@
 // codebase ONLY uses these canonical IDs.
 // ============================================================================
 
+import type { LocationArmor } from './armor';
+
 /** Canonical Mek location codes */
 export type MekLocation =
   | 'HD' | 'CT' | 'LT' | 'RT' | 'LA' | 'RA' | 'LL' | 'RL'   // biped
@@ -70,11 +72,23 @@ export const PROTO_LOCATIONS = ['Head', 'Torso', 'Right Arm', 'Left Arm', 'Legs'
 export const PROTO_LOCATIONS_WITH_MAIN_GUN = [...PROTO_LOCATIONS, 'Main Gun'] as const;
 
 export const LARGE_CRAFT_LOCATIONS = ['Nose', 'FLS', 'FRS', 'ALS', 'ARS', 'Aft'] as const;
+/** Positional order used by MegaMek's large-craft BLK armor block. */
+export const LARGE_CRAFT_BLK_ARMOR_LOCATIONS = ['Nose', 'FLS', 'FRS', 'Aft', 'ALS', 'ARS'] as const;
 export const SMALL_CRAFT_EQUIP_LOCATIONS = ['Nose', 'Left Side', 'Right Side', 'Aft', 'Hull'] as const;
 export const SMALL_CRAFT_ARMOR_LOCATIONS = ['Nose', 'Left Side', 'Right Side', 'Aft'] as const;
-export const DROPSHIP_LOCATIONS = ['Nose', 'LF', 'RF', 'LBS', 'RBS', 'Aft'] as const;
-
 /** Properties attached to a canonical entity location. */
 export interface EntityLocationMetadata {
   readonly clanCaseOptOut?: boolean;
+}
+
+/** One independently damageable location exposed by an Entity to its runtime. */
+export interface EntityDamageLocation {
+  readonly code: string;
+  readonly sheetCode?: string;
+  readonly internalPoints: number;
+  readonly armor: LocationArmor;
+  /** Battle Armor sheets draw the trooper pip before that trooper's armor pips. */
+  readonly combinedPips?: boolean;
+  /** Conventional-infantry sheets represent internal points as numbered soldiers. */
+  readonly soldierPips?: boolean;
 }

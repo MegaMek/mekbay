@@ -16,17 +16,59 @@
  * - Resolved ArmorEquipment from the equipment database
  * - Tech rating override for BLK output
  *
- * Patchwork is deliberately not represented here. It is derived from the
- * effective armor installed at each entity location.
+ * Patchwork is an entity construction mode, not a material. Each location
+ * still carries an ordinary MountedArmor, even if every material matches.
  */
 
 import { ArmorEquipment } from '../../equipment.model';
+import { equipmentPlatformFlag } from '../../equipment-platform.model';
 import {
   ArmorType,
   CompoundTechLevel,
   EquipmentTechBase,
   TechRating,
 } from '../types';
+
+/**
+ * Canonical Standard armor used by the compiler when a deliberately minimal
+ * registry omits aggregate construction records.
+ */
+export const STANDARD_ARMOR_EQUIPMENT = new ArmorEquipment({
+  version: '1.0',
+  id: 'Standard Armor',
+  name: 'Standard',
+  type: 'armor',
+  aliases: ['IS Standard Armor', 'Clan Standard Armor', 'Regular Armor'],
+  stats: {
+    tonnage: 0,
+    cost: 10000,
+    bv: 0,
+    criticalSlots: 0,
+    hittable: false,
+    spreadable: true,
+    tankSlots: 0,
+    svSlots: 0,
+    omniFixedOnly: true,
+  },
+  tech: {
+    base: 'All',
+    rating: 'D',
+    level: 'Introductory',
+    availability: { sl: 'C', sw: 'C', clan: 'C', da: 'B' },
+    advancement: {
+      is: { prototype: '~2460', production: '2470', common: '2470' },
+      clan: { prototype: '~2460', production: '2470', common: '2470' },
+    },
+  },
+  flags: [
+    equipmentPlatformFlag('mek'),
+    equipmentPlatformFlag('tank'),
+    equipmentPlatformFlag('fighter'),
+    equipmentPlatformFlag('support-tank'),
+    equipmentPlatformFlag('vtol'),
+  ],
+  armor: { type: 'STANDARD', weightPerPoint: 0.05 },
+});
 
 export type MountedArmorType = Exclude<ArmorType, 'PATCHWORK'>;
 
@@ -62,6 +104,11 @@ export class MountedArmor {
 
   get type(): MountedArmorType {
     return this.armor.armorType as MountedArmorType;
+  }
+
+  /** Integer damage marks needed to remove one construction point. */
+  get damagePerPoint(): number {
+    return this.type === 'HARDENED' ? 2 : 1;
   }
 
   /** Semantic equality for effective location armor; never rely on object identity. */

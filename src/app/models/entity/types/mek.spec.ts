@@ -13,6 +13,7 @@ import {
   MEK_TORSO_LOCATIONS,
   QUAD_TOPOLOGY,
   TRIPOD_TOPOLOGY,
+  getMekLocationAbbreviation,
 } from './mek';
 
 describe('Mek location helpers', () => {
@@ -23,9 +24,14 @@ describe('Mek location helpers', () => {
     ].map(location => getMekLocationLabel(location))).toEqual([
       'Head', 'Center Torso', 'Left Torso', 'Right Torso',
       'Left Arm', 'Right Arm', 'Left Leg', 'Right Leg',
-      'Center Leg', 'Front Left Leg', 'Front Right Leg',
-      'Rear Left Leg', 'Rear Right Leg',
+      'Center Leg', 'Left Front Leg', 'Right Front Leg',
+      'Left Rear Leg', 'Right Rear Leg',
     ]);
+  });
+
+  it('abbreviates quad legs side first like the rulebooks, leaving other codes as they are', () => {
+    expect(['FLL', 'FRL', 'RLL', 'RRL', 'LT', 'CL', 'FR'].map(getMekLocationAbbreviation))
+      .toEqual(['LFL', 'RFL', 'LRL', 'RRL', 'LT', 'CL', 'FR']);
   });
 
   it('rejects missing and non-Mek locations', () => {

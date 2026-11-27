@@ -1,0 +1,1862 @@
+// Copyright (C) 2026 The MegaMek Team
+// SPDX-License-Identifier: GPL-3.0-or-later
+
+import {
+    TestAeroSpaceFighterEntity,
+    TestBattleArmorEntity,
+    TestBipedMekEntity,
+    TestConvFighterEntity,
+    TestDropShipEntity,
+    TestFixedWingSupportEntity,
+    TestHandheldWeaponEntity,
+    TestInfantryEntity,
+    TestJumpShipEntity,
+    TestLamEntity,
+    TestLargeSupportTankEntity,
+    TestProtoMekEntity,
+    TestQuadMekEntity,
+    TestQuadVeeEntity,
+    TestSmallCraftEntity,
+    TestSpaceStationEntity,
+    TestSupportNavalEntity,
+    TestSupportTankEntity,
+    TestSupportVtolEntity,
+    TestTankEntity,
+    TestTripodMekEntity,
+    TestVtolEntity,
+    TestWarShipEntity,
+} from '../../models/entity/testing/test-entities';
+import {
+    addTestEquipment,
+    addTestEquipmentWithFlags,
+} from '../../models/entity/testing/test-mounted-equipment';
+import { createTestEquipmentRegistry } from '../../models/entity/testing/test-equipment-registry';
+import { MountedArmor } from '../../models/entity/components/armor';
+import { MountedStructure } from '../../models/entity/components/structure';
+import type { AmmoMunitionFlag } from '../../models/ammo-munition-flags.type';
+import {
+    AmmoEquipment,
+    ArmorEquipment,
+    StructureEquipment,
+    WeaponEquipment,
+    createEquipment,
+} from '../../models/equipment.model';
+import { UNIT_CONDITION_DEFINITIONS } from '../../models/unit-status-presentation';
+import { PageViewerPresentationService } from '../../components/page-viewer/internal/page-viewer-presentation.service';
+import { RecordSheetSvgGenerator } from './record-sheet-svg-generator';
+
+describe('RecordSheetSvgGenerator', () => {
+    it('generates independently movable front, rear and structure views for every Mek chassis', async () => {
+        for (const entity of [new TestBipedMekEntity(), new TestQuadMekEntity(),
+            new TestTripodMekEntity(), new TestQuadVeeEntity(), new TestLamEntity()]) {
+            entity.setTonnage(55);
+            const svg = await RecordSheetSvgGenerator.generate(entity, { ruleset: 'total-warfare' });
+            const views = Array.from(svg.querySelectorAll<SVGGElement>('[data-mekbay-paperdoll-view]'));
+            expect(views.map(view => view.getAttribute('data-mekbay-paperdoll-view')))
+                .withContext(entity.chassisConfig).toEqual(['front', 'rear', 'structure']);
+            expect(views[0].parentElement).withContext(entity.chassisConfig).toBe(views[1].parentElement);
+            expect(views[1].parentElement).withContext(entity.chassisConfig).toBe(views[2].parentElement);
+            expect(views[0].querySelector('.pip[data-rear]')).withContext(entity.chassisConfig).toBeNull();
+            expect(views[1].getAttribute('data-source')).toContain('-armor-back.svg');
+            expect(views[2].querySelectorAll('.pip.armor').length).toBe(0);
+        }
+    });
+
+    it('marks a unit with issues as an invalid design once on every family\'s sheet', async () => {
+        const issue = { code: 'SOURCE_WARNING', severity: 'warning', field: 'source', message: 'Source parsing warning' } as const;
+        for (const entity of [new TestBipedMekEntity(), new TestTankEntity(), new TestSupportNavalEntity(),
+            new TestProtoMekEntity(), new TestBattleArmorEntity(), new TestInfantryEntity(), new TestHandheldWeaponEntity(),
+            new TestAeroSpaceFighterEntity(), new TestSmallCraftEntity(), new TestDropShipEntity(), new TestWarShipEntity()]) {
+            entity.setLoadIssues([issue]);
+            const svg = await RecordSheetSvgGenerator.generate(entity, { ruleset: 'total-warfare' });
+            const notes = svg.querySelectorAll('.record-sheet-issues-note');
+            expect(notes.length).withContext(entity.entityType).toBe(1);
+            expect(notes[0]?.textContent).withContext(entity.entityType).toBe('Invalid design');
+            expect(notes[0]?.getAttribute('fill')).withContext(entity.entityType).toBe('red');
+        }
+    });
+
+    it('generates a compact vehicle sheet directly from an Entity', async () => {
+        const entity = new TestTankEntity();
+        entity.chassis.set('Vedette');
+        entity.model.set('Medium Tank');
+
+        const svg = await RecordSheetSvgGenerator.generate(entity, { ruleset: 'total-warfare', format: 'compact' });
+
+        expect(svg.dataset['mekbayGenerated']).toBe('1');
+        expect(svg.dataset['mekbayCompact']).toBe('vehicle');
+        expect(svg.hasAttribute('aria-label')).toBeFalse();
+        expect(svg.querySelector(':scope > title')).toBeNull();
+        expect(svg.querySelector('[data-mekbay-field="display-name"]')?.textContent)
+            .toBe('Vedette Medium Tank');
+        expect(svg.querySelector('.compact-vehicle-unit-chrome #btLogoColor')).not.toBeNull();
+        expect(svg.querySelector('.compact-vehicle-title')?.textContent)
+            .toMatch(/ VEHICLE RECORD SHEET$/u);
+        expect(svg.querySelector('.compact-vehicle-catalyst #cglLogoBW')).not.toBeNull();
+    });
+
+    it('publishes generated vehicle weapon rows through the non-Mek interaction contract', async () => {
+        const entity = new TestTankEntity();
+        const weapon = addTestEquipment(entity, new WeaponEquipment({
+            id: 'Test Medium Laser',
+            name: 'Medium Laser',
+            type: 'weapon',
+            weapon: { damage: 5, heat: 3, ranges: [3, 6, 9] },
+        }), { location: 'FR' });
+
+        const svg = await RecordSheetSvgGenerator.generate(entity, { ruleset: 'total-warfare', format: 'compact' });
+        const row = svg.querySelector<SVGGElement>(
+            `.inventoryEntry[data-mekbay-component-ids="${weapon.mountId}"]`,
+        );
+
+        expect(row).not.toBeNull();
+        expect(row?.querySelector(':scope > .inventoryEntryButton.mainButton')).not.toBeNull();
+        expect(row?.querySelector(':scope > .inventoryEntryButton.shrButton')).not.toBeNull();
+        expect(row?.querySelector(':scope > .inventoryEntryButton.medButton')).not.toBeNull();
+        expect(row?.querySelector(':scope > .inventoryEntryButton.lngButton')).not.toBeNull();
+    });
+
+    it('keeps superheavy dual-turret data, misc equipment, and footer text in the vehicle owner', async () => {
+        const entity = new TestTankEntity();
+        entity.chassis.set('Gulltoppr OmniMonitor');
+        entity.model.set('(Prime)');
+        entity.setTonnage(190);
+        entity.motiveType.set('Tracked');
+        entity.omni.set(true);
+        entity.hasTurret.set(true);
+        entity.hasDualTurret.set(true);
+        entity.setArmorValue('Front Turret', 'front', 7);
+        entity.setArmorValue('Rear Turret', 'front', 11);
+        const ecm = addTestEquipment(entity, createEquipment({
+            id: 'ISGuardianECMSuite',
+            name: 'ECM Suite (Guardian)',
+            type: 'misc',
+            flags: ['F_ECM'],
+        }), { location: 'Body' });
+        addTestEquipmentWithFlags(entity, 'F_CASE', { location: 'Body' });
+        addTestEquipment(entity, new AmmoEquipment({
+            id: 'Test AMS Ammo',
+            name: 'AMS Ammo',
+            type: 'ammo',
+            ammo: { type: 'AMS', rackSize: 2, shots: 24 },
+        }), { location: 'Body', shotsCount: 24 });
+        entity.quirks.set([
+            { quirk: { key: 'oversized', name: 'Oversized', description: '', type: 'negative' } },
+            {
+                quirk: {
+                    key: 'difficult_maintain', name: 'Difficult to Maintain',
+                    description: '', type: 'negative',
+                },
+            },
+            {
+                quirk: {
+                    key: 'non_standard', name: 'Non-Standard Parts',
+                    description: '', type: 'negative',
+                },
+            },
+            {
+                quirk: {
+                    key: 'battle_computer', name: 'Battle Computer',
+                    description: '', type: 'positive',
+                },
+            },
+            {
+                quirk: {
+                    key: 'poor_performance', name: 'Poor Performance',
+                    description: '', type: 'negative',
+                },
+            },
+        ]);
+
+        const svg = await RecordSheetSvgGenerator.generate(entity, { ruleset: 'total-warfare', format: 'compact' });
+        const ecmRow = svg.querySelector<SVGGElement>(
+            `.inventoryEntry[data-mekbay-component-ids="${ecm.mountId}"]`,
+        );
+
+        expect(svg.querySelector('.compact-vehicle-title')?.textContent)
+            .toBe('SUPER-HEAVY TRACKED OMNIVEHICLE RECORD SHEET');
+        expect(svg.querySelector('.vehicle-paperdoll-layer')?.getAttribute('data-source'))
+            .toBe('/images/paperdolls/vehicle-superheavy-dualturret.svg');
+        expect(svg.querySelector('#textArmor_FT')).not.toBeNull();
+        expect(svg.querySelector('#textArmor_RT')).not.toBeNull();
+        expect(svg.querySelectorAll('.pip.armor[data-loc="FT"]')).toHaveSize(7);
+        expect(svg.querySelectorAll('.pip.armor[data-loc="RT"]')).toHaveSize(11);
+        expect(svg.querySelector('.unitLocation.armor[data-loc="FT"]')).not.toBeNull();
+        expect(svg.querySelector('.unitLocation.armor[data-loc="RT"]')).not.toBeNull();
+        expect(svg.querySelector('.unitLocation.structure[data-loc="RT"]')).not.toBeNull();
+        expect(svg.querySelector('.vehicle-paperdoll-layer [data-loc="TU"]')).toBeNull();
+        expect(ecmRow?.querySelector('.name')?.textContent).toBe('ECM Suite (Guardian)');
+        expect(ecmRow?.querySelector('.range_long')?.textContent).toBe('6');
+        expect(ecmRow?.querySelector('.mainButton')).not.toBeNull();
+        expect(svg.querySelector('#ammoProfile')?.textContent).toContain('Ammo (CASE): (AMS) 24');
+        expect(Array.from(svg.querySelectorAll<SVGTextElement>('.unitQuirks text'))
+            .map(node => node.textContent).join(' '))
+            .toBe('Quirks: Battle Computer, Difficult to Maintain, Non-Standard Parts, Poor Performance, Oversized');
+    });
+
+    it('omits turret-only critical controls for a turretless combat vehicle', async () => {
+        const entity = new TestTankEntity();
+        entity.hasTurret.set(false);
+        entity.hasDualTurret.set(false);
+
+        const svg = await RecordSheetSvgGenerator.generate(entity, { ruleset: 'total-warfare', format: 'compact' });
+
+        expect(svg.querySelector('#turret_locked')).toBeNull();
+        expect(svg.querySelector('#stabilizer_hit_turret')).toBeNull();
+        expect(svg.querySelector('#engine_hit_1')).not.toBeNull();
+    });
+
+    it('prints one visible chin-turret lock for a turreted VTOL', async () => {
+        const entity = new TestVtolEntity();
+        entity.hasTurret.set(true);
+        const svg = await RecordSheetSvgGenerator.generate(entity, { ruleset: 'total-warfare', format: 'compact' });
+        const turret = svg.querySelector<SVGRectElement>('#turret_locked');
+        expect(turret).not.toBeNull();
+        expect(turret?.closest('[display="none"]')).toBeNull();
+        expect(svg.querySelectorAll('#turret_locked').length).toBe(1);
+    });
+
+    it('renders Centaur armor and internal structure from the same projected ProtoMek locations', async () => {
+        const entity = new TestProtoMekEntity();
+        entity.setTonnage(5);
+        entity.hasMainGun.set(true);
+        for (const [location, value] of Object.entries({
+            Head: 3, Torso: 7, 'Right Arm': 2, 'Left Arm': 2, Legs: 4, 'Main Gun': 3,
+        })) entity.setArmorValue(location, 'front', value);
+        addTestEquipmentWithFlags(entity, 'F_EI_INTERFACE', { location: 'Body' });
+
+        const svg = await RecordSheetSvgGenerator.generate(entity, { ruleset: 'total-warfare', format: 'compact' });
+
+        // The built-in Enhanced Imaging Interface is not an inventory row.
+        expect(svg.textContent).not.toContain('F_EI_INTERFACE');
+
+        expect(svg.querySelectorAll('.protomek-paperdoll .pip.armor').length).toBe(21);
+        expect(svg.querySelectorAll('.protomek-paperdoll .pip.structure').length).toBe(12);
+        for (const location of entity.damageLocations()) {
+            expect(svg.querySelectorAll(`.pip.structure[data-loc="${location.sheetCode}"]`).length)
+                .withContext(location.code).toBe(location.internalPoints);
+        }
+        expect(svg.querySelector('[data-protomek-main-gun]')).not.toBeNull();
+    });
+
+    it('renders a quad ProtoMek without unused main-gun artwork', async () => {
+        const entity = new TestProtoMekEntity();
+        entity.setTonnage(6);
+        entity.motiveType.set('Quad');
+        entity.hasMainGun.set(false);
+        for (const [location, value] of Object.entries({ Head: 4, Torso: 12, Legs: 14 })) {
+            entity.setArmorValue(location, 'front', value);
+        }
+        const svg = await RecordSheetSvgGenerator.generate(entity, { ruleset: 'total-warfare', format: 'compact' });
+
+        expect(svg.querySelectorAll('.protomek-paperdoll .pip.armor').length).toBe(30);
+        expect(svg.querySelectorAll('.protomek-paperdoll .pip.structure').length).toBe(16);
+        expect(svg.querySelector('[data-protomek-main-gun]')).toBeNull();
+        expect(svg.querySelector('.pip[data-loc="MG"]')).toBeNull();
+        // No main gun row: its roll is the torso's, and the near miss closes the table.
+        expect(svg.textContent).not.toContain('Main Gun');
+        expect(svg.textContent).toContain('2,6,7,8');
+        expect(svg.querySelector('#near_miss_label')?.textContent).toBe('Near Miss');
+    });
+
+    it('renders an ultraheavy glider ProtoMek with structure and its wing damage reference', async () => {
+        const entity = new TestProtoMekEntity();
+        entity.setTonnage(14);
+        entity.isGlider.set(true);
+        entity.hasMainGun.set(false);
+        for (const [location, value] of Object.entries({
+            Head: 9, Torso: 14, 'Right Arm': 4, 'Left Arm': 4, Legs: 8,
+        })) entity.setArmorValue(location, 'front', value);
+        for (let index = 0; index < 3; index++) {
+            addTestEquipment(entity, new WeaponEquipment({
+                id: `Test Chemical Laser ${index}`, name: 'Medium Chemical Laser', type: 'weapon',
+                flags: ['F_PROTO_WEAPON'], weapon: { damage: 5 },
+            }), { location: 'Torso' });
+        }
+
+        const svg = await RecordSheetSvgGenerator.generate(entity, { ruleset: 'total-warfare', format: 'compact' });
+
+        expect(svg.querySelectorAll('.protomek-paperdoll .pip.armor').length).toBe(39);
+        expect(svg.querySelectorAll('.protomek-paperdoll .pip.structure').length).toBe(34);
+        expect(svg.querySelector('[data-protomek-main-gun]')).toBeNull();
+        expect(svg.querySelector('#wings_hit_label')?.textContent).toBe('Wings');
+        expect(svg.querySelector('#near_miss_label')).toBeNull();
+        expect(svg.querySelector('#wings_hit_text')?.textContent).toBe('-1 Cruise MP (Each Hit)');
+        expect(svg.textContent).toContain('1/2 Cruise MP');
+        expect(svg.textContent).not.toContain('1/2 Jump MP');
+        expect(svg.querySelector('#torsoWeapon_2')?.textContent).toContain('Medium Chemical Laser');
+    });
+
+    it('includes Jumping movement for jump-capable tanks and support vehicles', async () => {
+        const wige = new TestTankEntity();
+        wige.motiveType.set('WiGE');
+        for (const entity of [new TestTankEntity(), wige, new TestSupportTankEntity(), new TestLargeSupportTankEntity()]) {
+            entity.setTonnage(20);
+            entity.originalWalkMP.set(10);
+            const withoutJumpJets = await RecordSheetSvgGenerator.generate(entity, { ruleset: 'total-warfare', format: 'compact' });
+            expect(withoutJumpJets.querySelector('#mpJump:not([aria-hidden="true"])'))
+                .withContext(entity.entityType).toBeNull();
+
+            for (let jet = 0; jet < 5; jet++) addTestEquipmentWithFlags(entity, 'F_JUMP_JET', { location: 'Body' });
+            const svg = await RecordSheetSvgGenerator.generate(entity, { ruleset: 'total-warfare', format: 'compact' });
+            const jump = svg.querySelector('#mpJump:not([aria-hidden="true"])')!;
+            expect(jump).withContext(entity.entityType).not.toBeNull();
+            expect(jump.textContent).toBe('5');
+            expect(jump.getAttribute('data-mekbay-field')).toBe('jump');
+            expect(svg.textContent).toContain('Jumping:');
+        }
+    });
+
+    it('keeps paperdoll label ownership in each vehicle layout', async () => {
+        const ground = new TestTankEntity();
+        const vtol = new TestVtolEntity();
+        const wige = new TestTankEntity();
+        wige.motiveType.set('WiGE');
+
+        const [groundSvg, vtolSvg, wigeSvg, navalSvg] = await Promise.all([
+            RecordSheetSvgGenerator.generate(ground, { ruleset: 'total-warfare', format: 'compact' }),
+            RecordSheetSvgGenerator.generate(vtol, { ruleset: 'total-warfare', format: 'compact' }),
+            RecordSheetSvgGenerator.generate(wige, { ruleset: 'total-warfare', format: 'compact' }),
+            RecordSheetSvgGenerator.generate(new TestSupportNavalEntity(), { ruleset: 'total-warfare', format: 'compact' }),
+        ]);
+
+        expect(groundSvg.querySelector('.ground-vehicle-diagram-labels > text')).not.toBeNull();
+        expect(vtolSvg.querySelector('.vtol-diagram-labels > text')).not.toBeNull();
+        expect(wigeSvg.querySelector('.wige-diagram-labels > text')).not.toBeNull();
+        expect(navalSvg.querySelector('.naval-diagram-labels')).not.toBeNull();
+    });
+
+    it('uses the six-side hull and counters for superheavy WiGE and naval vessels', async () => {
+        const wige = new TestLargeSupportTankEntity();
+        wige.motiveType.set('WiGE');
+        wige.setTonnage(240);
+        const naval = new TestSupportNavalEntity();
+        naval.setTonnage(400);
+        naval.hasTurret.set(true);
+        naval.hasDualTurret.set(true);
+        for (const entity of [wige, naval]) {
+            const svg = await RecordSheetSvgGenerator.generate(entity, { ruleset: 'total-warfare', format: 'compact' });
+            for (const code of ['FRLS', 'RRLS', 'FRRS', 'RRRS']) {
+                expect(svg.querySelector(`#textArmor_${code}`)).withContext(`${entity.entityType} ${code}`).not.toBeNull();
+            }
+            expect(svg.querySelector('.vehicle-paperdoll-layer')?.getAttribute('data-source')).toContain('-superheavy-');
+        }
+        const navalSvg = await RecordSheetSvgGenerator.generate(naval, { ruleset: 'total-warfare', format: 'compact' });
+        expect(navalSvg.querySelector('#textArmor_FT')).not.toBeNull();
+        expect(navalSvg.querySelector('#textArmor_RT')).not.toBeNull();
+    });
+
+    it('keeps every large support rail vehicle hull facing despite its motive weight classification', async () => {
+        const entity = new TestLargeSupportTankEntity();
+        entity.motiveType.set('Rail');
+        entity.setTonnage(150);
+        entity.hasTurret.set(false);
+        entity.hasDualTurret.set(false);
+        expect(entity.isSuperHeavy()).toBeFalse();
+        entity.damageLocations().forEach(location => entity.setArmorValue(location.code, 'front', 8));
+
+        const svg = await RecordSheetSvgGenerator.generate(entity, { ruleset: 'total-warfare', format: 'compact' });
+        expect(svg.querySelector('.vehicle-paperdoll-layer')?.getAttribute('data-source'))
+            .toBe('/images/paperdolls/vehicle-superheavy-noturret.svg');
+        for (const code of ['FRLS', 'RRLS', 'FRRS', 'RRRS']) {
+            expect(svg.querySelector(`#textArmor_${code}`)).withContext(code).not.toBeNull();
+            expect(svg.querySelector(`.pip.armor[data-loc="${code}"]`)).withContext(code).not.toBeNull();
+        }
+    });
+
+    it('owns the submarine template variant and prints torpedo water ranges', async () => {
+        const entity = new TestSupportNavalEntity();
+        entity.motiveType.set('Submarine');
+        const torpedo = addTestEquipment(entity, new WeaponEquipment({
+            id: 'Test LRT 20', name: 'LRT 20', type: 'weapon',
+            weapon: {
+                damage: 'cluster', heat: 6, rackSize: 20, ammoType: 'LRM_TORPEDO',
+                minRange: 6, ranges: [0, 0, 0, 0], wRanges: [7, 14, 21, 28],
+            },
+        }), { location: 'Front' });
+
+        const svg = await RecordSheetSvgGenerator.generate(entity, { ruleset: 'total-warfare', format: 'compact' });
+        const row = svg.querySelector<SVGGElement>(
+            `.inventoryEntry[data-mekbay-component-ids="${torpedo.mountId}"]`,
+        );
+
+        expect(svg.dataset['mekbayLayout']).toBe('naval');
+        expect(svg.textContent).toContain('DEPTH TRACK');
+        expect(svg.querySelectorAll('.submarine-depth-turn').length).toBe(20);
+        expect(svg.querySelector('.naval-paperdoll-root')).not.toBeNull();
+        expect(svg.querySelector('.compact-vehicle-catalyst')).not.toBeNull();
+        expect(row?.querySelector('.range_min')?.textContent).toBe('6');
+        expect(row?.querySelector('.range_short')?.textContent).toBe('7');
+        expect(row?.querySelector('.range_medium')?.textContent).toBe('14');
+        expect(row?.querySelector('.range_long')?.textContent).toBe('21');
+    });
+
+    it('projects DropShip weapon bays in the large-aero family instead of fighter mount rows', async () => {
+        const entity = new TestDropShipEntity();
+        entity.motiveType.set('Aerodyne');
+        const mediumLaser = new WeaponEquipment({
+            id: 'Test Medium Laser', name: 'Medium Laser', shortName: 'Medium Laser', type: 'weapon',
+            weapon: { heat: 3, av: [5, 0, 0, 0] },
+        });
+        const largeLaser = new WeaponEquipment({
+            id: 'Test Large Laser', name: 'Large Laser', shortName: 'Large Laser', type: 'weapon',
+            weapon: { heat: 8, av: [8, 8, 0, 0] },
+        });
+        const lrm = new WeaponEquipment({
+            id: 'Test LRM 20', name: 'LRM 20', shortName: 'LRM 20', type: 'weapon',
+            weapon: { heat: 6, ammoType: 'LRM', rackSize: 20, av: [12, 12, 12, 0] },
+        });
+        const lrmAmmo = new AmmoEquipment({
+            id: 'Test LRM 20 Ammo', name: 'LRM 20 Ammo', type: 'ammo',
+            ammo: { type: 'LRM', rackSize: 20, shots: 12 },
+        });
+        const left = [
+            addTestEquipment(entity, largeLaser, { location: 'Left Side' }),
+            addTestEquipment(entity, largeLaser, { location: 'Left Side' }),
+            addTestEquipment(entity, mediumLaser, { location: 'Left Side' }),
+        ];
+        const right = [
+            addTestEquipment(entity, largeLaser, { location: 'Right Side' }),
+            addTestEquipment(entity, largeLaser, { location: 'Right Side' }),
+            addTestEquipment(entity, mediumLaser, { location: 'Right Side' }),
+        ];
+        const noseLrm = addTestEquipment(entity, lrm, { location: 'Nose' });
+        const noseAmmo = addTestEquipment(entity, lrmAmmo, { location: 'Nose', shotsCount: 12 });
+        entity.addEquipmentBay('weapon-bay', { mounts: [noseLrm, noseAmmo] });
+        entity.addEquipmentBay('weapon-bay', { mounts: left });
+        entity.addEquipmentBay('weapon-bay', { mounts: right });
+
+        const svg = await RecordSheetSvgGenerator.generate(entity, { ruleset: 'total-warfare' });
+        const bays = [...svg.querySelectorAll<SVGGElement>('.inventoryEntry.bay')];
+        const lrmRow = bays.find(row => row.querySelector('.name')?.textContent?.includes('LRM 20'))!;
+        const laserRow = bays.find(row => row.textContent?.includes('Medium Laser'))!;
+
+        expect(svg.dataset['mekbayLayout']).toBe('dropship');
+        expect(bays.length).toBe(2);
+        expect(lrmRow.querySelector('.name')?.textContent).toBe('1 LRM 20 (12 rounds)');
+        expect(lrmRow.querySelector('.range_short')?.textContent).toBe('1\u202F(12)');
+        expect(laserRow.querySelector('.location')?.textContent).toBe('LW/RW');
+        // A bay lists its weapons in unit-file order
+        expect(Array.from(laserRow.querySelectorAll('.name')).map(node => node.textContent))
+            .toEqual(['2 Large Laser,', '1 Medium Laser']);
+        expect(laserRow.querySelector('.heat')?.textContent).toBe('19');
+        // The bay's combined 21 is 2 at capital scale (SO p. 147)
+        expect(laserRow.querySelector('.range_short')?.textContent).toBe('2\u202F(21)');
+        expect(laserRow.querySelector('.range_medium')?.textContent).toBe('2\u202F(16)');
+        expect(laserRow.getAttribute('data-mekbay-component-ids')?.split(' ').length).toBe(6);
+        const children = [...laserRow.children];
+        expect(children.indexOf(laserRow.querySelector(':scope > .mainButton')!))
+            .toBeLessThan(children.indexOf(laserRow.querySelector('.name')!));
+        expect(laserRow.querySelector('.hitMod-rect')).not.toBeNull();
+        expect(laserRow.querySelector('.targetTn-rect')).not.toBeNull();
+    });
+
+    it('owns conventional-fighter movement and return tables instead of drawing an Aero heat panel', async () => {
+        const svg = await RecordSheetSvgGenerator.generate(new TestConvFighterEntity(), { ruleset: 'total-warfare' });
+
+        expect(svg.dataset['mekbayLayout']).toBe('aero-fighter');
+        expect(svg.textContent).toContain('GROUND MAP STRAIGHT MOVEMENT');
+        expect(svg.textContent).toContain('FIGHTER RETURN TABLE');
+        expect(svg.querySelector('#heatDataPanel')).toBeNull();
+        expect(svg.querySelector('.aero-movement-compass')).toBeNull();
+    });
+
+    it('prints zero armor and BAR damage thresholds on fixed-wing support paperdolls', async () => {
+        const entity = new TestFixedWingSupportEntity();
+        entity.barRating.set(2);
+        for (const location of entity.locationOrder) entity.setArmorValue(location, 'front', 0);
+        const unarmored = await RecordSheetSvgGenerator.generate(entity, { ruleset: 'total-warfare' });
+        expect(unarmored.querySelector('#textArmor_NOS')?.textContent).toBe('1 ( 0 )');
+
+        entity.barRating.set(10);
+        entity.setArmorValue('Left Wing', 'front', 11);
+        const standardArmor = await RecordSheetSvgGenerator.generate(entity, { ruleset: 'total-warfare' });
+        expect(standardArmor.querySelector('#textArmor_NOS')?.textContent).toBe('0 ( 0 )');
+        expect(standardArmor.querySelector('#textArmor_LWG')?.textContent).toBe('2 ( 11 )');
+    });
+
+    it('projects Small Craft mounts, ammo, and automatic ECM in the small-craft owner', async () => {
+        const automaticEcm = createEquipment({
+            id: 'ISSingle-Hex ECM', name: 'Single-Hex ECM', type: 'misc', flags: ['F_ECM'],
+        });
+        const entity = new TestSmallCraftEntity(createTestEquipmentRegistry({
+            [automaticEcm.id]: automaticEcm,
+        }));
+        const laser = addTestEquipment(entity, new WeaponEquipment({
+            id: 'Test Small Craft Large Laser', name: 'Large Laser', shortName: 'Large Laser',
+            type: 'weapon', flags: ['F_ENERGY', 'F_DIRECT_FIRE'],
+            weapon: { damage: 8, heat: 8, ranges: [5, 10, 15, 20], av: [8, 8, 0, 0] },
+        }), { location: 'Nose' });
+        addTestEquipment(entity, new AmmoEquipment({
+            id: 'Test Small Craft LRM Ammo', name: 'LRM 15 Ammo', type: 'ammo',
+            ammo: { type: 'LRM', rackSize: 15, shots: 40 },
+        }), { location: 'Nose', shotsCount: 40 });
+
+        const svg = await RecordSheetSvgGenerator.generate(entity, { ruleset: 'total-warfare' });
+        const laserRow = svg.querySelector<SVGGElement>(
+            `.inventoryEntry[data-mekbay-component-ids="${laser.mountId}"]`,
+        );
+
+        expect(svg.dataset['mekbayLayout']).toBe('small-craft');
+        expect(laserRow?.classList.contains('bay')).toBeFalse();
+        // Without grouping the inventory has no # column
+        expect(laserRow?.querySelector('.quantity')).toBeNull();
+        expect(laserRow?.querySelector('.name')?.textContent).toContain('Large Laser');
+        expect(Array.from(svg.querySelectorAll('.inventoryEntry .name')).map(node => node.textContent))
+            .toContain('Single-Hex ECM [E]');
+        expect(svg.textContent).toContain('Ammo: (LRM 15) 40');
+    });
+
+    it('uses standard-scale multiline bays and Artemis values for unarmed-capital-scale vessels', async () => {
+        const entity = new TestSpaceStationEntity();
+        const lrm = new WeaponEquipment({
+            id: 'Test Station LRM 15', name: 'LRM 15', shortName: 'LRM 15', type: 'weapon',
+            flags: ['F_LRM', 'F_MISSILE', 'F_ARTEMIS_COMPATIBLE'],
+            weapon: { heat: 5, ammoType: 'LRM', rackSize: 15, av: [9, 9, 9, 0] },
+        });
+        const first = addTestEquipment(entity, lrm, { location: 'Nose' });
+        const second = addTestEquipment(entity, lrm, { location: 'Nose' });
+        const ammo = addTestEquipment(entity, new AmmoEquipment({
+            id: 'Test Station LRM 15 Ammo', name: 'LRM 15 Artemis', type: 'ammo',
+            ammo: { type: 'LRM', rackSize: 15, shots: 40, munitionType: ['M_ARTEMIS_CAPABLE'] },
+        }), { location: 'Nose', shotsCount: 40 });
+        const firstArtemis = addTestEquipmentWithFlags(entity, 'F_ARTEMIS', { location: 'Nose' });
+        const secondArtemis = addTestEquipmentWithFlags(entity, 'F_ARTEMIS', { location: 'Nose' });
+        entity.linkEquipment(firstArtemis, first);
+        entity.linkEquipment(secondArtemis, second);
+        entity.addEquipmentBay('weapon-bay', {
+            mounts: [first, second, ammo, firstArtemis, secondArtemis],
+        });
+
+        const svg = await RecordSheetSvgGenerator.generate(entity, { ruleset: 'total-warfare' });
+        const row = svg.querySelector<SVGGElement>('.inventoryEntry.bay')!;
+
+        expect(svg.querySelector('[data-mekbay-region="aero-data"]')?.getAttribute('data-mekbay-aero-scale'))
+            .toBe('standard');
+        expect(row.querySelector('.name')?.textContent).toBe('2 LRM 15 (40 rounds)*');
+        expect(row.querySelector('.range_short')?.textContent).toBe('2\u202F(24)');
+        expect(svg.textContent).toContain('* w/Artemis IV');
+        expect(svg.textContent).toContain('STATION DATA');
+        expect(Array.from(svg.querySelectorAll('.svg-frame-title'))
+            .filter(node => node.textContent === 'NOTES').length).toBe(2);
+    });
+
+    it('merges equal opposite capital bays while keeping asymmetric arcs and all mount controls', async () => {
+        const entity = new TestWarShipEntity();
+        const weapon = new WeaponEquipment({
+            id: 'Symmetric NAC', name: 'NAC', shortName: 'NAC', type: 'weapon',
+            weapon: { capital: true, heat: 10, av: [2, 2, 1, 0] },
+        });
+        const addBay = (location: string, count: number) => {
+            const mounts = Array.from({ length: count }, () => addTestEquipment(entity, weapon, { location }));
+            entity.addEquipmentBay('weapon-bay', { mounts });
+            return mounts;
+        };
+        const left = addBay('FLS', 2);
+        const right = addBay('FRS', 2);
+        addBay('ALS', 1);
+        addBay('ARS', 2);
+
+        const pages = await RecordSheetSvgGenerator.generatePages(entity, { ruleset: 'total-warfare' });
+        const rows = [...pages[0].querySelectorAll<SVGGElement>('.inventoryEntry.bay')];
+        expect(pages.length).toBe(1);
+        expect(rows.map(row => row.querySelector('.location')?.textContent)).toEqual(['FLS/FRS', 'ALS', 'ARS']);
+        expect(rows[0].querySelector('.heat')?.textContent).toBe('20');
+        expect(rows[0].querySelector('.range_short')?.textContent).toBe('4');
+        expect(rows[0].getAttribute('data-mekbay-component-ids')?.split(' '))
+            .toEqual([...left, ...right].map(mount => mount.mountId));
+    });
+
+    for (const ruleset of ['core-2026', 'total-warfare'] as const) {
+        it(`rounds capital bay damage after adding fractional lasers (${ruleset})`, async () => {
+            const entity = new TestWarShipEntity();
+            const addBay = (location: string, values: readonly number[]) => {
+                const mounts = values.map((value, index) => addTestEquipment(entity, new WeaponEquipment({
+                    id: `${location}-laser-${index}`, name: 'Naval Laser', shortName: 'NL', type: 'weapon',
+                    weapon: { atClass: 'CAPITAL_LASER', capital: true, heat: 85, av: [value, value, value, value] },
+                }), { location }));
+                entity.addEquipmentBay('weapon-bay', { mounts });
+            };
+            addBay('Nose', [5.5, 5.5, 5.5]);
+            addBay('FLS', [4.5, 4.5, 4.5, 4.5]);
+            addBay('Aft', [5.5, 4.5]);
+            const svg = await RecordSheetSvgGenerator.generate(entity, { ruleset });
+            const rows = [...svg.querySelectorAll<SVGGElement>('.inventoryEntry.bay')];
+            expect(rows.map(row => row.querySelector('.range_short')?.textContent)).toEqual(['17', '18', '10']);
+            for (const row of rows) {
+                expect(row.querySelector('.range_extreme')?.textContent)
+                    .toBe(row.querySelector('.range_short')?.textContent);
+            }
+        });
+    }
+
+    it('totals a bay\'s ammo per munition, naming munitions only when a bay carries several', async () => {
+        const entity = new TestWarShipEntity();
+        const bay = (location: string, weapon: WeaponEquipment, bins: readonly (readonly [string, number])[]) => {
+            const launcher = addTestEquipment(entity, weapon, { location });
+            const ammo = bins.map(([name, shots]) => addTestEquipment(entity, new AmmoEquipment({
+                id: `${location} ${name}`, name, shortName: name, type: 'ammo',
+                ammo: { type: weapon.ammoType, rackSize: weapon.rackSize, shots },
+            }), { location, shotsCount: shots }));
+            entity.addEquipmentBay('weapon-bay', { mounts: [launcher, ...ammo] });
+        };
+        bay('Nose', new WeaponEquipment({
+            id: 'Bay LRM 20', name: 'LRM 20', shortName: 'LRM 20', type: 'weapon',
+            weapon: { heat: 6, ammoType: 'LRM', rackSize: 20, av: [12, 12, 12, 0] },
+        }), [['LRM 20', 6], ['LRM 20', 6], ['LRM 20', 6]]);
+        bay('Aft', new WeaponEquipment({
+            id: 'Bay LB 10-X AC', name: 'LB 10-X AC', shortName: 'LB 10-X AC', type: 'weapon',
+            weapon: { heat: 2, ammoType: 'AC_LBX', rackSize: 10, av: [6, 6, 0, 0] },
+        }), [['LB 10-X', 10], ['LB 10-X Cluster', 10]]);
+        const barracuda = new WeaponEquipment({
+            id: 'Barracuda', name: 'Barracuda', type: 'weapon', flags: ['F_MISSILE'],
+            weapon: { capital: true, heat: 10, ammoType: 'BARRACUDA', av: [2, 2, 2, 2] },
+        });
+        bay('FLS', barracuda, [['Barracuda', 1]]);
+        bay('FRS', barracuda, [['Barracuda', 2]]);
+
+        const svg = await RecordSheetSvgGenerator.generate(entity, { ruleset: 'total-warfare' });
+        const names = [...svg.querySelectorAll<SVGGElement>('.inventoryEntry.bay')]
+            .map(row => [...row.querySelectorAll(':scope > .name')].map(node => node.textContent).join(' '));
+        expect(names).toEqual(['1 Barracuda (1 missile)', '1 Barracuda (2 missiles)', '1 LRM 20 (18 rounds)',
+            '1 LB 10-X AC (10 Standard, 10 Cluster)']);
+    });
+
+    it('prints "*" for an AR10 bay\'s values, which depend on the missile fired', async () => {
+        const entity = new TestWarShipEntity();
+        const launcher = addTestEquipment(entity, new WeaponEquipment({
+            id: 'Bay AR10', name: 'AR10', shortName: 'AR10', type: 'weapon',
+            weapon: { capital: true, heat: 20, ammoType: 'AR10', av: [2, 2, 2, 2] },
+        }), { location: 'Nose' });
+        const missiles = ['KW', 'B'].map(name => addTestEquipment(entity, new AmmoEquipment({
+            id: `AR10 ${name}`, name, shortName: name, type: 'ammo', ammo: { type: 'AR10', shots: 10 },
+        }), { location: 'Nose', shotsCount: 10 }));
+        entity.addEquipmentBay('weapon-bay', { mounts: [launcher, ...missiles] });
+
+        const svg = await RecordSheetSvgGenerator.generate(entity, { ruleset: 'total-warfare' });
+        const row = svg.querySelector<SVGGElement>('.inventoryEntry.bay')!;
+        expect(row.querySelector('.name')?.textContent).toBe('1 AR10 (10 KW, 10 B)');
+        // Its heat depends on the missile too (TW p. 304)
+        expect(row.querySelector('.heat')?.textContent).toBe('*');
+        expect(['range_short', 'range_medium', 'range_long', 'range_extreme']
+            .map(range => row.querySelector(`.${range}`)?.textContent)).toEqual(['*', '*', '*', '*']);
+    });
+
+    const bayRanges = (row: Element) => ['range_short', 'range_medium', 'range_long', 'range_extreme']
+        .map(range => row.querySelector(`:scope > .${range}`)?.textContent);
+
+    it('converts a standard bay\'s combined value to capital scale (SO p. 147)', async () => {
+        const entity = new TestJumpShipEntity();
+        const laser = (id: string, value: number) => addTestEquipment(entity, new WeaponEquipment({
+            id, name: id, shortName: id, type: 'weapon', flags: ['F_ENERGY'], weapon: { heat: 3, av: [value, value, 0, 0] },
+        }), { location: 'Nose' });
+        entity.addEquipmentBay('weapon-bay', { mounts: [laser('Medium Laser', 5), laser('Large Laser', 8)] });
+
+        const svg = await RecordSheetSvgGenerator.generate(entity, { ruleset: 'total-warfare' });
+        // 13 is 1 at capital scale, not 1 for each laser
+        expect(bayRanges(svg.querySelector('.inventoryEntry.bay')!)).toEqual(['1\u202F(13)', '1\u202F(13)', '—', '—']);
+    });
+
+    it('gives an ATM bay its bay profile only with a ton of each munition per launcher (TW p. 304)', async () => {
+        const atm = new WeaponEquipment({
+            id: 'Bay ATM 12', name: 'ATM 12', shortName: 'ATM 12', type: 'weapon',
+            weapon: { heat: 8, ammoType: 'ATM', rackSize: 12, av: [20, 20] },
+        });
+        const munition = (name: string, flag: AmmoMunitionFlag) => new AmmoEquipment({
+            id: `ATM 12 ${name}`, name: `ATM 12 ${name}`, shortName: `ATM 12 ${name}`, type: 'ammo',
+            ammo: { type: 'ATM', rackSize: 12, shots: 5, munitionType: [flag] },
+        });
+        const bay = async (bins: readonly (readonly [AmmoEquipment, number])[]) => {
+            const entity = new TestWarShipEntity();
+            const launchers = [0, 1].map(() => addTestEquipment(entity, atm, { location: 'Nose' }));
+            const ammo = bins.map(([equipment, shots]) => addTestEquipment(entity, equipment, { location: 'Nose', shotsCount: shots }));
+            entity.addEquipmentBay('weapon-bay', { mounts: [...launchers, ...ammo] });
+            return (await RecordSheetSvgGenerator.generate(entity, { ruleset: 'total-warfare' })).querySelector('.inventoryEntry.bay')!;
+        };
+        const standard = munition('Standard', 'M_STANDARD');
+        const extendedRange = munition('ER', 'M_EXTENDED_RANGE');
+        const highExplosive = munition('HE', 'M_HIGH_EXPLOSIVE');
+
+        expect(bayRanges(await bay([[standard, 50]]))).toEqual(['4\u202F(40)', '4\u202F(40)', '—', '—']);
+        expect(bayRanges(await bay([[standard, 20], [extendedRange, 20], [highExplosive, 20]])))
+            .toEqual(['6\u202F(60)', '4\u202F(40)', '2\u202F(20)', '2\u202F(20)']);
+        // A large craft's ATMs fire no special munitions without "at least 10 shots of each ammo type per ATM
+        // launcher" (TM p. 194): the Arcadia's nose carries 10 of each for two ATM 12s and prints 40/40, as its sheet does
+        const arcadia = await bay([[standard, 10], [extendedRange, 10], [highExplosive, 10]]);
+        expect(bayRanges(arcadia)).toEqual(['4\u202F(40)', '4\u202F(40)', '—', '—']);
+        expect(arcadia.querySelectorAll('.bayMunition').length).toBe(0);
+
+        // Two ATM 3s with 20 of each have 10 per launcher but one ton between them: a bay fires Extended Range and High
+        // Explosive missiles only as its profile (TW p. 304), so it prints its standard values, and with 40 the profile
+        const atm3 = async (shots: number) => {
+            const entity = new TestWarShipEntity();
+            const launcher = new WeaponEquipment({
+                id: 'Bay ATM 3', name: 'ATM 3', shortName: 'ATM 3', type: 'weapon',
+                weapon: { heat: 2, ammoType: 'ATM', rackSize: 3, av: [4, 4] },
+            });
+            const bins = ([['Standard', 'M_STANDARD'], ['ER', 'M_EXTENDED_RANGE'], ['HE', 'M_HIGH_EXPLOSIVE']] as const)
+                .map(([name, flag]) => addTestEquipment(entity, new AmmoEquipment({
+                    id: `ATM 3 ${name}`, name: `ATM 3 ${name}`, shortName: `ATM 3 ${name}`, type: 'ammo',
+                    ammo: { type: 'ATM', rackSize: 3, shots: 20, munitionType: [flag] },
+                }), { location: 'Nose', shotsCount: shots }));
+            entity.addEquipmentBay('weapon-bay', { mounts: [
+                ...[0, 1].map(() => addTestEquipment(entity, launcher, { location: 'Nose' })), ...bins,
+            ] });
+            return (await RecordSheetSvgGenerator.generate(entity, { ruleset: 'total-warfare' })).querySelector('.inventoryEntry.bay')!;
+        };
+        const oneTon = await atm3(20);
+        expect(bayRanges(oneTon)).toEqual(['1\u202F(8)', '1\u202F(8)', '—', '—']);
+        expect(oneTon.querySelectorAll('.bayMunition').length).toBe(0);
+        expect(bayRanges(await atm3(40)).slice(0, 2)).toEqual(['1\u202F(12)', '1\u202F(8)']);
+    });
+
+    it('heats a bay with rapid-fire weapons at their maximum rate (TW pp. 114, 238)', async () => {
+        const entity = new TestWarShipEntity();
+        const rotary = new WeaponEquipment({
+            id: 'Bay RAC 5', name: 'Rotary AC/5', shortName: 'Rotary AC/5', type: 'weapon',
+            weapon: { heat: 1, ammoType: 'AC_ROTARY', rackSize: 5, av: [20, 20] },
+        });
+        entity.addEquipmentBay('weapon-bay', { mounts: [0, 1].map(() => addTestEquipment(entity, rotary, { location: 'Nose' })) });
+
+        const svg = await RecordSheetSvgGenerator.generate(entity, { ruleset: 'total-warfare' });
+        expect(svg.querySelector('.inventoryEntry.bay')?.querySelector('.heat')?.textContent).toBe('12');
+    });
+
+    it('prints an MML bay\'s LRM and SRM values on lines of their own', async () => {
+        const entity = new TestWarShipEntity();
+        const launcher = addTestEquipment(entity, new WeaponEquipment({
+            id: 'Bay MML 9', name: 'MML 9', shortName: 'MML 9', type: 'weapon',
+            weapon: { heat: 5, ammoType: 'MML', rackSize: 9, av: [5, 5, 5] },
+        }), { location: 'Nose' });
+        const ammo = ['LRM', 'SRM'].map(name => addTestEquipment(entity, new AmmoEquipment({
+            id: `MML 9/${name}`, name: `MML 9/${name}`, shortName: `MML 9/${name}`, type: 'ammo',
+            ammo: { type: 'MML', rackSize: 9, shots: 10 },
+        }), { location: 'Nose', shotsCount: 10 }));
+        entity.addEquipmentBay('weapon-bay', { mounts: [launcher, ...ammo] });
+
+        const row = (await RecordSheetSvgGenerator.generate(entity, { ruleset: 'total-warfare' })).querySelector('.inventoryEntry.bay')!;
+        // Each line carries its own rounds, so the name prints none
+        expect([...row.querySelectorAll(':scope > .name')].map(node => node.textContent).join(' ')).toBe('1 MML 9');
+        expect([...row.querySelectorAll('.bayMunition')].map(line => [line.querySelector('.name')?.textContent,
+            ...bayRanges(line)])).toEqual([
+            ['LRM (10 rounds)', '1\u202F(5)', '1\u202F(5)', '1\u202F(5)', '—'],
+            ['SRM (10 rounds)', '1\u202F(10)', '—', '—', '—'],
+        ]);
+    });
+
+    it('fires no more launchers on a bay munition line than it has rounds (TW p. 103)', async () => {
+        const entity = new TestWarShipEntity();
+        const mml = new WeaponEquipment({
+            id: 'Rounds MML 9', name: 'MML 9', shortName: 'MML 9', type: 'weapon',
+            weapon: { heat: 5, ammoType: 'MML', rackSize: 9, av: [5, 5, 5] },
+        });
+        const launchers = [0, 1, 2].map(() => addTestEquipment(entity, mml, { location: 'Nose' }));
+        const ammo = ([['LRM', 13], ['SRM', 1]] as const).map(([name, shots]) => addTestEquipment(entity, new AmmoEquipment({
+            id: `Rounds MML 9/${name}`, name: `MML 9/${name}`, shortName: `MML 9/${name}`, type: 'ammo',
+            ammo: { type: 'MML', rackSize: 9, shots: 13 },
+        }), { location: 'Nose', shotsCount: shots }));
+        entity.addEquipmentBay('weapon-bay', { mounts: [...launchers, ...ammo] });
+
+        const row = (await RecordSheetSvgGenerator.generate(entity, { ruleset: 'total-warfare' })).querySelector('.inventoryEntry.bay')!;
+        expect([...row.querySelectorAll('.bayMunition')].map(line => [line.querySelector('.name')?.textContent,
+            ...bayRanges(line)])[1]).toEqual(['SRM (1 round)', '1 (10)', '—', '—', '—']);
+    });
+
+    it('prints the mounted Artemis IV rating for an MML 9 bay carrying only ordinary SRM ammunition', async () => {
+        const entity = new TestWarShipEntity();
+        const launcher = addTestEquipment(entity, new WeaponEquipment({
+            id: 'ISMML9', name: 'MML 9', type: 'weapon', flags: ['F_ARTEMIS_COMPATIBLE'],
+            weapon: { heat: 5, ammoType: 'MML', rackSize: 9, av: [5, 5, 5] },
+        }), { location: 'Nose' });
+        const ammo = addTestEquipment(entity, new AmmoEquipment({
+            id: 'IS Ammo MML-9 SRM', name: 'MML 9/SRM', type: 'ammo', flags: ['F_MML_SRM'],
+            ammo: { type: 'MML', rackSize: 9, shots: 11, munitionType: ['M_STANDARD'] },
+        }), { location: 'Nose', shotsCount: 11 });
+        const artemis = addTestEquipmentWithFlags(entity, 'F_ARTEMIS', { location: 'Nose' });
+        entity.linkEquipment(artemis, launcher);
+        entity.addEquipmentBay('weapon-bay', { mounts: [launcher, artemis, ammo] });
+
+        const svg = await RecordSheetSvgGenerator.generate(entity, { ruleset: 'total-warfare' });
+        const row = svg.querySelector('.inventoryEntry.bay')!;
+        expect(row.querySelector('.name')?.textContent).toBe('1 MML 9 (11 SRM)*');
+        expect(bayRanges(row)).toEqual(['1\u202F(14)', '—', '—', '—']);
+    });
+
+    it('adds a launcher without ammo to no bay munition line (TW p. 103)', async () => {
+        const entity = new TestWarShipEntity();
+        const mml9 = addTestEquipment(entity, new WeaponEquipment({
+            id: 'Loaded MML 9', name: 'MML 9', shortName: 'MML 9', type: 'weapon',
+            weapon: { heat: 5, ammoType: 'MML', rackSize: 9, av: [5, 5, 5] },
+        }), { location: 'Nose' });
+        const mml3 = addTestEquipment(entity, new WeaponEquipment({
+            id: 'Empty MML 3', name: 'MML 3', shortName: 'MML 3', type: 'weapon',
+            weapon: { heat: 2, ammoType: 'MML', rackSize: 3, av: [2, 2, 2] },
+        }), { location: 'Nose' });
+        const ammo = ['LRM', 'SRM'].map(name => addTestEquipment(entity, new AmmoEquipment({
+            id: `Loaded MML 9/${name}`, name: `MML 9/${name}`, shortName: `MML 9/${name}`, type: 'ammo',
+            ammo: { type: 'MML', rackSize: 9, shots: 10 },
+        }), { location: 'Nose', shotsCount: 10 }));
+        entity.addEquipmentBay('weapon-bay', { mounts: [mml9, mml3, ...ammo] });
+
+        const row = (await RecordSheetSvgGenerator.generate(entity, { ruleset: 'total-warfare' })).querySelector('.inventoryEntry.bay')!;
+        expect([...row.querySelectorAll('.bayMunition')].map(line => bayRanges(line))).toEqual([
+            ['1\u202F(5)', '1\u202F(5)', '1\u202F(5)', '—'],
+            ['1\u202F(10)', '—', '—', '—'],
+        ]);
+    });
+
+    it('prints an iATM bay\'s Improved Magnetic Pulse missiles apart from its High Explosive ones (IO:AE p. 61)', async () => {
+        const iatm = new WeaponEquipment({
+            id: 'Bay iATM 12', name: 'iATM 12', shortName: 'iATM 12', type: 'weapon',
+            weapon: { heat: 8, ammoType: 'IATM', rackSize: 12, av: [24, 24] },
+        });
+        const munition = (name: string, flag: AmmoMunitionFlag) => new AmmoEquipment({
+            id: `iATM 12 ${name}`, name: `iATM 12 ${name}`, shortName: `iATM 12 ${name}`, type: 'ammo',
+            ammo: { type: 'IATM', rackSize: 12, shots: 5, munitionType: [flag] },
+        });
+        const bay = async (bins: readonly (readonly [AmmoEquipment, number])[]) => {
+            const entity = new TestWarShipEntity();
+            const launchers = [0, 1].map(() => addTestEquipment(entity, iatm, { location: 'Nose' }));
+            const ammo = bins.map(([equipment, shots]) => addTestEquipment(entity, equipment, { location: 'Nose', shotsCount: shots }));
+            entity.addEquipmentBay('weapon-bay', { mounts: [...launchers, ...ammo] });
+            return (await RecordSheetSvgGenerator.generate(entity, { ruleset: 'total-warfare' })).querySelector('.inventoryEntry.bay')!;
+        };
+        const standard = munition('Standard', 'M_STANDARD');
+        const extendedRange = munition('ER', 'M_EXTENDED_RANGE');
+        const highExplosive = munition('HE', 'M_HIGH_EXPLOSIVE');
+        const magneticPulse = munition('IMP', 'M_IATM_IMP');
+
+        // Improved Magnetic Pulse missiles are not the High Explosive ones a large craft needs 10 shots of per launcher
+        // before it fires special munitions (TM p. 194): this bay fires its standard missiles only
+        const noHighExplosive = await bay([[standard, 20], [extendedRange, 20], [magneticPulse, 20]]);
+        expect(bayRanges(noHighExplosive)).toEqual(['5\u202F(48)', '5\u202F(48)', '—', '—']);
+        expect(noHighExplosive.querySelectorAll('.bayMunition').length).toBe(0);
+        const lineName = (line: Element) => [...line.querySelectorAll('.name')].map(node => node.textContent).join(' ');
+
+        // Improved Magnetic Pulse missiles need 10 shots per launcher of their own (TM p. 194) before they print a line
+        const shortOfMagneticPulse = await bay([[standard, 20], [extendedRange, 20], [highExplosive, 20], [magneticPulse, 5]]);
+        expect(shortOfMagneticPulse.querySelectorAll('.bayMunition').length).toBe(0);
+
+        // With 10 of each of the three per launcher, and so a ton of each, the bay profile applies and the name totals
+        // those three; the Improved Magnetic Pulse missiles, which don't count toward it, print their own line under it
+        const profiled = await bay([[standard, 20], [extendedRange, 20], [highExplosive, 20], [magneticPulse, 20]]);
+        expect([...profiled.querySelectorAll(':scope > .name')].map(node => node.textContent).join(' '))
+            .toBe('2 iATM 12 (20 Standard, 20 Extended Range, 20 High Explosive)');
+        expect(bayRanges(profiled)).toEqual(['7\u202F(72)', '5\u202F(48)', '2\u202F(24)', '2\u202F(24)']);
+        expect([...profiled.querySelectorAll('.bayMunition')].map(line => [lineName(line), ...bayRanges(line)]))
+            .toEqual([['Improved Magnetic Pulse (20 rounds)', '2\u202F(24)', '—', '—', '—']]);
+    });
+
+    it('leaves a launcher out of the munition lines it cannot fire', async () => {
+        const entity = new TestWarShipEntity();
+        const launcher = (ammoType: 'ATM' | 'IATM', name: string, value: number) => addTestEquipment(entity, new WeaponEquipment({
+            id: `Mixed ${name}`, name, shortName: name, type: 'weapon',
+            weapon: { heat: 8, ammoType, rackSize: 12, av: [value, value] },
+        }), { location: 'Nose' });
+        const bin = (ammoType: 'ATM' | 'IATM', name: string, flag: AmmoMunitionFlag) => addTestEquipment(entity, new AmmoEquipment({
+            id: `Mixed ${name}`, name, shortName: name, type: 'ammo',
+            ammo: { type: ammoType, rackSize: 12, shots: 5, munitionType: [flag] },
+        }), { location: 'Nose', shotsCount: 10 });
+        // Each launcher carries 10 of each of its munitions, which lets a large craft fire them (TM p. 194)
+        const munitions = [['Standard', 'M_STANDARD'], ['ER', 'M_EXTENDED_RANGE'], ['HE', 'M_HIGH_EXPLOSIVE']] as const;
+        entity.addEquipmentBay('weapon-bay', { mounts: [
+            launcher('ATM', 'ATM 12', 20), launcher('IATM', 'iATM 12', 24),
+            ...munitions.flatMap(([name, flag]) => [bin('ATM', `ATM 12 ${name}`, flag), bin('IATM', `iATM 12 ${name}`, flag)]),
+            bin('IATM', 'iATM 12 IMP', 'M_IATM_IMP'),
+        ] });
+
+        const row = (await RecordSheetSvgGenerator.generate(entity, { ruleset: 'total-warfare' })).querySelector('.inventoryEntry.bay')!;
+        // The ATM cannot fire Improved Magnetic Pulse missiles (IO:AE p. 61): only the iATM's half value counts
+        expect([...row.querySelectorAll('.bayMunition')].map(line => [
+            [...line.querySelectorAll('.name')].map(node => node.textContent).join(' '), ...bayRanges(line)])).toEqual([
+            ['Improved Magnetic Pulse (10 rounds)', '1\u202F(12)', '—', '—', '—'],
+        ]);
+    });
+
+    it('names a bay\'s only MML or ATM munition unless it is the launcher\'s first', async () => {
+        const bay = async (weapon: WeaponEquipment, ammo: AmmoEquipment, shotsCount = 10) => {
+            const entity = new TestWarShipEntity();
+            entity.addEquipmentBay('weapon-bay', { mounts: [addTestEquipment(entity, weapon, { location: 'Nose' }),
+                addTestEquipment(entity, ammo, { location: 'Nose', shotsCount })] });
+            const row = (await RecordSheetSvgGenerator.generate(entity, { ruleset: 'total-warfare' })).querySelector('.inventoryEntry.bay')!;
+            return [[...row.querySelectorAll(':scope > .name')].map(node => node.textContent).join(' '), ...bayRanges(row)];
+        };
+        const mml = new WeaponEquipment({
+            id: 'Only MML 9', name: 'MML 9', shortName: 'MML 9', type: 'weapon',
+            weapon: { heat: 5, ammoType: 'MML', rackSize: 9, av: [5, 5, 5] },
+        });
+        const iatm = new WeaponEquipment({
+            id: 'Only iATM 12', name: 'iATM 12', shortName: 'iATM 12', type: 'weapon',
+            weapon: { heat: 8, ammoType: 'IATM', rackSize: 12, av: [24, 24] },
+        });
+        const ammo = (weapon: WeaponEquipment, name: string, munitionType: readonly AmmoMunitionFlag[] = []) => new AmmoEquipment({
+            id: `${weapon.name}/${name}`, name: `${weapon.name}/${name}`, shortName: `${weapon.name}/${name}`, type: 'ammo',
+            ammo: { type: weapon.ammoType, rackSize: weapon.rackSize, shots: 10, munitionType: [...munitionType] },
+        });
+
+        // The values are the munition's, so a munition other than the launcher's first prints by name
+        expect(await bay(mml, ammo(mml, 'LRM'))).toEqual(['1 MML 9 (10 rounds)', '1\u202F(5)', '1\u202F(5)', '1\u202F(5)', '—']);
+        expect((await bay(mml, ammo(mml, 'LRM'), 1))[0]).toBe('1 MML 9 (1 round)');
+        expect(await bay(mml, ammo(mml, 'SRM'))).toEqual(['1 MML 9 (10 SRM)', '1\u202F(10)', '—', '—', '—']);
+        expect(await bay(iatm, ammo(iatm, 'Standard', ['M_STANDARD'])))
+            .toEqual(['1 iATM 12 (10 rounds)', '2\u202F(24)', '2\u202F(24)', '—', '—']);
+        // A large craft's ATMs need 10 shots of each type per launcher to fire special munitions (TM p. 194), so a bay
+        // carrying only those keeps its listed standard values, as a launcher without ammo does
+        expect(await bay(iatm, ammo(iatm, 'ER', ['M_EXTENDED_RANGE'])))
+            .toEqual(['1 iATM 12 (10 Extended Range)', '2\u202F(24)', '2\u202F(24)', '—', '—']);
+        expect(await bay(iatm, ammo(iatm, 'IMP', ['M_IATM_IMP'])))
+            .toEqual(['1 iATM 12 (10 Improved Magnetic Pulse)', '2\u202F(24)', '2\u202F(24)', '—', '—']);
+    });
+
+    it('lays out a bay\'s munition lines alike on both large-craft panels, under the bay\'s range buttons', async () => {
+        const layout = async (entity: TestDropShipEntity | TestWarShipEntity) => {
+            const launchers = [9, 5].map(rackSize => addTestEquipment(entity, new WeaponEquipment({
+                id: `Panel MML ${rackSize}`, name: `MML ${rackSize}`, shortName: `MML ${rackSize}`, type: 'weapon',
+                weapon: { heat: 5, ammoType: 'MML', rackSize, av: [5, 5, 5] },
+            }), { location: 'Nose' }));
+            const ammo = ['LRM', 'SRM'].map(name => addTestEquipment(entity, new AmmoEquipment({
+                id: `Panel MML 9/${name}`, name: `MML 9/${name}`, shortName: `MML 9/${name}`, type: 'ammo',
+                ammo: { type: 'MML', rackSize: 9, shots: 10 },
+            }), { location: 'Nose', shotsCount: 10 }));
+            entity.addEquipmentBay('weapon-bay', { mounts: [...launchers, ...ammo] });
+            const svg = await RecordSheetSvgGenerator.generate(entity, { ruleset: 'total-warfare' });
+            const row = svg.querySelector('.inventoryEntry.bay')!;
+            const munitions = [...row.querySelectorAll('.bayMunition')];
+            const button = row.querySelector(':scope > .shrButton')!;
+            return {
+                singlePage: svg.querySelector('[data-mekbay-aero-scale]') === null,
+                nameX: [...row.querySelectorAll(':scope > .name')].map(name => name.getAttribute('x')),
+                munitionX: munitions.map(line => line.querySelector('.name')?.getAttribute('x')),
+                buttonBottom: Number(button.getAttribute('y')) + Number(button.getAttribute('height')),
+                lastValueBaseline: Number(munitions.at(-1)!.querySelector('.range_short')!.getAttribute('y')),
+            };
+        };
+        const dropShip = await layout(new TestDropShipEntity());
+        const warShip = await layout(new TestWarShipEntity());
+
+        expect([dropShip.singlePage, warShip.singlePage]).toEqual([true, false]);
+        for (const panel of [dropShip, warShip]) {
+            // A bay's lines after its first are indented alike, as MegaMekLab indents them
+            expect(panel.nameX[0]).not.toBe(panel.nameX[1]);
+            expect(panel.munitionX).toEqual([panel.nameX[1], panel.nameX[1]]);
+            // The munition lines' values select the bay's range like its first line's
+            expect(panel.buttonBottom).toBeGreaterThan(panel.lastValueBaseline);
+        }
+        expect(dropShip.munitionX).toEqual(warShip.munitionX);
+    });
+
+    it('widens a single-page DropShip\'s range columns for its bays\' munition line values', async () => {
+        const entity = new TestDropShipEntity();
+        const mml = new WeaponEquipment({
+            id: 'Wide MML 9', name: 'MML 9', shortName: 'MML 9', type: 'weapon',
+            weapon: { heat: 5, ammoType: 'MML', rackSize: 9, av: [5, 5, 5] },
+        });
+        const ammo = ['LRM', 'SRM'].map(name => new AmmoEquipment({
+            id: `Wide MML 9/${name}`, name: `MML 9/${name}`, shortName: `MML 9/${name}`, type: 'ammo',
+            ammo: { type: 'MML', rackSize: 9, shots: 10 },
+        }));
+        // Twenty launchers print 10 (100) on their LRM line and 20 (200) on their SRM line; the bay's own row prints none
+        entity.addEquipmentBay('weapon-bay', { mounts: [
+            ...Array.from({ length: 20 }, () => addTestEquipment(entity, mml, { location: 'Nose' })),
+            // A round for each launcher, as each that fires spends one (TW p. 103)
+            ...ammo.map(equipment => addTestEquipment(entity, equipment, { location: 'Nose', shotsCount: 20 })),
+        ] });
+
+        const svg = await RecordSheetSvgGenerator.generate(entity, { ruleset: 'total-warfare' });
+        expect(svg.querySelector('[data-mekbay-aero-scale]')).toBeNull();
+        // Each value prints whole on one line
+        expect([...svg.querySelectorAll('.inventoryEntry.bay .bayMunition')].map(line =>
+            [...line.querySelectorAll('.range_short, .range_medium')].map(value =>
+                [value.textContent, value.querySelectorAll('tspan').length]))).toEqual([
+            [['10 (100)', 0], ['10 (100)', 0]],
+            [['20 (200)', 0], ['—', 0]],
+        ]);
+    });
+
+    it('keeps a dense page\'s last bay row above its data panel footer', async () => {
+        const entity = new TestDropShipEntity();
+        const mml = new WeaponEquipment({
+            id: 'Dense MML 9', name: 'MML 9', shortName: 'MML 9', type: 'weapon',
+            weapon: { heat: 5, ammoType: 'MML', rackSize: 9, av: [5, 5, 5] },
+        });
+        const ammo = ['LRM', 'SRM'].map(name => new AmmoEquipment({
+            id: `Dense MML 9/${name}`, name: `MML 9/${name}`, shortName: `MML 9/${name}`, type: 'ammo',
+            ammo: { type: 'MML', rackSize: 9, shots: 10 },
+        }));
+        // Each bay prints a line for its LRM and another for its SRM, so the page's type shrinks to fit them
+        for (let index = 0; index < 20; index++) {
+            entity.addEquipmentBay('weapon-bay', { mounts: [
+                addTestEquipment(entity, mml, { location: 'Nose' }),
+                ...ammo.map(equipment => addTestEquipment(entity, equipment, { location: 'Nose', shotsCount: 10 })),
+            ] });
+        }
+
+        const [front] = await RecordSheetSvgGenerator.generatePages(entity, { ruleset: 'total-warfare' });
+        const panel = front.querySelector('[data-mekbay-region="aero-data"]')!;
+        const rows = [...panel.querySelectorAll('.inventoryEntry.bay')];
+        const lastBaseline = Math.max(...[...rows.at(-1)!.querySelectorAll('text')].map(text => Number(text.getAttribute('y'))));
+        const footerRule = Math.max(...[...panel.querySelectorAll(':scope > line')].map(line => Number(line.getAttribute('y1'))));
+
+        expect(rows.length).toBe(20);
+        expect(rows.at(-1)!.querySelectorAll('.bayMunition').length).toBe(2);
+        expect(lastBaseline).toBeLessThan(footerRule);
+    });
+
+    it('wraps a large craft\'s footer quirks at the type size they print in, as the fit measured them', async () => {
+        const entity = new TestWarShipEntity();
+        // "Quirks: " and the long name fit in 77 characters, one more than the printed quirk type leaves a line
+        entity.quirks.set([
+            { quirk: { key: 'obsolete', name: 'A'.repeat(68), type: 'negative', description: '' } },
+            { quirk: { key: 'atmo_instability', name: 'Obsolete', type: 'negative', description: '' } },
+        ]);
+        const svg = await RecordSheetSvgGenerator.generate(entity, { ruleset: 'total-warfare' });
+
+        expect([...svg.querySelectorAll('[data-mekbay-region="aero-data"] .unitQuirks text')].map(line => line.textContent))
+            .toEqual(['Quirks:', `${'A'.repeat(68)},`, 'Obsolete']);
+    });
+
+    it('prints a DropShip\'s cargo alike on its single-page and its capital-scale data panel', async () => {
+        const cargo = async (capitalWeapon: boolean) => {
+            const entity = new TestDropShipEntity();
+            entity.transporters.set([
+                { id: 'cargo', kind: 'bay', configuration: { type: 'cargo' }, capacity: 4, doors: 1, bayNumber: 1, omni: false },
+            ]);
+            if (capitalWeapon) {
+                entity.addEquipmentBay('weapon-bay', { mounts: [addTestEquipment(entity, new WeaponEquipment({
+                    id: 'Cargo NAC', name: 'NAC', shortName: 'NAC', type: 'weapon', weapon: { capital: true, heat: 10, av: [2, 2, 1, 0] },
+                }), { location: 'Nose' })] });
+            }
+            const svg = await RecordSheetSvgGenerator.generate(entity, { ruleset: 'total-warfare' });
+            return [svg.querySelector('[data-mekbay-aero-scale]') !== null,
+                [...svg.querySelectorAll('[data-mekbay-region="aero-data"] text')].some(text => text.textContent === 'Bay 1: Cargo (4) (1 Door)')];
+        };
+
+        expect(await cargo(false)).toEqual([false, true]);
+        expect(await cargo(true)).toEqual([true, true]);
+    });
+
+    it('prints each ammo bin once, beside the first of the bay\'s weapons that fires it', async () => {
+        const entity = new TestWarShipEntity();
+        const launcher = (id: string) => addTestEquipment(entity, new WeaponEquipment({
+            id, name: 'LRM 20', shortName: 'LRM 20', type: 'weapon',
+            weapon: { heat: 6, ammoType: 'LRM', rackSize: 20, av: [12, 12, 12, 0] },
+        }), { location: 'Nose' });
+        const weapons = [launcher('ISLRM20'), launcher('CLLRM20')];
+        const ammo = addTestEquipment(entity, new AmmoEquipment({
+            id: 'IS Ammo LRM-20', name: 'LRM 20 Ammo', shortName: 'LRM 20', type: 'ammo',
+            ammo: { type: 'LRM', rackSize: 20, shots: 12 },
+        }), { location: 'Nose', shotsCount: 12 });
+        entity.addEquipmentBay('weapon-bay', { mounts: [...weapons, ammo] });
+
+        const svg = await RecordSheetSvgGenerator.generate(entity, { ruleset: 'total-warfare' });
+        expect([...svg.querySelectorAll('.inventoryEntry.bay .name')].map(name => name.textContent))
+            .toEqual(['1 LRM 20 (12 rounds),', '1 LRM 20']);
+    });
+
+    it('shares a row between opposite bays whose munitions total the same in different bins', async () => {
+        const entity = new TestWarShipEntity();
+        const weapon = new WeaponEquipment({
+            id: 'Bay LRM 20', name: 'LRM 20', shortName: 'LRM 20', type: 'weapon',
+            weapon: { heat: 6, ammoType: 'LRM', rackSize: 20, av: [12, 12, 12, 0] },
+        });
+        const ammo = new AmmoEquipment({
+            id: 'Bay LRM 20 Ammo', name: 'LRM 20 Ammo', shortName: 'LRM 20', type: 'ammo',
+            ammo: { type: 'LRM', rackSize: 20, shots: 6 },
+        });
+        for (const [location, bins] of [['ALS', [10, 10]], ['ARS', [20]]] as const) {
+            const launcher = addTestEquipment(entity, weapon, { location });
+            const loaded = bins.map(shots => addTestEquipment(entity, ammo, { location, shotsCount: shots }));
+            entity.addEquipmentBay('weapon-bay', { mounts: [launcher, ...loaded] });
+        }
+        const svg = await RecordSheetSvgGenerator.generate(entity, { ruleset: 'total-warfare' });
+        const rows = [...svg.querySelectorAll<SVGGElement>('.inventoryEntry.bay')];
+        expect(rows.map(row => [row.querySelector('.name')?.textContent, row.querySelector('.location')?.textContent]))
+            .toEqual([['1 LRM 20 (20 rounds)', 'ALS/ARS']]);
+    });
+
+    it('prints the Artemis legend under a single-page DropShip\'s bays', async () => {
+        const entity = new TestDropShipEntity();
+        const launcher = addTestEquipment(entity, new WeaponEquipment({
+            id: 'Legend LRM 20', name: 'LRM 20', shortName: 'LRM 20', type: 'weapon',
+            flags: ['F_LRM', 'F_MISSILE', 'F_ARTEMIS_COMPATIBLE'],
+            weapon: { heat: 6, ammoType: 'LRM', rackSize: 20, av: [12, 12, 12, 0] },
+        }), { location: 'Nose' });
+        const artemis = addTestEquipmentWithFlags(entity, 'F_ARTEMIS', { location: 'Nose' });
+        entity.linkEquipment(artemis, launcher);
+        entity.addEquipmentBay('weapon-bay', { mounts: [launcher, artemis] });
+
+        const svg = await RecordSheetSvgGenerator.generate(entity, { ruleset: 'total-warfare' });
+        expect(svg.dataset['mekbayLayout']).toBe('dropship');
+        expect(svg.querySelector('.inventoryEntry.bay .name')?.textContent).toBe('1 LRM 20*');
+        expect(svg.textContent).toContain('* w/Artemis IV');
+    });
+
+    it('keeps opposite bays separate when equally printed rounds contain different munitions', async () => {
+        const entity = new TestWarShipEntity();
+        const weapon = new WeaponEquipment({
+            id: 'Bay LRM 20', name: 'LRM 20', shortName: 'LRM 20', type: 'weapon',
+            weapon: { heat: 6, ammoType: 'LRM', rackSize: 20, av: [12, 12, 12, 0] },
+        });
+        for (const [location, ammunition] of [['ALS', 'Standard'], ['ARS', 'Artemis']] as const) {
+            const mountedWeapon = addTestEquipment(entity, weapon, { location });
+            const ammo = addTestEquipment(entity, new AmmoEquipment({
+                id: `Bay LRM 20 ${ammunition}`, name: `LRM 20 ${ammunition}`, type: 'ammo',
+                ammo: { type: 'LRM', rackSize: 20, shots: 24 },
+            }), { location, shotsCount: 24 });
+            entity.addEquipmentBay('weapon-bay', { mounts: [mountedWeapon, ammo] });
+        }
+        const svg = await RecordSheetSvgGenerator.generate(entity, { ruleset: 'total-warfare' });
+        const rows = [...svg.querySelectorAll<SVGGElement>('.inventoryEntry.bay')];
+        expect(rows.map(row => row.querySelector('.name')?.textContent))
+            .toEqual(['1 LRM 20 (24 rounds)', '1 LRM 20 (24 rounds)']);
+        expect(rows.map(row => row.querySelector('.location')?.textContent)).toEqual(['ALS', 'ARS']);
+    });
+
+    it('orders a DropShip\'s side bays front then rear of each side, as MegaMekLab does', async () => {
+        const order = async (motive: 'Spheroid' | 'Aerodyne') => {
+            const entity = new TestDropShipEntity();
+            entity.motiveType.set(motive);
+            // Added out of order; each bay carries its own laser, so no two share a row
+            for (const [id, location, rearMounted] of [
+                ['Aft Laser', 'Aft', false], ['Right Rear Laser', 'Right Side', true], ['Right Laser', 'Right Side', false],
+                ['Left Rear Laser', 'Left Side', true], ['Left Laser', 'Left Side', false], ['Nose Laser', 'Nose', false],
+            ] as const) {
+                entity.addEquipmentBay('weapon-bay', { mounts: [addTestEquipment(entity, new WeaponEquipment({
+                    id, name: id, shortName: id, type: 'weapon', weapon: { heat: 3, av: [5, 0, 0, 0] },
+                }), { location, rearMounted })] });
+            }
+            const svg = await RecordSheetSvgGenerator.generate(entity, { ruleset: 'total-warfare' });
+            return [...svg.querySelectorAll('.inventoryEntry.bay')].map(row =>
+                `${row.querySelector('.location')?.textContent} ${row.querySelector('.name')?.textContent}`);
+        };
+
+        expect(await order('Spheroid')).toEqual(['NOS 1 Nose Laser', 'FLS 1 Left Laser', 'ALS 1 Left Rear Laser',
+            'FRS 1 Right Laser', 'ARS 1 Right Rear Laser', 'AFT 1 Aft Laser']);
+        expect(await order('Aerodyne')).toEqual(['NOS 1 Nose Laser', 'LW 1 Left Laser', 'LW 1 Left Rear Laser (R)',
+            'RW 1 Right Laser', 'RW 1 Right Rear Laser (R)', 'AFT 1 Aft Laser']);
+    });
+
+    it('sorts Small Craft by ground range and maps spheroid front and rear side arcs', async () => {
+        const entity = new TestSmallCraftEntity();
+        entity.motiveType.set('Spheroid');
+        const medium = new WeaponEquipment({
+            id: 'Small Craft ER Medium', name: 'ER Medium Laser', shortName: 'ER Medium Laser', type: 'weapon',
+            weapon: { heat: 5, ranges: [5, 10, 15, 20], av: [5, 0, 0, 0] },
+        });
+        const large = new WeaponEquipment({
+            id: 'Small Craft Large Pulse', name: 'Large Pulse Laser', shortName: 'Large Pulse Laser', type: 'weapon',
+            weapon: { heat: 10, ranges: [3, 7, 10, 14], av: [9, 9, 0, 0] },
+        });
+        const mounts = [
+            addTestEquipment(entity, large, { location: 'Nose' }),
+            addTestEquipment(entity, medium, { location: 'Left Side' }),
+            addTestEquipment(entity, medium, { location: 'Right Side', rearMounted: true }),
+        ];
+        const svg = await RecordSheetSvgGenerator.generate(entity, { ruleset: 'total-warfare' });
+        const rows = [...svg.querySelectorAll<SVGGElement>('.inventoryEntry[data-mekbay-component-ids]')];
+        expect(rows.map(row => row.getAttribute('data-mekbay-component-ids')))
+            .toEqual([mounts[1], mounts[2], mounts[0]].map(mount => mount.mountId));
+        expect(rows.map(row => row.querySelector('.location')?.textContent)).toEqual(['FLS', 'ARS', 'NOS']);
+        expect(svg.querySelector('.large-aero-diagram-header polygon')).toBeNull();
+    });
+
+    it('uses standard-scale weapon values on JumpShips without capital weapons', async () => {
+        const entity = new TestJumpShipEntity();
+        const laser = addTestEquipment(entity, new WeaponEquipment({
+            id: 'Test JumpShip Large Laser', name: 'Large Laser', shortName: 'Large Laser',
+            type: 'weapon', flags: ['F_ENERGY'], weapon: { heat: 8, av: [8, 8, 0, 0] },
+        }), { location: 'Front Left Side' });
+        entity.addEquipmentBay('weapon-bay', { mounts: [laser] });
+
+        const svg = await RecordSheetSvgGenerator.generate(entity, { ruleset: 'total-warfare' });
+        const row = svg.querySelector<SVGGElement>('.inventoryEntry.bay')!;
+        expect(row.querySelector('.name')?.textContent).toBe('1 Large Laser');
+        expect(row.querySelector('.range_short')?.textContent).toBe('1\u202F(8)');
+        expect(svg.textContent).not.toContain('Standard Scale on Reverse');
+    });
+
+    it('splits crowded capital and standard weapon inventories into front and reverse pages', async () => {
+        const entity = new TestWarShipEntity();
+        for (let index = 0; index < 20; index++) {
+            const capital = addTestEquipment(entity, new WeaponEquipment({
+                id: `Test NAC ${index}`,
+                name: `NAC ${index}`,
+                shortName: `NAC ${index}`,
+                type: 'weapon',
+                weapon: { capital: true, heat: 10, av: [2, 2, 1, 0] },
+            }), { location: 'Nose' });
+            const standard = addTestEquipment(entity, new WeaponEquipment({
+                id: `Test Laser ${index}`,
+                name: `Laser ${index}`,
+                shortName: `Laser ${index}`,
+                type: 'weapon',
+                weapon: { heat: 5, av: [8, 8, 0, 0] },
+            }), { location: 'Nose' });
+            entity.addEquipmentBay('weapon-bay', { mounts: [capital] });
+            entity.addEquipmentBay('weapon-bay', { mounts: [standard] });
+        }
+
+        const pages = await RecordSheetSvgGenerator.generatePages(entity, { ruleset: 'total-warfare' });
+
+        expect(pages.length).toBe(2);
+        expect(pages.map(page => page.dataset['mekbayPageRole'])).toEqual(['primary', 'supplemental']);
+        expect(pages[0].textContent).toContain('Standard Scale on Reverse');
+        expect(pages[0].textContent).toContain('NAC 0');
+        expect(pages[0].textContent).not.toContain('Laser 0');
+        expect(pages[1].textContent).toContain('Standard Scale');
+        expect(pages[1].textContent).toContain('Laser 0');
+        expect(pages[1].textContent).toContain('ADVANCED MOVEMENT');
+        expect(pages[1].textContent).toContain('VELOCITY RECORD');
+        expect(pages[1].textContent).toContain('note down that number on the record');
+        expect(pages[1].querySelector('[data-mekbay-region="advanced-movement-compass"]')).not.toBeNull();
+        const vectorDiagram = pages[1].querySelector('#aero_vector_diagram');
+        expect(vectorDiagram).not.toBeNull();
+        expect(Array.from(vectorDiagram!.querySelectorAll('tspan'))
+            .filter(label => label.textContent === 'X').length).toBe(6);
+        expect(pages[1].querySelector('#cglLogo')).not.toBeNull();
+        const velocity = pages[1].querySelector('[data-mekbay-region="advanced-velocity-record"]')!;
+        expect(velocity.textContent).toContain('Turn');
+        expect(velocity.textContent).toContain('Velocity');
+        expect(velocity.textContent).toContain('Fuel');
+        expect(velocity.textContent).toContain('20');
+        expect(pages[1].dataset['mekbayPartialSheet']).toBe('1');
+    });
+
+    it('generates runtime binding anchors without a downloaded sheet', async () => {
+        const svg = await RecordSheetSvgGenerator.generate(new TestQuadMekEntity(), { ruleset: 'total-warfare' });
+
+        expect(svg.classList.contains('mekbay-sheet')).toBeTrue();
+        expect(svg.querySelectorAll('#mekbay-svg-style').length).toBe(1);
+        expect(svg.querySelector('#mekbay-svg-style')?.textContent).not.toContain('.critSlot.pending');
+        expect(svg.querySelectorAll('#mekbay-night-image-invert').length).toBe(1);
+        expect(svg.dataset['mekbayRecordSheetPrepared']).toBeUndefined();
+        expect(svg.querySelectorAll('.unitConditionButton[condition]').length).toBe(3);
+        const randomHit = svg.querySelector('[data-mekbay-random-hit="1"]');
+        expect(randomHit?.closest('[data-source="/images/paperdolls/quad-armor.svg"]')).not.toBeNull();
+        expect(randomHit?.classList.contains('edit-only')).toBeFalse();
+        expect(randomHit?.querySelector('image')?.getAttribute('href')).toBe('/images/random-black.svg');
+        const locationLabels = Array.from(svg.querySelectorAll<SVGTextElement>('.diagram-location-label text'),
+            label => label.textContent);
+        const leftTorsoIndex = locationLabels.indexOf('Left');
+        expect(locationLabels.slice(leftTorsoIndex, leftTorsoIndex + 2)).toEqual(['Left', 'Torso']);
+        expect(svg.querySelector('#textArmor_CT')?.textContent).toMatch(/^\( \d+ \)$/u);
+        expect(svg.querySelector('#textIS_CT')?.textContent).toMatch(/^\( \d+ \)$/u);
+        expect(svg.querySelectorAll('.unitConditionBanner[condition]').length)
+            .toBe(UNIT_CONDITION_DEFINITIONS.length);
+        expect(svg.querySelectorAll('mask[id^="generated_condition_banner_fade_"]').length)
+            .toBe(2);
+        expect(svg.querySelector('.crewStateButton[crewId="0"] text')?.textContent).toBe('...');
+        expect(svg.querySelectorAll('.crewStateButton[crewId="0"]').length).toBe(1);
+        expect(svg.querySelector('.crewStateBanner[crewId="0"] .unitConditionBannerRect')).not.toBeNull();
+        expect(svg.querySelector('.crewStateBanner[crewId="0"] .unitConditionBannerText')).not.toBeNull();
+        expect(svg.getElementById('lifeSupportPilotDamageWarning')).not.toBeNull();
+        expect(svg.getElementById('applyHeatButton')).not.toBeNull();
+        expect(svg.getElementById('mpRun-psr-warning')).not.toBeNull();
+        expect(svg.getElementById('mpJump-psr-warning')).not.toBeNull();
+        expect(svg.querySelectorAll('.locationConditionControl[data-loc]').length).toBe(8);
+        expect(svg.querySelectorAll('.locationNarcBanner[data-loc]').length).toBe(8);
+        expect(svg.querySelector('#heatScale .overflowButton')).not.toBeNull();
+        expect(svg.querySelectorAll('#heatScale .heat.no-autocolor').length).toBe(31);
+        expect(svg.querySelector('#heatScale .heat')?.tagName.toLowerCase()).toBe('rect');
+        expect(svg.querySelectorAll('.critSlot[data-loc][slot]').length).toBe(66);
+        const hittableSlots = svg.querySelectorAll('.critSlot[hittable="1"]');
+        expect(hittableSlots.length).toBeGreaterThan(0);
+        expect(hittableSlots.length).toBeLessThan(66);
+        expect(svg.querySelectorAll('.critSlot[hittable="1"] > .critSlot-bg-rect').length)
+            .toBe(hittableSlots.length);
+        expect(svg.querySelectorAll('.critSlot:not([hittable]) > .critSlot-bg-rect').length).toBe(0);
+        expect(svg.querySelector('.critSlot > .extraHitPip')).toBeNull();
+        const emptySlot = svg.querySelector('[data-mekbay-empty-slot="1"]');
+        expect(emptySlot?.querySelector('text')?.textContent).toBe('Roll Again');
+        expect(emptySlot?.hasAttribute('hittable')).toBeFalse();
+        expect(emptySlot?.querySelector(':scope > .critSlot-bg-rect')).toBeNull();
+        expect(svg.querySelectorAll('.inventoryEntry').length).toBeGreaterThan(0);
+        expect(svg.querySelectorAll('.inventoryEntry[display="none"]').length).toBe(0);
+        expect(svg.querySelectorAll('.crewHit').length).toBe(6);
+        expect(svg.querySelectorAll('#heatScale .heat').length).toBe(31);
+        expect(Array.from(svg.querySelectorAll('image')).every(image => {
+            const href = image.getAttribute('href') ?? image.getAttribute('xlink:href') ?? '';
+            return href.startsWith('data:') || href === '/images/random-black.svg';
+        })).toBeTrue();
+        expect(svg.querySelectorAll('.svg-frame-title').length).toBeGreaterThan(5);
+        const generatedIds = Array.from(svg.querySelectorAll<SVGElement>('[id]'), element => element.id);
+        expect(new Set(generatedIds).size).toBe(generatedIds.length);
+
+        const inventory = svg.querySelector<SVGGElement>('.inventoryEntry:not([display="none"])')!;
+        const children = [...inventory.children];
+        const mainButton = inventory.querySelector('.inventoryEntryButton.mainButton')!;
+        const hitModRect = inventory.querySelector('.hitMod-rect')!;
+        const hitModText = inventory.querySelector('.hitMod-text')!;
+        const name = inventory.querySelector('.name')!;
+        const shortButton = inventory.querySelector('.inventoryEntryButton.shrButton')!;
+        const shortText = inventory.querySelector('.range_short')!;
+        expect(children.indexOf(mainButton)).toBeLessThan(children.indexOf(name));
+        expect(children.indexOf(shortButton)).toBeLessThan(children.indexOf(shortText));
+        expect(children.indexOf(hitModRect)).toBeLessThan(children.indexOf(name));
+        expect(children.indexOf(hitModRect)).toBeLessThan(children.indexOf(hitModText));
+        // Only bays print a quantity; every other inventory lists one row per mount.
+        expect(inventory.querySelector('.quantity')).toBeNull();
+        expect(name).not.toBeNull();
+    });
+
+    it('splits hardened armor and reinforced structure into two damage halves per construction point', async () => {
+        const entity = new TestBipedMekEntity();
+        entity.setTonnage(50);
+        entity.setArmorValue('CT', 'front', 10);
+        entity.setArmorValue('LT', 'front', 8);
+        entity.setArmorAt('CT', new MountedArmor({
+            armor: new ArmorEquipment({
+                id: 'Test Hardened Armor',
+                name: 'Hardened Armor',
+                type: 'armor',
+                armor: { type: 'HARDENED' },
+            }),
+        }));
+        entity.setStructureAt('CT', new MountedStructure({
+            tonnage: 50,
+            structure: new StructureEquipment({
+                id: 'Test Reinforced Structure',
+                name: 'Reinforced Structure',
+                type: 'structure',
+                structure: { typeId: 4 },
+            }),
+        }));
+
+        const svg = await RecordSheetSvgGenerator.generate(entity, { ruleset: 'total-warfare' });
+        const ctArmor = svg.querySelectorAll('.pip.armor[data-loc="CT"]:not(.half)');
+        const ctStructure = svg.querySelectorAll('.pip.structure[data-loc="CT"]:not(.half)');
+
+        expect(ctArmor.length).toBe(10);
+        expect(svg.querySelectorAll('.pip.armor[data-loc="CT"].half').length).toBe(10);
+        expect(svg.querySelectorAll('.pip.armor[data-loc="LT"].half').length).toBe(0);
+        expect(ctStructure.length).toBe(entity.structureValues().get('CT')!);
+        expect(svg.querySelectorAll('.pip.structure[data-loc="CT"].half').length).toBe(ctStructure.length);
+        expect(svg.querySelectorAll('.pip.structure[data-loc="LT"].half').length).toBe(0);
+        // Open halves: neither strokes the diagonal they share.
+        expect(ctArmor[0].tagName).toBe('polyline');
+        expect(ctStructure[0].tagName).toBe('polyline');
+    });
+
+    for (const [family, createEntity] of [
+        ['Biped', () => new TestBipedMekEntity()],
+        ['Quad', () => new TestQuadMekEntity()],
+        ['ProtoMek', () => new TestProtoMekEntity()],
+        ['Tank', () => new TestTankEntity()],
+        ['Naval', () => new TestSupportNavalEntity()],
+        ['VTOL', () => new TestVtolEntity()],
+        ['WiGE', () => { const entity = new TestTankEntity(); entity.motiveType.set('WiGE'); return entity; }],
+        ['Fighter', () => new TestAeroSpaceFighterEntity()],
+        ['Conventional fighter', () => new TestConvFighterEntity()],
+        ['Fixed-wing support', () => new TestFixedWingSupportEntity()],
+        ['Small craft', () => new TestSmallCraftEntity()],
+        ['DropShip', () => new TestDropShipEntity()],
+        ['Battle armor', () => new TestBattleArmorEntity()],
+        ['Handheld weapon', () => new TestHandheldWeaponEntity()],
+    ] as const) {
+        it(`retains Fancy Pips through the complete ${family} generation pipeline`, async () => {
+            const entity = createEntity();
+            entity.setUniformArmor(new MountedArmor({ armor: new ArmorEquipment({
+                id: 'Test Reactive Armor', name: 'Reactive', type: 'armor',
+                armor: { type: 'REACTIVE', bar: 10 },
+            }) }));
+            for (const location of entity.armorLocations) entity.setArmorValue(location, 'front', 3);
+
+            const svg = await RecordSheetSvgGenerator.generate(entity, { ruleset: 'total-warfare' });
+            const pips = [...svg.querySelectorAll<SVGPolygonElement>('.pip.armor:not(.trooperStatusPip)')];
+            expect(pips.length).withContext(family).toBeGreaterThan(0);
+            expect(pips.every(pip => pip.tagName === 'polygon' && pip.points.numberOfItems === 5))
+                .withContext(family).toBeTrue();
+            expect(svg.querySelector('.pip.armor.half')).toBeNull();
+            if (family === 'Battle armor') {
+                expect(svg.querySelector('.trooperStatusPip')?.tagName).toBe('circle');
+            }
+        });
+    }
+
+    it('retains dashed low-BAR armor and composite structure pips after SVG optimization', async () => {
+        const entity = new TestBipedMekEntity();
+        entity.setArmorValue('CT', 'front', 4);
+        entity.setArmorAt('CT', new MountedArmor({ armor: new ArmorEquipment({
+            id: 'Test Commercial Armor', name: 'Commercial', type: 'armor',
+            armor: { type: 'COMMERCIAL', bar: 5 },
+        }) }));
+        entity.setStructureAt('CT', new MountedStructure({ tonnage: 50, structure: new StructureEquipment({
+            id: 'Test Composite Structure', name: 'Composite', type: 'structure', structure: { typeId: 5 },
+        }) }));
+
+        const svg = await RecordSheetSvgGenerator.generate(entity, { ruleset: 'total-warfare' });
+        for (const type of ['armor', 'structure']) {
+            const pips = [...svg.querySelectorAll<SVGCircleElement>(`.pip.${type}[data-loc="CT"]`)];
+            expect(pips.length).toBeGreaterThan(0);
+            expect(pips.every(pip => pip.tagName === 'circle' && pip.hasAttribute('stroke-dasharray')))
+                .withContext(type).toBeTrue();
+            expect(pips.some(pip => pip.classList.contains('half'))).toBeFalse();
+        }
+    });
+
+    it('matches the MegaMekLab Mek location, cluster, and physical reference grids', async () => {
+        const entity = new TestBipedMekEntity();
+        addTestEquipmentWithFlags(entity, 'F_CASE', { location: 'LA' });
+        addTestEquipment(entity, new WeaponEquipment({
+            id: 'Test LRM 20',
+            name: 'LRM 20',
+            type: 'weapon',
+            weapon: { ammoType: 'LRM', rackSize: 20 },
+        }), { location: 'LT' });
+        addTestEquipment(entity, new WeaponEquipment({
+            id: 'Test SRM 6',
+            name: 'SRM 6',
+            type: 'weapon',
+            weapon: { ammoType: 'SRM', rackSize: 6 },
+        }), { location: 'LT' });
+
+        const svg = await RecordSheetSvgGenerator.generate(entity, { ruleset: 'total-warfare' });
+        const hitTable = svg.querySelector<SVGGElement>('[data-mekbay-reference="mek-hit-location-cluster"]')!;
+        const punchKick = svg.querySelector<SVGGElement>('[data-mekbay-reference="mek-punch-kick"]')!;
+
+        expect(Array.from(hitTable.querySelectorAll('.reference-table-heading')).map(node => node.textContent))
+            .toEqual(['Die Roll', '(2D6)', 'LS', 'F/R', 'RS', '6', '20']);
+        expect(hitTable.querySelector('[data-cluster-rack="6"][data-cluster-roll="2"]')?.textContent)
+            .toBe('2');
+        expect(hitTable.querySelector('[data-cluster-rack="20"][data-cluster-roll="2"]')?.textContent)
+            .toBe('6');
+        expect(hitTable.querySelectorAll('.tableshading').length).toBe(6);
+        expect(hitTable.querySelector('.reference-table-note')?.textContent)
+            .toBe('*A result of 2 may inflict a critical hit.');
+        expect(Array.from(punchKick.querySelectorAll(
+            '.reference-table-row[data-mekbay-reference-roll="1"] .reference-table-cell',
+        )).map(node => node.textContent)).toEqual(['1', 'LT', 'LA', 'RT', 'LL', 'RL', 'RL']);
+        expect(punchKick.querySelectorAll('.tableshading').length).toBe(3);
+        const locationControl = svg.querySelector(
+            '.critGroup[data-loc="LA"] > .locationConditionControl',
+        );
+        expect(locationControl?.querySelector(':scope > .critical-location-heading')).not.toBeNull();
+        expect(locationControl?.querySelector(':scope > .critical-case-label')?.textContent).toBe('(CASE)');
+        expect(svg.querySelector('.critGroup[data-loc="LA"] > .critical-location-heading')).toBeNull();
+        expect(svg.querySelector('.critGroup[data-loc="LA"] > .critical-case-label')).toBeNull();
+        expect(svg.querySelector('.critSlot[data-loc="LA"][slot="0"]')).not.toBeNull();
+        expect(svg.querySelectorAll('.critical-roll-range').length).toBe(10);
+        expect(svg.querySelectorAll('.mek-system-damage .systemHitPip').length).toBe(8);
+        expect(svg.textContent).not.toContain('SYSTEM DAMAGE');
+    });
+
+    it('keeps Tripod crew roles and transfer art in the Mek family owner', async () => {
+        const entity = new TestTripodMekEntity();
+        entity.cockpitType.set('Tripod');
+        const svg = await RecordSheetSvgGenerator.generate(entity, { ruleset: 'total-warfare' });
+        const crew = svg.querySelector<SVGGElement>('.mek-multi-crew-data')!;
+        const reference = svg.querySelector<SVGGElement>(
+            '[data-mekbay-reference="mek-hit-location-cluster"]',
+        )!;
+        const transfer = svg.querySelector<SVGGElement>('.damage-transfer-tripod')!;
+
+        expect(svg.dataset['mekbayLayout']).toBe('mek');
+        expect(crew.querySelector('#crewName0')?.textContent).toBe('Pilot:');
+        expect(crew.querySelector('#crewName1')?.textContent).toBe('Gunner:');
+        expect(crew.querySelector('#crewName2')).toBeNull();
+        expect(reference).not.toBeNull();
+        expect(transfer.getAttribute('data-source'))
+            .toBe('/images/paperdolls/tripod-damage-transfer.svg');
+    });
+
+    it('keeps LAM-only movement, systems, transfer, compass, and heat in the Mek family owner', async () => {
+        const svg = await RecordSheetSvgGenerator.generate(new TestLamEntity(), { ruleset: 'total-warfare' });
+        const masthead = svg.querySelector<SVGTextElement>('.record-sheet-masthead > text');
+        const systemDamage = svg.querySelector<SVGGElement>('.lam-system-damage');
+        const transfer = svg.querySelector<SVGGElement>('.damage-transfer-diagram');
+        const movementHeat = svg.querySelector<SVGGElement>('.heatEffect[heat="25"]');
+
+        expect(masthead?.textContent).toBe("LAND-AIR 'MECH RECORD SHEET");
+        // LAMs share the biped artwork, so Canon resolves to its canonical pip map.
+        expect(svg.querySelector('.mek-paperdolls')?.getAttribute('data-mekbay-pip-layout'))
+            .toBe('canon');
+        expect(svg.querySelector('[data-source="/images/paperdolls/biped-armor.svg"]')).not.toBeNull();
+        expect(svg.querySelector('.lam-advanced-movement-compass')).not.toBeNull();
+        expect(svg.querySelector('#mpAirMekWalk')).not.toBeNull();
+        expect(svg.querySelector('#mpSafeThrust')).not.toBeNull();
+        expect(systemDamage).not.toBeNull();
+        expect(systemDamage?.querySelector('#avionics_hit_3')).not.toBeNull();
+        expect(systemDamage?.querySelector('#landing_gear_hit_1')).not.toBeNull();
+        expect(transfer).not.toBeNull();
+        expect(movementHeat?.hasAttribute('h-move')).toBeFalse();
+        expect(movementHeat?.querySelector('#minus5MP')?.textContent).toBe('-5 Movement Points');
+        expect(movementHeat?.textContent).toContain('/Rand. Movement 10+');
+        expect(svg.querySelector('#heatDataPanel')?.textContent).toContain('(AirMech +3)');
+    });
+
+    it('keeps QuadVee movement and paperdoll variants in the Mek family owner', async () => {
+        const entity = new TestQuadVeeEntity();
+        entity.omni.set(true);
+        entity.motiveType.set('Wheel');
+
+        const svg = await RecordSheetSvgGenerator.generate(entity, { ruleset: 'total-warfare' });
+        const masthead = svg.querySelector<SVGTextElement>('.record-sheet-masthead > text');
+
+        expect(masthead?.textContent).toBe('OMNIQUADVEE RECORD SHEET');
+        expect(svg.querySelector('#unitDataPanel')?.textContent).toContain('Vehicle');
+        expect(svg.querySelector('#mpCruise')).not.toBeNull();
+        expect(svg.querySelector('#mpFlank')).not.toBeNull();
+        expect(svg.querySelector('.mek-paperdolls')?.getAttribute('data-mekbay-pip-layout'))
+            .toBe('distributed');
+        expect(svg.querySelector('.mek-paperdolls-schematic [data-loc="FLL"]')).not.toBeNull();
+        expect(svg.querySelector('#textArmor_FLL')).not.toBeNull();
+    });
+
+    it('generates a self-contained page for every supported Entity family', async () => {
+        const entities = [
+            new TestAeroSpaceFighterEntity(),
+            new TestBattleArmorEntity(),
+            new TestBipedMekEntity(),
+            new TestConvFighterEntity(),
+            new TestDropShipEntity(),
+            new TestFixedWingSupportEntity(),
+            new TestHandheldWeaponEntity(),
+            new TestInfantryEntity(),
+            new TestJumpShipEntity(),
+            new TestLamEntity(),
+            new TestLargeSupportTankEntity(),
+            new TestProtoMekEntity(),
+            new TestQuadMekEntity(),
+            new TestQuadVeeEntity(),
+            new TestSmallCraftEntity(),
+            new TestSpaceStationEntity(),
+            new TestSupportNavalEntity(),
+            new TestSupportTankEntity(),
+            new TestSupportVtolEntity(),
+            new TestTankEntity(),
+            new TestTripodMekEntity(),
+            new TestVtolEntity(),
+            new TestWarShipEntity(),
+        ];
+
+        for (const entity of entities) {
+            const svg = await RecordSheetSvgGenerator.generate(entity, { ruleset: 'total-warfare' });
+            const context = `${entity.entityType} (${entity.constructor.name})`;
+            expect(svg.dataset['mekbayGenerated']).withContext(context).toBe('1');
+            expect(Array.from(svg.querySelectorAll('image')).every(image => {
+                const href = image.getAttribute('href') ?? image.getAttribute('xlink:href') ?? '';
+                return href.startsWith('data:') || href === '/images/random-black.svg';
+            })).withContext(context).toBeTrue();
+            expect(svg.querySelector('script')).withContext(context).toBeNull();
+            expect(Array.from(svg.querySelectorAll('use')).some(use => {
+                const href = use.getAttribute('href') ?? use.getAttribute('xlink:href') ?? '';
+                return href.length > 0 && !href.startsWith('#');
+            })).withContext(context).toBeFalse();
+            expect(svg.querySelectorAll('.svg-frame-title, .handheld-weapon-strip').length)
+                .withContext(context).toBeGreaterThan(0);
+            const paperdolls = [...svg.querySelectorAll('[data-mekbay-paperdoll]')];
+            if (paperdolls.length > 0) {
+                expect(svg.querySelectorAll('[data-mekbay-random-hit]')).withContext(context).toHaveSize(1);
+            }
+            paperdolls.forEach(paperdoll => {
+                expect(paperdoll.querySelector('.pip-hit-area')).withContext(context).toBeNull();
+                paperdoll.querySelectorAll('.pip.armor, .pip.structure, .capital-pip-grid').forEach(pip => {
+                    const kind = pip.classList.contains('armor') ? 'armor' : 'structure';
+                    const code = pip.getAttribute('data-loc');
+                    const rear = pip.hasAttribute('data-rear') ? '[data-rear]' : ':not([data-rear])';
+                    expect(paperdoll.querySelector(`.unitLocation.${kind}[data-loc="${code}"]${rear}`))
+                        .withContext(`${context}: ${kind} ${code}`).not.toBeNull();
+                });
+            });
+        }
+    });
+
+    it('uses canonical Biped pips only for non-superheavy Biped Meks', async () => {
+        const standard = new TestBipedMekEntity();
+        standard.setTonnage(55);
+        const superheavy = new TestBipedMekEntity();
+        superheavy.setTonnage(125);
+        const quad = new TestQuadMekEntity();
+
+        const standardSvg = await RecordSheetSvgGenerator.generate(standard, { ruleset: 'total-warfare' });
+        const superheavySvg = await RecordSheetSvgGenerator.generate(superheavy, { ruleset: 'total-warfare' });
+        const quadSvg = await RecordSheetSvgGenerator.generate(quad, { ruleset: 'total-warfare' });
+
+        expect(standardSvg.querySelector('.mek-paperdolls')?.getAttribute('data-mekbay-pip-layout'))
+            .toBe('canon');
+        expect(superheavySvg.querySelector('.mek-paperdolls')?.getAttribute('data-mekbay-pip-layout'))
+            .toBe('distributed');
+        expect(quadSvg.querySelector('.mek-paperdolls')?.getAttribute('data-mekbay-pip-layout'))
+            .toBe('distributed');
+        expect(quadSvg.querySelector('.mek-paperdolls-schematic [data-loc="FLL"]')).not.toBeNull();
+        expect(quadSvg.querySelectorAll('.mek-paperdolls .svg-frame-title').length).toBe(2);
+    });
+
+    it('marks generated A4 pages with their requested page format', async () => {
+        const entity = new TestQuadMekEntity();
+        const a4 = await RecordSheetSvgGenerator.generate(entity, { ruleset: 'total-warfare', format: 'a4' });
+
+        expect(a4.dataset['mekbayPageFormat']).toBe('a4');
+        expect(a4.dataset['mekbayGenerated']).toBe('1');
+    });
+
+    it('forwards selected custom pip layouts to biped and vehicle paperdolls', async () => {
+        for (const pipLayout of ['distributed', 'rail'] as const) {
+            for (const entity of [new TestBipedMekEntity(), new TestTankEntity()]) {
+                entity.damageLocations().forEach(location => entity.setArmorValue(location.code, 'front', 10));
+                const sheet = await RecordSheetSvgGenerator.generate(entity, { ruleset: 'total-warfare', pipLayout });
+                expect(sheet.getAttribute('data-mekbay-pip-layout')).toBe(pipLayout);
+                for (const location of entity.damageLocations()) {
+                    const code = location.sheetCode ?? location.code;
+                    expect(sheet.querySelectorAll(`.pip.armor[data-loc="${code}"]:not([data-rear])`).length)
+                        .withContext(`${entity.entityType}: ${pipLayout} ${code}`).toBe(10);
+                }
+            }
+        }
+    });
+
+    it('marks each generated non-vehicle compact family', async () => {
+        const cases = [
+            { entity: new TestBattleArmorEntity(), kind: 'battle-armor' },
+            { entity: new TestInfantryEntity(), kind: 'infantry' },
+            { entity: new TestProtoMekEntity(), kind: 'protomek' },
+        ] as const;
+
+        for (const item of cases) {
+            const svg = await RecordSheetSvgGenerator.generate(item.entity, { ruleset: 'total-warfare', format: 'compact' });
+            expect(svg.dataset['mekbayCompact']).toBe(item.kind);
+        }
+    });
+
+    it('keeps ProtoMek subtype identity and the single-unit cluster supplement in its owner', async () => {
+        const entity = new TestProtoMekEntity();
+        entity.chassis.set('Procyon');
+        entity.model.set('(Quad)');
+        entity.isQuad.set(true);
+        addTestEquipment(entity, new WeaponEquipment({
+            id: 'Test Proto SRM 6',
+            name: 'SRM 6',
+            type: 'weapon',
+            weapon: { damage: 'cluster', ammoType: 'SRM', rackSize: 6, ranges: [3, 6, 9] },
+        }), { location: 'Main Gun' });
+
+        const page = await RecordSheetSvgGenerator.generate(entity, { ruleset: 'total-warfare' });
+        const compact = await RecordSheetSvgGenerator.generate(entity, { ruleset: 'total-warfare', format: 'compact' });
+
+        expect(compact.querySelector('[data-mekbay-field="display-name"]')?.textContent)
+            .toBe('Procyon (Quad)');
+        expect(page.dataset['mekbayReferenceFamily']).toBe('protomek');
+        expect(page.querySelector('[data-mekbay-reference="cluster-hits"]')).not.toBeNull();
+        expect(page.querySelector('[data-cluster-rack="6"][data-cluster-roll="2"]')?.textContent)
+            .toBe('2');
+    });
+
+    it('keeps AP-mount weapons out of the Battle Armor inventory', async () => {
+        const entity = new TestBattleArmorEntity();
+        const primary = addTestEquipment(entity, new WeaponEquipment({
+            id: 'Test BA SRM',
+            name: 'SRM 2 (Body)',
+            type: 'weapon',
+            flags: ['F_MISSILE'],
+            weapon: { ammoType: 'SRM', rackSize: 2, damage: 2, ranges: [3, 6, 9] },
+        }), { location: 'Body' });
+        const antiPersonnel = addTestEquipment(entity, new WeaponEquipment({
+            id: 'Test BA APM Rifle',
+            name: 'Auto-Rifle',
+            type: 'weapon',
+            weapon: { damage: 1, ranges: [1, 2, 3] },
+        }), { location: 'LA', isAPM: true });
+
+        const svg = await RecordSheetSvgGenerator.generate(entity, { ruleset: 'total-warfare', format: 'compact' });
+        const primaryRow = svg.querySelector<SVGGElement>(
+            `.inventoryEntry[data-mekbay-component-ids="${primary.mountId}"]`,
+        );
+
+        expect(primaryRow).not.toBeNull();
+        expect(svg.querySelector(
+            `.inventoryEntry[data-mekbay-component-ids="${antiPersonnel.mountId}"]`,
+        )).toBeNull();
+        expect(svg.textContent).toContain("Anti-'Mech Skill:");
+    });
+
+    it('shows large-aero double-sink dissipation and scale', async () => {
+        const entity = new TestWarShipEntity();
+        entity.heatSinkCount.set(20);
+        entity.heatSinkType.set('Double');
+
+        const svg = await RecordSheetSvgGenerator.generate(entity, { ruleset: 'total-warfare' });
+        const heat = svg.querySelector<SVGGElement>('#heatDataPanel')!;
+        const labels = Array.from(heat.querySelectorAll<SVGTextElement>('text'));
+        const text = (value: string): SVGTextElement | undefined => labels.find(node => node.textContent === value);
+
+        expect(text('Heat Sinks:')).not.toBeUndefined();
+        expect(text('20')).not.toBeUndefined();
+        expect(text('(40)')).not.toBeUndefined();
+        expect(text('Nose:')).not.toBeUndefined();
+        const scaleLabel = Array.from(svg.querySelectorAll<SVGTextElement>('.large-aero-diagram-header text'))
+            .find(node => node.textContent === 'Capital Scale');
+        expect(scaleLabel).not.toBeUndefined();
+    });
+
+    it('prints counted vessel features and maximum rapid-fire heat in the correct arcs', async () => {
+        const entity = new TestDropShipEntity();
+        entity.motiveType.set('Aerodyne');
+        const ultra = addTestEquipment(entity, new WeaponEquipment({
+            id: 'Sheet Ultra AC20', name: 'Ultra AC20', type: 'weapon',
+            weapon: { heat: 7, ammoType: 'AC_ULTRA', av: [30, 30, 0, 0] },
+        }), { location: 'Left Side' });
+        const rotary = addTestEquipment(entity, new WeaponEquipment({
+            id: 'Sheet Rotary AC5', name: 'Rotary AC5', type: 'weapon',
+            weapon: { heat: 1, ammoType: 'AC_ROTARY', av: [20, 20, 0, 0] },
+        }), { location: 'Right Side', rearMounted: true });
+        entity.addEquipmentBay('weapon-bay', { mounts: [ultra] });
+        entity.addEquipmentBay('weapon-bay', { mounts: [rotary] });
+        const container = createEquipment({
+            id: 'Sheet Cargo Container', name: 'Cargo Container (10 tons)',
+            shortName: 'Cargo Container (10 tons)', type: 'misc',
+        });
+        for (let index = 0; index < 10; index++) addTestEquipment(entity, container, { location: 'Hull' });
+
+        const svg = await RecordSheetSvgGenerator.generate(entity, { ruleset: 'total-warfare' });
+        expect(svg.textContent).toContain('Features 10xCargo Container (10 tons)');
+        expect(svg.querySelector('#foreSidesHeat')?.textContent).toBe('14/0');
+        expect(svg.querySelector('#aftSidesHeat')?.textContent).toBe('0/6');
+    });
+
+    it('omits the inactive sail counter from stations without a sail', async () => {
+        const entity = new TestSpaceStationEntity();
+        entity.setTonnage(6000);
+        expect(entity.sail()).toBeFalse();
+        expect(entity.sailIntegrity()).toBe(3);
+        const svg = await RecordSheetSvgGenerator.generate(entity, { ruleset: 'total-warfare' });
+        expect(svg.textContent).not.toContain('Sail Integrity:');
+        expect(svg.querySelector('[data-location="SAIL"], #textSailIntegrity')).toBeNull();
+    });
+
+    it('lets each compact family own its masthead wording and identifying art', async () => {
+        const battleArmor = await RecordSheetSvgGenerator.generate(new TestBattleArmorEntity(), { ruleset: 'total-warfare' });
+        const infantry = await RecordSheetSvgGenerator.generate(new TestInfantryEntity(), { ruleset: 'total-warfare' });
+        const protoMek = await RecordSheetSvgGenerator.generate(new TestProtoMekEntity(), { ruleset: 'total-warfare' });
+
+        expect(mastheadLines(battleArmor)).toEqual(['BATTLE ARMOR', 'RECORD SHEET']);
+        expect(battleArmor.querySelector('.battle-armor-masthead-icon')).not.toBeNull();
+        expect(mastheadLines(infantry)).toEqual(['CONVENTIONAL', 'INFANTRY RECORD', 'SHEET']);
+        expect(infantry.querySelector('.record-sheet-unit-title-frame [class$="masthead-icon"]'))
+            .not.toBeNull();
+        expect(mastheadLines(protoMek)).toEqual(['PROTOMECH', 'RECORD SHEET']);
+        expect(protoMek.querySelector('.protomek-masthead-icon')).not.toBeNull();
+    });
+
+    it('shows resolved fighter artwork in its dedicated MML box independently of the Mek table preference', async () => {
+        const source = '/images/record-sheet-art/custom-fighter-fluff.png';
+        const entity = new TestFixedWingSupportEntity();
+        entity.fluffImageEncoded.set('previous-encoded-image');
+        const svg = await RecordSheetSvgGenerator.generate(entity, { ruleset: 'total-warfare', fluffImageUrl: source });
+        const region = svg.querySelector<SVGGElement>('.aero-artwork-region')!;
+        const image = region.querySelector<SVGImageElement>('image')!;
+
+        expect(image.getAttribute('href')).toBe(source);
+        expect(region.querySelectorAll('image')).toHaveSize(1);
+        expect(svg.querySelector('#fluff-image, #fluff-image-injected')).toBeNull();
+        const presentation = new PageViewerPresentationService();
+        for (const showFluff of [false, true]) {
+            presentation.applyFluffImageVisibilityToSvg(svg, showFluff);
+            expect(image.style.display).toBe('');
+            expect(region.style.display).toBe('');
+        }
+    });
+
+    for (const [family, createEntity, fallbackClass] of [
+        ['ProtoMek', () => new TestProtoMekEntity(), 'protomek-masthead-icon'],
+        ['Battle Armor', () => new TestBattleArmorEntity(), 'battle-armor-masthead-icon'],
+        ['Infantry', () => new TestInfantryEntity(), 'infantry-masthead-icon'],
+    ] as const) {
+        it(`places resolved ${family} fluff in the masthead and retains its default when absent`, async () => {
+            const source = '/images/record-sheet-art/custom-unit-fluff.png';
+            const custom = await RecordSheetSvgGenerator.generate(createEntity(), { ruleset: 'total-warfare', fluffImageUrl: source });
+            const fallback = await RecordSheetSvgGenerator.generate(createEntity(), { ruleset: 'total-warfare', fluffImageUrl: null });
+            const image = custom.querySelector<SVGImageElement>('.masthead-fluff-image')!;
+
+            expect(image?.getAttribute('href')).toBe(source);
+            expect(image?.closest('.record-sheet-unit-title-frame')).not.toBeNull();
+            expect(image.style.display).toBe('');
+            expect(custom.querySelector(`.${fallbackClass}`)).toBeNull();
+            expect(custom.querySelector('#fluff-image-injected')).toBeNull();
+            expect(fallback.querySelector(`.${fallbackClass}`)).not.toBeNull();
+            expect(fallback.querySelector('.masthead-fluff-image')).toBeNull();
+        });
+    }
+
+    it('composes mixed compact sheets into distinct unit blocks', async () => {
+        const vehicle = await RecordSheetSvgGenerator.generate(new TestTankEntity(), { ruleset: 'total-warfare', format: 'compact' });
+        const battleArmor = await RecordSheetSvgGenerator.generate(new TestBattleArmorEntity(), { ruleset: 'total-warfare', format: 'compact' });
+        const page = RecordSheetSvgGenerator.composeCompactPage([vehicle, battleArmor]);
+
+        expect(page.dataset['mekbayUnitCount']).toBe('2');
+        expect(page.querySelectorAll('.compact-sheet-block').length).toBe(2);
+    });
+
+    it('owns the legal footer at the vehicle page level instead of repeating it per unit', async () => {
+        const vehicles = await Promise.all(Array.from({ length: 2 }, () =>
+            RecordSheetSvgGenerator.generate(new TestTankEntity(), { ruleset: 'total-warfare', format: 'compact' })));
+
+        expect(vehicles.every(vehicle => !vehicle.textContent?.includes('The Topps Company'))).toBeTrue();
+        const page = RecordSheetSvgGenerator.composeCompactPage(vehicles);
+        const legalLines = [...page.querySelectorAll('text')]
+            .filter(text => text.textContent?.includes('The Topps Company'));
+
+        expect(page.querySelectorAll('.compact-sheet-block').length).toBe(2);
+        expect(page.querySelectorAll('.compact-vehicle-unit-chrome').length).toBe(2);
+        expect(page.querySelectorAll('[id$="-btLogoColor"]').length).toBe(2);
+        expect(page.querySelectorAll('[id$="-cglLogoBW"]').length).toBe(2);
+        expect(page.querySelector('.record-sheet-masthead')).toBeNull();
+        expect(legalLines.length).toBe(1);
+    });
+
+    it('uses vehicle reference tables when a compact vehicle is alone on its page', async () => {
+        const vehicle = await RecordSheetSvgGenerator.generate(new TestTankEntity(), { ruleset: 'total-warfare', format: 'compact' });
+        const page = RecordSheetSvgGenerator.composeCompactPage([vehicle]);
+
+        expect(page.querySelector('.compact-vehicle-unit-chrome')).not.toBeNull();
+        expect(page.querySelector('#bv')).not.toBeNull();
+        expect(page.querySelector('#unit1-bv')).toBeNull();
+        expect(page.textContent).toContain('GROUND COMBAT VEHICLE HIT LOCATION TABLE');
+        expect(page.textContent).toContain('MOTIVE SYSTEM DAMAGE TABLE');
+    });
+
+    it('emits one shared reference layer for a compact family page', async () => {
+        const battleArmor = await Promise.all(Array.from({ length: 5 }, () =>
+            RecordSheetSvgGenerator.generate(new TestBattleArmorEntity(), { ruleset: 'total-warfare', format: 'compact' })));
+        const page = RecordSheetSvgGenerator.composeCompactPage(battleArmor);
+        expect(page.dataset['mekbayReferenceFamily']).toBe('battle-armor');
+        expect(page.querySelectorAll('.compact-sheet-block').length).toBe(5);
+        expect(Array.from(page.querySelectorAll<SVGTextElement>('.svg-frame-title'))
+            .filter(title => title.textContent === 'LEG ATTACKS TABLE').length).toBe(1);
+        expect(page.querySelector('[data-mekbay-reference="cluster-hits"]')).toBeNull();
+        const artId = 'mekbay-battle-armor-default-art';
+        expect(page.querySelectorAll(`symbol#${artId}`).length).toBe(1);
+        expect(page.querySelectorAll(`symbol#${artId} > image[href^="data:"]`).length).toBe(1);
+        expect(page.querySelectorAll(`use[href="#${artId}"]`).length).toBeGreaterThan(5);
+        const ids = Array.from(page.querySelectorAll<SVGElement>('[id]'), element => element.id);
+        expect(new Set(ids).size).toBe(ids.length);
+        expect(page.querySelector('#unit1-bv')).not.toBeNull();
+        expect(page.querySelector('#unit5-bv')).not.toBeNull();
+    });
+
+    it('includes the applicable cluster reference when one Battle Armor unit leaves room for it', async () => {
+        const page = await RecordSheetSvgGenerator.generate(new TestBattleArmorEntity(), { ruleset: 'total-warfare' });
+
+        expect(page.dataset['mekbayReferenceFamily']).toBe('battle-armor');
+        expect(page.querySelectorAll('[data-mekbay-reference="cluster-hits"]').length).toBe(1);
+        expect(page.querySelector('[data-cluster-rack="5"][data-cluster-roll="2"]')?.textContent)
+            .toBe('1');
+    });
+
+    it('composes compact blocks on an A4 canvas', async () => {
+        const blocks = await Promise.all(Array.from({ length: 5 }, () =>
+            RecordSheetSvgGenerator.generate(new TestBattleArmorEntity(), {
+                ruleset: 'total-warfare',
+                format: 'compact',
+                pageFormat: 'a4',
+            })));
+        const page = RecordSheetSvgGenerator.composeCompactPage(blocks, 'a4');
+
+        expect(page.dataset['mekbayPageFormat']).toBe('a4');
+        expect(page.querySelectorAll('.compact-sheet-block').length).toBe(5);
+    });
+});
+
+function mastheadLines(svg: SVGSVGElement): readonly string[] {
+    return Array.from(svg.querySelectorAll<SVGTextElement>('.record-sheet-unit-title-frame > text'))
+        .map(node => node.textContent ?? '');
+}

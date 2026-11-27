@@ -3,7 +3,6 @@
 // Author: Drake
 
 import { ChangeDetectionStrategy, Component, computed, inject, input } from '@angular/core';
-import { CommonModule } from '@angular/common';
 import { GameService } from '../../services/game.service';
 import { ADVANCED_FILTERS, AdvFilterType } from '../../services/unit-search-filters.model';
 import { GameSystem } from '../../models/common.model';
@@ -26,7 +25,6 @@ interface FilterInfo {
 @Component({
     selector: 'semantic-guide',
     changeDetection: ChangeDetectionStrategy.OnPush,
-    imports: [CommonModule],
     templateUrl: './semantic-guide.component.html',
     styleUrl: './semantic-guide.component.scss'
 })
@@ -76,13 +74,13 @@ export class SemanticGuideComponent {
     }
 
     /** Filters available for Classic BattleTech */
-    cbtFilters = computed<FilterInfo[]>(() => this.getFiltersForSystem(GameSystem.CLASSIC));
+    cbtFilters = computed<FilterInfo[]>(() => this.getFiltersForSystem(GameSystem.CBT));
     cbtBooleanFilters = computed(() => this.cbtFilters().filter(f => f.type === 'boolean'));
     cbtDropdownFilters = computed(() => this.cbtFilters().filter(f => f.type === 'dropdown'));
     cbtRangeFilters = computed(() => this.cbtFilters().filter(f => f.type === 'range'));
 
     /** Filters available for Alpha Strike */
-    asFilters = computed<FilterInfo[]>(() => this.getFiltersForSystem(GameSystem.ALPHA_STRIKE));
+    asFilters = computed<FilterInfo[]>(() => this.getFiltersForSystem(GameSystem.AS));
     asBooleanFilters = computed(() => this.asFilters().filter(f => f.type === 'boolean'));
     asDropdownFilters = computed(() => this.asFilters().filter(f => f.type === 'dropdown'));
     asRangeFilters = computed(() => {

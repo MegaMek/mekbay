@@ -3,6 +3,8 @@
 // Author: Drake
 
 import { Signal, computed, signal } from '@angular/core';
+import { isMascEquipment } from '../../../escalating-equipment.model';
+import { isJumpJetEquipment, isPartialWingEquipment } from '../../../jump-equipment.model';
 import { BaseEntity } from '../../base-entity';
 import {
   type UnitType,
@@ -21,6 +23,11 @@ import {
 } from '../../types';
 import { getProtoMekConstructionTech, getProtoMekInterfaceCockpitTech } from '../../components';
 import type { Equipment } from '../../../equipment.model';
+import { isElectronicInterfaceEquipment } from '../../../battle-armor-equipment.model';
+import {
+  isProtoMekMeleeEquipment,
+  isProtoMekQuadMeleeSystemEquipment,
+} from '../../utils/physical-weapon';
 
 // ============================================================================
 // ProtoMekEntity - ProtoMech units (2-15 tons)
@@ -60,10 +67,10 @@ export class ProtoMekEntity extends BaseEntity {
     return [];
   }
 
-  protected override mountedEquipmentContributesStaticTech(equipment: Equipment): boolean {
+  override mountedEquipmentContributesStaticTech(equipment: Equipment): boolean {
     // MegaMek's context-free BLK load resets the built-in EI to Off. The
     // separate interface-cockpit system advancement still contributes.
-    return !equipment.hasFlag('F_EI_INTERFACE');
+    return !isElectronicInterfaceEquipment(equipment);
   }
 
   // ═══════════════════════════════════════════════════════════════════════════
@@ -77,24 +84,25 @@ export class ProtoMekEntity extends BaseEntity {
   hasMainGun = signal<boolean>(false);
 
   readonly installedJumpJetMP = computed(() => this.equipment().filter(
-    mount => mount.equipment?.hasFlag('F_JUMP_JET'),
+    mount => isJumpJetEquipment(mount.equipment),
   ).length);
 
   override computeJumpMP(options: MovementCalculationOptions): number {
     const partialWingBonus = !options.ignoreWeather && this.equipment().some(
-      mount => mount.equipment?.hasFlag('F_PARTIAL_WING'),
+      mount => isPartialWingEquipment(mount.equipment),
     ) ? 2 : 0;
     return this.installedJumpJetMP() + partialWingBonus;
   }
 
   override computeRunMP(options: MovementCalculationOptions): number {
-    const walkMP = this.computeWalkMP(options);
-    return (
-    !options.ignoreMyomerBooster
-      && this.equipment().some(mount => mount.equipment?.hasFlag('F_MASC'))
+    return this.runMPFromWalk(this.computeWalkMP(options), options.ignoreMyomerBooster);
+  }
+
+  /** Running MP from a Walking MP, which leg critical hits may have reduced. */
+  runMPFromWalk(walkMP: number, ignoreMyomerBooster: boolean): number {
+    return !ignoreMyomerBooster && this.equipment().some(mount => isMascEquipment(mount.equipment))
       ? walkMP * 2
-      : Math.ceil(walkMP * 1.5)
-    );
+      : Math.ceil(walkMP * 1.5);
   }
 
   protected override computeMaximumArmorPoints(): number {
@@ -119,9 +127,9 @@ export class ProtoMekEntity extends BaseEntity {
     if (this.isGlider()) damage = Math.max(1, damage - 1);
 
     const meleeEquipment = this.equipment()
-      .filter(mount => mount.equipment?.hasFlag('F_PROTOMEK_MELEE'))
+      .filter(mount => isProtoMekMeleeEquipment(mount.equipment))
       .map(mount => mount.equipment);
-    if (meleeEquipment.some(equipment => equipment?.hasFlag('S_PROTO_QMS'))) {
+    if (meleeEquipment.some(isProtoMekQuadMeleeSystemEquipment)) {
       damage += 2 * Math.ceil(tonnage / 5);
     } else if (meleeEquipment.length > 0) {
       damage += Math.ceil(tonnage / 5);
@@ -134,7 +142,7 @@ export class ProtoMekEntity extends BaseEntity {
       name: 'Frenzy',
       locations: [],
       damage: { kind: 'fixed', value: damage },
-      hitModifiers: ['variable'],
+      hitModifierAdjustment: 'variable',
     }];
   }
 
@@ -212,8 +220,11 @@ export class ProtoMekEntity extends BaseEntity {
   ): Map<string, number> {
     const maxArmor = new Map<string, number>();
     for (const [loc, isVal] of structureValues) {
-      // Torso can have front + rear (max = IS x 2 total)
-      maxArmor.set(loc, loc === 'Torso' ? isVal * 2 : isVal * 2);
+      // TestProtoMek.maxArmorFactor: the head, arms and main gun have special limits.
+      maxArmor.set(loc, loc === 'Head' ? 2 + Math.floor(this.tonnage() / 2)
+        : loc === 'Main Gun' ? (this.hasMainGun() ? isVal * 3 : 0)
+        : loc.endsWith('Arm') ? (this.isQuad() ? 0 : this.tonnage() < 6 ? 2 : this.tonnage() < 10 ? 4 : 6)
+        : loc === 'Body' ? 0 : isVal * 2);
     }
     return maxArmor;
   }

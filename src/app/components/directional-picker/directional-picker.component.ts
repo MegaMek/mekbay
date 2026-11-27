@@ -1,6 +1,5 @@
 // Copyright (C) 2026 The MegaMek Team
 // SPDX-License-Identifier: GPL-3.0-or-later
-// Author: Drake
 
 import { afterNextRender, ChangeDetectionStrategy, Component, DestroyRef, inject, input, output, signal } from '@angular/core';
 import type { ChoicePickerComponent, PickerChoice, PickerPosition, PickerValue } from '../picker/picker.interface';
@@ -10,13 +9,7 @@ const CENTER = DIAMETER / 2;
 const INNER_RADIUS = 30;
 const OUTER_RADIUS = 78;
 const HOLD_DELAY_MS = 300;
-
-export const DIRECTIONAL_PICKER_CHOICES: PickerChoice[] = [
-    { label: 'Front', value: 'front' },
-    { label: 'Right', value: 'right' },
-    { label: 'Rear', value: 'rear' },
-    { label: 'Left', value: 'left' },
-];
+const LINE_HEIGHT = 14;
 
 @Component({
     selector: 'directional-picker',
@@ -26,7 +19,8 @@ export const DIRECTIONAL_PICKER_CHOICES: PickerChoice[] = [
 })
 export class DirectionalPickerComponent implements ChoicePickerComponent {
     readonly title = input<string | null>(null);
-    readonly values = signal<PickerChoice[]>([...DIRECTIONAL_PICKER_CHOICES]);
+    /** The directions clockwise from the front, which points up; each takes an equal sector. */
+    readonly values = signal<PickerChoice[]>([]);
     readonly selected = input<PickerValue | null>(null);
     readonly position = input<PickerPosition>({ x: 0, y: 0 });
     readonly lightTheme = input(false);
@@ -39,6 +33,7 @@ export class DirectionalPickerComponent implements ChoicePickerComponent {
     readonly diameter = DIAMETER;
     readonly center = CENTER;
     readonly innerRadius = INNER_RADIUS;
+    readonly lineHeight = LINE_HEIGHT;
 
     private holdTimeout: number | null = null;
     private pointerDownInside = false;
@@ -49,18 +44,23 @@ export class DirectionalPickerComponent implements ChoicePickerComponent {
     }
 
     sectorPath(index: number): string {
-        const startAngle = -135 + index * 90;
-        const endAngle = startAngle + 90;
+        const span = 360 / this.values().length;
+        const startAngle = -90 - span / 2 + index * span;
+        const endAngle = startAngle + span;
         const outerStart = this.pointOnCircle(OUTER_RADIUS, startAngle);
         const outerEnd = this.pointOnCircle(OUTER_RADIUS, endAngle);
         const innerEnd = this.pointOnCircle(INNER_RADIUS, endAngle);
         const innerStart = this.pointOnCircle(INNER_RADIUS, startAngle);
-
         return `M ${outerStart.x} ${outerStart.y} A ${OUTER_RADIUS} ${OUTER_RADIUS} 0 0 1 ${outerEnd.x} ${outerEnd.y} L ${innerEnd.x} ${innerEnd.y} A ${INNER_RADIUS} ${INNER_RADIUS} 0 0 0 ${innerStart.x} ${innerStart.y} Z`;
     }
 
     labelPosition(index: number): PickerPosition {
-        return this.pointOnCircle((INNER_RADIUS + OUTER_RADIUS) / 2, -90 + index * 90);
+        return this.pointOnCircle((INNER_RADIUS + OUTER_RADIUS) / 2, -90 + index * 360 / this.values().length);
+    }
+
+    /** One word per line, so "Front Right" fits a sixth of the circle. */
+    labelLines(choice: PickerChoice): string[] {
+        return choice.label.split(' ');
     }
 
     setHoveredChoice(choice: PickerChoice): void {
@@ -109,15 +109,13 @@ export class DirectionalPickerComponent implements ChoicePickerComponent {
     }
 
     private setupEventListeners(): void {
-        const initialEvent = this.initialEvent();
-        if (initialEvent?.type === 'pointerdown') {
+        if (this.initialEvent()?.type === 'pointerdown') {
             this.holdTimeout = window.setTimeout(() => {
                 window.removeEventListener('pointerup', this.handleQuickPointerUp, true);
                 window.addEventListener('pointerup', this.handleHeldPointerUp, { once: true, capture: true });
             }, HOLD_DELAY_MS);
             window.addEventListener('pointerup', this.handleQuickPointerUp, { once: true, capture: true });
         }
-
         window.addEventListener('pointerdown', this.handleOutsidePointerDown, true);
         window.addEventListener('pointermove', this.handlePointerMove);
     }
@@ -162,13 +160,12 @@ export class DirectionalPickerComponent implements ChoicePickerComponent {
     };
 
     private readonly handlePointerMove = (event: PointerEvent): void => {
-        const sector = document.elementFromPoint(event.clientX, event.clientY)?.closest<SVGPathElement>('.directional-sector');
+        const sector = document.elementFromPoint(event.clientX, event.clientY)
+            ?.closest<SVGPathElement>('.directional-sector');
         if (!sector) {
             this.resetHoveredChoice();
             return;
         }
-
-        const index = Number(sector.dataset['directionIndex']);
-        this.hoveredChoice.set(this.values()[index] ?? null);
+        this.hoveredChoice.set(this.values()[Number(sector.dataset['directionIndex'])] ?? null);
     };
 }

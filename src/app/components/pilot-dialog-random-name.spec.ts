@@ -17,7 +17,7 @@ interface RandomNameDialogHarness {
     };
     generatingName: ReturnType<typeof signal<boolean>>;
     nameHasText: ReturnType<typeof signal<boolean>>;
-    pilotNameGenerator: { generate: jasmine.Spy };
+    pilotNames: { generateName: jasmine.Spy };
     logger: { warn: jasmine.Spy };
     nameInput: () => { nativeElement: HTMLInputElement };
     selectedGroupCommander: () => boolean;
@@ -39,7 +39,7 @@ function createHarness(generatedName: string | null, error?: Error): RandomNameD
         },
         generatingName: signal(false),
         nameHasText: signal(false),
-        pilotNameGenerator: { generate },
+        pilotNames: { generateName: generate },
         logger: { warn: jasmine.createSpy('warn') },
         nameInput: () => ({ nativeElement: input }),
         selectedGroupCommander: () => true,
@@ -61,7 +61,7 @@ describe('pilot dialog random name behavior', () => {
 
             await invokeFillRandomName(component, harness);
 
-            expect(harness.pilotNameGenerator.generate).toHaveBeenCalledOnceWith({
+            expect(harness.pilotNames.generateName).toHaveBeenCalledOnceWith({
                 factionId: 27,
                 isAerospace: true,
                 isCommander: true,
@@ -92,7 +92,7 @@ describe('pilot dialog random name behavior', () => {
 
             await invokeFillRandomName(component, harness);
 
-            expect(harness.pilotNameGenerator.generate).not.toHaveBeenCalled();
+            expect(harness.pilotNames.generateName).not.toHaveBeenCalled();
         });
     }
 });

@@ -2,56 +2,86 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 // Author: Drake
 
-import { Component, ChangeDetectionStrategy, computed, input, output, inject } from '@angular/core';
-import { UpperCasePipe } from '@angular/common';
-import type { ForceUnit } from '../../models/force-unit.model';
-import type { UnitSummary } from '../../models/unit-summary.model';
+import { crewSkillsForUnit } from '../../models/unit-crew-policy';
+import { UnitNameService } from '../../services/unit-name.service';
+import { Component, ChangeDetectionStrategy, computed, effect, input, output, inject, signal } from '@angular/core';
+import { merge } from 'rxjs';
+import { NgTemplateOutlet, UpperCasePipe } from '@angular/common';
 import { FormatTonsPipe } from '../../pipes/format-tons.pipe';
 import { OptionsService } from '../../services/options.service';
 import { CdkMenuModule } from '@angular/cdk/menu';
 import { UnitIconComponent } from '../unit-icon/unit-icon.component';
-import { CBTForceUnit } from '../../models/cbt-force-unit.model';
+import { CommanderIconComponent } from '../commander-icon/commander-icon.component';
+import { EdgeBadgeComponent } from '../edge-badge/edge-badge.component';
 import { TooltipDirective } from '../../directives/tooltip.directive';
 import type { TooltipLine } from '../tooltip/tooltip.component';
 import { ASForceUnit } from '../../models/as-force-unit.model';
-import { C3Capabilities, C3Network, c3NetworkTypeName, type C3Component, type C3NetworkType } from '../../models/c3-network.model';
+import { C3Capabilities, C3Network, C3NetworkType, c3NetworkTypeName, type C3Component, projectNonMekC3Components } from '../../models/c3-network.model';
 import { GameSystem } from '../../models/common.model';
 import { formatMovement, formatMovementWithAlternate } from '../../utils/as-common.util';
-import { getUnitConditionDefinition, unitConditionSortIndex } from '../../models/rules/unit-type-rules';
+import { forceMemberConditionDisplays, type UnitConditionDisplay } from '../../utils/force-member-conditions.util';
 import { formatBvPv } from '../../utils/force-viewer-bv-pv-display.util';
+import {
+    forceMemberAlias,
+    forceMemberAdjustedValue,
+    forceMemberAdjustedPreSkillValue,
+    forceMemberDestroyed,
+    isCBTForceMember,
+    isCBTMekForceMember,
+    type ForceMember,
+} from '../../models/force-member.model';
+import { mekTurnMovementIndicator, nonMekTurnMovementIndicator } from '../../utils/turn-movement-indicator.util';
+import { hasMekRuntime, hasNonMekRuntime } from '../../models/cbt-unit-snapshot';
 import { UnitNotificationBadgesComponent } from '../unit-notification-badges/unit-notification-badges.component';
-import { getTurnMovementIndicator } from '../../utils/turn-movement-indicator.util';
-import { getEcmDisplay, getTagDisplay } from '../../utils/force-viewer-electronics-display.util';
+import { effectiveEntityPilotingSkill } from '../../models/entity/utils/battle-value/skill-facts';
+import { projectRuntimeUnitNotifications } from '../unit-notification-badges/unit-notification-runtime.util';
+import { projectCBTUnitTagEcmCapabilitySummary } from '../../models/runtime/cbt-unit-capability-projection';
 import { FormatBvPipe } from '../../pipes/format-bv.pipe';
+import { UnitDataBadgesComponent } from '../unit-data-badges/unit-data-badges.component';
+import { CustomUnitsService } from '../../services/custom-units.service';
+import { DataService } from '../../services/data.service';
+import { buildUnitIssues } from '../../utils/unit-summary-builder';
+import { hasAcceptedIssues } from '../../models/unit-summary.model';
 
-interface UnitConditionDisplay {
-    key: string;
-    label: string;
-    color: string;
+interface UnitBlockPresentation {
+    readonly name: string;
+    readonly chassis: string;
+    readonly model: string;
+    readonly role: string;
+    readonly tons: number;
 }
 
 export interface UnitBlockPilotEditEvent {
     event: MouseEvent;
+    positionId: string;
+    /** The clicked crew badge, to anchor a reserve list for a vacant station. */
+    anchor: Element;
 }
 
 @Component({
     selector: 'unit-block',
-    standalone: true,
     imports: [
+        NgTemplateOutlet,
         CdkMenuModule,
         FormatTonsPipe,
         UnitIconComponent,
+        CommanderIconComponent,
+        EdgeBadgeComponent,
         UnitNotificationBadgesComponent,
+        UnitDataBadgesComponent,
         TooltipDirective,
         UpperCasePipe,
     ],
     changeDetection: ChangeDetectionStrategy.OnPush,
     templateUrl: './unit-block.component.html',
-    styleUrls: ['./unit-block.component.scss'],
+    styleUrl: './unit-block.component.scss',
 })
 export class UnitBlockComponent {
+    readonly unitNames = inject(UnitNameService);
     optionsService = inject(OptionsService);
-    forceUnit = input<ForceUnit>();
+    private readonly customUnits = inject(CustomUnitsService);
+    private readonly dataService = inject(DataService);
+    forceUnit = input<ForceMember>();
     compactMode = input<boolean>(false);
     ctrlHeld = input<boolean>(false);
     onInfo = output<MouseEvent>();
@@ -61,128 +91,246 @@ export class UnitBlockComponent {
     onRepairUnit = output<MouseEvent>();
     onEditPilot = output<UnitBlockPilotEditEvent>();
 
-    unit = computed<UnitSummary | undefined>(() => {
-        return this.forceUnit()?.getUnit();
+    private readonly runtimeRevision = signal(0);
+
+    unit = computed<UnitBlockPresentation | undefined>(() => {
+        this.runtimeRevision();
+        const member = this.forceUnit();
+        if (!member) return undefined;
+        if (!isCBTForceMember(member)) {
+            const summary = member.getSummary();
+            return { name: this.unitNames.name(summary), chassis: this.unitNames.chassis(summary),
+                model: summary.model, role: summary.role, tons: summary.tons };
+        }
+        return Object.freeze({
+            name: this.unitNames.name(member.entity),
+            chassis: this.unitNames.chassis(member.entity),
+            model: member.entity.model(),
+            role: member.entity.role(),
+            tons: member.entity.tonnage(),
+        });
     });
 
-    alphaStrikePilotSkill = computed<number | undefined>(() => {
-        const forceUnit = this.forceUnit();
-        return forceUnit instanceof ASForceUnit ? forceUnit.getPilotSkill() : undefined;
+    unitIconSource = computed(() => {
+        const member = this.forceUnit();
+        return member ? (isCBTForceMember(member) ? member.entity : member.getSummary()) : undefined;
     });
+
+    readonly loadIssues = computed(() => {
+        const member = this.forceUnit();
+        if (!member) return [];
+        return isCBTForceMember(member) ? buildUnitIssues(member.entity) : member.getSummary().loadIssues;
+    });
+
+    readonly issuesAccepted = computed(() => {
+        const member = this.forceUnit();
+        if (!member) return false;
+        return hasAcceptedIssues(isCBTForceMember(member)
+            ? member.entity.applicableQuirks().map(({ quirk }) => quirk)
+            : member.getSummary().quirks.map(name => this.dataService.getQuirkByName(name)));
+    });
+
+    readonly updateAvailable = computed(() => {
+        const member = this.forceUnit();
+        if (!member) return false;
+        if (isCBTForceMember(member)) {
+            this.runtimeRevision();
+            const source = member.force.getUnitSnapshot(member.id)?.nativeSource;
+            return !!source?.isCustom && this.customUnits.hasUpdate(member.entity.uuid(), source.sourceHash);
+        }
+        const summary = member.getSummary();
+        return !!summary.isCustom && this.customUnits.hasUpdate(summary.uuid, summary.hash);
+    });
+
+    destroyed = computed(() => {
+        this.runtimeRevision();
+        const member = this.forceUnit();
+        return member ? forceMemberDestroyed(member) : false;
+    });
+
+    alias = computed(() => {
+        const member = this.forceUnit();
+        return member ? forceMemberAlias(member) : null;
+    });
+
+    readOnly = computed(() => this.forceUnit()?.force.readOnly() ?? true);
+
+    readonly crewBadges = computed(() => {
+        const member = this.forceUnit();
+        if (!member) return [];
+        return member.force.getUnitCrewPolicy(member.id).positions.map(position => {
+            const person = member.force.getAssignedPerson(member.id, position.positionId);
+            const selectedSkills = isCBTForceMember(member) ? crewSkillsForUnit(person, member.entity.unitType(), member.entity.unitSubtype()) : undefined;
+            const skills = person ? (isCBTForceMember(member)
+                ? `${selectedSkills!.gunnery}/${effectiveEntityPilotingSkill(member.entity, selectedSkills!.piloting)}`
+                : String(person.gunnery ?? 4)) : '—';
+            return {
+                positionId: position.positionId,
+                vacant: !person,
+                skills,
+                edge: person?.edge ?? 0,
+                title: `${position.label}: ${person ? person.name || 'Unnamed' : 'Vacant'}`,
+            };
+        });
+    });
+
+    /** Edge points of everyone aboard. */
+    readonly crewEdge = computed(() => this.crewBadges().reduce((total, badge) => total + badge.edge, 0));
+
+    public constructor() {
+        effect(onCleanup => {
+            const member = this.forceUnit();
+            if (!member || !isCBTForceMember(member)) return;
+            // A force this client does not own changes in memory only (a rules switch), through its session.
+            const subscription = merge(member.force.changed, member.force.sessionChanged).subscribe(changedUnitIds => {
+                if (changedUnitIds?.includes(member.id) ?? true) {
+                    this.runtimeRevision.update(value => value + 1);
+                }
+            });
+            onCleanup(() => subscription.unsubscribe());
+        });
+    }
 
     displayedBvPv = computed(() => {
         const unit = this.forceUnit();
         if (!unit) return '';
+        const options = this.optionsService.options();
+        if (isCBTForceMember(unit)) {
+            return formatBvPv(
+                forceMemberAdjustedValue(unit, options.forceViewerBVPVDisplayDamage),
+                forceMemberAdjustedPreSkillValue(unit, options.forceViewerBVPVDisplayDamage),
+                options.forceViewerBVPVDisplay,
+            );
+        }
         return formatBvPv(
             unit.getBv(),
-            unit.baseAdjustedBv(),
-            this.optionsService.options().forceViewerBVPVDisplay,
+            unit.getPreSkillBv(),
+            options.forceViewerBVPVDisplay,
         );
     });
 
     /** Derives Alpha Strike status from the unit's own force, not the global game system. */
-    isAlphaStrike = computed<boolean>(() => this.forceUnit()?.force?.gameSystem === GameSystem.ALPHA_STRIKE);
+    isAlphaStrike = computed<boolean>(() => this.forceUnit()?.force?.gameSystem === GameSystem.AS);
 
     isCommander = computed<boolean>(() => {
         const forceUnit = this.forceUnit();
         if (!forceUnit) return false;
-        if (forceUnit instanceof ASForceUnit || forceUnit instanceof CBTForceUnit) {
+        if (isCBTForceMember(forceUnit)) {
+            this.runtimeRevision();
+            return forceUnit.force.isUnitCommander(forceUnit.id);
+        }
+        if (forceUnit instanceof ASForceUnit) {
             return forceUnit.commander();
         }
         return false;
+    });
+
+    readonly mekTurnSnapshot = computed(() => {
+        this.runtimeRevision();
+        const member = this.forceUnit();
+        return isCBTMekForceMember(member)
+            ? member.force.getMekTurnPanelSnapshot(member.id)
+            : null;
+    });
+
+    readonly notificationSnapshot = computed(() => {
+        this.runtimeRevision();
+        const member = this.forceUnit();
+        return isCBTForceMember(member)
+            ? projectRuntimeUnitNotifications(
+                member.force.getUnitSnapshot(member.id),
+                {
+                    pilotSkillCheck: this.optionsService.cbtAutomationMode('pilotSkillCheck'),
+                    pilotHitsAndConsciousnessCheck: this.optionsService.cbtAutomationMode(
+                        'pilotHitsAndConsciousnessCheck',
+                    ),
+                    heatAndDissipationResolution: this.optionsService.cbtAutomationMode(
+                        'heatAndDissipationResolution',
+                    ),
+                    heatEffectsCheck: this.optionsService.cbtAutomationMode('heatEffectsCheck'),
+                },
+            )
+            : null;
     });
 
     dirty = computed<boolean>(() => {
         if (!this.optionsService.options().trackPhaseAndTurn) {
             return false;
         }
-        const unit = this.forceUnit();
-        if (!unit) return false;
-        if (unit instanceof ASForceUnit) {
-            return false;
-        } else
-        if (unit instanceof CBTForceUnit) {
-            return unit.turnState().dirtyPhase();
-        }
-        return false;
+        this.runtimeRevision();
+        const member = this.forceUnit();
+        return isCBTForceMember(member)
+            && member.force.getUnitSnapshot(member.id)?.query.hasPendingPhaseChanges() === true;
     });
 
     movementIndicator = computed(() => {
-        if (!this.optionsService.options().trackPhaseAndTurn) {
-            return null;
-        }
-        const unit = this.forceUnit();
-        if (!(unit instanceof CBTForceUnit)) return null;
-
-        const turnState = unit.turnState();
-        return getTurnMovementIndicator(
-            turnState.moveMode(),
-            turnState.getTotalTargetModifierAsDefender().modifier,
-        );
-    });
-
-    notificationUnit = computed<CBTForceUnit | null>(() => {
         if (!this.optionsService.options().trackPhaseAndTurn) return null;
-        const unit = this.forceUnit();
-        return unit instanceof CBTForceUnit ? unit : null;
+        // Read directly: for other units the Mek turn panel stays null, so it never signals a change.
+        this.runtimeRevision();
+        const member = this.forceUnit();
+        return mekTurnMovementIndicator(this.mekTurnSnapshot())
+            ?? (isCBTForceMember(member) ? nonMekTurnMovementIndicator(member.force.getUnitSnapshot(member.id)) : null);
     });
 
     activeConditions = computed<UnitConditionDisplay[]>(() => {
         const forceUnit = this.forceUnit();
         if (!forceUnit) return [];
-
-        const conditionKeys = new Set(forceUnit.getConditions().keys());
-        const unitConditions = Array.from(conditionKeys)
-            .map(key => {
-                const condition = getUnitConditionDefinition(key);
-                return {
-                    key,
-                    label: condition?.bannerLabel ?? condition?.label ?? key.toUpperCase(),
-                    color: condition?.color ?? '#666',
-                };
-            })
-            .sort((left, right) => unitConditionSortIndex(left.key) - unitConditionSortIndex(right.key) || left.label.localeCompare(right.label));
-
-        if (!(forceUnit instanceof CBTForceUnit)) return unitConditions;
-
-        const crewStates = new Set(forceUnit.getCrewMembers().map(crewMember => crewMember.getState()));
-        const crewConditions = Array.from(crewStates).flatMap(state => {
-            const definition = forceUnit.rules.crewStateDefinition(state);
-            return definition ? [{
-                key: `crew-${definition.key}`,
-                label: definition.bannerLabel,
-                color: definition.color,
-            }] : [];
-        });
-
-        const locationConditions = [];
-        const hasNarc = Object.keys(forceUnit.getLocations()).some(location => forceUnit.getLocationCondition(location, 'narc'));
-        if (hasNarc) {
-            const narcDefinition = forceUnit.rules.locationConditionControls.find(condition => condition.key === 'narc');
-            locationConditions.push({
-                key: 'location-narc',
-                label: narcDefinition?.label ?? 'NARC',
-                color: narcDefinition?.color ?? '#f00',
-            });
-        };
-
-        return [...unitConditions, ...crewConditions, ...locationConditions];
+        this.runtimeRevision();
+        return forceMemberConditionDisplays(forceUnit);
     });
 
-    tagDisplay = computed(() => getTagDisplay(this.forceUnit()));
+    private readonly capabilitySummary = computed(() => {
+        const member = this.forceUnit();
+        if (!member) return null;
+        if (!isCBTForceMember(member)) return member.getTagEcmCapabilitySummary();
+        this.runtimeRevision();
+        const snapshot = member.force.getUnitSnapshot(member.id);
+        return snapshot ? projectCBTUnitTagEcmCapabilitySummary(snapshot) : null;
+    });
 
-    ecmDisplay = computed(() => getEcmDisplay(this.forceUnit()));
+    tagDisplay = computed(() => this.capabilitySummary()?.tag ?? undefined);
+
+    ecmDisplay = computed(() => this.capabilitySummary()?.ecm ?? null);
 
     /** Get individual C3 network items for display */
     c3NetworkItems = computed<{ label: string; networkType: C3NetworkType; enabled: boolean; unavailable: boolean; color?: string }[]>(() => {
         const forceUnit = this.forceUnit();
         if (!forceUnit) return [];
+        if (isCBTForceMember(forceUnit)) {
+            const snapshot = forceUnit.force.getUnitSnapshot(forceUnit.id);
+            if (!snapshot) return [];
+            let components: readonly Readonly<{ networkType: C3NetworkType }>[] = [];
+            if (hasMekRuntime(snapshot)) {
+                const projection = snapshot.query.mekC3Endpoints();
+                if (projection.kind === 'supported') {
+                    components = projection.endpoints.map(endpoint => ({
+                        networkType: endpoint.family,
+                    }));
+                }
+            } else if (hasNonMekRuntime(snapshot)) {
+                components = projectNonMekC3Components(snapshot.index).map(component => ({
+                    networkType: component.networkType,
+                }));
+            }
+            const networkTypes = [...new Set(components.map(component => component.networkType))];
+            const state = forceUnit.c3State();
+            return networkTypes.map(networkType => {
+                const connected = forceUnit.force.c3EncounterNetworks().find(network =>
+                    network.networkType === networkType
+                    && network.endpoints.some(endpoint => endpoint.instanceId === forceUnit.id));
+                return {
+                    label: c3NetworkTypeName(networkType),
+                    networkType,
+                    enabled: connected !== undefined && state === 'operational',
+                    unavailable: connected !== undefined && state === 'degraded',
+                    ...(connected ? { color: connected.color } : {}),
+                };
+            });
+        }
         const components = new C3Capabilities(forceUnit).components;
         if (components.length === 0) return [];
 
-        const networks = (forceUnit instanceof CBTForceUnit || forceUnit instanceof ASForceUnit) 
-            ? forceUnit.force.c3Networks() 
-            : [];
+        const networks = forceUnit instanceof ASForceUnit ? forceUnit.force.c3Networks() : [];
         const unitId = forceUnit?.id;
         
         // Group by network type to get unique types
@@ -204,16 +352,11 @@ export class UnitBlockComponent {
                 )
             ) : undefined;
             
-            const runtimeState = forceUnit instanceof CBTForceUnit
-                ? forceUnit.getC3NetworkRuntimeState(networkType)
-                : null;
-            const enabled = runtimeState?.linked ?? !!connectedNetwork;
+            const enabled = !!connectedNetwork;
             
             // Get color from root network
             let color: string | undefined;
-            if (runtimeState?.color) {
-                color = runtimeState.color;
-            } else if (connectedNetwork) {
+            if (connectedNetwork) {
                 const rootNetwork = new C3Network(networks).rootOf(connectedNetwork.id) ?? connectedNetwork;
                 color = rootNetwork.color;
             }
@@ -222,8 +365,7 @@ export class UnitBlockComponent {
                 label: c3NetworkTypeName(networkType),
                 networkType,
                 enabled,
-                unavailable: forceUnit instanceof CBTForceUnit
-                    && forceUnit.isC3NetworkTypeUnavailable(networkType),
+                unavailable: false,
                 color
             });
         }
@@ -241,10 +383,11 @@ export class UnitBlockComponent {
     getEffectiveTmm = computed<string>(() => {
         const forceUnit = this.forceUnit();
         if (!forceUnit) return '';
+        if (isCBTForceMember(forceUnit)) return '';
         if (forceUnit instanceof ASForceUnit) {
             return this.formatTmm(forceUnit.effectiveTmm());
         }
-        return forceUnit.getUnit()?.as?.TMM?.toString() ?? '';
+        return '';
     });
 
     private formatTmm(tmm: { [mode: string]: number }): string {
@@ -259,15 +402,16 @@ export class UnitBlockComponent {
     getEffectiveMovement = computed<string>(() => {
         const forceUnit = this.forceUnit();
         if (!forceUnit) return '';
+        if (isCBTForceMember(forceUnit)) return '';
         if (forceUnit instanceof ASForceUnit) {
             const effectiveMv = forceUnit.effectiveMovement();
             const entries = this.getMovementEntries(effectiveMv);
-            if (entries.length === 0) return forceUnit.getUnit()?.as?.MV ?? '';
+            if (entries.length === 0) return forceUnit.getSummary()?.as?.MV ?? '';
             return entries
                 .map(([mode, inches]) => this.formatASMovementEntry(forceUnit, mode, inches))
                 .join('/');
         }
-        return forceUnit.getUnit()?.as?.MV ?? '';
+        return '';
     });
 
     private formatASMovementEntry(forceUnit: ASForceUnit, mode: string, inches: number): string {
@@ -283,6 +427,7 @@ export class UnitBlockComponent {
     showTMM = computed<boolean>(() => {
         const forceUnit = this.forceUnit();
         if (!forceUnit) return true;
+        if (isCBTMekForceMember(forceUnit)) return true;
         if (forceUnit instanceof ASForceUnit) {
             return !forceUnit.isAerospace();
         }
@@ -300,41 +445,34 @@ export class UnitBlockComponent {
         const forceUnit = this.forceUnit();
         const unit = this.unit();
         if (!forceUnit || !unit) return null;
-        if (!(forceUnit instanceof CBTForceUnit)) return null;
-
-        const baseBv = forceUnit.getUnit().bv;
-        const ammoBvVariation = forceUnit.customAmmoBvVariation();
-        const totalBv = forceUnit.getBv();
-        if (baseBv === totalBv) return null; // No adjustments
-        const tagBv = forceUnit.tagBV();
-        const c3Tax = forceUnit.c3Tax();
-        const pilotBv = forceUnit.pilotBV();
-        const formatBv = (value: number) => FormatBvPipe.formatValue(value);
-
-        const lines: TooltipLine[] = [];
-        if (baseBv > 0) {
-            lines.push({ label: 'Base', value: formatBv(baseBv) });
+        if (isCBTForceMember(forceUnit)) {
+            const pristine = forceUnit.pristineBattleValue();
+            const current = forceUnit.currentBaseBattleValue();
+            const tag = forceUnit.tagBattleValue();
+            const c3 = forceUnit.c3BattleValue();
+            const externalStores = forceUnit.externalStoresBattleValue();
+            const skills = forceUnit.skillBattleValue();
+            const adjusted = forceUnit.adjustedBattleValue();
+            if (current === null || tag === null || c3 === null
+                || externalStores === null || skills === null || adjusted === null
+                || (current === pristine && tag === 0 && c3 === 0 && externalStores === 0 && skills === 0)) return null;
+            const formatBv = (value: number) => FormatBvPipe.formatValue(value);
+            const lines: TooltipLine[] = [{ label: 'Base', value: formatBv(pristine) }];
+            if (current !== pristine) {
+                const damage = current - pristine;
+                lines.push({ label: 'Damage', value: formatBv(damage) });
+            }
+            if (tag !== 0) lines.push({ label: 'TAG', value: `+${formatBv(tag)}` });
+            if (c3 !== 0) lines.push({ label: 'C³', value: `+${formatBv(c3)}` });
+            if (externalStores !== 0) lines.push({ label: 'Bombs', value: `+${formatBv(externalStores)}` });
+            if (skills !== 0) {
+                const sign = skills > 0 ? '+' : '';
+                lines.push({ label: 'Skills', value: `${sign}${formatBv(skills)}` });
+            }
+            lines.push({ isBreak: true }, { label: 'Total', value: formatBv(adjusted) });
+            return lines;
         }
-        if (ammoBvVariation !== 0) {
-            const sign = ammoBvVariation > 0 ? '+' : '';
-            lines.push({ label: 'Custom Ammo', value: `${sign}${formatBv(ammoBvVariation)}` });
-        }
-        if (tagBv > 0) {
-            lines.push({ label: 'TAG', value: `+${formatBv(tagBv)}` });
-        }
-        if (c3Tax > 0) {
-            lines.push({ label: 'C³', value: `+${formatBv(c3Tax)}` });
-        }
-        if (pilotBv !== 0) {
-            const sign = pilotBv > 0 ? '+' : '';
-            lines.push({ label: 'Pilot', value: `${sign}${formatBv(pilotBv)}` });
-        }
-        lines.push({ isBreak: true });
-        if (tagBv > 0 || c3Tax > 0 || pilotBv !== 0) {
-            lines.push({ label: 'Total', value: formatBv(totalBv) });
-        }
-
-        return lines.length > 0 ? lines : null;
+        return null;
     });
 
     clickInfo(event: MouseEvent): void {
@@ -361,8 +499,8 @@ export class UnitBlockComponent {
         this.onOpenC3Network.emit(event);
     }
 
-    editPilot(event: MouseEvent): void {
+    editPilot(event: MouseEvent, positionId: string): void {
         event.stopPropagation();
-        this.onEditPilot.emit({ event });
+        this.onEditPilot.emit({ event, positionId, anchor: event.currentTarget as Element });
     }
 }

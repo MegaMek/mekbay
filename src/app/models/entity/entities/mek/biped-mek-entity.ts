@@ -3,7 +3,7 @@
 // Author: Drake
 
 import { signal } from '@angular/core';
-import { MEK_LOCATIONS, MekConfig, MotiveType } from '../../types';
+import { MEK_LOCATIONS, MekConfig, type MekLocation, MotiveType } from '../../types';
 import { MekWithArmsEntity } from './mek-entity';
 
 /** Standard biped BattleMek. */
@@ -14,7 +14,7 @@ export class BipedMekEntity extends MekWithArmsEntity {
     return 'Biped';
   }
 
-  get locationOrder(): string[] {
+  override get locationOrder(): readonly MekLocation[] {
     return [...MEK_LOCATIONS];
   }
 

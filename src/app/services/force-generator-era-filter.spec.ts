@@ -26,7 +26,6 @@ describe('ForceGeneratorService negative era filters', () => {
     const factionsByName = new Map<string, Faction>();
     const factionsById = new Map<number, Faction>();
     const availabilityByUnitName = new Map<string, { e: Record<string, Record<string, [number, number]>> }>();
-    const megaMekAvailabilityRecords: Array<{ e: Record<string, Record<string, [number, number]>> }> = [];
     const units: UnitSummary[] = [];
     const optionsServiceMock = {
         options: signal<{ availabilitySource: AvailabilitySource }>({ availabilitySource: 'megamek' }),
@@ -41,16 +40,13 @@ describe('ForceGeneratorService negative era filters', () => {
         searchCorpusVersion: signal(1),
         megaMekAvailabilityVersion: signal(0),
         getUnits: jasmine.createSpy('getUnits').and.callFake(() => units),
-        getMulAvailabilityIndex: jasmine.createSpy('getMulAvailabilityIndex').and.callFake(() => (
-            new MulAvailabilityIndex(units, [...erasById.values()], [...factionsById.values()])
-        )),
+        getMulAvailabilityIndex: () => new MulAvailabilityIndex(units, [...erasById.values()], [...factionsById.values()]),
         getEras: jasmine.createSpy('getEras').and.callFake(() => [...erasById.values()]),
         getEraByName: jasmine.createSpy('getEraByName').and.callFake((name: string) => erasByName.get(name)),
         getEraById: jasmine.createSpy('getEraById').and.callFake((id: number) => erasById.get(id)),
         getFactionByName: jasmine.createSpy('getFactionByName').and.callFake((name: string) => factionsByName.get(name)),
         getFactionById: jasmine.createSpy('getFactionById').and.callFake((id: number) => factionsById.get(id)),
         getFactions: jasmine.createSpy('getFactions').and.callFake(() => [...factionsById.values()]),
-        getMegaMekAvailabilityRecords: jasmine.createSpy('getMegaMekAvailabilityRecords').and.callFake(() => megaMekAvailabilityRecords),
         getMegaMekAvailabilityRecordForUnit: jasmine.createSpy('getMegaMekAvailabilityRecordForUnit').and.callFake((unit: Pick<UnitSummary, 'name'>) => (
             availabilityByUnitName.get(unit.name)
         )),
@@ -84,7 +80,6 @@ describe('ForceGeneratorService negative era filters', () => {
         factionsByName.clear();
         factionsById.clear();
         availabilityByUnitName.clear();
-        megaMekAvailabilityRecords.length = 0;
         units.length = 0;
         dataServiceMock.searchCorpusVersion.set(1);
         dataServiceMock.megaMekAvailabilityVersion.set(0);
@@ -135,7 +130,6 @@ describe('ForceGeneratorService negative era filters', () => {
             },
         };
         availabilityByUnitName.set(unit.name, availabilityRecord);
-        megaMekAvailabilityRecords.push(availabilityRecord);
 
         filtersServiceMock.effectiveFilterState.and.returnValue({
             era: {
@@ -177,7 +171,7 @@ describe('ForceGeneratorService negative era filters', () => {
         invisibleEra.units = new Set<number>();
         visibleEra.units = new Set<number>([unit.mul1id!]);
         faction.eras = {
-            [visibleEra.id]: new Set<number>([unit.mul1id!]),
+            [visibleEra.id!]: new Set<number>([unit.mul1id!]),
         };
 
         erasByName.set(invisibleEra.name, invisibleEra);
@@ -187,7 +181,6 @@ describe('ForceGeneratorService negative era filters', () => {
         factionsByName.set(faction.name, faction);
         factionsById.set(faction.id, faction);
         availabilityByUnitName.set(unit.name, availabilityRecord);
-        megaMekAvailabilityRecords.push(availabilityRecord);
         units.push(unit);
         optionsServiceMock.options.set({ availabilitySource: 'mul' });
 

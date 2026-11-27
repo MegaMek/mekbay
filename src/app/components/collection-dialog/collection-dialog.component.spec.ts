@@ -39,7 +39,7 @@ describe('CollectionDialogComponent', () => {
                 { provide: TagsService, useValue: { version: signal(0) } },
                 { provide: TaggingService, useValue: {} },
                 { provide: ToastService, useValue: {} },
-                { provide: UserStateService, useValue: {} },
+                { provide: UserStateService, useValue: { uuid: signal('') } },
             ],
         }).compileComponents();
     });
@@ -55,9 +55,9 @@ describe('CollectionDialogComponent', () => {
         component.organizationUnitCounts.set(counts);
     }
 
-    it('keeps same-name collection rows and quick-add selections separate by UUID', () => {
-        const first = createEmptyUnit({ name: 'Name collision', _nameTags: [{ tag: 'Owned', quantity: 1 }] });
-        const second = createEmptyUnit({ name: first.name, _nameTags: [{ tag: 'Owned', quantity: 1 }] });
+    it('keeps same-name custom collection rows and quick-add selections separate by UUID', () => {
+        const first = createEmptyUnit({ name: 'Custom collision', isCustom: true, _nameTags: [{ tag: 'Owned', quantity: 1 }] });
+        const second = createEmptyUnit({ name: first.name, isCustom: true, _nameTags: [{ tag: 'Owned', quantity: 1 }] });
         units = [first, second];
         const fixture = TestBed.createComponent(CollectionDialogComponent);
         const component = fixture.componentInstance;

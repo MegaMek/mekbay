@@ -3,7 +3,7 @@
 // Author: Drake
 
 import { ChangeDetectionStrategy, Component, inject } from '@angular/core';
-import { ForceBuilderService } from '../services/force-builder.service';
+import { ForceImportService } from '../services/force-import.service';
 import { RoutedDialogPage } from './routed-dialog-page';
 
 /**
@@ -16,14 +16,14 @@ import { RoutedDialogPage } from './routed-dialog-page';
     changeDetection: ChangeDetectionStrategy.OnPush,
 })
 export class ForceGeneratorPageComponent extends RoutedDialogPage {
-    private readonly forceBuilderService = inject(ForceBuilderService);
+    private readonly forceImportService = inject(ForceImportService);
 
     /** Navigation state must be read during construction (while the navigation is running). */
     private readonly importCurrentForce =
         (this.router.currentNavigation()?.extras?.state ?? history.state)?.importCurrentForce === true;
 
     protected override openDialog() {
-        return this.forceBuilderService.openSearchForceGeneratorDialog({
+        return this.forceImportService.openSearchForceGeneratorDialog({
             importCurrentForce: this.importCurrentForce,
         });
     }

@@ -2,10 +2,19 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 // Author: Drake
 
-import type { CBTForceUnit } from '../models/cbt-force-unit.model';
+import type { DisplayUnitNameFormat } from '../models/options.model';
+import { formatUnitChassis } from './unit-display-name.util';
+import { isCaseEquipment } from '../models/case-equipment.model';
 import type { CBTForce } from '../models/cbt-force.model';
+import type { BaseEntity } from '../models/entity/base-entity';
+import type { CBTRuleset } from '../models/cbt-ruleset.model';
+import { RUN_WITHOUT_MASC_CALCULATION, STANDARD_MOVEMENT_CALCULATION } from '../models/entity/types/move';
+import type { EntityTechBase } from '../models/entity/types';
+import { AmmoEquipment } from '../models/equipment.model';
+import type { CBTForceMember } from '../models/force-member.model';
+import { isHeatSinkEquipment } from '../models/heat-equipment.model';
+import { isJumpJetEquipment } from '../models/jump-equipment.model';
 import type { PrintAllOptions } from '../models/print-options.model';
-import type { UnitSummary, UnitComponent } from '../models/unit-summary.model';
 import { printInOverlay } from './print-overlay.util';
 import {
     createPrintRosterHeader,
@@ -13,16 +22,27 @@ import {
     getPrintRosterBrandingStyles,
 } from './print-roster-branding.util';
 
-type CBTSummaryPrintOptions = Pick<PrintAllOptions, 'printPilotData' | 'printMargin'>;
+type CBTSummaryPrintOptions = Pick<
+    PrintAllOptions,
+    'printPilotData' | 'paperSize'
+>;
 
+interface AmmoSummary {
+    readonly name: string;
+    readonly protectedByCase: boolean;
+    bins: number;
+    shots: number;
+}
+
+/** Prints a force roster from admitted CBT Entity instances. */
 export class CBTSummaryPrintUtil {
     public static async print(
         force: CBTForce,
         printOptions: CBTSummaryPrintOptions,
         triggerPrint: boolean = true,
+        nameFormat: DisplayUnitNameFormat = 'innerSphereClan',
     ): Promise<void> {
-        const forceUnits = force.units();
-        if (forceUnits.length === 0) {
+        if (force.getCBTMembers().length === 0) {
             console.warn('No units to export.');
             return;
         }
@@ -30,8 +50,8 @@ export class CBTSummaryPrintUtil {
         await printInOverlay({
             containerId: 'cbt-summary-print-container',
             bodyClass: 'cbt-summary-print-active',
-            content: await this.createRosterSummary(force, printOptions.printPilotData),
-            styles: this.getPrintStyles(printOptions.printMargin),
+            content: await this.createRosterSummary(force, printOptions.printPilotData, nameFormat),
+            styles: this.getPrintStyles(printOptions.paperSize),
             triggerPrint,
         });
     }
@@ -39,27 +59,27 @@ export class CBTSummaryPrintUtil {
     private static async createRosterSummary(
         force: CBTForce,
         printPilotData: boolean,
+        nameFormat: DisplayUnitNameFormat,
     ): Promise<string> {
+        const members = force.getCBTMembers();
         let totalBaseBv = 0;
         let totalFinalBv = 0;
         const groupSections: string[] = [];
 
         for (const group of force.groups()) {
-            const groupUnits = group.units();
-            if (groupUnits.length === 0) continue;
+            const groupMembers = members.filter(member => member.rosterGroupId === group.id);
+            if (groupMembers.length === 0) continue;
 
-            const bodyRows: string[] = [];
-            for (const forceUnit of groupUnits) {
-                const unit = forceUnit.getUnit();
-                totalBaseBv += unit.bv ?? 0;
-                totalFinalBv += this.getPrintableBv(forceUnit, printPilotData);
-                bodyRows.push(this.createRosterTableRow(forceUnit, printPilotData));
-            }
-
-            const groupBv = groupUnits.reduce(
-                (total, forceUnit) => total + this.getPrintableBv(forceUnit, printPilotData),
+            const rows = groupMembers.map(member => {
+                totalBaseBv += member.pristineBattleValue();
+                totalFinalBv += this.getPrintableBv(member, printPilotData);
+                return this.createRosterTableRow(member, printPilotData, nameFormat);
+            });
+            const groupBv = groupMembers.reduce(
+                (total, member) => total + this.getPrintableBv(member, printPilotData),
                 0,
             );
+
             groupSections.push(`
                 <section class="cbt-roster-group-section">
                     <table class="cbt-roster-table">
@@ -84,11 +104,11 @@ export class CBTSummaryPrintUtil {
                                 <th class="col-rules">Tech<br/>Rules</th>
                                 <th class="col-move">Move</th>
                                 <th class="col-as">A/S</th>
-                                <th class="col-firepower">Firepower<br/>(Dmg/Turn)</th>
+                                <th class="col-firepower">Firepower</th>
                                 <th class="col-equipment">Equipment</th>
                             </tr>
                         </thead>
-                        <tbody>${bodyRows.join('')}</tbody>
+                        <tbody>${rows.join('')}</tbody>
                     </table>
                 </section>
             `);
@@ -98,7 +118,6 @@ export class CBTSummaryPrintUtil {
             force,
             'print-roster-qr-inline print-roster-qr-block',
         );
-
         return `
             <main class="cbt-roster-summary">
                 <div class="cbt-roster-sheet">
@@ -111,201 +130,124 @@ export class CBTSummaryPrintUtil {
         `;
     }
 
-    private static createRosterTableRow(forceUnit: CBTForceUnit, printPilotData: boolean): string {
-        const unit = forceUnit.getUnit();
-        const alias = printPilotData ? forceUnit.alias() : undefined;
-        const model = unit.model || '';
-        const chassisLine = alias ? `${unit.chassis} (${alias})` : unit.chassis;
-        const typeSubtype = [unit.type || '', unit.subtype && unit.subtype !== unit.type ? unit.subtype : '']
+    private static createRosterTableRow(member: CBTForceMember, printPilotData: boolean, nameFormat: DisplayUnitNameFormat = 'innerSphereClan'): string {
+        const entity = member.entity;
+        const primaryCrew = member.force.getUnitCrewAssignment(member.id)?.positions[0];
+        const alias = printPilotData ? primaryCrew?.name : undefined;
+        const chassis = formatUnitChassis(entity, nameFormat);
+        const chassisLine = alias ? `${chassis} (${alias})` : chassis;
+        const unitType = entity.unitType();
+        const unitSubtype = entity.unitSubtype();
+        const typeSubtype = [unitType, unitSubtype !== unitType ? unitSubtype : '']
             .filter(Boolean)
             .join(' / ');
+        const maximumDamage = entity.rangedWeapons().reduce(
+            (total, mount) => total + entity.resolveMountedWeaponDamage(mount).maximum,
+            0,
+        );
 
         return `
             <tr class="cbt-roster-unit-entry">
                 <td class="col-unit">
-                    ${model ? `<div class="cbt-roster-unit-model">${this.escapeHtml(model)}</div>` : ''}
+                    ${entity.model() ? `<div class="cbt-roster-unit-model">${this.escapeHtml(entity.model())}</div>` : ''}
                     <div class="cbt-roster-unit-chassis">${this.escapeHtml(chassisLine)}</div>
                 </td>
                 <td class="col-type">${this.escapeHtml(typeSubtype)}</td>
-                <td class="col-role">${this.escapeHtml(unit.role && unit.role !== 'None' ? unit.role : '')}</td>
-                <td class="col-base-bv is-numeric">${this.formatNumber(unit.bv)}</td>
-                <td class="col-gp is-numeric">${printPilotData ? `${forceUnit.gunnerySkill()}/${forceUnit.pilotingSkill()}` : ''}</td>
-                <td class="col-bv is-numeric is-bold">${this.formatNumber(this.getPrintableBv(forceUnit, printPilotData))}</td>
-                <td class="col-tons is-numeric">${this.formatNumber(unit.tons)}</td>
-                <td class="col-year">${this.createYearValue(unit)}</td>
-                <td class="col-rules">${this.escapeHtml(this.formatTechBase(unit.techBase, unit.mixed))}<br/>${this.escapeHtml(unit.level)}</td>
-                <td class="col-move">${this.escapeHtml(this.formatMovement(unit))}</td>
-                <td class="col-as is-numeric">${this.escapeHtml(this.formatArmorStructure(unit))}</td>
-                <td class="col-firepower is-numeric">${this.escapeHtml(this.formatNumber(unit._mdSumNoPhysical) || '—')}<br/>(${this.escapeHtml(this.formatNumber(unit.dpt) || '—')})</td>
-                <td class="col-equipment">${this.formatEquipmentSummary(unit)}</td>
+                <td class="col-role">${this.escapeHtml(entity.role() && entity.role() !== 'None' ? entity.role() : '')}</td>
+                <td class="col-base-bv is-numeric">${this.formatNumber(member.pristineBattleValue())}</td>
+                <td class="col-gp is-numeric">${printPilotData && primaryCrew ? `${primaryCrew.gunnery}/${primaryCrew.piloting}` : ''}</td>
+                <td class="col-bv is-numeric is-bold">${this.formatNumber(this.getPrintableBv(member, printPilotData))}</td>
+                <td class="col-tons is-numeric">${this.formatNumber(entity.tonnage())}</td>
+                <td class="col-year">${entity.year() || '—'}</td>
+                <td class="col-rules">${this.escapeHtml(this.formatTechBase(entity.techBase(), entity.mixedTech()))}<br/>${this.escapeHtml(entity.staticTechLevel())}</td>
+                <td class="col-move">${this.escapeHtml(this.formatMovement(entity, member.ruleset() ?? undefined))}</td>
+                <td class="col-as is-numeric">${this.formatNumber(entity.totalArmorPoints()) || '0'}/${this.formatNumber(entity.totalInternalPoints()) || '0'}</td>
+                <td class="col-firepower is-numeric">${this.formatNumber(maximumDamage) || '—'}</td>
+                <td class="col-equipment">${this.formatEquipmentSummary(entity)}</td>
             </tr>
         `;
     }
 
-    private static createYearValue(unit: UnitSummary): string {
-        const year = unit.year ? this.escapeHtml(String(unit.year)) : '—';
-        if (!unit._era?.img) {
-            return year;
+    private static getPrintableBv(member: CBTForceMember, printPilotData: boolean): number {
+        if (printPilotData) {
+            return member.adjustedBattleValue() ?? member.pristineBattleValue();
         }
-
-        const eraName = this.escapeHtml(unit._era.name || 'Era');
-        const eraSrc = this.escapeHtml(unit._era.img);
-        return `${year} <img src="${eraSrc}" class="cbt-roster-era-icon" alt="${eraName}" title="${eraName}" />`;
+        return member.currentBaseBattleValue() ?? member.pristineBattleValue();
     }
 
-    private static formatNumber(value: number | undefined | null): string {
-        if (value === undefined || value === null || Number.isNaN(value)) {
-            return '';
-        }
-        return value.toLocaleString();
-    }
-
-    private static getPrintableBv(forceUnit: CBTForceUnit, printPilotData: boolean): number {
-        return printPilotData ? forceUnit.getBv() : forceUnit.getBaseBv();
-    }
-
-    private static formatMovement(unit: UnitSummary): string {
+    private static formatMovement(entity: BaseEntity, ruleset: CBTRuleset | undefined): string {
         const parts: string[] = [];
-        if (unit.walk) {
-            let ground = `${unit.walk}/${unit.run}`;
-            if (unit.run2 && unit.run2 !== unit.run) {
-                ground += `[${unit.run2}]`;
-            }
-            parts.push(ground);
-        }
-        if (unit.jump) {
-            parts.push(String(unit.jump));
-        }
-        if (unit.umu) {
-            parts.push(String(unit.umu));
-        }
+        const walkMp = entity.computeWalkMP({ ...STANDARD_MOVEMENT_CALCULATION, ruleset });
+        if (walkMp) parts.push(`${walkMp}/${entity.computeRunMP({ ...RUN_WITHOUT_MASC_CALCULATION, ruleset })}`);
+        if (entity.jumpMP()) parts.push(String(entity.jumpMP()));
+        if (entity.umuMP()) parts.push(String(entity.umuMP()));
         return parts.join('/');
     }
 
-    private static formatTechBase(techBase: UnitSummary['techBase'], mixed: boolean): string {
-        if (!techBase) return '';
-        const tech = techBase === 'Inner Sphere' ? 'IS' : 'Clan';
-        return mixed ? `Mixed (${tech})` : tech;
+    private static formatTechBase(techBase: EntityTechBase, mixed: boolean): string {
+        return mixed ? `Mixed (${techBase})` : techBase;
     }
 
-    private static formatArmorStructure(unit: UnitSummary): string {
-        return `${this.formatNumber(unit.armor) || '0'}/${this.formatNumber(unit.internal) || '0'}`;
-    }
+    private static formatEquipmentSummary(entity: BaseEntity): string {
+        const equipmentCounts = new Map<string, number>();
+        const ammo = new Map<string, AmmoSummary>();
 
-    private static formatEquipmentSummary(unit: UnitSummary): string {
-        const equipment = this.getExpandedComponents(unit.comp).map(comp => this.formatComponentText(comp));
-        const caseLocations = this.getCaseLocations(unit);
-        const ammo = this.getAmmoComponents(unit.comp, caseLocations).map(comp => {
-            const text = this.formatComponentText(comp);
-            return this.hasCaseProtection(caseLocations, comp.l) ? `[${text}]` : text;
-        });
+        for (const mount of entity.equipment()) {
+            const equipment = mount.equipment;
+            if (equipment instanceof AmmoEquipment) {
+                const name = equipment.shortName || equipment.name || mount.equipmentId;
+                const protectedByCase = entity.ammoCaseProtection(mount.location) !== null;
+                const key = `${name}\u0000${protectedByCase}`;
+                const existing = ammo.get(key);
+                if (existing) {
+                    existing.bins++;
+                    existing.shots += mount.shotsCount ?? equipment.shots;
+                } else {
+                    ammo.set(key, {
+                        name,
+                        protectedByCase,
+                        bins: 1,
+                        shots: mount.shotsCount ?? equipment.shots,
+                    });
+                }
+                continue;
+            }
+            if (isHeatSinkEquipment(equipment)
+                || isCaseEquipment(equipment)
+                || isJumpJetEquipment(equipment)) continue;
+            const name = mount.displayName();
+            equipmentCounts.set(name, (equipmentCounts.get(name) ?? 0) + 1);
+        }
 
-        const equipmentMarkup = equipment
+        const equipmentEntries = [...equipmentCounts]
+            .sort(([left], [right]) => left.localeCompare(right))
+            .map(([name, quantity]) => `${quantity}×${name}`);
+        const ammoEntries = [...ammo.values()]
+            .sort((left, right) => left.name.localeCompare(right.name)
+                || Number(left.protectedByCase) - Number(right.protectedByCase))
+            .map(entry => {
+                const text = `${entry.bins}×${entry.name} (${entry.shots})`;
+                return entry.protectedByCase ? `[${text}]` : text;
+            });
+
+        const equipmentMarkup = equipmentEntries
             .map(entry => `<span class="cbt-roster-equipment-entry">${this.escapeHtml(entry)}</span>`)
             .join('<span class="cbt-roster-equipment-sep">, </span>');
-        const ammoMarkup = ammo.length > 0
-            ? `
-                <div class="cbt-roster-equipment-ammo-line">
-                    <span class="cbt-roster-equipment-ammo-label">Ammo:</span>
-                    <span class="cbt-roster-equipment-ammo-values">${ammo
-                        .map(entry => `<span class="cbt-roster-equipment-entry">${this.escapeHtml(entry)}</span>`)
-                        .join('<span class="cbt-roster-equipment-sep">, </span>')}</span>
-                </div>
-            `
-            : '';
-
+        const ammoMarkup = ammoEntries.length === 0 ? '' : `
+            <div class="cbt-roster-equipment-ammo-line">
+                <span class="cbt-roster-equipment-ammo-label">Ammo:</span>
+                <span class="cbt-roster-equipment-ammo-values">${ammoEntries
+                    .map(entry => `<span class="cbt-roster-equipment-entry">${this.escapeHtml(entry)}</span>`)
+                    .join('<span class="cbt-roster-equipment-sep">, </span>')}</span>
+            </div>
+        `;
         return `${equipmentMarkup}${ammoMarkup}`;
     }
 
-    private static getExpandedComponents(components: UnitComponent[]): UnitComponent[] {
-        const aggregated = new Map<string, UnitComponent>();
-        for (const component of components ?? []) {
-            if (component.t === 'HIDDEN' || component.t === 'S' || component.t === 'X') continue;
-            if (component.t === 'C' && component.eq?.hasAnyFlag([
-                'F_HEAT_SINK',
-                'F_DOUBLE_HEAT_SINK',
-                'F_CASE',
-                'F_CASE_P',
-                'F_CASE_II',
-                'F_JUMP_JET',
-            ])) continue;
-
-            const key = component.n || '';
-            if (!key) continue;
-
-            const existing = aggregated.get(key);
-            if (existing) {
-                existing.q = (existing.q ?? 1) + (component.q ?? 1);
-            } else {
-                aggregated.set(key, { ...component });
-            }
-        }
-
-        return Array.from(aggregated.values()).sort((left, right) => (left.n ?? '').localeCompare(right.n ?? ''));
-    }
-
-    private static getAmmoComponents(
-        components: UnitComponent[],
-        caseLocations: ReadonlySet<string>,
-    ): UnitComponent[] {
-        const aggregated = new Map<string, UnitComponent>();
-        for (const component of components ?? []) {
-            if (component.t !== 'X') continue;
-            const name = component.n?.endsWith(' Ammo') ? component.n.slice(0, -5).trimEnd() : component.n;
-            if (!name) continue;
-
-            const protectedByCase = this.hasCaseProtection(caseLocations, component.l);
-            const key = `${name}\u0000${protectedByCase}`;
-
-            const existing = aggregated.get(key);
-            if (existing) {
-                existing.q = (existing.q ?? 1) + (component.q ?? 1);
-                existing.q2 = (existing.q2 ?? 0) + (component.q2 ?? 0);
-            } else {
-                aggregated.set(key, { ...component, n: name });
-            }
-        }
-
-        return Array.from(aggregated.values()).sort((left, right) => (left.n ?? '').localeCompare(right.n ?? ''));
-    }
-
-    private static formatComponentText(component: UnitComponent): string {
-        const quantity = component.q ?? 1;
-        const secondary = component.q2 ? ` (${component.q2})` : '';
-        return `${quantity}×${component.n}${secondary}`;
-    }
-
-    private static getCaseLocations(unit: UnitSummary): Set<string> {
-        const result = new Set<string>();
-        for (const component of unit.comp ?? []) {
-            if (!component.eq || !component.l) continue;
-            if (component.eq.hasAnyFlag(['F_CASE', 'F_CASE_P', 'F_CASE_II'])) {
-                for (const location of this.normalizeLocations(component.l)) {
-                    result.add(location);
-                }
-            }
-        }
-        return result;
-    }
-
-    private static hasCaseProtection(caseLocations: ReadonlySet<string>, location: string): boolean {
-        return caseLocations.has('ALL')
-            || this.normalizeLocations(location).some(normalized => caseLocations.has(normalized));
-    }
-
-    private static normalizeLocations(location: string): string[] {
-        if (location.trim() === '*') return ['ALL'];
-        return location.split('/').map(part => this.normalizeLocation(part));
-    }
-
-    private static normalizeLocation(location: string): string {
-        if (!location) return 'UNK';
-        let normalized = location.trim().toUpperCase();
-        normalized = normalized.replace(/[^A-Za-z0-9_-]/g, '');
-        if (/^[0-9]/.test(normalized)) {
-            normalized = `L${normalized}`;
-        }
-        return normalized || 'UNK';
+    private static formatNumber(value: number | undefined | null): string {
+        return value === undefined || value === null || Number.isNaN(value)
+            ? ''
+            : value.toLocaleString();
     }
 
     private static escapeHtml(value: string): string {
@@ -317,214 +259,99 @@ export class CBTSummaryPrintUtil {
             .replaceAll("'", '&#39;');
     }
 
-    private static getPrintStyles(printMargin: PrintAllOptions['printMargin']): string {
+    private static getPrintStyles(paperSize: PrintAllOptions['paperSize']): string {
         return `
-            @media screen {
-                #cbt-summary-print-container {
-                    display: none;
-                }
-            }
-
+            @media screen { #cbt-summary-print-container { display: none; } }
             ${getPrintRosterBrandingStyles('#cbt-summary-print-container')}
 
-            #cbt-summary-print-container .cbt-roster-summary {
-                width: 100%;
-                background: white !important;
-            }
-
+            #cbt-summary-print-container .cbt-roster-summary,
             #cbt-summary-print-container .cbt-roster-sheet {
                 width: 100%;
                 background: white;
-                padding: 0.08in 0.12in 0.1in;
-                font-family: sans-serif;
                 color: #222;
                 box-sizing: border-box;
             }
-
-            #cbt-summary-print-container .cbt-roster-groups {
-                display: block;
+            #cbt-summary-print-container .cbt-roster-sheet {
+                padding: 0.08in 0.12in 0.1in;
+                font-family: sans-serif;
             }
-
             #cbt-summary-print-container .cbt-roster-group-section {
                 margin-bottom: 0.06in;
                 break-inside: auto;
                 page-break-inside: auto;
             }
-
-            #cbt-summary-print-container .cbt-roster-table thead {
-                display: table-header-group;
-            }
-
-            #cbt-summary-print-container .cbt-roster-table .cbt-roster-unit-entry,
-            #cbt-summary-print-container .cbt-roster-table .cbt-roster-unit-entry > td {
-                break-inside: avoid;
-                page-break-inside: avoid;
-            }
-
-            #cbt-summary-print-container .cbt-roster-group-header {
-                display: flex;
-                justify-content: space-between;
-                align-items: center;
-                padding: 0.03in 0.01in 0.02in;
-                border-top: 1px solid #cfcfcf;
-                border-bottom: 1px solid #cfcfcf;
-            }
-
-            #cbt-summary-print-container .cbt-roster-table .cbt-roster-group-heading-cell {
-                padding: 0;
-                border: 0;
-                white-space: normal;
-            }
-
-            #cbt-summary-print-container .cbt-roster-group-name,
-            #cbt-summary-print-container .cbt-roster-group-bv {
-                font-weight: 700;
-                font-size: 10pt;
-            }
-
             #cbt-summary-print-container .cbt-roster-table {
                 width: 100%;
                 border-collapse: collapse;
-                table-layout: auto;
                 font-size: 9pt;
                 break-inside: auto;
                 page-break-inside: auto;
             }
-
+            #cbt-summary-print-container .cbt-roster-table thead { display: table-header-group; }
+            #cbt-summary-print-container .cbt-roster-unit-entry,
+            #cbt-summary-print-container .cbt-roster-unit-entry > td {
+                break-inside: avoid;
+                page-break-inside: avoid;
+            }
+            #cbt-summary-print-container .cbt-roster-group-header {
+                display: flex;
+                justify-content: space-between;
+                padding: 0.03in 0.01in 0.02in;
+                border-top: 1px solid #cfcfcf;
+                border-bottom: 1px solid #cfcfcf;
+            }
+            #cbt-summary-print-container .cbt-roster-group-heading-cell { padding: 0; border: 0; }
+            #cbt-summary-print-container .cbt-roster-group-name,
+            #cbt-summary-print-container .cbt-roster-group-bv { font-weight: 700; font-size: 10pt; }
             #cbt-summary-print-container .cbt-roster-table th,
             #cbt-summary-print-container .cbt-roster-table td {
                 padding: 3px 4px;
                 border-bottom: 1px solid #d7d7d7;
                 vertical-align: middle;
                 text-align: center;
-                box-sizing: border-box;
                 background: white;
             }
-
             #cbt-summary-print-container .cbt-roster-table th {
                 border-bottom: 2px solid #666;
-                font-weight: 700;
-                white-space: nowrap;
-                line-height: 1.1;
-            }
-
-            #cbt-summary-print-container .cbt-roster-era-icon {
-                width: 12px;
-                height: 12px;
-                object-fit: contain;
-                vertical-align: -1px;
-                filter: invert(1);
-            }
-
-            #cbt-summary-print-container .cbt-roster-table .is-numeric {
-                text-align: center;
                 white-space: nowrap;
             }
-
-            #cbt-summary-print-container .cbt-roster-table .is-bold {
-                font-weight: 700;
-            }
-
-            #cbt-summary-print-container .cbt-roster-table .col-unit {
-                min-width: 80px;
-            }
-
-            #cbt-summary-print-container .cbt-roster-table .col-unit,
-            #cbt-summary-print-container .cbt-roster-table .col-role,
-            #cbt-summary-print-container .cbt-roster-table .col-equipment {
-                white-space: normal;
-            }
-
-            #cbt-summary-print-container .cbt-roster-table .col-unit,
-            #cbt-summary-print-container .cbt-roster-table .col-equipment {
-                text-align: left;
-            }
-
-            #cbt-summary-print-container .cbt-roster-table .col-equipment {
-                line-height: 1.22;
-            }
-
-            #cbt-summary-print-container .cbt-roster-equipment-ammo-line {
-                margin-top: 2px;
-            }
-
-            #cbt-summary-print-container .cbt-roster-equipment-ammo-label {
-                font-weight: 700;
-                margin-right: 3px;
-            }
-
-            #cbt-summary-print-container .cbt-roster-equipment-entry {
-                white-space: nowrap;
-                display: inline;
-            }
-
-            #cbt-summary-print-container .cbt-roster-equipment-sep {
-                white-space: normal;
-            }
-
-            #cbt-summary-print-container .cbt-roster-unit-model {
-                font-size: 0.92em;
-                color: #555;
-                line-height: 1.15;
-            }
-
-            #cbt-summary-print-container .cbt-roster-unit-chassis {
-                font-weight: 700;
-                line-height: 1.15;
-            }
-
-            #cbt-summary-print-container .cbt-roster-table .col-year {
-                white-space: nowrap;
-            }
-
+            #cbt-summary-print-container .col-unit,
+            #cbt-summary-print-container .col-role,
+            #cbt-summary-print-container .col-equipment { white-space: normal; }
+            #cbt-summary-print-container .col-unit,
+            #cbt-summary-print-container .col-equipment { text-align: left; }
+            #cbt-summary-print-container .is-numeric,
+            #cbt-summary-print-container .cbt-roster-equipment-entry { white-space: nowrap; }
+            #cbt-summary-print-container .is-bold,
+            #cbt-summary-print-container .cbt-roster-group-name,
+            #cbt-summary-print-container .cbt-roster-equipment-ammo-label,
+            #cbt-summary-print-container .cbt-roster-unit-chassis { font-weight: 700; }
+            #cbt-summary-print-container .cbt-roster-equipment-ammo-line { margin-top: 2px; }
+            #cbt-summary-print-container .cbt-roster-unit-model { color: #555; }
             #cbt-summary-print-container .cbt-roster-footer {
                 font-weight: 700;
                 font-size: 11pt;
                 margin-top: 0.08in;
-                padding: 0.05in 0.04in 0;
+                padding-top: 0.05in;
                 border-top: 2px solid #333;
                 text-align: right;
                 break-inside: avoid;
-                page-break-inside: avoid;
             }
-
-            #cbt-summary-print-container .print-roster-qr-block {
-                margin: 0.05in 0 0.1in 0.04in;
-            }
-
-            #cbt-summary-print-container .cbt-roster-summary-content {
-                color: #111;
-                font-size: 36pt;
-                font-weight: 700;
-                letter-spacing: 0.08em;
-                text-align: center;
-            }
+            #cbt-summary-print-container .print-roster-qr-block { margin-top: 0.05in; }
 
             @media print {
-                body, html {
-                    margin: 0 !important;
-                    padding: 0 !important;
-                    width: 100% !important;
-                    height: auto !important;
-                }
-
-                body.cbt-summary-print-active > *:not(#cbt-summary-print-container) {
-                    display: none !important;
-                }
-
+                body, html { margin: 0 !important; padding: 0 !important; }
+                body.cbt-summary-print-active > *:not(#cbt-summary-print-container) { display: none !important; }
                 #cbt-summary-print-container,
                 #cbt-summary-print-container .cbt-roster-summary {
                     display: block;
                     width: 100% !important;
                     height: auto !important;
                     overflow: visible !important;
-                    margin: 0 !important;
-                    padding: 0 !important;
                 }
-
                 @page {
-                    size: landscape;
-                    margin: ${printMargin === 'none' ? '0in' : '0.25in'} !important;
+                    size: ${paperSize === 'a4' ? 'A4' : 'Letter'} landscape;
+                    margin: 0.25in !important;
                 }
             }
         `;

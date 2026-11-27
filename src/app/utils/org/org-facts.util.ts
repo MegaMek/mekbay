@@ -2,8 +2,7 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 // Author: Drake
 
-import type { ASUnitTypeCode, UnitSummary } from '../../models/unit-summary.model';
-import { UnitSummaryTypeGuard } from '../../models/unit-summary-type-guard';
+import type { ASUnitTypeCode } from '../../models/unit-summary.model';
 import type {
     CIMoveClass,
     CIMoveClassBucketValue,
@@ -26,9 +25,27 @@ import type {
     TransportBucketValue,
     UnitClassKey,
     UnitFactTag,
-    UnitNumericScalarName,
     UnitFacts,
+    OrgUnit,
+    OrgTransportSpecial,
 } from './org-types';
+
+export function getCISquadCount(unit: OrgUnit): number {
+    const squads = unit.squads ?? 1;
+    return Number.isFinite(squads) ? Math.max(0, Math.floor(squads)) : 0;
+}
+
+export function getUnitBucketValue(
+    bucketBy: OrgUnitBucketName | undefined,
+    facts: UnitFacts,
+    registry: OrgRuleRegistry,
+): string {
+    if (!bucketBy) {
+        return '__all__';
+    }
+    const bucketFn = registry.unitBuckets[bucketBy];
+    return bucketFn ? `${bucketFn(facts) as string | number | boolean}` : '__all__';
+}
 
 const ORG_UNIT_BUCKET_NAMES: readonly OrgUnitBucketName[] = [
     'classKey',
@@ -69,12 +86,36 @@ function createUnitTypeSelectors(): Partial<Record<ASUnitTypeCode, (facts: UnitF
     ) as Partial<Record<ASUnitTypeCode, (facts: UnitFacts) => boolean>>;
 }
 
-export function getNormalizedOrgUnitType(unit: UnitSummary): UnitSummary['as']['TP'] {
+function isAero(unit: OrgUnit): boolean {
+    return unit.type === 'Aero';
+}
+
+function isBM(unit: OrgUnit): boolean {
+    return unit.type === 'Mek';
+}
+
+function isCV(unit: OrgUnit): boolean {
+    return unit.type === 'Tank' || unit.type === 'VTOL' || unit.type === 'Naval';
+}
+
+function isBA(unit: OrgUnit): boolean {
+    return unit.type === 'Infantry' && unit.subtype === 'Battle Armor';
+}
+
+function isCI(unit: OrgUnit): boolean {
+    return unit.type === 'Infantry' && unit.subtype !== 'Battle Armor';
+}
+
+function isPM(unit: OrgUnit): boolean {
+    return unit.type === 'ProtoMek';
+}
+
+export function getNormalizedOrgUnitType(unit: OrgUnit): OrgUnit['as']['TP'] {
     return unit.as.TP;
 }
 
-export function getCIMoveClass(unit: UnitSummary): CIMoveClass | null {
-    if (!UnitSummaryTypeGuard.isConventionalInfantry(unit)) {
+export function getCIMoveClass(unit: OrgUnit): CIMoveClass | null {
+    if (!isCI(unit)) {
         return null;
     }
     
@@ -111,13 +152,15 @@ export function getCIMoveClass(unit: UnitSummary): CIMoveClass | null {
     return 'foot';
 }
 
-function getCIMoveClassTag(unit: UnitSummary): CIMoveClassTag | null {
+function getCIMoveClassTag(unit: OrgUnit): CIMoveClassTag | null {
     const moveClass = getCIMoveClass(unit);
     return moveClass ? `ci:${moveClass}` as CIMoveClassTag : null;
 }
 
-function hasSpecial(unit: UnitSummary, special: string): boolean {
-    return unit.as?.specials?.includes(special) ?? false;
+function hasTransportSpecial(unit: OrgUnit, special: OrgTransportSpecial): boolean {
+    return 'transportSpecials' in unit
+        ? unit.transportSpecials.includes(special)
+        : unit.as.specials.includes(special);
 }
 
 function incrementCount<Key extends string>(map: Map<Key, number>, key: Key, amount = 1): void {
@@ -139,18 +182,18 @@ function allocateGroupFactId(): number {
     return groupFactId;
 }
 
-export function getUnitClassKey(unit: UnitSummary): UnitClassKey {
-    if (UnitSummaryTypeGuard.isBattleArmor(unit)) return 'BA';
-    if (UnitSummaryTypeGuard.isConventionalInfantry(unit)) return unit.subtype === 'Mechanized Conventional Infantry' ? 'CI:mechanized' : 'CI';
-    if (UnitSummaryTypeGuard.isMek(unit)) return unit.omni === 1 ? 'BM:omni' : 'BM';
-    if (UnitSummaryTypeGuard.isVehicle(unit)) return unit.omni === 1 ? 'CV:omni' : 'CV';
-    if (UnitSummaryTypeGuard.isAero(unit)) return unit.omni === 1 ? 'AF:omni' : 'AF';
-    if (UnitSummaryTypeGuard.isProtoMek(unit)) return 'PM';
+export function getUnitClassKey(unit: OrgUnit): UnitClassKey {
+    if (isBA(unit)) return 'BA';
+    if (isCI(unit)) return unit.subtype === 'Mechanized Conventional Infantry' ? 'CI:mechanized' : 'CI';
+    if (isBM(unit)) return unit.omni === 1 ? 'BM:omni' : 'BM';
+    if (isCV(unit)) return unit.omni === 1 ? 'CV:omni' : 'CV';
+    if (isAero(unit)) return unit.omni === 1 ? 'AF:omni' : 'AF';
+    if (isPM(unit)) return 'PM';
     return unit.type.toLowerCase() as DerivedUnitClassKey;
 }
 
 function getInfantryTrooperBucketValue(facts: UnitFacts): InfantryTrooperBucketValue {
-    if (UnitSummaryTypeGuard.isConventionalInfantry(facts.unit)) return `CI:${facts.scalars.troopers}`;
+    if (isCI(facts.unit)) return `CI:${facts.scalars.troopers}`;
     return 'not-infantry';
 }
 
@@ -168,7 +211,7 @@ function getCIMoveClassTrooperBucketValue(facts: UnitFacts): CIMoveClassTrooperB
     return `CI:${moveClass}:${facts.scalars.troopers}` as CIMoveClassTrooperBucketValue;
 }
 
-function hasFlightMoveType(unit: UnitSummary): boolean {
+function hasFlightMoveType(unit: OrgUnit): boolean {
     return unit.as.MVm?.['a'] !== undefined || unit.as.MVm?.['v'] !== undefined || unit.as.MVm?.['g'] !== undefined;
 }
 
@@ -244,58 +287,57 @@ function getGroupCIMoveClassBucketValue(facts: GroupFacts): CIMoveClassBucketVal
     return `CI:${moveClassTags[0].slice('ci:'.length)}` as CIMoveClassBucketValue;
 }
 
-export function compileUnitFacts(unit: UnitSummary, index?: number): UnitFacts {
+export function compileUnitFacts(unit: OrgUnit, squads: number = getCISquadCount(unit)): UnitFacts {
     const tags = new Set<UnitFactTag>();
 
     tags.add(getUnitClassKey(unit));
 
-    if (UnitSummaryTypeGuard.isAero(unit)) tags.add('aero');
+    if (isAero(unit)) tags.add('aero');
     if (unit.omni === 1) tags.add('omni');
-    if (hasSpecial(unit, 'MEC')) tags.add('transport.mec');
-    if (hasSpecial(unit, 'XMEC')) tags.add('transport.xmec');
+    if (hasTransportSpecial(unit, 'MEC')) tags.add('transport.mec');
+    if (hasTransportSpecial(unit, 'XMEC')) tags.add('transport.xmec');
     const ciMoveClassTag = getCIMoveClassTag(unit);
     if (ciMoveClassTag) tags.add(ciMoveClassTag);
 
     return {
         unit,
         factId: allocateUnitFactId(),
+        squads,
         classKey: getUnitClassKey(unit),
         tags,
         scalars: {
             uuid: unit.uuid,
             tons: unit.tons,
-            pv: unit.as.PV,
-            bv: unit.bv,
             troopers: unit.internal || 0,
             omni: unit.omni === 1,
-            isAero: UnitSummaryTypeGuard.isAero(unit),
-            isBM: UnitSummaryTypeGuard.isMek(unit),
-            isCV: UnitSummaryTypeGuard.isVehicle(unit),
-            isBA: UnitSummaryTypeGuard.isBattleArmor(unit),
-            isCI: UnitSummaryTypeGuard.isConventionalInfantry(unit),
-            isPM: UnitSummaryTypeGuard.isProtoMek(unit),
-            hasMEC: hasSpecial(unit, 'MEC'),
-            hasXMEC: hasSpecial(unit, 'XMEC'),
+            isAero: isAero(unit),
+            isBM: isBM(unit),
+            isCV: isCV(unit),
+            isBA: isBA(unit),
+            isCI: isCI(unit),
+            isPM: isPM(unit),
+            hasMEC: hasTransportSpecial(unit, 'MEC'),
+            hasXMEC: hasTransportSpecial(unit, 'XMEC'),
         },
     };
 }
 
-export function compileUnitFactsList(units: ReadonlyArray<UnitSummary>): UnitFacts[] {
-    return units.map((unit, index) => compileUnitFacts(unit, index));
+export function compileUnitFactsList(units: ReadonlyArray<OrgUnit>): UnitFacts[] {
+    return units.map(unit => compileUnitFacts(unit));
 }
 
-export function buildUnitFactsMap(units: ReadonlyArray<UnitSummary>): WeakMap<UnitSummary, UnitFacts> {
-    const factsMap = new WeakMap<UnitSummary, UnitFacts>();
+export function buildUnitFactsMap(units: ReadonlyArray<OrgUnit>): WeakMap<OrgUnit, UnitFacts> {
+    const factsMap = new WeakMap<OrgUnit, UnitFacts>();
 
-    for (const [index, unit] of units.entries()) {
-        factsMap.set(unit, compileUnitFacts(unit, index));
+    for (const unit of units) {
+        factsMap.set(unit, compileUnitFacts(unit));
     }
 
     return factsMap;
 }
 
-export function collectGroupUnits(group: GroupSizeResult): UnitSummary[] {
-    const result: UnitSummary[] = [];
+export function collectGroupUnits(group: GroupSizeResult): OrgUnit[] {
+    const result: OrgUnit[] = [];
 
     if (group.unitAllocations) {
         result.push(...group.unitAllocations.map((allocation) => allocation.unit));
@@ -332,19 +374,10 @@ function getGroupProvenance(group: GroupSizeResult): OrgGroupProvenance {
 
 export function compileGroupFacts(
     group: GroupSizeResult,
-    unitFactsMap?: WeakMap<UnitSummary, UnitFacts>,
-    groupUnitCache?: WeakMap<GroupSizeResult, UnitSummary[]>,
+    unitFactsMap?: WeakMap<OrgUnit, UnitFacts>,
+    groupUnitCache?: WeakMap<GroupSizeResult, OrgUnit[]>,
 ): GroupFacts {
     const childTypeCounts = new Map<OrgChildTypeCountKey, number>();
-    const unitTypeCounts = new Map<UnitSummary['as']['TP'], number>();
-    const unitClassCounts = new Map<UnitClassKey, number>();
-    const unitTagCounts = new Map<UnitFactTag, number>();
-    const unitScalarSums = new Map<UnitNumericScalarName, number>();
-    const descendantUnitBucketCounts = new Map<OrgUnitBucketName, Map<OrgBucketValue, number>>();
-
-    for (const bucketName of ORG_UNIT_BUCKET_NAMES) {
-        descendantUnitBucketCounts.set(bucketName, new Map<OrgBucketValue, number>());
-    }
 
     for (const child of group.children ?? []) {
         incrementCount(childTypeCounts, child.type ?? 'null');
@@ -365,29 +398,7 @@ export function compileGroupFacts(
     }
 
     const allocations = directAllocations ?? groupUnits.map((unit) => ({ unit }));
-
-    for (const [index, allocation] of allocations.entries()) {
-        const facts = unitFactsMap?.get(allocation.unit) ?? compileUnitFacts(allocation.unit, index);
-        const normalizedUnitType = getNormalizedOrgUnitType(facts.unit);
-
-        incrementCount(unitTypeCounts, normalizedUnitType);
-        incrementCount(unitClassCounts, facts.classKey);
-        for (const tag of facts.tags) {
-            incrementCount(unitTagCounts, tag);
-        }
-        for (const [key, value] of Object.entries(facts.scalars)) {
-            if (typeof value === 'number') {
-                incrementCount(unitScalarSums, key as UnitNumericScalarName, value);
-            }
-        }
-
-        incrementCount(descendantUnitBucketCounts.get('classKey')!, facts.classKey);
-        incrementCount(descendantUnitBucketCounts.get('ciMoveClass')!, getCIMoveClassBucketValue(facts));
-        incrementCount(descendantUnitBucketCounts.get('ciMoveClassTroopers')!, getCIMoveClassTrooperBucketValue(facts));
-        incrementCount(descendantUnitBucketCounts.get('flightType')!, getFlightTypeBucketValue(facts));
-        incrementCount(descendantUnitBucketCounts.get('infantryTroopers')!, getInfantryTrooperBucketValue(facts));
-        incrementCount(descendantUnitBucketCounts.get('transport')!, getTransportBucketValue(facts));
-    }
+    const unitFacts = allocations.map(allocation => unitFactsMap?.get(allocation.unit) ?? compileUnitFacts(allocation.unit));
 
     return {
         groupFactId: allocateGroupFactId(),
@@ -402,20 +413,55 @@ export function compileGroupFacts(
         priority: group.priority,
         directChildCount: group.children?.length ?? 0,
         childTypeCounts,
-        unitTypeCounts,
-        unitClassCounts,
-        unitTagCounts,
-        unitScalarSums,
-        descendantUnitBucketCounts,
+        ...summarizeGroupUnitFacts(unitFacts),
     };
 }
 
-export function compileGroupFactsList(
-    groups: ReadonlyArray<GroupSizeResult>,
-    unitFactsMap?: WeakMap<UnitSummary, UnitFacts>,
-    groupUnitCache?: WeakMap<GroupSizeResult, UnitSummary[]>,
-): GroupFacts[] {
-    return groups.map((group) => compileGroupFacts(group, unitFactsMap, groupUnitCache));
+/** The same unit aggregates are used by concrete groups and lazy planned groups. */
+export function summarizeGroupUnitFacts(units: readonly UnitFacts[]): Pick<GroupFacts,
+    'unitTypeCounts' | 'unitClassCounts' | 'unitTagCounts' | 'descendantUnitBucketCounts'
+> {
+    const unitTypeCounts = new Map<OrgUnit['as']['TP'], number>();
+    const unitClassCounts = new Map<UnitClassKey, number>();
+    const unitTagCounts = new Map<UnitFactTag, number>();
+    const descendantUnitBucketCounts = new Map<OrgUnitBucketName, Map<OrgBucketValue, number>>(
+        ORG_UNIT_BUCKET_NAMES.map(name => [name, new Map<OrgBucketValue, number>()]),
+    );
+    for (const facts of units) {
+        incrementCount(unitTypeCounts, getNormalizedOrgUnitType(facts.unit));
+        incrementCount(unitClassCounts, facts.classKey);
+        for (const tag of facts.tags) incrementCount(unitTagCounts, tag);
+        for (const bucketName of ORG_UNIT_BUCKET_NAMES) {
+            const value = getUnitBucketValue(bucketName, facts, DEFAULT_ORG_RULE_REGISTRY) as OrgBucketValue;
+            incrementCount(descendantUnitBucketCounts.get(bucketName)!, value);
+        }
+    }
+    return { unitTypeCounts, unitClassCounts, unitTagCounts, descendantUnitBucketCounts };
+}
+
+/** Preserve infantry quantities while ignoring the units aliases of allocations. */
+export function collectGroupUnitAllocations(group: GroupSizeResult): GroupUnitAllocation[] {
+    const byUnit = new Map<OrgUnit, GroupUnitAllocation>();
+    function add(allocations: readonly GroupUnitAllocation[] = [], units: readonly OrgUnit[] = []): void {
+        const allocated = new Set(allocations.map(allocation => allocation.unit));
+        const entries: GroupUnitAllocation[] = [...allocations, ...units.filter(unit => !allocated.has(unit)).map(unit => ({ unit }))];
+        for (const allocation of entries) {
+            const unit = allocation.unit;
+            if (isCI(unit)) {
+                const squads = allocation.squads ?? getCISquadCount(unit);
+                byUnit.set(unit, { unit, squads: (byUnit.get(unit)?.squads ?? 0) + squads });
+            } else {
+                byUnit.set(unit, { unit });
+            }
+        }
+    }
+    function visit(current: GroupSizeResult): void {
+        add(current.unitAllocations, current.units);
+        add(current.leftoverUnitAllocations, current.leftoverUnits);
+        for (const child of current.children ?? []) visit(child);
+    }
+    visit(group);
+    return [...byUnit.values()];
 }
 
 export function createOrgRuleRegistry(
@@ -426,9 +472,9 @@ export function createOrgRuleRegistry(
             all: () => true,
             aero: (facts) => facts.tags.has('aero'),
             flightEligible: (facts) => isFlightEligible(facts),
-            infantry: (facts) => UnitSummaryTypeGuard.isInfantry(facts.unit),
-            nonInfantry: (facts) => !UnitSummaryTypeGuard.isInfantry(facts.unit),
-            nonConventionalInfantry: (facts) => !UnitSummaryTypeGuard.isConventionalInfantry(facts.unit) && !facts.tags.has('aero'),
+            infantry: (facts) => isBA(facts.unit) || isCI(facts.unit),
+            nonInfantry: (facts) => !isBA(facts.unit) && !isCI(facts.unit),
+            nonConventionalInfantry: (facts) => !isCI(facts.unit) && !facts.tags.has('aero'),
             nonAero: (facts) => !facts.tags.has('aero'),
             omni: (facts) => facts.tags.has('omni'),
             transportMec: (facts) => facts.tags.has('transport.mec'),

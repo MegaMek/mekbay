@@ -2,6 +2,8 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 // Author: Drake
 
+import { isRecord } from './json-value.util';
+
 /**
  * Type-safe sanitizer with automatic type inference from interfaces
  */
@@ -23,16 +25,20 @@ export class Sanitizer {
     ): T {
         const { strict = false, removeNulls = true } = options;
 
-        if (!this.isPlainObject(input)) {
+        if (!isRecord(input)) {
             if (strict) {
                 throw new SanitizationError('Input must be a plain object');
             }
-            return schema._createDefault();
+            const defaults: Partial<T> = {};
+            for (const [key, rule] of Object.entries(schema) as Array<[keyof T, Rule]>) {
+                if (rule.default !== undefined) defaults[key] = rule.default as T[keyof T];
+            }
+            return defaults as T;
         }
 
         const result: Partial<T> = {};
 
-        for (const [key, rule] of Object.entries(schema._rules) as Array<[keyof T, Rule]>) {
+        for (const [key, rule] of Object.entries(schema) as Array<[keyof T, Rule]>) {
             const rawValue = (input as Record<string, unknown>)[key as string];
 
             try {
@@ -43,7 +49,9 @@ export class Sanitizer {
                 }
 
                 if (sanitizedValue !== undefined) {
-                    result[key] = sanitizedValue;
+                    // The schema owns the key/value pairing; iteration erases that
+                    // correlation while interpreting heterogeneous rules.
+                    result[key] = sanitizedValue as T[keyof T];
                 }
             } catch (error) {
                 if (strict) {
@@ -94,7 +102,7 @@ export class Sanitizer {
         valueSchema: Schema<T>,
         options: SanitizeOptions = {}
     ): Record<string, T> {
-        if (!this.isPlainObject(input)) return {};
+        if (!isRecord(input)) return {};
 
         const result: Record<string, T> = {};
 
@@ -116,7 +124,7 @@ export class Sanitizer {
         return result;
     }
 
-    private static validateValue(value: unknown, rule: Rule, options: SanitizeOptions): any {
+    private static validateValue(value: unknown, rule: Rule, options: SanitizeOptions): unknown {
         if (value === undefined || value === null) {
             return rule.default;
         }
@@ -135,9 +143,14 @@ export class Sanitizer {
             case 'record':
                 return rule.valueSchema ? this.sanitizeRecord(value, rule.valueSchema, options) : (rule.default ?? {});
             case 'enum':
-                return rule.values.includes(value as any) ? value : rule.default ?? rule.values[0];
+                return rule.values.some(candidate => Object.is(candidate, value))
+                    ? value
+                    : rule.default ?? rule.values[0];
             case 'date':
-                const date = value instanceof Date ? value : new Date(value as any);
+                if (!(value instanceof Date) && typeof value !== 'string' && typeof value !== 'number') {
+                    return rule.default ?? new Date();
+                }
+                const date = value instanceof Date ? value : new Date(value);
                 return isNaN(date.getTime()) ? (rule.default ?? new Date()) : date;
             case 'custom':
                 try {
@@ -147,8 +160,6 @@ export class Sanitizer {
                 }
             case 'any':
                 return value;
-            default:
-                return (rule as any).default;
         }
     }
 
@@ -211,9 +222,6 @@ export class Sanitizer {
         return typeof value === 'boolean' ? value : (rule.default ?? false);
     }
 
-    private static isPlainObject(value: unknown): value is Record<string, unknown> {
-        return typeof value === 'object' && value !== null && !Array.isArray(value);
-    }
 }
 
 // Schema Builder for fluent API
@@ -250,7 +258,7 @@ export class SchemaBuilder<T extends object> {
         return this;
     }
 
-    enum<K extends keyof T>(key: K, values: readonly any[], defaultValue?: any): this {
+    enum<K extends keyof T>(key: K, values: readonly T[K][], defaultValue?: T[K]): this {
         this._rules[key] = { kind: 'enum', values, default: defaultValue } as Rule;
         return this;
     }
@@ -260,7 +268,7 @@ export class SchemaBuilder<T extends object> {
         return this;
     }
 
-    any<K extends keyof T>(key: K, defaultValue?: any): this {
+    any<K extends keyof T>(key: K, defaultValue?: T[K]): this {
         this._rules[key] = { kind: 'any', default: defaultValue } as Rule;
         return this;
     }
@@ -271,27 +279,11 @@ export class SchemaBuilder<T extends object> {
     }
 
     build(): Schema<T> {
-        return new Schema(this._rules as Record<keyof T, Rule>);
+        return this._rules as Schema<T>;
     }
 }
 
-export class Schema<T extends object> {
-    _rules: Record<keyof T, Rule>;
-
-    constructor(rules: Record<keyof T, Rule>) {
-        this._rules = rules;
-    }
-
-    _createDefault(): T {
-        const result: any = {};
-        for (const [key, rule] of Object.entries(this._rules) as Array<[keyof T, Rule]>) {
-            if (rule.default !== undefined) {
-                result[key] = rule.default;
-            }
-        }
-        return result as T;
-    }
-}
+export type Schema<T extends object> = Record<keyof T, Rule>;
 
 // Type definitions
 export interface SanitizeOptions {
@@ -327,28 +319,28 @@ interface BooleanRule {
 
 interface ObjectRule {
     kind: 'object';
-    schema?: Schema<any>;
-    default?: any;
+    schema?: Schema<object>;
+    default?: unknown;
 }
 
 interface ArrayRule {
     kind: 'array';
-    itemSchema?: Schema<any>;
-    default?: any[];
+    itemSchema?: Schema<object>;
+    default?: unknown[];
     minLength?: number;
     maxLength?: number;
 }
 
 interface RecordRule {
     kind: 'record';
-    valueSchema?: Schema<any>;
-    default?: Record<string, any>;
+    valueSchema?: Schema<object>;
+    default?: Record<string, unknown>;
 }
 
 interface EnumRule {
     kind: 'enum';
-    values: readonly any[];
-    default?: any;
+    values: readonly unknown[];
+    default?: unknown;
 }
 
 interface DateRule {
@@ -358,13 +350,13 @@ interface DateRule {
 
 interface AnyRule {
     kind: 'any';
-    default?: any;
+    default?: unknown;
 }
 
 interface CustomRule {
     kind: 'custom';
-    validate: (value: unknown, options: SanitizeOptions) => any;
-    default?: any;
+    validate: (value: unknown, options: SanitizeOptions) => unknown;
+    default?: unknown;
 }
 
 export class SanitizationError extends Error {

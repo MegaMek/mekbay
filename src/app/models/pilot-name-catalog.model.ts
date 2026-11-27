@@ -82,7 +82,7 @@ export interface CompactPilotNameCatalog {
 }
 
 export interface PilotNameCatalogData {
-    etag: string;
+    assetHash: string;
     catalog: CompactPilotNameCatalog;
 }
 

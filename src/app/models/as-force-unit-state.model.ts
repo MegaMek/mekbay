@@ -3,10 +3,19 @@
 // Author: Drake
 
 import { computed, signal } from '@angular/core';
-import { ForceUnitState } from './force-unit-state.model';
 import type { ASForceUnit } from './as-force-unit.model';
-import { type ASSerializedState, type ASCriticalHit, type C3_POSITION_SCHEMA, AS_SERIALIZED_STATE_SCHEMA } from './force-serialization';
+import {
+    type ASSerializedState,
+    type ASCriticalHit,
+    AS_SERIALIZED_STATE_SCHEMA,
+    conditionFromSerialized,
+    conditionsForSerialization,
+    normalizeConditionData,
+    type ConditionData,
+    type SerializedCondition,
+} from './force-serialization';
 import { Sanitizer } from '../utils/sanitizer.util';
+import type { UnitConditionKey } from './unit-condition.model';
 
 /*
  * 
@@ -14,8 +23,12 @@ import { Sanitizer } from '../utils/sanitizer.util';
  * Uses timestamp-based critical hit tracking for proper effect ordering.
  * Pending state uses delta system (0 = no change).
  */
-export class ASForceUnitState extends ForceUnitState {
-    declare unit: ASForceUnit;
+export class ASForceUnitState {
+    readonly unit: ASForceUnit;
+    readonly modified = signal(false);
+    readonly destroyed = signal(false);
+    readonly conditions = signal<Map<UnitConditionKey, ConditionData | undefined>>(new Map());
+    readonly c3Position = signal<{ x: number; y: number } | null>(null);
 
     // Committed state
     public heat = signal<number>(0);
@@ -42,7 +55,28 @@ export class ASForceUnitState extends ForceUnitState {
     public pendingRestored = signal<Set<string>>(new Set());
 
     constructor(unit: ASForceUnit) {
-        super(unit);
+        this.unit = unit;
+    }
+
+    hasCondition(condition: UnitConditionKey): boolean {
+        return this.conditions().has(condition);
+    }
+
+    setConditions(conditions: Iterable<SerializedCondition>): void {
+        const nextConditions = new Map<UnitConditionKey, ConditionData | undefined>();
+        for (const entry of conditions) {
+            const [condition, data] = conditionFromSerialized(entry);
+            nextConditions.set(condition, data);
+        }
+        this.conditions.set(nextConditions);
+    }
+
+    conditionsForSerialization(): SerializedCondition[] | undefined {
+        const conditions = this.conditions();
+        if (conditions.size === 0) return undefined;
+        const serializable = new Map(Array.from(conditions.entries())
+            .map(([state, data]) => [state, normalizeConditionData(data)]));
+        return conditionsForSerialization(serializable);
     }
 
     /**
@@ -172,8 +206,8 @@ export class ASForceUnitState extends ForceUnitState {
      * totalDamage is the total damage to distribute across armor and internal.
      */
     setPendingDamage(totalDamage: number): void {
-        const maxArmor = this.unit.getUnit().as.Arm;
-        const maxInternal = this.unit.getUnit().as.Str;
+        const maxArmor = this.unit.getSummary().as.Arm;
+        const maxInternal = this.unit.getSummary().as.Str;
         const committedArmor = this.armor();
         const committedInternal = this.internal();
 
@@ -396,27 +430,26 @@ export class ASForceUnitState extends ForceUnitState {
         this.pendingRestored.set(new Set());
     }
 
-    override update(data: ASSerializedState) {
+    update(data: ASSerializedState): void {
         // Sanitize the input data using the schema
         const sanitized = Sanitizer.sanitize(data, AS_SERIALIZED_STATE_SCHEMA);
         
-        this.modified.set(sanitized.modified);
-        this.destroyed.set(sanitized.destroyed);
+        this.modified.set(sanitized.modified ?? false);
+        this.destroyed.set(sanitized.destroyed ?? false);
         this.setConditions(sanitized.conditions ?? []);
-        
-        // Heat/armor/internal are already validated as [number, number] tuples
-        this.heat.set(sanitized.heat[0]);
-        this.pendingHeat.set(sanitized.heat[1]);
-        
-        this.armor.set(sanitized.armor[0]);
-        this.pendingArmor.set(sanitized.armor[1]);
-        
-        this.internal.set(sanitized.internal[0]);
-        this.pendingInternal.set(sanitized.internal[1]);
-        
-        // Crits are already validated arrays
-        this.crits.set([...sanitized.crits]);
-        this.pendingCrits.set([...sanitized.pCrits]);
+
+        const heat = sanitized.heat ?? [0, 0];
+        const armor = sanitized.armor ?? [0, 0];
+        const internal = sanitized.internal ?? [0, 0];
+        this.heat.set(heat[0]);
+        this.pendingHeat.set(heat[1]);
+        this.armor.set(armor[0]);
+        this.pendingArmor.set(armor[1]);
+        this.internal.set(internal[0]);
+        this.pendingInternal.set(internal[1]);
+
+        this.crits.set((sanitized.crits ?? []).map(([key, timestamp]) => ({ key, timestamp })));
+        this.pendingCrits.set((sanitized.pCrits ?? []).map(([key, timestamp]) => ({ key, timestamp })));
         
         // Handle consumed abilities
         if (sanitized.consumed) {
@@ -444,8 +477,6 @@ export class ASForceUnitState extends ForceUnitState {
             this.pendingRestored.set(new Set());
         }
         
-        if (sanitized.c3Position) {
-            this.c3Position.set(sanitized.c3Position);
-        }
+        this.c3Position.set(sanitized.c3Position ?? null);
     }
 }

@@ -6,209 +6,174 @@ import { DIALOG_DATA, DialogRef } from '@angular/cdk/dialog';
 import { TestBed } from '@angular/core/testing';
 import { GameSystem } from '../../models/common.model';
 import type { PrintAllOptions } from '../../models/print-options.model';
+import { DbService } from '../../services/db.service';
 import { OptionsService } from '../../services/options.service';
 import { PrintOptionsDialogComponent } from './print-options-dialog.component';
 
 describe('PrintOptionsDialogComponent', () => {
-    it('defaults Pilot data to enabled for Classic print jobs', () => {
-        const { fixture } = createComponent(GameSystem.CLASSIC);
+    afterEach(() => TestBed.resetTestingModule());
+
+    it('shows the CBT sheet options and restores the last paper size', async () => {
+        const { fixture } = await createComponent(GameSystem.CBT, { paperSize: 'a4' });
         fixture.detectChanges();
 
-        const select = fixture.nativeElement.querySelector('#printPilotData') as HTMLSelectElement;
-        expect(select).not.toBeNull();
-        expect(select.value).toBe('true');
-        expect(select.previousElementSibling?.textContent?.trim()).toBe('Pilot data:');
+        expect((fixture.nativeElement.querySelector('#printPilotData') as HTMLSelectElement).value).toBe('true');
+        expect((fixture.nativeElement.querySelector('#printPaperSize') as HTMLSelectElement).value).toBe('a4');
+        expect(fixture.nativeElement.querySelector('#ASPrintCardSize')).toBeNull();
+        expect(actionLabels(fixture.nativeElement)).toEqual(['SHEETS', 'SUMMARY', 'UNITS', 'DISMISS']);
     });
 
-    it('allows Pilot data to be disabled and returns it with the print options', async () => {
-        const { fixture, dialogRef } = createComponent(GameSystem.CLASSIC);
-        fixture.detectChanges();
-        const select = fixture.nativeElement.querySelector('#printPilotData') as HTMLSelectElement;
-
-        select.value = 'false';
-        select.dispatchEvent(new Event('change'));
-        fixture.detectChanges();
-        (fixture.nativeElement.querySelector('.bt-button.primary') as HTMLButtonElement).click();
-        await fixture.whenStable();
-
-        expect(dialogRef.close).toHaveBeenCalledWith(jasmine.objectContaining({ printPilotData: false }));
-    });
-
-    it('shows Classic actions and prints the summary without closing', async () => {
-        const { fixture, dialogRef, optionsService, printSummary } = createComponent(GameSystem.CLASSIC);
-        fixture.detectChanges();
-
-        const buttons = getActionButtons(fixture.nativeElement);
-        expect(buttons.map(button => button.textContent?.trim())).toEqual(['SHEETS', 'SUMMARY', 'DISMISS']);
-        expect(buttons[0].classList).toContain('primary');
-        expect(buttons[1].classList).not.toContain('primary');
-
-        buttons[1].click();
-        await fixture.whenStable();
-
-        expect(optionsService.setOption).toHaveBeenCalledWith('printAllOptions', jasmine.any(Object));
-        expect(printSummary).toHaveBeenCalledWith(jasmine.any(Object));
-        expect(dialogRef.close).not.toHaveBeenCalled();
-    });
-
-    it('does not show the CBT-only Pilot data option for Alpha Strike', () => {
-        const { fixture } = createComponent(GameSystem.ALPHA_STRIKE);
+    it('shows Alpha Strike card options without CBT-only controls', async () => {
+        const { fixture } = await createComponent(GameSystem.AS);
         fixture.detectChanges();
 
         expect(fixture.nativeElement.querySelector('#printPilotData')).toBeNull();
+        expect((fixture.nativeElement.querySelector('#printPaperSize') as HTMLSelectElement).value).toBe('letter');
+        expect((fixture.nativeElement.querySelector('#ASPrintCardSize') as HTMLSelectElement).value).toBe('standard');
+        expect(actionLabels(fixture.nativeElement)).toEqual(['CARDS', 'SUMMARY', 'UNITS', 'DISMISS']);
     });
 
-    it('defaults Alpha Strike card printing to the standard eight-card layout', () => {
-        const { fixture } = createComponent(GameSystem.ALPHA_STRIKE);
+    it('saves changes immediately and returns the shared options for sheet/card printing', async () => {
+        const { fixture, dialogRef, optionsService, dbService } = await createComponent(GameSystem.CBT);
         fixture.detectChanges();
-
-        const select = fixture.nativeElement.querySelector('#ASPrintCardSize') as HTMLSelectElement;
-        expect(select).not.toBeNull();
-        expect(select.value).toBe('standard');
-        expect(Array.from(select.options).map(option => option.text)).toEqual([
-            'Standard (8 per page)',
-            'Enlarged (4 per page)'
-        ]);
-    });
-
-    it('shows Alpha Strike actions and prints the summary without closing', async () => {
-        const { fixture, dialogRef, printSummary } = createComponent(GameSystem.ALPHA_STRIKE);
-        fixture.detectChanges();
-
-        const buttons = getActionButtons(fixture.nativeElement);
-        expect(buttons.map(button => button.textContent?.trim())).toEqual(['CARDS', 'SUMMARY', 'DISMISS']);
-        expect(buttons[0].classList).toContain('primary');
-        expect(buttons[1].classList).not.toContain('primary');
-
-        buttons[1].click();
+        const pilotData = fixture.nativeElement.querySelector('#printPilotData') as HTMLSelectElement;
+        pilotData.value = 'false';
+        pilotData.dispatchEvent(new Event('change'));
+        expect(optionsService.options().printAllOptions.printPilotData).toBeFalse();
+        (fixture.nativeElement.querySelector('.bt-button.primary') as HTMLButtonElement).click();
         await fixture.whenStable();
 
-        expect(printSummary).toHaveBeenCalledWith(jasmine.any(Object));
+        const expected = jasmine.objectContaining({ printPilotData: false, paperSize: 'letter' });
+        expect(dbService.saveOptions).toHaveBeenCalledOnceWith(jasmine.objectContaining({ printAllOptions: expected }));
+        expect(dialogRef.close).toHaveBeenCalledOnceWith(expected);
+        expect(dialogRef.close.calls.mostRecent().args[0]).toBe(optionsService.options().printAllOptions);
+    });
+
+    it('changes global paper size before printing and retains it when dismissed', async () => {
+        const { fixture, dialogRef, optionsService, dbService } = await createComponent(GameSystem.CBT);
+        fixture.detectChanges();
+        const paperSize = fixture.nativeElement.querySelector('#printPaperSize') as HTMLSelectElement;
+        paperSize.value = 'a4';
+        paperSize.dispatchEvent(new Event('change'));
+
+        expect(optionsService.options().printAllOptions.paperSize).toBe('a4');
+        expect(dialogRef.close).not.toHaveBeenCalled();
+        actionButtons(fixture.nativeElement)[3].click();
+        await fixture.whenStable();
+
+        expect(dialogRef.close).toHaveBeenCalledOnceWith(null);
+        expect(optionsService.options().printAllOptions.paperSize).toBe('a4');
+        expect(dbService.saveOptions).toHaveBeenCalledOnceWith(jasmine.objectContaining({
+            printAllOptions: jasmine.objectContaining({ paperSize: 'a4' }),
+        }));
+    });
+
+    it('reflects external format changes while open and keeps them when another control changes', async () => {
+        const { fixture, optionsService } = await createComponent(GameSystem.CBT);
+        fixture.detectChanges();
+        for (const paperSize of ['a4', 'letter'] as const) {
+            await optionsService.setPrintOption('paperSize', paperSize);
+            fixture.detectChanges();
+            expect((fixture.nativeElement.querySelector('#printPaperSize') as HTMLSelectElement).value).toBe(paperSize);
+        }
+        await optionsService.setPrintOption('paperSize', 'a4');
+        const pilotData = fixture.nativeElement.querySelector('#printPilotData') as HTMLSelectElement;
+        pilotData.value = 'false';
+        pilotData.dispatchEvent(new Event('change'));
+        expect(optionsService.options().printAllOptions).toEqual(jasmine.objectContaining({
+            paperSize: 'a4', printPilotData: false,
+        }));
+    });
+
+    it('prints a standalone summary without closing the options dialog', async () => {
+        const { fixture, dialogRef, printSummary, optionsService, dbService } = await createComponent(GameSystem.AS);
+        fixture.detectChanges();
+        actionButtons(fixture.nativeElement)[1].click();
+        await fixture.whenStable();
+
+        expect(dbService.saveOptions).not.toHaveBeenCalled();
+        expect(printSummary).toHaveBeenCalledOnceWith(optionsService.options().printAllOptions);
         expect(dialogRef.close).not.toHaveBeenCalled();
     });
 
-    it('ignores repeated print requests while a summary is being prepared', async () => {
-        const { fixture, printSummary } = createComponent(GameSystem.ALPHA_STRIKE);
-        let finishPrinting!: () => void;
-        printSummary.and.returnValue(new Promise<void>(resolve => {
-            finishPrinting = resolve;
-        }));
+    it('prints unit tiles with the selected paper size without closing the dialog', async () => {
+        const { fixture, dialogRef, printUnits, optionsService } = await createComponent(GameSystem.AS);
         fixture.detectChanges();
-        const summaryButton = getActionButtons(fixture.nativeElement)[1];
-        const component = fixture.componentInstance as unknown as {
-            onPrintSummary(): Promise<void>;
-        };
+        const paperSize = fixture.nativeElement.querySelector('#printPaperSize') as HTMLSelectElement;
+        paperSize.value = 'a4';
+        paperSize.dispatchEvent(new Event('change'));
+        actionButtons(fixture.nativeElement)[2].click();
+        await fixture.whenStable();
 
-        const firstPrint = component.onPrintSummary();
-        const repeatedPrint = component.onPrintSummary();
-        await Promise.resolve();
-        await Promise.resolve();
-        await Promise.resolve();
+        expect(printUnits).toHaveBeenCalledOnceWith(optionsService.options().printAllOptions);
+        expect(optionsService.options().printAllOptions.paperSize).toBe('a4');
+        expect(dialogRef.close).not.toHaveBeenCalled();
+    });
 
+    it('ignores duplicate summary requests while printing is in progress', async () => {
+        const { fixture, printSummary } = await createComponent(GameSystem.AS);
+        let finish!: () => void;
+        printSummary.and.returnValue(new Promise<void>(resolve => { finish = resolve; }));
+        fixture.detectChanges();
+        const component = fixture.componentInstance as unknown as { onPrintSummary(): Promise<void> };
+
+        const first = component.onPrintSummary();
+        const duplicate = component.onPrintSummary();
+        await Promise.resolve();
         expect(printSummary).toHaveBeenCalledTimes(1);
-        fixture.detectChanges();
-        expect(summaryButton.disabled).toBeTrue();
 
-        finishPrinting();
-        await Promise.all([firstPrint, repeatedPrint]);
-        fixture.detectChanges();
-        expect(summaryButton.disabled).toBeFalse();
-    });
-
-    it('returns the enlarged Alpha Strike card size with the print options', async () => {
-        const { fixture, dialogRef, optionsService } = createComponent(GameSystem.ALPHA_STRIKE);
-        fixture.detectChanges();
-        const select = fixture.nativeElement.querySelector('#ASPrintCardSize') as HTMLSelectElement;
-
-        select.value = 'enlarged';
-        select.dispatchEvent(new Event('change'));
-        fixture.detectChanges();
-        (fixture.nativeElement.querySelector('.bt-button.primary') as HTMLButtonElement).click();
-        await fixture.whenStable();
-
-        expect(dialogRef.close).toHaveBeenCalledWith(jasmine.objectContaining({ ASPrintCardSize: 'enlarged' }));
-        expect(optionsService.setOption).toHaveBeenCalledWith('printAllOptions', jasmine.objectContaining({
-            ASPrintCardSize: 'enlarged',
-        }));
-    });
-
-    it('restores the last Alpha Strike card size from the saved options', () => {
-        const { fixture } = createComponent(GameSystem.ALPHA_STRIKE, {
-            printAllOptions: { ASPrintCardSize: 'enlarged' },
-        });
-        fixture.detectChanges();
-
-        const select = fixture.nativeElement.querySelector('#ASPrintCardSize') as HTMLSelectElement;
-        expect(select.value).toBe('enlarged');
-    });
-
-    it('does not show the Alpha Strike card-size option for Classic printing', () => {
-        const { fixture } = createComponent(GameSystem.CLASSIC);
-        fixture.detectChanges();
-
-        expect(fixture.nativeElement.querySelector('#ASPrintCardSize')).toBeNull();
-    });
-
-    it('saves the complete print options object in one update', async () => {
-        const { fixture, dialogRef, optionsService } = createComponent(GameSystem.ALPHA_STRIKE);
-        fixture.detectChanges();
-
-        (fixture.nativeElement.querySelector('.bt-button.primary') as HTMLButtonElement).click();
-        await fixture.whenStable();
-
-        const expected: PrintAllOptions = {
-            clean: false,
-            printPilotData: true,
-            recordSheetCenterPanelContent: 'clusterTable',
-            ASPrintPageBreakOnGroups: true,
-            ASPrintCardSize: 'standard',
-            printMargin: 'browserDefined',
-        };
-
-        expect(optionsService.setOption).toHaveBeenCalledTimes(1);
-        expect(optionsService.setOption).toHaveBeenCalledWith('printAllOptions', expected);
-        expect(dialogRef.close).toHaveBeenCalledWith(expected);
+        finish();
+        await Promise.all([first, duplicate]);
     });
 });
 
-function createComponent(
-    gameSystem: GameSystem,
-    optionOverrides: { printAllOptions?: Partial<PrintAllOptions> } = {},
-) {
+async function createComponent(gameSystem: GameSystem, overrides: Partial<PrintAllOptions> = {}) {
     const dialogRef = { close: jasmine.createSpy('close') };
     const printSummary = jasmine.createSpy('printSummary').and.resolveTo();
-    const optionsService = {
-        options: () => ({
+    const printUnits = jasmine.createSpy('printUnits').and.resolveTo();
+    const dbService = {
+        getOptions: jasmine.createSpy('getOptions').and.resolveTo({
             printAllOptions: {
                 clean: false,
                 printPilotData: true,
+                paperSize: 'letter',
                 recordSheetCenterPanelContent: 'clusterTable',
                 ASPrintPageBreakOnGroups: true,
                 ASPrintCardSize: 'standard',
                 printMargin: 'browserDefined',
-                ...optionOverrides.printAllOptions,
-            },
+                ...overrides,
+            } satisfies PrintAllOptions,
         }),
-        setOption: jasmine.createSpy('setOption').and.resolveTo()
+        saveOptions: jasmine.createSpy('saveOptions').and.resolveTo(),
     };
 
     TestBed.configureTestingModule({
         imports: [PrintOptionsDialogComponent],
         providers: [
             { provide: DialogRef, useValue: dialogRef },
-            { provide: DIALOG_DATA, useValue: { gameSystem, printSummary } },
-            { provide: OptionsService, useValue: optionsService }
-        ]
+            { provide: DIALOG_DATA, useValue: { gameSystem, printSummary, printUnits } },
+            OptionsService,
+            { provide: DbService, useValue: dbService },
+        ],
     });
 
+    const optionsService = TestBed.inject(OptionsService);
+    await Promise.resolve();
+    expect(optionsService.initialized()).toBeTrue();
     return {
         fixture: TestBed.createComponent(PrintOptionsDialogComponent),
         dialogRef,
-        optionsService,
         printSummary,
+        printUnits,
+        optionsService,
+        dbService,
     };
 }
 
-function getActionButtons(root: HTMLElement): HTMLButtonElement[] {
+function actionButtons(root: HTMLElement): HTMLButtonElement[] {
     return Array.from(root.querySelectorAll<HTMLButtonElement>('.wide-dialog-actions .bt-button'));
+}
+
+function actionLabels(root: HTMLElement): string[] {
+    return actionButtons(root).map(button => button.textContent?.trim() ?? '');
 }

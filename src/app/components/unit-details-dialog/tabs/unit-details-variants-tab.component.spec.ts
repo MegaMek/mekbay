@@ -2,7 +2,6 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 // Author: Drake
 
-import { CommonModule } from '@angular/common';
 import { computed, provideZonelessChangeDetection, signal } from '@angular/core';
 import { TestBed } from '@angular/core/testing';
 import { By } from '@angular/platform-browser';
@@ -25,7 +24,7 @@ describe('UnitDetailsVariantsTabComponent', () => {
         type: 'Mek',
         bv: 1_000,
     });
-    const gameSystem = signal(GameSystem.CLASSIC);
+    const gameSystem = signal(GameSystem.CBT);
 
     beforeEach(async () => {
         await TestBed.configureTestingModule({
@@ -37,7 +36,7 @@ describe('UnitDetailsVariantsTabComponent', () => {
                     provide: GameService,
                     useValue: {
                         currentGameSystem: gameSystem,
-                        isAlphaStrike: computed(() => gameSystem() === GameSystem.ALPHA_STRIKE),
+                        isAlphaStrike: computed(() => gameSystem() === GameSystem.AS),
                     },
                 },
                 {
@@ -50,7 +49,7 @@ describe('UnitDetailsVariantsTabComponent', () => {
         })
             .overrideComponent(UnitCardExpandedComponent, {
                 set: {
-                    imports: [CommonModule],
+                    imports: [],
                     template: '',
                 },
             })
@@ -68,5 +67,15 @@ describe('UnitDetailsVariantsTabComponent', () => {
             .componentInstance as UnitCardExpandedComponent;
 
         expect(card.resolvedBv()).toBe('1,320 (1,000)');
+    });
+
+    it('identifies the selected custom variant by UUID even when names match', () => {
+        const first = createEmptyUnit({ name: variant.name, isCustom: true });
+        const second = createEmptyUnit({ name: variant.name, isCustom: true });
+        const fixture = TestBed.createComponent(UnitDetailsVariantsTabComponent);
+        fixture.componentRef.setInput('unit', first);
+
+        expect(fixture.componentInstance.isCurrentUnit({ ...first })).toBeTrue();
+        expect(fixture.componentInstance.isCurrentUnit(second)).toBeFalse();
     });
 });

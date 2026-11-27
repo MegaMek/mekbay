@@ -3,7 +3,7 @@
 // Author: Drake
 
 import { ChangeDetectionStrategy, Component, inject } from '@angular/core';
-import { ForceBuilderService } from '../services/force-builder.service';
+import { ForceDialogsService } from '../services/force-dialogs.service';
 import { RoutedDialogPage } from './routed-dialog-page';
 
 /**
@@ -16,10 +16,10 @@ import { RoutedDialogPage } from './routed-dialog-page';
     changeDetection: ChangeDetectionStrategy.OnPush,
 })
 export class ToePageComponent extends RoutedDialogPage {
-    private readonly forceBuilderService = inject(ForceBuilderService);
+    private readonly forceDialogs = inject(ForceDialogsService);
 
     protected override openDialog() {
         const organizationId = this.route.snapshot.queryParamMap.get('toe') ?? undefined;
-        return this.forceBuilderService.openForceOrgDialog(organizationId);
+        return this.forceDialogs.openForceOrgDialog(organizationId);
     }
 }

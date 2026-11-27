@@ -2,8 +2,8 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 // Author: Drake
 
-import { ChangeDetectionStrategy, Component, computed, DestroyRef, type ElementRef, inject, signal, viewChild } from '@angular/core';
-import { CommonModule } from '@angular/common';
+import { ChangeDetectionStrategy, Component, computed, effect, untracked, DestroyRef, type ElementRef, inject, signal, viewChild } from '@angular/core';
+import { DatePipe, NgTemplateOutlet } from '@angular/common';
 import { firstValueFrom } from 'rxjs';
 import { OptionsService } from '../../services/options.service';
 import { BaseDialogComponent } from '../base-dialog/base-dialog.component';
@@ -15,11 +15,32 @@ import { isIOS } from '../../utils/platform.util';
 import { LoggerService } from '../../services/logger.service';
 import { GameService } from '../../services/game.service';
 import type { GameSystem } from '../../models/common.model';
-import { normalizeUnitServerUrl } from '../../models/common.model';
-import type { AutomationMode, AvailabilitySource, CBTAutomationKey, CBTOptionalRules, ForceViewerBVPVDisplay, RecordSheetDoubleTapZoomResetMode } from '../../models/options.model';
+import type {
+    AutomationMode,
+    MouseWheelAction,
+    AvailabilitySource,
+    CBTAutomationKey,
+    CBTOptionalRules,
+    CBTUnitViewMode,
+    DisplayUnitNameFormat,
+    ForceViewerBVPVDisplay,
+    ForceViewerBVPVDisplayDamage,
+    LinearPickerLayout,
+    RecordSheetDoubleTapZoomResetMode,
+    RecordSheetGroupWeapons,
+    RecordSheetPipLayout,
+} from '../../models/options.model';
+import { CBT_OPTIONAL_RULE_CHOICES, INITIATIVE_ORDER_CHOICES } from '../../models/options.model';
+import { CBT_RULESET_LABELS, type CBTRuleset } from '../../models/cbt-ruleset.model';
+import { isBoundOptionalRule } from '../../models/runtime/bound-optional-rules';
+import type { InitiativeOrderMode } from '../../models/rules/initiative-rules';
+import { LobbyService } from '../../services/lobby.service';
+import { ForceBuilderService } from '../../services/force-builder.service';
+import type { PrintAllOptions } from '../../models/print-options.model';
 import { SpriteStorageService } from '../../services/sprite-storage.service';
 import { DataService } from '../../services/data.service';
 import { PublicTagsService } from '../../services/public-tags.service';
+import { PlayerNamesService } from '../../services/player-names.service';
 import { TagsService } from '../../services/tags.service';
 import { TaggingService } from '../../services/tagging.service';
 import { ToastService } from '../../services/toast.service';
@@ -29,22 +50,30 @@ import type { AvailableAuthProvider, LinkedOAuthProvider, OAuthProvider } from '
 import { RangeSliderComponent } from '../range-slider/range-slider.component';
 import { naturalCompare } from '../../utils/sort.util';
 import { AppUpdateService } from '../../services/app-update.service';
+import { CatalogStorage } from '../../services/catalogs/catalog-storage.service';
+import { deleteUnitCatalogDatabase } from '../../services/unit-catalog/unit-catalog-database';
 import { DisplayNameService } from '../../services/display-name.service';
+import { ModeSwitchComponent } from '../mode-switch/mode-switch.component';
 import { copyTextToClipboard } from '../../utils/clipboard.util';
+import { CustomUnitLibraryComponent } from '../custom-unit-library/custom-unit-library.component';
+import { SubscriberCountComponent } from '../subscriber-count/subscriber-count.component';
+import { UnitArtworkService } from '../../services/unit-artwork.service';
+import { ProvidedFluffImageService } from '../../services/catalogs/provided-fluff-image.service';
+import { CustomUnitsService } from '../../services/custom-units.service';
+import { asUnitUuid, type UnitUuid } from '../../services/unit-catalog/unit-catalog.types';
 
-type OptionsSectionId = 'General' | 'Search' | 'Account' | 'Tags' | 'Classic BattleTech' | 'Alpha Strike' | 'Advanced' | 'Logs';
+type OptionsSectionId = 'General' | 'Search' | 'Account' | 'Tags' | 'My Custom Units' | 'Subscribed Units' | 'Classic BattleTech' | 'Alpha Strike' | 'Advanced' | 'Logs';
 
 interface OptionsViewDefinition {
     id: OptionsSectionId;
     title: string;
     description?: string;
-    parentId?: OptionsSectionId;
 }
 
 interface CBTAutomationOptionDefinition {
-    key: CBTAutomationKey;
-    label: string;
-    description: string;
+    readonly key: CBTAutomationKey;
+    readonly label: string;
+    readonly description: string;
 }
 
 const WIDE_LAYOUT_QUERY = '(min-width: 760px) and (min-height: 560px)';
@@ -70,10 +99,12 @@ const OPTIONS_VIEW_DEFINITIONS: readonly OptionsViewDefinition[] = [
         title: 'Tags',
         description: 'Share your tags, copy public links, and manage subscriptions.'
     },
+    { id: 'My Custom Units', title: 'My Custom Units', description: 'Your designs, cloud sync, and subscriber counts.' },
+    { id: 'Subscribed Units', title: 'Subscribed Units', description: 'Manage designs you follow from other players.' },
     {
         id: 'Classic BattleTech',
         title: 'Classic BattleTech',
-        description: 'Rules, Record sheet appearance, automation, and navigation.'
+        description: 'Rules, unit views, record sheet appearance, automation, and navigation.'
     },
     {
         id: 'Alpha Strike',
@@ -92,15 +123,10 @@ const OPTIONS_VIEW_DEFINITIONS: readonly OptionsViewDefinition[] = [
     },
 ];
 
-const OPTIONS_VIEW_DEFINITIONS_BY_ID = new Map<OptionsSectionId, OptionsViewDefinition>(
-    OPTIONS_VIEW_DEFINITIONS.map(view => [view.id, view])
-);
-
-const TOP_LEVEL_OPTIONS_VIEWS = OPTIONS_VIEW_DEFINITIONS.filter(view => !view.parentId);
 const FORCE_GEN_FAILURE_SEARCH_WINDOW_MIN_MS = 300;
 const FORCE_GEN_FAILURE_SEARCH_WINDOW_MAX_MS = 10_000;
 const FORCE_GEN_FAILURE_SEARCH_WINDOW_STEP_MS = 100;
-const CBT_AUTOMATION_MODES: ReadonlyArray<{ value: AutomationMode; label: string }> = [
+const CBT_AUTOMATION_MODES: ReadonlyArray<{ readonly value: AutomationMode; readonly label: string }> = [
     { value: 'yes', label: 'Auto' },
     { value: 'ask', label: 'Ask' },
     { value: 'no', label: 'No' },
@@ -151,23 +177,27 @@ const CBT_AUTOMATION_OPTIONS: readonly CBTAutomationOptionDefinition[] = [
 
 @Component({
     selector: 'options-dialog',
-    standalone: true,
     changeDetection: ChangeDetectionStrategy.OnPush,
-    imports: [CommonModule, BaseDialogComponent, RangeSliderComponent],
+    imports: [DatePipe, NgTemplateOutlet, BaseDialogComponent, RangeSliderComponent, ModeSwitchComponent, CustomUnitLibraryComponent, SubscriberCountComponent],
     templateUrl: './options-dialog.component.html',
-    styleUrls: ['./options-dialog.component.scss']
+    styleUrl: './options-dialog.component.scss'
 })
 export class OptionsDialogComponent {
     logger = inject(LoggerService)
     optionsService = inject(OptionsService);
     gameSystem = inject(GameService);
     dbService = inject(DbService);
+    readonly artwork = inject(UnitArtworkService);
+    readonly providedImages = inject(ProvidedFluffImageService);
+    private readonly customUnits = inject(CustomUnitsService);
+    private readonly catalogStorage = inject(CatalogStorage);
     dialogRef = inject(DialogRef<OptionsDialogComponent>);
     userStateService = inject(UserStateService);
     dialogsService = inject(DialogsService);
     spriteStorageService = inject(SpriteStorageService);
     dataService = inject(DataService);
     publicTagsService = inject(PublicTagsService);
+    readonly playerNames = inject(PlayerNamesService);
     tagsService = inject(TagsService);
     taggingService = inject(TaggingService);
     toastService = inject(ToastService);
@@ -177,21 +207,24 @@ export class OptionsDialogComponent {
     destroyRef = inject(DestroyRef);
     isIOS = isIOS();
     modalClass = 'wide options-dialog-modal';
-    topLevelViews = TOP_LEVEL_OPTIONS_VIEWS;
+    sections = OPTIONS_VIEW_DEFINITIONS;
     activeTab = signal<OptionsSectionId>('General');
-    navigationStack = signal<OptionsSectionId[]>([]);
+    mobileDetailOpen = signal(false);
     isWideLayout = signal(typeof window !== 'undefined' ? window.matchMedia(WIDE_LAYOUT_QUERY).matches : true);
-    canGoBack = computed(() => this.navigationStack().length > 0);
-    isAtRoot = computed(() => !this.canGoBack());
-    currentViewId = computed<OptionsSectionId>(() => this.navigationStack().at(-1) ?? this.activeTab());
-    currentViewDefinition = computed(() => this.getViewDefinition(this.currentViewId()));
+    currentViewDefinition = computed(() => this.sections.find(section => section.id === this.activeTab())!);
     currentViewDescription = computed(() => this.currentViewDefinition().description);
-    mobileHeaderTitle = computed(() => this.canGoBack() ? this.currentViewDefinition().title : 'Options');
+    mobileHeaderTitle = computed(() => this.mobileDetailOpen() ? this.currentViewDefinition().title : 'Options');
     forceGenFailureSearchWindowMinMs = FORCE_GEN_FAILURE_SEARCH_WINDOW_MIN_MS;
     forceGenFailureSearchWindowMaxMs = FORCE_GEN_FAILURE_SEARCH_WINDOW_MAX_MS;
     forceGenFailureSearchWindowStepMs = FORCE_GEN_FAILURE_SEARCH_WINDOW_STEP_MS;
     cbtAutomationModes = CBT_AUTOMATION_MODES;
     cbtAutomationOptions = CBT_AUTOMATION_OPTIONS;
+    readonly initiativeOrderChoices = INITIATIVE_ORDER_CHOICES;
+    readonly rulesetLabels = CBT_RULESET_LABELS;
+    /** A lobby sets the rules (and Initiative settings) its players use. */
+    readonly inLobby = inject(LobbyService).hasLobby;
+    private readonly forceBuilder = inject(ForceBuilderService);
+    readonly cbtOptionalRules = CBT_OPTIONAL_RULE_CHOICES;
     forceGenFailureSearchWindowMs = computed(() => this.normalizeForceGenFailureSearchWindowMs(this.optionsService.options().forceGenerator.failureSearchWindowMs));
 
     uuidInput = viewChild<ElementRef<HTMLInputElement>>('uuidInput');
@@ -218,18 +251,17 @@ export class OptionsDialogComponent {
     showSubscriptionInput = signal(false);
     subscriptionError = signal('');
     userUuidError = '';
-    sheetCacheSize = signal(0);
-    sheetCacheCount = signal(0);
     canvasMemorySize = signal(0);
     unitIconsCount = signal(0);
-    unitServersDraft = signal<string[]>([...(this.optionsService.options().unitServers ?? [])]);
-    newUnitServerUrl = signal('');
-    unitServerError = signal('');
-    unitServersDirty = computed(() => {
-        const saved = this.optionsService.options().unitServers ?? [];
-        const draft = this.unitServersDraft();
-        if (saved.length !== draft.length) return true;
-        return draft.some((url, i) => url !== saved[i]);
+    readonly artworkCollectionReady = signal(false);
+    readonly purgingArtwork = signal(false);
+    readonly artworkError = signal('');
+    private readonly storedUnitUuids = signal<ReadonlySet<UnitUuid>>(new Set());
+    readonly unusedArtworkUuids = computed(() => {
+        if (!this.artworkCollectionReady()) return [];
+        const collection = new Set([...this.storedUnitUuids(), ...this.dataService.getUnits().map(unit => unit.uuid),
+            ...this.customUnits.records().map(unit => unit.uuid)]);
+        return [...this.artwork.records().keys()].filter(uuid => !collection.has(uuid));
     });
     unitsCount = computed(() => this.dataService.getUnits().length);
     equipmentCount = computed(() => this.dataService.getEquipmentRegistry().size);
@@ -260,10 +292,14 @@ export class OptionsDialogComponent {
 
     constructor() {
         this.setupLayoutModeTracking();
-        this.updateSheetCacheSize();
         this.updateCanvasMemorySize();
         this.updateUnitIconsCount();
         this.loadTagSubscriberCounts();
+        effect(() => {
+            if (this.activeTab() !== 'Advanced') return;
+            this.customUnits.records();
+            untracked(() => void this.refreshArtworkCollection().catch(error => this.artworkError.set(String(error))));
+        });
     }
 
     private setupLayoutModeTracking(): void {
@@ -280,67 +316,21 @@ export class OptionsDialogComponent {
         this.destroyRef.onDestroy(() => mediaQuery.removeEventListener('change', onChange));
     }
 
-    private getViewDefinition(viewId: OptionsSectionId): OptionsViewDefinition {
-        return OPTIONS_VIEW_DEFINITIONS_BY_ID.get(viewId) ?? OPTIONS_VIEW_DEFINITIONS_BY_ID.get('General')!;
-    }
-
-    private buildViewPath(viewId: OptionsSectionId): OptionsSectionId[] {
-        const path: OptionsSectionId[] = [];
-        let currentViewId: OptionsSectionId | undefined = viewId;
-
-        while (currentViewId) {
-            path.unshift(currentViewId);
-            currentViewId = this.getViewDefinition(currentViewId).parentId;
-        }
-
-        return path;
-    }
-
-    private getTopLevelSectionId(viewId: OptionsSectionId): OptionsSectionId {
-        let currentView = this.getViewDefinition(viewId);
-
-        while (currentView.parentId) {
-            currentView = this.getViewDefinition(currentView.parentId);
-        }
-
-        return currentView.id;
-    }
-
-    isSectionActive(sectionId: OptionsSectionId): boolean {
-        return this.getTopLevelSectionId(this.currentViewId()) === sectionId;
-    }
-
     selectDesktopSection(sectionId: OptionsSectionId): void {
         this.activeTab.set(sectionId);
-        this.navigationStack.set([]);
+        this.mobileDetailOpen.set(false);
     }
 
     openMobileSection(sectionId: OptionsSectionId): void {
-        this.openView(sectionId);
-    }
-
-    openView(viewId: OptionsSectionId): void {
-        this.activeTab.set(this.getTopLevelSectionId(viewId));
-        this.navigationStack.set(this.buildViewPath(viewId));
-    }
-
-    pushView(viewId: OptionsSectionId): void {
-        this.openView(viewId);
+        this.activeTab.set(sectionId);
+        this.mobileDetailOpen.set(true);
     }
 
     onMobileBack(): void {
-        const stack = this.navigationStack();
-        if (stack.length === 0) {
+        if (this.mobileDetailOpen()) {
+            this.mobileDetailOpen.set(false);
+        } else {
             this.onClose();
-            return;
-        }
-
-        const nextStack = stack.slice(0, -1);
-        this.navigationStack.set(nextStack);
-
-        const nextViewId = nextStack.at(-1);
-        if (nextViewId) {
-            this.activeTab.set(this.getTopLevelSectionId(nextViewId));
         }
     }
 
@@ -372,13 +362,6 @@ export class OptionsDialogComponent {
      */
     getSubscriberCount(tagName: string): number {
         return this.tagSubscriberCounts()[tagName.toLowerCase()] || 0;
-    }
-
-    updateSheetCacheSize() {
-        this.dbService.getSheetsStoreSize().then(({ memorySize, count }) => {
-            this.sheetCacheSize.set(memorySize);
-            this.sheetCacheCount.set(count);
-        });
     }
 
     updateCanvasMemorySize() {
@@ -438,34 +421,35 @@ export class OptionsDialogComponent {
         this.optionsService.setOption('colorScheme', value);
     }
 
-    async onCBTRulesChange(event: Event) {
-        const select = event.target as HTMLSelectElement;
-        const value = select.value as 'core2026' | 'tw';
-        const currentValue = this.optionsService.options().CBTRules;
-        const confirmed = await this.dialogsService.requestConfirmation(
-            'Changing the rules system will reload the application. Any uncommitted changes may be lost.',
-            'Change Rules System?',
-            'warning'
-        );
-        if (!confirmed) {
-            select.value = currentValue;
-            return;
-        }
-        await this.optionsService.setOption('CBTRules', value);
-        window.location.reload();
+    async onCBTRulesChange(useCore2026: boolean) {
+        const value = useCore2026 ? 'core-2026' : 'total-warfare';
+        if (!await this.confirmRulesSwitch(`switches to ${CBT_RULESET_LABELS[value]}`, 'Change Rules System?')) return;
+        await this.forceBuilder.switchCBTRules(value);
+    }
+
+    onRecordSheetPaperSizeChange(event: Event) {
+        const value = (event.target as HTMLSelectElement).value as PrintAllOptions['paperSize'];
+        void this.optionsService.setPrintOption('paperSize', value);
     }
 
     onRecordSheetCenterPanelContentChange(event: Event) {
-        const value = (event.target as HTMLSelectElement).value as 'fluffImage' | 'clusterTable';
-        this.optionsService.setOption('printAllOptions', {
-            ...this.optionsService.options().printAllOptions,
-            recordSheetCenterPanelContent: value,
-        });
+        const value = (event.target as HTMLSelectElement).value as PrintAllOptions['recordSheetCenterPanelContent'];
+        void this.optionsService.setPrintOption('recordSheetCenterPanelContent', value);
     }
 
     onRecordSheetDoubleTapZoomResetChange(event: Event) {
         const value = (event.target as HTMLSelectElement).value as RecordSheetDoubleTapZoomResetMode;
         this.optionsService.setOption('recordSheetDoubleTapZoomReset', value);
+    }
+
+    onRecordSheetPipLayoutChange(event: Event) {
+        const value = (event.target as HTMLSelectElement).value as RecordSheetPipLayout;
+        this.optionsService.setOption('recordSheetPipLayout', value);
+    }
+
+    onRecordSheetGroupWeaponsChange(event: Event) {
+        const value = (event.target as HTMLSelectElement).value as RecordSheetGroupWeapons;
+        this.optionsService.setOption('recordSheetGroupWeapons', value);
     }
 
     onSyncZoomBetweenSheetsChange(event: Event) {
@@ -483,14 +467,28 @@ export class OptionsDialogComponent {
         this.optionsService.setOption('pickerStyle', value);
     }
 
+    onLinearPickerLayoutChange(event: Event) {
+        this.optionsService.setOption('linearPickerLayout', (event.target as HTMLSelectElement).value as LinearPickerLayout);
+    }
+
     onUnitDisplayNameChange(event: Event) {
         const value = (event.target as HTMLSelectElement).value as 'chassisModel' | 'alias' | 'both';
         this.optionsService.setOption('unitDisplayName', value);
     }
 
+    onDisplayUnitNameFormatChange(event: Event) {
+        const value = (event.target as HTMLSelectElement).value as DisplayUnitNameFormat;
+        this.optionsService.setOption('displayUnitNameFormat', value);
+    }
+
     onForceViewerBVPVDisplayChange(event: Event) {
         const value = (event.target as HTMLSelectElement).value as ForceViewerBVPVDisplay;
         this.optionsService.setOption('forceViewerBVPVDisplay', value);
+    }
+
+    onForceViewerBVPVDisplayDamageChange(event: Event) {
+        const value = (event.target as HTMLSelectElement).value as ForceViewerBVPVDisplayDamage;
+        this.optionsService.setOption('forceViewerBVPVDisplayDamage', value);
     }
 
     onAutoConvertFiltersChange(event: Event) {
@@ -501,6 +499,11 @@ export class OptionsDialogComponent {
     onunitSearchExpandedViewLayoutChange(event: Event) {
         const value = (event.target as HTMLSelectElement).value as 'panel-list-filters' | 'filters-list-panel';
         this.optionsService.setOption('unitSearchExpandedViewLayout', value);
+    }
+
+    onMouseWheelActionChange(event: Event) {
+        const value = (event.target as HTMLSelectElement).value as MouseWheelAction;
+        this.optionsService.setOption('mouseWheelAction', value);
     }
 
     onCanvasInputChange(event: Event) {
@@ -518,46 +521,6 @@ export class OptionsDialogComponent {
         this.optionsService.setOption('enableForceSyncConflictDialog', value);
     }
 
-    onNewUnitServerUrlInput(event: Event) {
-        this.newUnitServerUrl.set((event.target as HTMLInputElement).value);
-        if (this.unitServerError()) {
-            this.unitServerError.set('');
-        }
-    }
-
-    addUnitServer() {
-        const normalized = normalizeUnitServerUrl(this.newUnitServerUrl());
-        if (!normalized) {
-            this.unitServerError.set('Enter a valid http(s) server URL, e.g. https://db.example.com');
-            return;
-        }
-        const current = this.unitServersDraft();
-        if (current.includes(normalized)) {
-            this.unitServerError.set('That server is already in the list.');
-            return;
-        }
-        this.unitServersDraft.set([...current, normalized]);
-        this.newUnitServerUrl.set('');
-        this.unitServerError.set('');
-    }
-
-    removeUnitServer(index: number) {
-        const current = this.unitServersDraft();
-        this.unitServersDraft.set(current.filter((_, i) => i !== index));
-    }
-
-    async applyUnitServers() {
-        // Fold any pending text in the add field into the list before saving.
-        if (this.newUnitServerUrl().trim()) {
-            this.addUnitServer();
-            if (this.unitServerError()) {
-                return;
-            }
-        }
-        await this.optionsService.setOption('unitServers', [...this.unitServersDraft()]);
-        window.location.reload();
-    }
-
     onSwipeToNextSheetChange(event: Event) {
         const value = (event.target as HTMLSelectElement).value as 'vertical' | 'horizontal' | 'disabled';
         this.optionsService.setOption('swipeToNextSheet', value);
@@ -568,16 +531,51 @@ export class OptionsDialogComponent {
         this.optionsService.setOption('trackPhaseAndTurn', value);
     }
 
+    onRealPhasesChange(event: Event): void {
+        this.optionsService.setOption('realPhases', (event.target as HTMLSelectElement).value === 'true');
+    }
+
+    onAttackResolutionChange(event: Event): void {
+        this.optionsService.setOption('attackResolution', (event.target as HTMLSelectElement).value === 'true');
+    }
+
+    onInitiativeOrderChange(event: Event): void {
+        this.optionsService.setOption('initiativeOrder', (event.target as HTMLSelectElement).value as InitiativeOrderMode);
+    }
+
+    onInitiativeDieChange(event: Event): void {
+        this.optionsService.setOption('initiativeDie', (event.target as HTMLSelectElement).value === 'true');
+    }
+
+    onCBTUnitViewModeChange(event: Event): void {
+        const mode = (event.target as HTMLSelectElement).value as CBTUnitViewMode;
+        this.optionsService.setOption('cbtUnitViewMode', mode);
+    }
+
     onCbtAutomationModeChange(key: CBTAutomationKey, value: AutomationMode) {
         this.optionsService.setCbtAutomationMode(key, value);
     }
 
-    onCBTOptionalRuleChange(key: keyof CBTOptionalRules, event: Event) {
-        const value = (event.target as HTMLSelectElement).value === 'true';
-        this.optionsService.setOption('CBTOptionalRules', {
-            ...this.optionsService.options().CBTOptionalRules,
-            [key]: value,
-        });
+    async onCBTOptionalRuleChange(key: keyof CBTOptionalRules, event: Event) {
+        const input = event.target as HTMLInputElement;
+        // Read before confirming: another switch finishing meanwhile re-renders the checkbox from the options.
+        const value = input.checked;
+        // A rule bound into units switches every loaded force, as the rules system does; one they cannot all switch
+        // to, or the player declines, stays as it was.
+        const confirmed = !isBoundOptionalRule(key)
+            || await this.confirmRulesSwitch(value ? 'plays this rule' : 'stops playing this rule', 'Change Optional Rule?');
+        if (!confirmed || !await this.forceBuilder.setOptionalRule(key, value)) {
+            input.checked = this.optionsService.options().CBTOptionalRules[key];
+        }
+    }
+
+    /** Switching the rules every loaded force plays restarts undo, so the player confirms it first. */
+    private confirmRulesSwitch(change: string, title: string): Promise<boolean> {
+        return this.dialogsService.requestConfirmation(
+            `Every loaded force ${change} now. Undo starts over, and state the new rules don't support is dropped.`,
+            title,
+            'warning',
+        );
     }
 
     onASUseHexChange(event: Event) {
@@ -634,23 +632,57 @@ export class OptionsDialogComponent {
         }
     }
 
-    async onPurgeCache() {
-        const confirmed = await this.dialogsService.requestConfirmation(
-            'Are you sure you want to delete all cached record sheets? They will be redownloaded as needed.',
-            'Confirm Purge Cache',
-            'info'
-        );
-        if (confirmed) {
-            await this.dbService.clearSheetsStore();
-            this.updateSheetCacheSize();
-
-            if ('caches' in window) {
-                const keys = await window.caches.keys();
-                await Promise.all(keys.map(key => window.caches.delete(key)));
+    private async refreshArtworkCollection(): Promise<void> {
+        this.artworkCollectionReady.set(false);
+        await Promise.all([this.artwork.initialize(), this.providedImages.initialize(), this.customUnits.initialize(), this.dataService.requireApplicationCatalogReady()]);
+        // Include persisted designs from every account, including subscriptions not yet projected into search.
+        const uuids = new Set<UnitUuid>();
+        for (const row of await this.dbService.listCustomUnits()) {
+            if (row && typeof row === 'object' && 'uuid' in row && typeof row.uuid === 'string') {
+                try { uuids.add(asUnitUuid(row.uuid)); } catch { /* Ignore unrecognizable persisted records. */ }
             }
-
-            window.location.reload();
         }
+        this.storedUnitUuids.set(uuids);
+        this.artworkCollectionReady.set(true);
+        this.artworkError.set('');
+    }
+
+    async onPurgeArtwork(unusedOnly = false): Promise<void> {
+        if (this.purgingArtwork()) return;
+        this.purgingArtwork.set(true);
+        try {
+            if (unusedOnly) await this.refreshArtworkCollection();
+            const candidates = unusedOnly ? this.unusedArtworkUuids() : undefined;
+            if (candidates?.length === 0) return;
+            const confirmed = await this.dialogsService.requestConfirmation(
+                unusedOnly ? `Delete artwork for ${candidates!.length} units absent from your collection? This cannot be undone.`
+                    : 'Delete all custom unit artwork stored on this device? This cannot be undone.',
+                unusedOnly ? 'Purge unused custom images' : 'Purge custom images', 'danger');
+            if (!confirmed) return;
+            if (unusedOnly) {
+                // A unit may have been imported or subscribed to while the confirmation was open.
+                await this.refreshArtworkCollection();
+                const stillUnused = new Set(this.unusedArtworkUuids());
+                await this.artwork.purge(candidates!.filter(uuid => stillUnused.has(uuid)));
+            } else await this.artwork.purge();
+        } catch (error) {
+            this.artworkError.set(error instanceof Error ? error.message : String(error));
+        } finally { this.purgingArtwork.set(false); }
+    }
+
+    async onPurgeProvidedImages(): Promise<void> {
+        if (this.purgingArtwork()) return;
+        this.purgingArtwork.set(true);
+        try {
+            const confirmed = await this.dialogsService.requestConfirmation(
+                'Delete downloaded provided images from this device? They will download again when needed.',
+                'Purge provided images', 'danger');
+            if (!confirmed) return;
+            await this.providedImages.purge();
+            this.artworkError.set('');
+        } catch (error) {
+            this.artworkError.set(error instanceof Error ? error.message : String(error));
+        } finally { this.purgingArtwork.set(false); }
     }
 
     async onPurgeCanvas() {
@@ -687,7 +719,11 @@ export class OptionsDialogComponent {
         );
 
         if (confirmed) {
-            await this.dbService.clearCatalogCaches();
+            await Promise.all([
+                this.dbService.clearCatalogCaches(),
+                this.catalogStorage.clear(),
+                deleteUnitCatalogDatabase(),
+            ]);
             window.location.reload();
         }
     }
@@ -701,6 +737,15 @@ export class OptionsDialogComponent {
         }
     }
 
+    private resetUserUuidInput() {
+        const uuidInput = this.uuidInput();
+        if (!uuidInput) return;
+        this.userUuidError = '';
+        const el = uuidInput.nativeElement;
+        el.value = this.userUuid();
+        el.blur();
+    }
+
     async queueDisplayNameSave(input: HTMLInputElement): Promise<void> {
         const version = ++this.displayNameSaveVersion;
         this.displayNameSaving.set(true);
@@ -710,7 +755,9 @@ export class OptionsDialogComponent {
             if (version === this.displayNameSaveVersion) input.value = savedName;
         } catch (error) {
             if (version === this.displayNameSaveVersion) {
-                this.displayNameError.set(error instanceof Error ? error.message : 'Could not save the display name.');
+                this.displayNameError.set(error instanceof Error
+                    ? error.message
+                    : 'Could not save the display name.');
             }
         } finally {
             if (version === this.displayNameSaveVersion) this.displayNameSaving.set(false);
@@ -740,15 +787,6 @@ export class OptionsDialogComponent {
         } finally {
             this.displayNameGenerating.set(false);
         }
-    }
-
-    private resetUserUuidInput() {
-        const uuidInput = this.uuidInput();
-        if (!uuidInput) return;
-        this.userUuidError = '';
-        const el = uuidInput.nativeElement;
-        el.value = this.userUuid();
-        el.blur();
     }
 
     async onSetUuid(value: string) {
@@ -787,8 +825,10 @@ export class OptionsDialogComponent {
             }
             await this.userStateService.setUuid(trimmed);
             window.location.reload();
-        } catch (e: any) {
-            this.userUuidError = e?.message || 'An unknown error occurred.';
+        } catch (error: unknown) {
+            this.userUuidError = error instanceof Error && error.message
+                ? error.message
+                : 'An unknown error occurred.';
             return;
         }
     }
@@ -798,20 +838,22 @@ export class OptionsDialogComponent {
             return;
         }
 
-        const confirmed = await this.dialogsService.requestConfirmation(
-            'Are you sure you want to log out on this device? MekBay will remove the local account data stored in this browser, including forces, operations, organizations, tags, subscribed public tags, saved searches and drawings. Your linked OAuth providers will remain attached to your MekBay account. A fresh anonymous User Identifier will then be generated and the app will reload.',
-            'Confirm Logout',
-            'danger'
+        const choice = await this.dialogsService.choose<'keep' | 'delete' | 'cancel'>(
+            'Log Out',
+            'Logging out resets your local User Identifier and personal settings. Would you also like to delete local forces, local tags, saved searches, and custom units (including local subscription copies)? Other saved data and images will stay on this device. Your linked OAuth providers remain attached to your account. The app will reload with a fresh anonymous User Identifier.',
+            [
+                { label: 'KEEP LOCAL DATA', value: 'keep' },
+                { label: 'DELETE LOCAL DATA', value: 'delete', class: 'danger' },
+                { label: 'CANCEL', value: 'cancel' },
+            ],
+            'cancel',
         );
-
-        if (!confirmed) {
-            return;
-        }
+        if (choice === 'cancel') return;
 
         this.logoutInFlight.set(true);
 
         try {
-            await this.dbService.clearLocalUserStores();
+            await this.dbService.clearLocalSession(choice === 'delete');
             await this.userStateService.createFreshSession();
             window.location.reload();
         } catch (error) {
@@ -910,8 +952,10 @@ export class OptionsDialogComponent {
                     this.subscriptionError.set(result.error || 'Failed to subscribe. The tag may not exist or is not public.');
                 }
             }
-        } catch (e: any) {
-            this.subscriptionError.set(e?.message || 'Failed to subscribe');
+        } catch (error: unknown) {
+            this.subscriptionError.set(error instanceof Error && error.message
+                ? error.message
+                : 'Failed to subscribe');
         }
     }
 

@@ -3,7 +3,7 @@
 // Author: Drake
 
 import { MiscEquipment, WeaponEquipment } from '../../equipment.model';
-import { TestTankEntity } from '../testing/test-entities';
+import { TestBipedMekEntity, TestTankEntity } from '../testing/test-entities';
 import { EntityMountedEquipment } from '../types';
 import { reconcileEquipmentRelationships } from './equipment-relationship-rules';
 
@@ -16,7 +16,7 @@ function mount(equipment: WeaponEquipment | MiscEquipment, id: string): EntityMo
 }
 
 describe('reconcileEquipmentRelationships', () => {
-  it('claims compatible Artemis launchers in deterministic mount order', () => {
+  it('gives each Artemis the nearest launcher above it that has none', () => {
     const entity = new TestTankEntity();
     const launcher = new WeaponEquipment({
       id: 'launcher', name: 'Launcher', type: 'weapon', stats: { bv: 100 },
@@ -35,10 +35,10 @@ describe('reconcileEquipmentRelationships', () => {
     const secondArtemis = entity.equipment().find(m => m.mountId === 'a2')!;
     const firstWeapon = entity.equipment().find(m => m.mountId === 'w1')!;
     const secondWeapon = entity.equipment().find(m => m.mountId === 'w2')!;
-    expect(entity.getLinkedMount(firstArtemis)).toBe(firstWeapon);
-    expect(entity.getLinkedMount(secondArtemis)).toBe(secondWeapon);
+    expect(entity.getLinkedMount(firstArtemis)).toBe(secondWeapon);
+    expect(entity.getLinkedMount(secondArtemis)).toBe(firstWeapon);
 
-    const movedWeapon = entity.moveEquipment(firstWeapon, 'Rear');
+    const movedWeapon = entity.moveEquipment(secondWeapon, 'Rear');
 
     expect(movedWeapon.location).toBe('Rear');
     expect(entity.getLinkedMount(firstArtemis)).toBeUndefined();
@@ -63,6 +63,34 @@ describe('reconcileEquipmentRelationships', () => {
 
     const insulatorMount = entity.equipment().find(m => m.mountId === 'i1')!;
     expect(entity.getLinkedMount(insulatorMount)).toBe(entity.equipment().find(m => m.mountId === 'w2'));
+  });
+
+  it('gives an insulator to a chemical laser, which has no F_LASER flag (TO:AUE p. 134)', () => {
+    const entity = new TestTankEntity();
+    const chemical = new WeaponEquipment({
+      id: 'CLMediumChemicalLaser', name: 'Medium Chemical Laser', type: 'weapon', weapon: { ammoType: 'CHEMICAL_LASER' }, flags: ['F_ENERGY'],
+    });
+    const insulator = new MiscEquipment({ id: 'ISLaserInsulator', name: 'Laser Insulator', type: 'misc', flags: ['F_LASER_INSULATOR'] });
+    entity.setEquipment([mount(chemical, 'w1'), mount(insulator, 'i1')]);
+    reconcileEquipmentRelationships(entity);
+    expect(entity.getLinkedMount(entity.equipment().find(m => m.mountId === 'i1')!)).toBe(entity.equipment().find(m => m.mountId === 'w1'));
+  });
+
+  it('stacks insulators on the laser above them, and gives one placed above every laser the first laser without one', () => {
+    const entity = new TestTankEntity();
+    const laser = new WeaponEquipment({ id: 'Medium Laser', name: 'Medium Laser', type: 'weapon', flags: ['F_LASER'] });
+    const insulator = new MiscEquipment({ id: 'ISLaserInsulator', name: 'Laser Insulator', type: 'misc', flags: ['F_LASER_INSULATOR'] });
+    const [first, second] = ['w1', 'w2'].map(id => mount(laser, id));
+    const [early, a, b] = ['i0', 'i1', 'i2'].map(id => mount(insulator, id));
+    entity.setEquipment([early, first, a, b, second]);
+    reconcileEquipmentRelationships(entity);
+    expect([early, a, b].map(source => entity.getLinkedMount(source))).toEqual([first, first, first]);
+    // Two insulators above both lasers: each laser gets one, as MegaMek has always done.
+    const [top, next] = ['t1', 't2'].map(id => mount(insulator, id));
+    const [left, right] = ['l1', 'l2'].map(id => mount(laser, id));
+    entity.setEquipment([top, next, left, right]);
+    reconcileEquipmentRelationships(entity);
+    expect([top, next].map(source => entity.getLinkedMount(source))).toEqual([left, right]);
   });
 
   it('links canonical Heavy PPC mounts to capacitors one-to-one', () => {
@@ -115,10 +143,41 @@ describe('reconcileEquipmentRelationships', () => {
     const secondMachineGun = entity.equipment().find(m => m.mountId === 'mg2')!;
     expect(entity.equipmentBays()[0].mounts).toEqual([secondMachineGun]);
 
-    entity.removeEquipment(entity.equipment().find(m => m.mountId === 'array')!);
+    entity.removeEquipment(entity.equipment().find(mount => mount.mountId === 'array')!);
 
     expect(entity.equipmentBays()).toEqual([]);
   });
+
+  for (const gap of ['array', 'empty'] as const) {
+    it(`preserves native three-gun MGA groups separated by an ${gap} critical`, () => {
+      const entity = new TestBipedMekEntity();
+      const machineGun = new WeaponEquipment({
+        id: 'mg', name: 'Machine Gun', type: 'weapon',
+        weapon: { rackSize: 2 }, flags: ['F_MG'],
+      });
+      const array = new WeaponEquipment({
+        id: 'mga', name: 'Machine Gun Array', type: 'weapon',
+        weapon: { rackSize: 2 }, flags: ['F_MGA'],
+      });
+      const criticalMount = (equipment: WeaponEquipment, id: string, slotIndex: number) =>
+        new EntityMountedEquipment({
+          mountId: id, equipmentId: equipment.id, equipment,
+          allocation: { kind: 'location', location: 'LA', placements: [{ location: 'LA', slotIndex }] },
+          rearMounted: false, turretMounted: false, omniPodMounted: false, armored: false,
+        });
+      // Black Lanner F and Linebacker I place three MGs, an MGA, three MGs, then an MGA.
+      const mounts = [criticalMount(machineGun, 'mg1', 2), criticalMount(machineGun, 'mg2', 3),
+        criticalMount(machineGun, 'mg3', 4), criticalMount(array, 'array1', gap === 'array' ? 5 : 10),
+        criticalMount(machineGun, 'mg4', 6), criticalMount(machineGun, 'mg5', 7),
+        criticalMount(machineGun, 'mg6', 8), criticalMount(array, 'array2', 9)];
+      entity.setEquipment(mounts);
+
+      reconcileEquipmentRelationships(entity);
+
+      expect(entity.equipmentBays().map(bay => bay.mounts.map(mount => String(mount.mountId))))
+        .toEqual([['mg1', 'mg2', 'mg3'], ['mg4', 'mg5', 'mg6']]);
+    });
+  }
 
   it('installs enhancements with domain-validated enhancement-to-weapon links', () => {
     const entity = new TestTankEntity();
@@ -141,7 +200,7 @@ describe('reconcileEquipmentRelationships', () => {
     }, { linkedTo: weaponMount });
 
     expect(entity.getLinkedMount(artemisMount)).toBe(weaponMount);
-    expect(entity.getLinkingMount(weaponMount)).toBe(artemisMount);
+    expect(entity.getLinkingMounts(weaponMount)).toEqual([artemisMount]);
     expect(entity.canLinkEquipment(weaponMount, artemisMount)).toBeFalse();
     expect(() => entity.linkEquipment(weaponMount, artemisMount)).toThrowError(/enhancement/);
   });

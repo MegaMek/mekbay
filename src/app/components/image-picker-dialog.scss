@@ -1,0 +1,16 @@
+// Copyright (C) 2026 The MegaMek Team
+// SPDX-License-Identifier: GPL-3.0-or-later
+
+.wide-dialog { width: min(720px, 100dvw); }
+.wide-dialog-body { min-height: 240px; gap: 0; }
+.category { border-bottom: 1px solid var(--border-color, #ffffff25); }
+.category-title { display: flex; align-items: center; gap: 10px; width: 100%; padding: 14px 8px;
+  border: 0; background: transparent; color: var(--text-color); cursor: pointer; text-align: left; font: inherit; }
+.category-title:hover { background: #ffffff0a; }
+.count { margin-left: auto; color: var(--text-color-secondary); font-size: .8em; }
+.picker-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(var(--choice-width, 72px), 1fr));
+  gap: 8px; padding: 8px 0 16px; }
+.picker-choice { display: flex; align-items: center; justify-content: center; padding: 3px; cursor: pointer;
+  border: 2px solid transparent; background: #0003; }
+.picker-choice:hover, .picker-choice.selected { border-color: var(--bt-yellow); background: #ffffff12; }
+button:focus-visible { outline: 2px solid var(--bt-yellow); outline-offset: -2px; }

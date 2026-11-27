@@ -1,24 +1,31 @@
 // Copyright (C) 2026 The MegaMek Team
 // SPDX-License-Identifier: GPL-3.0-or-later
-// Author: Drake
 
-import { Injector, signal } from '@angular/core';
-import { TestBed } from '@angular/core/testing';
 import { Overlay } from '@angular/cdk/overlay';
+import { Injector } from '@angular/core';
+import { TestBed } from '@angular/core/testing';
 import { Subject } from 'rxjs';
-import { DiceRollerComponent } from '../../dice-roller/dice-roller.component';
-import { OverlayManagerService } from '../../../services/overlay-manager.service';
+
+import type { CBTMekForceMember } from '../../../models/force-member.model';
+import { createPristineMekHeatStateV2 } from '../../../models/runtime/mek-heat-state-v2';
 import {
-    FALL_PSR_FAILURE,
-    PSR_CHECK_KIND,
-    PSR_FAILURE_KIND,
-    type PSRCheck,
-} from '../../../models/rules/unit-type-rules';
-import { PageInteractionOverlayComponent } from './page-interaction-overlay.component';
-import { PagePsrWarningPanelComponent, PSR_WARNING_UNIT, psrRollOutcome, togglePsrWarningOverlay } from './page-psr-warning-panel.component';
+createPristineMekMovementPsrStateV2,
+type MekPilotCheckV2,
+} from '../../../models/runtime/mek-movement-psr-v2';
+import type { MekTurnPanelSnapshot } from '../../../models/runtime/mek-turn-panel';
+import { createPristineMekTurnStateV2 } from '../../../models/runtime/mek-turn-state-v2';
+import { OptionsService } from '../../../services/options.service';
+import { OverlayManagerService } from '../../../services/overlay-manager.service';
+import { ToastService } from '../../../services/toast.service';
+import {
+PagePsrWarningPanelComponent,
+psrRollOutcome,
+togglePsrWarningOverlay,
+} from './page-psr-warning-panel.component';
+import { PAGE_TURN_MEMBER } from './page-turn-summary.util';
 
 describe('togglePsrWarningOverlay', () => {
-    it('keeps Turn Summary open until PSR Warning closes', () => {
+    it('keeps the turn summary open until the PSR panel closes', () => {
         const closed = new Subject<void>();
         const overlayManager = {
             has: jasmine.createSpy('has').and.returnValue(false),
@@ -27,11 +34,11 @@ describe('togglePsrWarningOverlay', () => {
             blockCloseUntil: jasmine.createSpy('blockCloseUntil'),
             unblockClose: jasmine.createSpy('unblockClose'),
         } as unknown as OverlayManagerService;
-        const parent = { unit: signal({ id: 'unit-1' }) } as unknown as PageInteractionOverlayComponent;
+        const member = { id: 'unit-1' } as CBTMekForceMember;
         const overlay = { scrollStrategies: { block: () => ({}) } } as unknown as Overlay;
 
         togglePsrWarningOverlay(
-            parent,
+            member,
             overlayManager,
             Injector.create({ providers: [] }),
             overlay,
@@ -48,301 +55,206 @@ describe('togglePsrWarningOverlay', () => {
 });
 
 describe('psrRollOutcome', () => {
-    it('succeeds on or above the target and fails below it', () => {
-        expect(psrRollOutcome(8, 8)).toBe('success');
-        expect(psrRollOutcome(9, 8)).toBe('success');
+    it('uses the typed pilot-check target as the exact success boundary', () => {
         expect(psrRollOutcome(7, 8)).toBe('failed');
+        expect(psrRollOutcome(8, 8)).toBe('success');
+        expect(psrRollOutcome(12, 8)).toBe('success');
+        expect(psrRollOutcome(12, 13)).toBe('failed');
     });
 });
 
 describe('PagePsrWarningPanelComponent', () => {
-    it('stages virtual and physical-dice outcomes until the results are accepted', () => {
-        const check: PSRCheck = {
-            id: 'fall-check',
-            kind: PSR_CHECK_KIND.HIP_HIT,
-            failure: FALL_PSR_FAILURE,
-            fallCheck: 0,
-            loc: 'RL',
-            reason: 'Hip hit',
+    it('renders a projected V2 automatic fall with its entity-owned location label', () => {
+        const changed = new Subject<void>();
+        const locationId = 'location:left-leg';
+        const movementState = {
+            ...createPristineMekMovementPsrStateV2(),
+            automaticFalls: [{
+                triggerKind: 'leg-destroyed-auto-fall' as const,
+                locationIds: [locationId as never],
+            }],
         };
-        const damageCheck: PSRCheck = {
-            id: 'damage-check',
-            kind: PSR_CHECK_KIND.DAMAGE_THRESHOLD,
-            failure: FALL_PSR_FAILURE,
-            fallCheck: 1,
-            reason: 'Received 20 damage',
+        const snapshot = {
+            entityUuid: 'entity:mek-1',
+            stateRevision: 1,
+            movement: { kind: 'unsupported', blockers: ['fixture'] },
+            movementState,
+            activeBoosterComponentIds: [],
+            locationLabels: { [locationId]: 'Left Leg' },
+            turn: createPristineMekTurnStateV2(),
+            cover: { partiallyUnderwater: false, submerged: false, building: { level: null, modifier: 0 } },
+            heat: createPristineMekHeatStateV2(),
+            heatProjection: { kind: 'unsupported', blockers: ['fixture'] },
+            conditions: [],
+        } as unknown as MekTurnPanelSnapshot;
+        const force = {
+            changed,
+            sessionChanged: new Subject<void>(),
+            getMekTurnPanelSnapshot: () => snapshot,
         };
-        const outcomes = new Map<string, 'success' | 'failed'>();
-        const resolvePSRCheck = jasmine.createSpy('resolvePSRCheck').and.callFake(
-            (checkId: string, outcome: 'success' | 'failed') => {
-                outcomes.set(checkId, outcome);
-                return true;
-            },
-        );
-        const closeManagedOverlay = jasmine.createSpy('closeManagedOverlay');
-        const turnState = {
-            getPSRChecks: () => [check, damageCheck],
-            getPSROutcome: (checkId: string) => outcomes.get(checkId),
-            resolvePSRCheck,
-            autoFall: () => false,
-            isPSRCheckAutomaticFailure: () => false,
-            dmgReceived: () => 0,
-        };
-        const unit = {
-            id: 'unit-1',
-            getUnit: () => ({ type: 'Mek' }),
-            getCondition: () => false,
-            automationMode: () => 'ask',
-            rules: { controlRollFullLabel: 'Piloting Skill Rolls' },
-            turnState: () => turnState,
-            PSRTargetRoll: () => 8,
-            PSRModifiers: () => ({ modifiers: [
-                { pilotCheck: 2, reason: 'Gyro hit' },
-                { pilotCheck: 1, loc: 'RL', reason: 'Hip hit' },
-                {
-                    pilotCheck: 3,
-                    loc: 'LL',
-                    reason: 'Hip hit, Leg Actuator hit',
-                    modifierReason: 'Hip hit, Leg Actuators hit (2)',
-                },
-            ] }),
-            resolveRuleCheck: jasmine.createSpy('resolveRuleCheck'),
-        };
+        const member = { id: 'mek-1', force } as unknown as CBTMekForceMember;
 
         TestBed.configureTestingModule({
             imports: [PagePsrWarningPanelComponent],
             providers: [
+                { provide: PAGE_TURN_MEMBER, useValue: member },
+                { provide: OptionsService, useValue: { cbtAutomationMode: () => 'no' } },
+                { provide: ToastService, useValue: { showToast: jasmine.createSpy('showToast') } },
                 {
-                    provide: PSR_WARNING_UNIT,
-                    useValue: signal({
-                        ...unit,
-                        psrOutcomeSelections: signal<Readonly<Record<string, 'success' | 'failed'>>>({}),
-                        psrDiceSelections: signal<Readonly<Record<string, readonly [number, number]>>>({}),
-                    }),
+                    provide: OverlayManagerService,
+                    useValue: { closeManagedOverlay: jasmine.createSpy('closeManagedOverlay') },
                 },
-                { provide: OverlayManagerService, useValue: { closeManagedOverlay } },
             ],
         });
         const fixture = TestBed.createComponent(PagePsrWarningPanelComponent);
         fixture.detectChanges();
-        const roller = fixture.debugElement
-            .query(node => node.componentInstance instanceof DiceRollerComponent)
-            .componentInstance as DiceRollerComponent;
-        spyOn(roller, 'roll');
 
-        fixture.componentInstance.roll(check);
-        fixture.componentInstance.onRollFinished({ results: [4, 4], sum: 8 });
-
-        expect(roller.roll).toHaveBeenCalledTimes(1);
-        expect(resolvePSRCheck).not.toHaveBeenCalled();
-        expect(fixture.componentInstance.outcome(check)).toBe('success');
-        expect(fixture.componentInstance.rolledResult()).toBe('SUCCESS');
-        expect(fixture.componentInstance.diceFor(check)).toEqual([4, 4]);
-        expect(fixture.componentInstance.canAccept()).toBeFalse();
-
-        fixture.componentInstance.selectOutcome(damageCheck, 'success');
-        expect(fixture.componentInstance.canAccept()).toBeTrue();
-        expect(resolvePSRCheck).not.toHaveBeenCalled();
-
-        fixture.componentInstance.accept();
-
-        expect(resolvePSRCheck.calls.allArgs()).toEqual([
-            ['fall-check', 'success'],
-            ['damage-check', 'success'],
-        ]);
-        expect(closeManagedOverlay).toHaveBeenCalledOnceWith('psrWarning-unit-1');
+        const automatic = fixture.nativeElement.querySelector('.automatic-failure') as HTMLElement;
+        expect(automatic.textContent).toContain('Leg destroyed');
+        expect(automatic.textContent).toContain('Left Leg');
+        expect(automatic.textContent).toContain('AUTOMATIC FAILURE');
+        expect(fixture.nativeElement.querySelector('.psr-target')).toBeNull();
+        expect(fixture.nativeElement.querySelector('.psr-resolution-actions')).toBeNull();
     });
 
-    it('keeps a rule-check choice provisional until it is accepted', () => {
-        const check: PSRCheck = {
-            id: 'torso-check',
-            kind: PSR_CHECK_KIND.TORSO_DESTROYED,
-            failure: { kind: PSR_FAILURE_KIND.RULE_RESOLUTION, label: 'Shutdown' },
-            fallCheck: 0,
-            reason: 'RISC emergency shutdown',
-            resolution: { key: 'risc-shutdown', token: 'token-1' },
-        };
-        let checks: PSRCheck[] = [check];
-        let status: 'pending' | 'success' | 'failed' = 'pending';
-        const closeManagedOverlay = jasmine.createSpy('closeManagedOverlay');
-        const resolveRuleCheck = jasmine.createSpy('resolveRuleCheck').and.callFake(
-            (_key: string, _token: string, result: 'success' | 'failed') => {
-                status = result;
-                checks = [];
-                return true;
+    it('keeps non-fall checks actionable while an automatic fall replaces fall checks', async () => {
+        const changed = new Subject<void>();
+        const fallCheck = pilotCheck('fall-check', 'leg-destroyed', 'Leg destroyed', 7);
+        const shutdownCheck = pilotCheck('shutdown-check', 'shutdown', 'Shutdown attempt', 8);
+        let current = panelSnapshot({
+            automaticFalls: [{
+                triggerKind: 'gyro-destroyed',
+                locationIds: [],
+            }],
+            checks: [fallCheck, shutdownCheck],
+        });
+        const dispatch = jasmine.createSpy('dispatchUnitCommand').and.callFake(async () => {
+            current = panelSnapshot({
+                automaticFalls: current.movementState.automaticFalls,
+                checks: [{ ...shutdownCheck, status: 'success', resolution: { dice: [2, 6], total: 8, targetNumber: 8 } }],
+                revision: 2,
+            });
+            return { accepted: true, changed: true, revision: 2 };
+        });
+        const member = {
+            id: 'mek-1',
+            force: {
+                changed,
+                sessionChanged: new Subject<void>(),
+                getMekTurnPanelSnapshot: () => current,
+                dispatchUnitCommand: dispatch,
             },
-        );
-        const turnState = {
-            getPSRChecks: () => checks,
-            getPSROutcome: () => undefined,
-            resolvePSRCheck: jasmine.createSpy('resolvePSRCheck'),
-            autoFall: () => false,
-            isPSRCheckAutomaticFailure: () => false,
-            dmgReceived: () => 0,
-        };
-        const unit = {
-            id: 'unit-1',
-            getUnit: () => ({ type: 'Mek' }),
-            getCondition: () => false,
-            automationMode: () => 'ask',
-            rules: { controlRollFullLabel: 'Piloting Skill Rolls' },
-            turnState: () => turnState,
-            PSRTargetRoll: () => 8,
-            PSRModifiers: () => ({ modifiers: [] }),
-            resolveRuleCheck,
-            getRuleCheck: () => ({ token: 'token-1', status }),
-        };
+        } as unknown as CBTMekForceMember;
 
         TestBed.configureTestingModule({
             imports: [PagePsrWarningPanelComponent],
             providers: [
-                {
-                    provide: PSR_WARNING_UNIT,
-                    useValue: signal({
-                        ...unit,
-                        psrOutcomeSelections: signal<Readonly<Record<string, 'success' | 'failed'>>>({}),
-                    }),
-                },
-                { provide: OverlayManagerService, useValue: { closeManagedOverlay } },
+                { provide: PAGE_TURN_MEMBER, useValue: member },
+                { provide: OptionsService, useValue: { cbtAutomationMode: () => 'no' } },
+                { provide: ToastService, useValue: { showToast: jasmine.createSpy('showToast') } },
+                { provide: OverlayManagerService, useValue: { closeManagedOverlay: jasmine.createSpy('closeManagedOverlay') } },
             ],
         });
         const fixture = TestBed.createComponent(PagePsrWarningPanelComponent);
+        fixture.detectChanges();
+        const component = fixture.componentInstance;
 
-        fixture.componentInstance.selectOutcome(check, 'success');
+        expect(component.psrChecks().map(check => check.checkId)).toEqual(['shutdown-check']);
+        expect(fixture.nativeElement.textContent).toContain('Shutdown attempt');
+        expect(fixture.nativeElement.querySelector('.psr-resolution-actions')).not.toBeNull();
 
-        expect(resolveRuleCheck).not.toHaveBeenCalled();
-        expect(fixture.componentInstance.psrChecks()).toEqual([check]);
-        expect(fixture.componentInstance.outcome(check)).toBe('success');
+        component.selectOutcome(component.psrChecks()[0]!, 'success');
+        fixture.detectChanges();
 
-        fixture.componentInstance.accept();
+        expect(dispatch).not.toHaveBeenCalled();
+        expect(fixture.nativeElement.querySelector('.psr-result')?.textContent.trim()).toBe('success');
 
-        expect(resolveRuleCheck).toHaveBeenCalledOnceWith('risc-shutdown', 'token-1', 'success');
-        expect(closeManagedOverlay).toHaveBeenCalledOnceWith('psrWarning-unit-1');
+        await component.accept();
+        await fixture.whenStable();
+        fixture.detectChanges();
+
+        expect(dispatch).toHaveBeenCalledOnceWith('mek-1', jasmine.objectContaining({
+            type: 'resolve-mek-pilot-check',
+            checkId: 'shutdown-check',
+            evidence: { dice: [6, 2], claimedOutcome: 'success' },
+        }));
+        expect(fixture.nativeElement.querySelector('.psr-result')?.textContent.trim()).toBe('success');
     });
 
-    it('keeps provisional choices when closed and restores them when reopened', () => {
-        const check: PSRCheck = {
-            id: 'fall-check',
-            kind: PSR_CHECK_KIND.DAMAGE_THRESHOLD,
-            failure: FALL_PSR_FAILURE,
-            fallCheck: 0,
-            reason: 'Received 20 damage',
-        };
-        const resolvePSRCheck = jasmine.createSpy('resolvePSRCheck');
-        const closeManagedOverlay = jasmine.createSpy('closeManagedOverlay');
-        const turnState = {
-            getPSRChecks: () => [check],
-            getPSROutcome: () => undefined,
-            resolvePSRCheck,
-            autoFall: () => false,
-            isPSRCheckAutomaticFailure: () => false,
-            dmgReceived: () => 0,
-        };
-        const unit = {
-            id: 'unit-1',
-            getUnit: () => ({ type: 'Mek' }),
-            getCondition: () => false,
-            automationMode: () => 'ask',
-            rules: { controlRollFullLabel: 'Piloting Skill Rolls' },
-            turnState: () => turnState,
-            PSRTargetRoll: () => 8,
-            PSRModifiers: () => ({ modifiers: [] }),
-            resolveRuleCheck: jasmine.createSpy('resolveRuleCheck'),
-        };
+    it('keeps target 13+ checks actionable instead of declaring an automatic failure', () => {
+        const changed = new Subject<void>();
+        const check = pilotCheck('hard-check', 'leg-destroyed', 'Difficult fall check', 13);
+        const snapshot = panelSnapshot({ automaticFalls: [], checks: [check] });
+        const member = {
+            id: 'mek-1',
+            force: {
+                changed,
+                sessionChanged: new Subject<void>(),
+                getMekTurnPanelSnapshot: () => snapshot,
+            },
+        } as unknown as CBTMekForceMember;
 
-        const psrOutcomeSelections = signal<Readonly<Record<string, 'success' | 'failed'>>>({});
-        const psrDiceSelections = signal<Readonly<Record<string, readonly [number, number]>>>({});
-        const parent = { unit: signal({ ...unit, psrOutcomeSelections, psrDiceSelections }) };
         TestBed.configureTestingModule({
             imports: [PagePsrWarningPanelComponent],
             providers: [
-                { provide: PSR_WARNING_UNIT, useValue: parent.unit },
-                { provide: OverlayManagerService, useValue: { closeManagedOverlay } },
+                { provide: PAGE_TURN_MEMBER, useValue: member },
+                { provide: OptionsService, useValue: { cbtAutomationMode: () => 'no' } },
+                { provide: ToastService, useValue: { showToast: jasmine.createSpy('showToast') } },
+                { provide: OverlayManagerService, useValue: { closeManagedOverlay: jasmine.createSpy('closeManagedOverlay') } },
             ],
         });
         const fixture = TestBed.createComponent(PagePsrWarningPanelComponent);
+        fixture.detectChanges();
 
-        fixture.componentInstance.selectOutcome(check, 'failed', [5, 2]);
-        fixture.componentInstance.close();
-
-        expect(resolvePSRCheck).not.toHaveBeenCalled();
-        expect(unit.resolveRuleCheck).not.toHaveBeenCalled();
-        expect(closeManagedOverlay).toHaveBeenCalledOnceWith('psrWarning-unit-1');
-        expect(psrOutcomeSelections()).toEqual({ 'fall-check': 'failed' });
-        expect(psrDiceSelections()).toEqual({ 'fall-check': [5, 2] });
-
-        fixture.destroy();
-        closeManagedOverlay.calls.reset();
-        const reopenedFixture = TestBed.createComponent(PagePsrWarningPanelComponent);
-        reopenedFixture.detectChanges();
-
-        expect(reopenedFixture.componentInstance.outcome(check)).toBe('failed');
-        expect(reopenedFixture.componentInstance.canAccept()).toBeTrue();
-        expect(reopenedFixture.componentInstance.diceFor(check)).toEqual([5, 2]);
-
-        reopenedFixture.componentInstance.accept();
-
-        expect(resolvePSRCheck).toHaveBeenCalledOnceWith('fall-check', 'failed');
-        expect(psrOutcomeSelections()).toEqual({});
-        expect(psrDiceSelections()).toEqual({});
-        expect(closeManagedOverlay).toHaveBeenCalledOnceWith('psrWarning-unit-1');
+        expect(fixture.nativeElement.querySelector('.psr-target')?.textContent).toContain('13');
+        expect(fixture.nativeElement.querySelector('.psr-resolution-actions')).not.toBeNull();
+        expect(fixture.nativeElement.querySelector('.automatic-failure')).toBeNull();
     });
 
-    it('locks later Fall checks as failed while preserving independent checks', () => {
-        const checks: PSRCheck[] = [
-            {
-                id: 'first-fall', kind: PSR_CHECK_KIND.GYRO_HIT,
-                failure: FALL_PSR_FAILURE, fallCheck: 0, reason: 'First fall check',
+    it('stages rolled dice and cascades later fall checks until ACCEPT', async () => {
+        const changed = new Subject<void>();
+        const first = pilotCheck('first-fall', 'leg-destroyed', 'First fall check', 7);
+        const second = pilotCheck('second-fall', 'leg-destroyed', 'Second fall check', 8);
+        let current = panelSnapshot({ automaticFalls: [], checks: [first, second] });
+        const dispatch = jasmine.createSpy('dispatchUnitCommand').and.callFake(async (
+            _instanceId: string,
+            command: { readonly checkId: string; readonly evidence: { readonly dice: readonly [number, number] } },
+        ) => {
+            current = panelSnapshot({
+                automaticFalls: [],
+                checks: current.movementState.checks.map(check => check.checkId === command.checkId
+                    ? {
+                        ...check,
+                        status: command.evidence.dice[0] + command.evidence.dice[1] >= check.targetNumber
+                            ? 'success' as const
+                            : 'failed' as const,
+                        resolution: {
+                            dice: command.evidence.dice,
+                            total: command.evidence.dice[0] + command.evidence.dice[1],
+                            targetNumber: check.targetNumber,
+                        },
+                    }
+                    : check),
+                revision: current.stateRevision + 1,
+            });
+            return { accepted: true, changed: true, revision: current.stateRevision };
+        });
+        const member = {
+            id: 'mek-1',
+            force: {
+                changed,
+                sessionChanged: new Subject<void>(),
+                getMekTurnPanelSnapshot: () => current,
+                dispatchUnitCommand: dispatch,
             },
-            {
-                id: 'second-fall', kind: PSR_CHECK_KIND.DAMAGE_THRESHOLD,
-                failure: FALL_PSR_FAILURE, fallCheck: 1, reason: 'Second fall check',
-            },
-            {
-                id: 'control', kind: PSR_CHECK_KIND.TORSO_DESTROYED,
-                failure: { kind: PSR_FAILURE_KIND.RULE_RESOLUTION, label: 'Immobilized' },
-                fallCheck: 2, reason: 'Control check',
-                resolution: { key: 'control-check', token: 'control-1' },
-            },
-            {
-                id: 'third-fall', kind: PSR_CHECK_KIND.LEG_DESTROYED,
-                failure: FALL_PSR_FAILURE, fallCheck: 3, reason: 'Third fall check',
-            },
-        ];
-        const resolvePSRCheck = jasmine.createSpy('resolvePSRCheck').and.returnValue(true);
-        const resolveRuleCheck = jasmine.createSpy('resolveRuleCheck');
+        } as unknown as CBTMekForceMember;
         const closeManagedOverlay = jasmine.createSpy('closeManagedOverlay');
-        const turnState = {
-            getPSRChecks: () => checks,
-            getPSROutcome: () => undefined,
-            resolvePSRCheck,
-            autoFall: () => false,
-            isPSRCheckAutomaticFailure: () => false,
-            dmgReceived: () => 0,
-        };
-        const unit = {
-            id: 'unit-1',
-            getUnit: () => ({ type: 'Mek' }),
-            getCondition: () => false,
-            automationMode: () => 'ask',
-            rules: { controlRollFullLabel: 'Piloting Skill Rolls' },
-            turnState: () => turnState,
-            PSRTargetRoll: () => 8,
-            PSRModifiers: () => ({ modifiers: [] }),
-            getRuleCheck: () => undefined,
-            resolveRuleCheck,
-        };
-
         TestBed.configureTestingModule({
             imports: [PagePsrWarningPanelComponent],
             providers: [
-                {
-                    provide: PSR_WARNING_UNIT,
-                    useValue: signal({
-                        ...unit,
-                        psrOutcomeSelections: signal<Readonly<Record<string, 'success' | 'failed'>>>({}),
-                    }),
-                },
+                { provide: PAGE_TURN_MEMBER, useValue: member },
+                { provide: OptionsService, useValue: { cbtAutomationMode: () => 'no' } },
+                { provide: ToastService, useValue: { showToast: jasmine.createSpy('showToast') } },
                 { provide: OverlayManagerService, useValue: { closeManagedOverlay } },
             ],
         });
@@ -350,77 +262,73 @@ describe('PagePsrWarningPanelComponent', () => {
         fixture.detectChanges();
         const component = fixture.componentInstance;
 
-        component.selectOutcome(checks[0], 'success');
-        component.selectOutcome(checks[1], 'failed');
+        component.selectOutcome(first, 'failed', [1, 2]);
         fixture.detectChanges();
 
-        expect(component.outcome(checks[0])).toBe('success');
-        expect(component.outcome(checks[1])).toBe('failed');
-        expect(component.outcome(checks[2])).toBeUndefined();
-        expect(component.outcome(checks[3])).toBe('failed');
-        expect(component.isCascadedFailure(checks[3])).toBeTrue();
-        expect(resolvePSRCheck).not.toHaveBeenCalled();
-
-        expect(component.canAccept()).toBeFalse();
-
-        component.selectOutcome(checks[2], 'success');
-        fixture.detectChanges();
+        expect(dispatch).not.toHaveBeenCalled();
+        expect(component.diceFor(first)).toEqual([1, 2]);
+        expect(component.isCascadedFailure(second)).toBeTrue();
+        expect(fixture.nativeElement.textContent).toContain('FAILED — PREVIOUS FALL CHECK FAILED');
         expect(component.canAccept()).toBeTrue();
 
-        component.accept();
+        await component.accept();
 
-        expect(resolvePSRCheck.calls.allArgs()).toEqual([
-            ['first-fall', 'success'],
-            ['second-fall', 'failed'],
-            ['third-fall', 'failed'],
-        ]);
-        expect(resolveRuleCheck).toHaveBeenCalledOnceWith('control-check', 'control-1', 'success');
-        expect(closeManagedOverlay).toHaveBeenCalledOnceWith('psrWarning-unit-1');
+        expect(dispatch).toHaveBeenCalledTimes(2);
+        expect(dispatch.calls.argsFor(0)[1]).toEqual(jasmine.objectContaining({
+            checkId: 'first-fall',
+            evidence: { dice: [1, 2], claimedOutcome: 'failed' },
+        }));
+        expect(dispatch.calls.argsFor(1)[1]).toEqual(jasmine.objectContaining({
+            checkId: 'second-fall',
+            evidence: jasmine.objectContaining({ claimedOutcome: 'failed' }),
+        }));
+        expect(closeManagedOverlay).toHaveBeenCalledOnceWith('psrWarning-mek-1');
     });
-
-    it('presents an unconscious pilot\'s pending PSR as an automatic failure', () => {
-        const check: PSRCheck = {
-            id: 'gyro-destroyed',
-            kind: PSR_CHECK_KIND.GYRO_DESTROYED,
-            failure: FALL_PSR_FAILURE,
-            fallCheck: 6,
-            reason: 'Gyro destroyed',
-        };
-        const turnState = {
-            getPSRChecks: () => [check],
-            getPSROutcome: () => undefined,
-            resolvePSRCheck: jasmine.createSpy('resolvePSRCheck'),
-            autoFall: () => false,
-            isPSRCheckAutomaticFailure: () => true,
-            dmgReceived: () => 0,
-        };
-        const unit = {
-            id: 'unit-1',
-            rules: { controlRollFullLabel: 'Piloting Skill Rolls' },
-            turnState: () => turnState,
-            PSRTargetRoll: () => 11,
-            PSRModifiers: () => ({ modifiers: [] }),
-            psrOutcomeSelections: signal<Readonly<Record<string, 'success' | 'failed'>>>({}),
-            psrDiceSelections: signal<Readonly<Record<string, readonly [number, number]>>>({}),
-            resolveRuleCheck: jasmine.createSpy('resolveRuleCheck'),
-        };
-
-        TestBed.configureTestingModule({
-            imports: [PagePsrWarningPanelComponent],
-            providers: [
-                { provide: PSR_WARNING_UNIT, useValue: signal(unit) },
-                { provide: OverlayManagerService, useValue: { closeManagedOverlay: jasmine.createSpy('closeManagedOverlay') } },
-            ],
-        });
-        const fixture = TestBed.createComponent(PagePsrWarningPanelComponent);
-        fixture.detectChanges();
-
-        expect(fixture.componentInstance.isAutomaticFailure(check)).toBeTrue();
-        expect(fixture.componentInstance.outcome(check)).toBe('failed');
-        expect(fixture.componentInstance.allChecksAutomaticFailure()).toBeTrue();
-        expect(fixture.componentInstance.showRollDetails()).toBeFalse();
-        expect(fixture.nativeElement.querySelector('.psr-automatic-failure')?.textContent.trim())
-            .toBe('AUTOMATIC FAILURE');
-    });
-
 });
+
+function pilotCheck(
+    checkId: string,
+    triggerKind: 'leg-destroyed' | 'shutdown',
+    reason: string,
+    targetNumber: number,
+): MekPilotCheckV2 {
+    return {
+        checkId,
+        source: {
+            sourceKind: triggerKind === 'shutdown' ? 'action' : 'damage',
+            triggerKind,
+            witness: '{}',
+            criticalSlotIds: [],
+            locationIds: [],
+        },
+        producingRevision: 1,
+        ordinal: 0,
+        targetNumber,
+        reason,
+        status: 'pending' as const,
+    };
+}
+
+function panelSnapshot(options: {
+    readonly automaticFalls: MekTurnPanelSnapshot['movementState']['automaticFalls'];
+    readonly checks: MekTurnPanelSnapshot['movementState']['checks'];
+    readonly revision?: number;
+}): MekTurnPanelSnapshot {
+    return {
+        entityUuid: 'entity:mek-1',
+        stateRevision: options.revision ?? 1,
+        movement: { kind: 'unsupported', blockers: ['fixture'] },
+        movementState: {
+            ...createPristineMekMovementPsrStateV2(),
+            automaticFalls: options.automaticFalls,
+            checks: options.checks,
+        },
+        activeBoosterComponentIds: [],
+        locationLabels: {},
+        turn: createPristineMekTurnStateV2(),
+        cover: { partiallyUnderwater: false, submerged: false, building: { level: null, modifier: 0 } },
+        heat: createPristineMekHeatStateV2(),
+        heatProjection: { kind: 'unsupported', blockers: ['fixture'] },
+        conditions: [],
+    } as unknown as MekTurnPanelSnapshot;
+}

@@ -2,12 +2,14 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 // Author: Drake
 
+import type { AvailabilityFilterScope } from '../models/megamek/availability.model';
+
 import type { MultiStateOption, MultiStateSelection } from '../components/multi-select-dropdown/multi-select-dropdown.component';
 import type { UnitSummary } from '../models/unit-summary.model';
+import type { UnitUuid } from '../services/unit-catalog/unit-catalog.types';
 import {
     ADVANCED_FILTERS,
     AS_MOVEMENT_MODE_DISPLAY_NAMES,
-    type AvailabilityFilterScope,
     type AdvFilterConfig,
     AdvFilterType,
     type FilterState,
@@ -27,6 +29,7 @@ import { getUnitVariantGroupKey } from './unit-variant.util';
 import { isCountableBackedDropdown } from './unit-search-filter-config.util';
 import {
     buildIndexedASSpecialSelectionCandidates,
+    compileASSpecialSelections,
     unitMatchesASSpecialSelections,
     type ParsedASSpecials,
 } from './as-special-filter.util';
@@ -38,7 +41,7 @@ export interface UnitFilterKernelDependencies {
     getUnitIdsForExternalFilters: (
         eraFilterState?: FilterState[string],
         factionFilterState?: FilterState[string],
-    ) => Set<string> | null;
+    ) => ReadonlySet<string> | null;
     getPositiveFactionNames: (
         selectedFactionEntries: MultiStateSelection,
         wildcardPatterns?: WildcardPattern[],
@@ -47,8 +50,8 @@ export interface UnitFilterKernelDependencies {
     unitMatchesAvailabilityRarity: (unit: UnitSummary, rarityName: string, scope?: AvailabilityFilterScope) => boolean;
     getForcePackLookupSet: (packName: string) => ReadonlySet<string> | undefined;
     getAvailabilityLookupKey: (unit: UnitSummary) => string;
-    getIndexedUnitIds?: (filterKey: string, value: string) => ReadonlySet<string> | undefined;
-    getIndexedASSpecials?: (unitUuid: string) => ParsedASSpecials | undefined;
+    getIndexedUnitIds?: (filterKey: string, value: string) => ReadonlySet<UnitUuid> | undefined;
+    getIndexedASSpecials?: (unitUuid: UnitUuid) => ParsedASSpecials | undefined;
 }
 
 interface ApplyUnitFilterStateRequest {
@@ -229,7 +232,7 @@ export function applyFilterStateToUnits(request: ApplyUnitFilterStateRequest): U
     const selectedAvailabilityFromNames = getSelectedPositiveDropdownNames(activeFilters['availabilityFrom']);
     const selectedAvailabilityRarityNames = getSelectedPositiveDropdownNames(activeFilters['availabilityRarity']);
 
-    let externalUnitIds: Set<string> | null = null;
+    let externalUnitIds: ReadonlySet<string> | null = null;
     const eraFilterState = skipKey === 'era' ? undefined : state['era'];
     const factionFilterState = skipKey === 'faction' ? undefined : state['faction'];
     const factionWildcardPatterns = factionFilterState?.wildcardPatterns;
@@ -324,9 +327,10 @@ export function applyFilterStateToUnits(request: ApplyUnitFilterStateRequest): U
                 if (indexedCandidates) {
                     results = results.filter(unit => indexedCandidates.has(unit.uuid));
                 }
+                const compiledSelections = compileASSpecialSelections(specialSelections);
                 results = results.filter(unit => unitMatchesASSpecialSelections(
                     dependencies.getProperty(unit, conf.key),
-                    specialSelections,
+                    compiledSelections,
                     dependencies.getIndexedASSpecials?.(unit.uuid),
                 ));
                 continue;
@@ -342,13 +346,20 @@ export function applyFilterStateToUnits(request: ApplyUnitFilterStateRequest): U
             continue;
         }
 
-        if (conf.type === AdvFilterType.SEMANTIC) {
-            const searchTerms: string[] = Array.isArray(val) ? val : (typeof val === 'object' ? Object.keys(val) : [String(val)]);
+        if (conf.type === AdvFilterType.SEMANTIC && !conf.numeric) {
+            const searchTerms: string[] = Array.isArray(val)
+                ? val.filter((value): value is string => typeof value === 'string')
+                : val !== null && typeof val === 'object'
+                    ? Object.keys(val)
+                    : [String(val)];
             const hasSearchTerms = searchTerms.length > 0;
             const hasWildcards = wildcardPatterns && wildcardPatterns.length > 0;
             const includePatterns = wildcardPatterns?.filter(p => p.state === 'or') || [];
             const excludePatterns = wildcardPatterns?.filter(p => p.state === 'not') || [];
             const andPatterns = wildcardPatterns?.filter(p => p.state === 'and') || [];
+            const includeMatchers = includePatterns.map(pattern => wildcardToRegex(pattern.pattern));
+            const excludeMatchers = excludePatterns.map(pattern => wildcardToRegex(pattern.pattern));
+            const andMatchers = andPatterns.map(pattern => wildcardToRegex(pattern.pattern));
 
             if (hasSearchTerms || hasWildcards) {
                 const searchTermsLower = searchTerms.map(term => term.toLowerCase());
@@ -357,13 +368,11 @@ export function applyFilterStateToUnits(request: ApplyUnitFilterStateRequest): U
                     if (unitValue == null) return false;
                     const unitStr = String(unitValue).toLowerCase();
 
-                    for (const pattern of excludePatterns) {
-                        const regex = wildcardToRegex(pattern.pattern);
+                    for (const regex of excludeMatchers) {
                         if (regex.test(unitStr)) return false;
                     }
 
-                    for (const pattern of andPatterns) {
-                        const regex = wildcardToRegex(pattern.pattern);
+                    for (const regex of andMatchers) {
                         if (!regex.test(unitStr)) return false;
                     }
 
@@ -375,8 +384,7 @@ export function applyFilterStateToUnits(request: ApplyUnitFilterStateRequest): U
                         if (unitStr === term) return true;
                     }
 
-                    for (const pattern of includePatterns) {
-                        const regex = wildcardToRegex(pattern.pattern);
+                    for (const regex of includeMatchers) {
                         if (regex.test(unitStr)) return true;
                     }
 
@@ -397,21 +405,22 @@ export function applyFilterStateToUnits(request: ApplyUnitFilterStateRequest): U
                 const orPatterns = wildcardPatterns?.filter(p => p.state === 'or') || [];
                 const andPatterns = wildcardPatterns?.filter(p => p.state === 'and') || [];
                 const notPatterns = wildcardPatterns?.filter(p => p.state === 'not') || [];
+                const orMatchers = orPatterns.map(pattern => wildcardToRegex(pattern.pattern));
+                const andMatchers = andPatterns.map(pattern => wildcardToRegex(pattern.pattern));
+                const notMatchers = notPatterns.map(pattern => wildcardToRegex(pattern.pattern));
 
                 results = results.filter(unit => {
                     const propertyValue = dependencies.getProperty(unit, conf.key);
                     const unitValues = Array.isArray(propertyValue) ? propertyValue : [propertyValue];
                     const unitStrings = unitValues.filter(value => value != null).map(value => String(value).toLowerCase());
 
-                    for (const pattern of notPatterns) {
-                        const regex = wildcardToRegex(pattern.pattern);
+                    for (const regex of notMatchers) {
                         for (const unitValue of unitStrings) {
                             if (regex.test(unitValue)) return false;
                         }
                     }
 
-                    for (const pattern of andPatterns) {
-                        const regex = wildcardToRegex(pattern.pattern);
+                    for (const regex of andMatchers) {
                         let hasMatch = false;
                         for (const unitValue of unitStrings) {
                             if (regex.test(unitValue)) {
@@ -432,8 +441,7 @@ export function applyFilterStateToUnits(request: ApplyUnitFilterStateRequest): U
                         }
                     }
 
-                    for (const pattern of orPatterns) {
-                        const regex = wildcardToRegex(pattern.pattern);
+                    for (const regex of orMatchers) {
                         for (const unitValue of unitStrings) {
                             if (regex.test(unitValue)) return true;
                         }
@@ -445,7 +453,7 @@ export function applyFilterStateToUnits(request: ApplyUnitFilterStateRequest): U
             continue;
         }
 
-        if (conf.type === AdvFilterType.RANGE && Array.isArray(val)) {
+        if ((conf.type === AdvFilterType.RANGE || conf.numeric) && Array.isArray(val)) {
             const excludeRanges = filterState.excludeRanges;
             const includeRanges = filterState.includeRanges;
 

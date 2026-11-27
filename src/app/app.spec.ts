@@ -2,14 +2,19 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 // Author: Drake
 
-import { provideZonelessChangeDetection } from '@angular/core';
+import { Component, provideZonelessChangeDetection, signal } from '@angular/core';
 import { TestBed } from '@angular/core/testing';
 import { provideRouter } from '@angular/router';
+import { OverlayContainer } from '@angular/cdk/overlay';
 import { SwUpdate } from '@angular/service-worker';
 import { Subject } from 'rxjs';
 import { App } from './app';
+import { createEmptyUnit } from './testing/unit-test-helpers';
 import { DataService } from './services/data.service';
-import { ForceBuilderService } from './services/force-builder.service';
+import { ForcePersistenceService } from './services/force-persistence.service';
+import { ForceImportService } from './services/force-import.service';
+import { ForceDialogsService } from './services/force-dialogs.service';
+import { ForceWorkspaceStateService } from './services/force-workspace-state.service';
 import { LayoutService } from './services/layout.service';
 import { WsService } from './services/ws.service';
 import { DialogsService } from './services/dialogs.service';
@@ -23,10 +28,17 @@ import { SavedSearchesService } from './services/saved-searches.service';
 import { LoggerService } from './services/logger.service';
 import { GameSystem } from './models/common.model';
 import { AppUpdateService } from './services/app-update.service';
+import { UnitSearchComponent } from './components/unit-search/unit-search.component';
 import { LobbyService } from './services/lobby.service';
+import { CustomUnitSyncService } from './services/custom-unit-sync.service';
+
+@Component({
+  selector: 'unit-search',
+  template: '',
+})
+class UnitSearchStubComponent {}
 
 describe('App', () => {
-  const reloadHashStorageKey = 'mekbay:sw-update-reload-hash';
   const androidPwaBackExitStateKey = 'mekbayAndroidPwaBackExit';
   let versionUpdates: Subject<any>;
   let fixture: ReturnType<typeof TestBed.createComponent<App>> | null;
@@ -37,6 +49,7 @@ describe('App', () => {
     activateUpdate: jasmine.Spy<() => Promise<boolean>>;
   };
   let dataServiceMock: any;
+  let forcePersistenceServiceMock: any;
   let forceBuilderServiceMock: any;
   let layoutServiceMock: any;
   let wsServiceMock: any;
@@ -50,10 +63,12 @@ describe('App', () => {
   let savedSearchesServiceMock: any;
   let loggerServiceMock: any;
   let lobbyServiceMock: any;
+  let openSharedCustom: jasmine.Spy;
 
   beforeEach(async () => {
     versionUpdates = new Subject();
     fixture = null;
+    openSharedCustom = jasmine.createSpy('openSharedCustom').and.resolveTo();
     swUpdateMock = {
       isEnabled: false,
       versionUpdates,
@@ -62,17 +77,22 @@ describe('App', () => {
     };
     dataServiceMock = {
       initialize: jasmine.createSpy('initialize'),
-      isDataReady: jasmine.createSpy('isDataReady').and.returnValue(false),
+      forceNeedsAdoption: new Subject(),
+      isDataReady: signal(false),
+      unitCatalogState: signal({ status: 'idle', availableUnits: 0 }),
+      runtimeCatalogProgress: signal({ status: 'idle' }),
+      auxiliaryCatalogProgress: signal({ status: 'idle' }),
       ensureMegaMekAvailabilityCatalogInitialized: jasmine.createSpy('ensureMegaMekAvailabilityCatalogInitialized').and.resolveTo(false),
-      isCloudForceLoading: jasmine.createSpy('isCloudForceLoading').and.returnValue(false),
-      isDownloading: jasmine.createSpy('isDownloading').and.returnValue(false),
-      getUnitByName: jasmine.createSpy('getUnitByName').and.returnValue(undefined),
-      hasPendingCloudSaves: jasmine.createSpy('hasPendingCloudSaves').and.returnValue(false),
+      getUnitByIdentifier: jasmine.createSpy('getUnitByIdentifier').and.returnValue(undefined),
+    };
+    forcePersistenceServiceMock = {
+      isCloudForceLoading: signal(false),
+      hasPendingForceSaves: jasmine.createSpy('hasPendingForceSaves').and.returnValue(false),
     };
     forceBuilderServiceMock = {
       hasForces: jasmine.createSpy('hasForces').and.returnValue(false),
+      allLoadedUnits: signal([]),
       loadedForces: jasmine.createSpy('loadedForces').and.returnValue([]),
-      loadForceFromUrlParams: jasmine.createSpy('loadForceFromUrlParams').and.resolveTo(undefined),
       showForceOrgDialog: jasmine.createSpy('showForceOrgDialog').and.resolveTo(undefined),
       showLoadForceDialog: jasmine.createSpy('showLoadForceDialog'),
       showForceGeneratorDialog: jasmine.createSpy('showForceGeneratorDialog').and.resolveTo(undefined),
@@ -80,10 +100,13 @@ describe('App', () => {
     };
     layoutServiceMock = {
       isMenuOpen: jasmine.createSpy('isMenuOpen').and.returnValue(false),
+      windowWidth: signal(1280),
+      windowHeight: signal(800),
       toggleMenu: jasmine.createSpy('toggleMenu'),
       closeMenu: jasmine.createSpy('closeMenu'),
     };
     wsServiceMock = {
+      connectionStatusPhase: signal('hidden'),
       setGlobalErrorHandler: jasmine.createSpy('setGlobalErrorHandler'),
       registerMessageHandler: jasmine.createSpy('registerMessageHandler').and.returnValue(() => {}),
       registerServerMessageHandler: jasmine.createSpy('registerServerMessageHandler').and.returnValue(() => {}),
@@ -96,22 +119,24 @@ describe('App', () => {
       showNextDialog: jasmine.createSpy('showNextDialog'),
     };
     toastServiceMock = {
+      toasts: signal([]),
+      visibleToasts: signal([]),
       showToast: jasmine.createSpy('showToast'),
+      dismiss: jasmine.createSpy('dismiss'),
     };
     optionsServiceMock = {
       options: jasmine.createSpy('options').and.returnValue({ colorScheme: 'default', availabilitySource: 'mul' }),
     };
     unitSearchFiltersServiceMock = {
       expandedView: jasmine.createSpy('expandedView').and.returnValue(false),
+      advOpen: signal(false),
       setForeignTagDialogCallback: jasmine.createSpy('setForeignTagDialogCallback'),
       processPendingForeignTags: jasmine.createSpy('processPendingForeignTags'),
-      applySearchParamsFromUrl: jasmine.createSpy('applySearchParamsFromUrl'),
     };
     gameServiceMock = {
       isAlphaStrike: jasmine.createSpy('isAlphaStrike').and.returnValue(false),
-      setOverride: jasmine.createSpy('setOverride'),
       setMode: jasmine.createSpy('setMode'),
-      currentGameSystem: jasmine.createSpy('currentGameSystem').and.returnValue(GameSystem.CLASSIC),
+      currentGameSystem: jasmine.createSpy('currentGameSystem').and.returnValue(GameSystem.CBT),
     };
     accountAuthServiceMock = {
       handleOAuthRedirectReturn: jasmine.createSpy('handleOAuthRedirectReturn').and.resolveTo(undefined),
@@ -141,6 +166,10 @@ describe('App', () => {
       confirmAndLeave: jasmine.createSpy('confirmAndLeave').and.resolveTo(false),
     };
 
+    TestBed.overrideComponent(App, {
+      remove: { imports: [UnitSearchComponent] },
+      add: { imports: [UnitSearchStubComponent] },
+    });
     await TestBed.configureTestingModule({
       imports: [App],
       providers: [
@@ -151,9 +180,13 @@ describe('App', () => {
           useValue: swUpdateMock,
         },
         { provide: DataService, useValue: dataServiceMock },
-        { provide: ForceBuilderService, useValue: forceBuilderServiceMock },
+        { provide: ForcePersistenceService, useValue: forcePersistenceServiceMock },
+        { provide: ForceWorkspaceStateService, useValue: forceBuilderServiceMock },
+        { provide: ForceImportService, useValue: forceBuilderServiceMock },
+        { provide: ForceDialogsService, useValue: forceBuilderServiceMock },
         { provide: LayoutService, useValue: layoutServiceMock },
         { provide: WsService, useValue: wsServiceMock },
+        { provide: CustomUnitSyncService, useValue: { openShared: openSharedCustom } },
         { provide: DialogsService, useValue: dialogsServiceMock },
         { provide: ToastService, useValue: toastServiceMock },
         { provide: OptionsService, useValue: optionsServiceMock },
@@ -172,7 +205,6 @@ describe('App', () => {
     fixture?.destroy();
     fixture = null;
     document.querySelectorAll('.mekbay-bootstrap-update-screen').forEach((element) => element.remove());
-    localStorage.removeItem(reloadHashStorageKey);
     versionUpdates.complete();
   });
 
@@ -182,17 +214,172 @@ describe('App', () => {
     expect(app).toBeTruthy();
   });
 
-  it('delegates join, manage, and leave lobby actions', () => {
+  it('exposes crawlable tool links on the home page and in its mobile menu', () => {
+    fixture = TestBed.createComponent(App);
+    fixture.detectChanges();
+    for (const route of ['/meklab', '/forcegenerator']) {
+      expect(fixture.nativeElement.querySelector(`a.home-action-button[href="${route}"]`)).toBeTruthy();
+    }
+    fixture.componentInstance.openHomeActionsPanel();
+    fixture.detectChanges();
+    for (const route of ['/meklab', '/forcegenerator']) {
+      expect(fixture.nativeElement.querySelector(`a.home-panel-action[href="${route}"]`)).toBeTruthy();
+    }
+  });
+
+  it('opens the unit selected by a shareUnit identifier after catalog startup', () => {
+    const identifier = '01890f3a-9d5b-7c24-8b2e-6f8a10d31234';
+    const unit = createEmptyUnit({ uuid: identifier, name: 'BMKingCrab_KGC000Custom', isCustom: true });
+    urlServiceMock.getInitialParam.and.callFake((key: string) =>
+      key === 'shareUnit' ? identifier : key === 'tab' ? 'General' : null);
+    dataServiceMock.getUnitByIdentifier.and.returnValue(unit);
+    fixture = TestBed.createComponent(App);
+    const showDetails = spyOn(fixture.componentInstance, 'showSingleUnitDetails');
+
+    dataServiceMock.isDataReady.set(true);
+    fixture.detectChanges();
+
+    expect(dataServiceMock.getUnitByIdentifier).toHaveBeenCalledOnceWith(identifier);
+    expect(showDetails).toHaveBeenCalledOnceWith(unit, 'General');
+    expect(openSharedCustom).not.toHaveBeenCalled();
+  });
+
+  it('fetches a missing custom share UUID and then opens its details', async () => {
+    const identifier = '01890f3a-9d5b-7c24-8b2e-6f8a10d31234';
+    const unit = createEmptyUnit({ uuid: identifier, isCustom: true });
+    dataServiceMock.getUnitByUuid = jasmine.createSpy('getUnitByUuid').and.returnValue(unit);
+    fixture = TestBed.createComponent(App);
+    const showDetails = spyOn(fixture.componentInstance, 'showSingleUnitDetails').and.resolveTo();
+    await (fixture.componentInstance as any).openSharedUnit(identifier, 'General');
+    expect(openSharedCustom).toHaveBeenCalledOnceWith(identifier);
+    expect(showDetails).toHaveBeenCalledOnceWith(unit, 'General');
+  });
+
+  it('does not request the cloud for a missing non-UUID unit identifier', async () => {
+    fixture = TestBed.createComponent(App);
+    await (fixture.componentInstance as any).openSharedUnit('missing-old-unit-name');
+    expect(openSharedCustom).not.toHaveBeenCalled();
+    expect(toastServiceMock.showToast).toHaveBeenCalled();
+  });
+
+  it('blocks unload while serialization, local persistence, or cloud acknowledgement is pending', () => {
     fixture = TestBed.createComponent(App);
     const app = fixture.componentInstance;
+    const event = { preventDefault: jasmine.createSpy('preventDefault') } as unknown as BeforeUnloadEvent;
+    forcePersistenceServiceMock.hasPendingForceSaves.and.returnValue(true);
 
-    app.joinLobby();
-    app.manageLobby();
-    app.leaveLobby();
+    expect(app.beforeUnloadHandler(event)).toBe('You have unsaved changes. Are you sure you want to leave?');
+    expect(event.preventDefault).toHaveBeenCalledTimes(1);
+    expect(forcePersistenceServiceMock.hasPendingForceSaves).toHaveBeenCalled();
+  });
 
-    expect(lobbyServiceMock.promptAndJoin).toHaveBeenCalled();
-    expect(lobbyServiceMock.showLobbyDialog).toHaveBeenCalled();
-    expect(lobbyServiceMock.confirmAndLeave).toHaveBeenCalled();
+  it('allows unload once the full force-save pipeline is settled', () => {
+    fixture = TestBed.createComponent(App);
+    const app = fixture.componentInstance;
+    const event = { preventDefault: jasmine.createSpy('preventDefault') } as unknown as BeforeUnloadEvent;
+
+    expect(app.beforeUnloadHandler(event)).toBeUndefined();
+    expect(event.preventDefault).not.toHaveBeenCalled();
+  });
+
+  it('keeps the application interactive and reserves a global bottom status row', async () => {
+    fixture = TestBed.createComponent(App);
+    dataServiceMock.unitCatalogState.set({
+      status: 'loading',
+      availableUnits: 0,
+      progress: { phase: 'local-generation', completed: 0, total: 1 },
+    });
+    fixture.detectChanges();
+    await fixture.whenStable();
+
+    const host = fixture.nativeElement as HTMLElement;
+    const surface = host.querySelector('.application-surface') as HTMLElement;
+    const viewport = host.querySelector('.application-viewport') as HTMLElement;
+    expect(surface.hasAttribute('inert')).toBeFalse();
+    expect(surface.hasAttribute('aria-hidden')).toBeFalse();
+    expect(host.querySelector('.catalog-startup-blocker')).toBeNull();
+    expect(host.querySelector('startup-progress')).toBeNull();
+    const coldStatus = host.querySelector('catalog-refresh-status [role="status"]') as HTMLElement;
+    expect(coldStatus?.getAttribute('aria-live')).toBe('polite');
+    expect(coldStatus?.getAttribute('aria-busy')).toBe('true');
+    expect(surface.contains(coldStatus)).toBeTrue();
+    expect(viewport.contains(coldStatus)).toBeFalse();
+    expect(TestBed.inject(OverlayContainer).getContainerElement().parentElement).toBe(viewport);
+
+    dataServiceMock.isDataReady.set(true);
+    dataServiceMock.unitCatalogState.set({
+      status: 'loading',
+      availableUnits: 10_990,
+      progress: { phase: 'dependency-validation', completed: 2, total: 7 },
+    });
+    fixture.detectChanges();
+
+    const backgroundStatus = host.querySelector('catalog-refresh-status [role="status"]') as HTMLElement;
+    expect(backgroundStatus?.getAttribute('aria-live')).toBe('polite');
+    expect(backgroundStatus?.getAttribute('aria-busy')).toBe('true');
+    expect(surface.contains(backgroundStatus)).toBeTrue();
+
+    dataServiceMock.unitCatalogState.set({
+      status: 'error',
+      availableUnits: 10_990,
+      error: 'HTTP 404',
+    });
+    fixture.detectChanges();
+
+    const warningStatus = host.querySelector('catalog-refresh-status .warning[role="status"]') as HTMLElement;
+    expect(warningStatus?.getAttribute('aria-busy')).toBe('false');
+    expect(surface.hasAttribute('inert')).toBeFalse();
+
+    dataServiceMock.unitCatalogState.set({ status: 'ready', availableUnits: 10_990 });
+    fixture.detectChanges();
+
+    expect(host.querySelector('catalog-refresh-status [role="status"]')).toBeNull();
+  });
+
+  it('projects exact core phase progress before and after local data becomes ready', () => {
+    fixture = TestBed.createComponent(App);
+    const app = fixture.componentInstance as any;
+
+    expect(app.backgroundCatalogProgress()).toEqual({ kind: 'hidden' });
+
+    dataServiceMock.unitCatalogState.set({
+      status: 'loading',
+      availableUnits: 0,
+      progress: { phase: 'projecting', completed: 250, total: 1000 },
+    });
+    expect(app.backgroundCatalogProgress()).toEqual(jasmine.objectContaining({
+      kind: 'progress',
+      mode: 'determinate',
+      completed: 250,
+      total: 1000,
+      percent: 25,
+    }));
+
+    dataServiceMock.isDataReady.set(true);
+    dataServiceMock.unitCatalogState.set({
+      status: 'loading',
+      availableUnits: 10_990,
+      progress: { phase: 'projecting', completed: 250, total: 1000 },
+    });
+    expect(app.backgroundCatalogProgress()).toEqual(jasmine.objectContaining({
+      kind: 'progress',
+      mode: 'determinate',
+      percent: 25,
+            title: 'Updating catalogs…',
+    }));
+
+    dataServiceMock.unitCatalogState.set({
+      status: 'error',
+      availableUnits: 10_990,
+      error: 'HTTP 404',
+    });
+    expect(app.backgroundCatalogProgress()).toEqual(jasmine.objectContaining({
+      kind: 'notice',
+      tone: 'warning',
+    }));
+
+    dataServiceMock.unitCatalogState.set({ status: 'ready', availableUnits: 10_990 });
+    expect(app.backgroundCatalogProgress()).toEqual({ kind: 'hidden' });
   });
 
   it('does not check for service worker updates immediately after full app startup', () => {

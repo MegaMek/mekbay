@@ -3,6 +3,7 @@
 // Author: Drake
 
 import type { InputSignal, OutputEmitterRef, WritableSignal } from '@angular/core';
+import type { TooltipType } from '../tooltip/tooltip.component';
 
 /*
  * Picker interface for all picker components
@@ -71,7 +72,7 @@ export interface PickerChoice {
     keepOpen?: boolean;
     displayType?: PickerDisplayType;
     choices?: PickerDropdownOption[];
-    tooltipType?: 'info' | 'success' | 'error';
+    tooltipType?: TooltipType;
 }
 
 // =============================================================================
@@ -171,9 +172,4 @@ export type PickerInstance = ChoicePickerInstance | NumericPickerInstance;
 /** Type guard to check if an instance is a ChoicePickerInstance */
 export function isChoicePickerInstance(instance: PickerInstance): instance is ChoicePickerInstance {
     return 'values' in instance.component;
-}
-
-/** Type guard to check if an instance is a NumericPickerInstance */
-export function isNumericPickerInstance(instance: PickerInstance): instance is NumericPickerInstance {
-    return 'min' in instance.component && 'max' in instance.component;
 }

@@ -18,11 +18,17 @@
         <div class="expanded-title">
             <div class="expanded-model" [innerHTML]="highlight(u.model)"></div>
             <div class="expanded-chassis">
-                <span [innerHTML]="highlight(u.chassis)"></span>
+                <span [innerHTML]="highlight(unitNames.chassis(u))"></span>
+                @if (u.isCustom) { <span class="custom-unit-badge">CUSTOM</span> }
                 @if (alias(); as pilotName) { <span class="inline-alias">({{ pilotName }})</span> }
-                @if (u.serverHost) { <span class="custom-unit-badge" title="Custom unit from {{ u.serverHost }}">Custom</span> }
+                <unit-data-badges [loadIssues]="u.loadIssues" [issuesAccepted]="issuesAccepted()" [updateAvailable]="updateAvailable()" />
             </div>
         </div>
+        @if (headerExtra(); as extra) {
+        <div class="expanded-extra" (click)="$event.stopPropagation()" (pointerdown)="$event.stopPropagation()">
+            <ng-container [ngTemplateOutlet]="extra" />
+        </div>
+        }
         <div class="expanded-subtitle">
             @if (u.role && u.role !== 'None') {
             <div class="subtitle-line role" [class.sort-slot]="isSortActive('role')">{{ u.role }}</div>
@@ -160,11 +166,17 @@
         <div class="expanded-title">
             <div class="expanded-model" [innerHTML]="highlight(u.model)"></div>
             <div class="expanded-chassis">
-                <span [innerHTML]="highlight(u.chassis)"></span>
+                <span [innerHTML]="highlight(unitNames.chassis(u))"></span>
+                @if (u.isCustom) { <span class="custom-unit-badge">CUSTOM</span> }
                 @if (alias(); as pilotName) { <span class="inline-alias">({{ pilotName }})</span> }
-                @if (u.serverHost) { <span class="custom-unit-badge" title="Custom unit from {{ u.serverHost }}">Custom</span> }
+                <unit-data-badges [loadIssues]="u.loadIssues" [issuesAccepted]="issuesAccepted()" [updateAvailable]="updateAvailable()" />
             </div>
         </div>
+        @if (headerExtra(); as extra) {
+        <div class="expanded-extra" (click)="$event.stopPropagation()" (pointerdown)="$event.stopPropagation()">
+            <ng-container [ngTemplateOutlet]="extra" />
+        </div>
+        }
         <div class="expanded-subtitle">
             @if (u.role && u.role !== 'None') {
             <div class="subtitle-line role" [class.sort-slot]="isSortActive('role')">{{ u.role }}</div>
@@ -345,8 +357,9 @@
         </div>
         <div class="primary-info">
             <div class="chassis">
-                <span [innerHTML]="highlight(u.chassis)"></span>
-                @if (u.serverHost) { <span class="custom-unit-badge" title="Custom unit from {{ u.serverHost }}">Custom</span> }
+                <span [innerHTML]="highlight(unitNames.chassis(u))"></span>
+                @if (u.isCustom) { <span class="custom-unit-badge">CUSTOM</span> }
+                <unit-data-badges [loadIssues]="u.loadIssues" [issuesAccepted]="issuesAccepted()" [updateAvailable]="updateAvailable()" />
             </div>
             @if (alias(); as pilotName) { <span class="alias">({{ pilotName }})</span>  }
         </div>

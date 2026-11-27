@@ -1,0 +1,485 @@
+// Copyright (C) 2026 The MegaMek Team
+// SPDX-License-Identifier: GPL-3.0-or-later
+
+import { queryNonMekRuntime } from './non-mek-unit-instance';
+import {
+asUnitUuid,
+} from '../../services/unit-catalog/unit-catalog.types';
+import { CORE_2026_RULESET, TOTAL_WARFARE_RULESET } from '../cbt-ruleset.model';
+import {
+TestAeroSpaceFighterEntity,
+TestBattleArmorEntity,
+TestInfantryEntity,
+TestJumpShipEntity,
+TestProtoMekEntity,
+TestTankEntity,
+} from '../entity/testing/test-entities';
+import { createTestEquipmentRegistry } from '../entity/testing/test-equipment-registry';
+import { addTestEquipment,addTestEquipmentWithFlags } from '../entity/testing/test-mounted-equipment';
+import { AmmoEquipment, WeaponEquipment } from '../equipment.model';
+import { type InstanceBaselineRef } from './runtime-state';
+
+import { projectNonMekEquipmentPanel } from './non-mek-equipment-panel';
+import { projectNonMekRecordSheet } from './non-mek-record-sheet';
+import { componentIdForMount } from './unit-runtime-index';
+import { systemDamageId } from '../rules/system-damage-rules';
+
+describe('projectNonMekRecordSheet', () => {
+    for (const ruleset of [CORE_2026_RULESET, TOTAL_WARFARE_RULESET]) {
+        it(`projects loaded body-missile burden in ${ruleset}`, () => {
+            const entity = new TestBattleArmorEntity();
+            entity.uuid.set(UUID);
+            entity.motiveType.set('Jump');
+            entity.propulsionMP.set(3);
+            addTestEquipment(entity, new WeaponEquipment({ id: 'Body SRM OS', name: 'Body SRM OS', type: 'weapon',
+                flags: ['F_MISSILE', 'F_ONE_SHOT'], weapon: { ammoType: 'SRM', rackSize: 2 } }),
+                { location: 'Squad', baMountLocation: 'Body' });
+            const runtime = createNonMekRuntimeForTest('unit:burdened-ba-sheet', { ...baseline(), ruleset }, entity, ruleset);
+            const sheet = projectNonMekRecordSheet(entity, runtime.getIndex(), runtime.snapshot(), ruleset, runtime.query(),
+                runtime.query().currentBaseBattleValue()!, entity.battleValue(ruleset));
+            expect(sheet.movement.jump).toBe(0);
+            expect(entity.baseJumpMP()).toBe(3);
+        });
+    }
+
+    it('projects the selected ammo loadout name and remaining shots for detached sheet rendering', () => {
+        const standard = new AmmoEquipment({
+            id: 'Ammo_AC_10',
+            name: 'AC/10 Ammo',
+            type: 'ammo',
+            ammo: { type: 'AC', rackSize: 10, shots: 10 },
+        });
+        const precision = new AmmoEquipment({
+            id: 'Ammo_AC_10_Precision',
+            name: 'Autocannon/10 Precision Ammo',
+            shortName: 'AC/10 Precision Ammo',
+            type: 'ammo',
+            ammo: { type: 'AC', rackSize: 10, shots: 10, munitionType: ['M_PRECISION'] },
+        });
+        const entity = new TestTankEntity(createTestEquipmentRegistry({
+            [standard.id]: standard,
+            [precision.id]: precision,
+        }));
+        entity.uuid.set(UUID);
+        addTestEquipment(entity, standard, { location: entity.locationOrder[0], shotsCount: 10 });
+        const runtime = createNonMekRuntimeForTest('unit:tank-ammo-sheet', baseline(), entity, CORE_2026_RULESET);
+        const componentId = [...runtime.getIndex().components.keys()][0]!;
+        expect(runtime.dispatch({
+            type: 'configure-ammo-source',
+            componentId,
+            munitionKey: precision.id,
+            remaining: 3,
+        }).accepted).toBeTrue();
+
+        const sheet = projectNonMekRecordSheet(
+            entity, runtime.getIndex(), runtime.snapshot(), CORE_2026_RULESET, runtime.query(), 100, 100,
+        );
+
+        expect(sheet.components[0].ammo).toEqual({
+            displayName: 'AC/10 Precision Ammo',
+            capacity: 10,
+            remaining: 3,
+        });
+    });
+
+    it('retains a vacant physical station and derives fixed piloting without changing the personal rating', () => {
+        const entity = new TestProtoMekEntity();
+        entity.uuid.set(UUID);
+        const runtime = createNonMekRuntimeForTest('unit:proto-crew-sheet', baseline(), entity, CORE_2026_RULESET);
+        const positionId = [...runtime.getIndex().crewPositions.keys()][0]!;
+        const assignment = Object.freeze({ positions: Object.freeze([
+            Object.freeze({ positionId, name: 'Pilot', gunnery: 2, piloting: 2 }),
+        ]) });
+        const project = (crew: typeof assignment | { positions: [] }) => projectNonMekRecordSheet(
+            entity, runtime.getIndex(), runtime.snapshot(), CORE_2026_RULESET, queryNonMekRuntime({ ...runtime.mechanics(), crewAssignment: crew }, runtime.snapshot()), 100, 100,
+        );
+        expect(project(assignment).crew[0].piloting).toBe(5);
+        expect(assignment.positions[0].piloting).toBe(2);
+        const vacant = project({ positions: [] });
+        expect(vacant.crew.length).toBe(1);
+        expect(vacant.crew[0].effectiveState).toBe('vacant');
+        expect(vacant.conditions).toContain('immobile');
+        expect(vacant.conditions).toContain('abandoned');
+    });
+
+    it('shows a unit destroyed by its detonated Booby Trap on the sheet and the equipment panel', () => {
+        const laser = new WeaponEquipment({
+            id: 'TestTrapLaser', name: 'Test Laser', type: 'weapon',
+            weapon: { damage: 5, heat: 3, ranges: [3, 6, 9, 12] },
+        });
+        const entity = new TestTankEntity(createTestEquipmentRegistry({ [laser.id]: laser }));
+        entity.uuid.set(UUID);
+        const weaponId = componentIdForMount(addTestEquipment(entity, laser, { location: entity.locationOrder[0] }));
+        const trapId = componentIdForMount(addTestEquipmentWithFlags(entity, 'F_BOOBY_TRAP',
+            { location: entity.locationOrder[0] }));
+        const runtime = createNonMekRuntimeForTest('unit:tank-booby-trap-sheet', baseline(), entity, CORE_2026_RULESET);
+        expect(runtime.dispatch({ type: 'detonate-booby-trap', componentId: trapId }).changed).toBeTrue();
+        expect(runtime.snapshot().explicitlyDestroyed).toBeFalse();
+
+        const sheet = projectNonMekRecordSheet(entity, runtime.getIndex(), runtime.snapshot(), CORE_2026_RULESET,
+            runtime.query(), 0, 0);
+        const panel = projectNonMekEquipmentPanel(entity, runtime.getIndex(), CORE_2026_RULESET, runtime.snapshot(),
+            runtime.query(), Object.freeze({ revision: 0, targets: Object.freeze([]) }), {});
+
+        expect(sheet.destroyed).toBeTrue();
+        expect(sheet.movement.walk).toBe(0);
+        expect(panel.components.find(row => row.componentId === weaponId)?.weapon?.selectable).toBeFalse();
+    });
+
+    it('carries selectable air-ground state into presentation but suppresses space-only invariants', () => {
+        const fighter = new TestAeroSpaceFighterEntity();
+        fighter.uuid.set(UUID);
+        const fighterRuntime = createNonMekRuntimeForTest(
+            'unit:aero-condition-sheet',
+            baseline(),
+            fighter,
+            CORE_2026_RULESET,
+        );
+        fighterRuntime.dispatch({
+            type: 'set-airborne',
+
+            airborne: false,
+        });
+        const grounded = projectNonMekRecordSheet(
+            fighter,
+            fighterRuntime.getIndex(),
+            fighterRuntime.snapshot(),
+            CORE_2026_RULESET,
+            fighterRuntime.query(),
+            fighterRuntime.query().currentBaseBattleValue()!,
+            fighter.battleValue(CORE_2026_RULESET),
+        );
+        expect(grounded.conditions).toContain('grounded');
+        expect(grounded.conditions).not.toContain('airborne');
+
+        const jumpShip = new TestJumpShipEntity();
+        jumpShip.uuid.set(UUID);
+        const jumpShipRuntime = createNonMekRuntimeForTest(
+            'unit:space-only-condition-sheet',
+            baseline(),
+            jumpShip,
+            CORE_2026_RULESET,
+        );
+        const spaceOnly = projectNonMekRecordSheet(
+            jumpShip,
+            jumpShipRuntime.getIndex(),
+            jumpShipRuntime.snapshot(),
+            CORE_2026_RULESET,
+            jumpShipRuntime.query(),
+            jumpShipRuntime.query().currentBaseBattleValue()!,
+            jumpShip.battleValue(CORE_2026_RULESET),
+        );
+        expect(spaceOnly.conditions).not.toContain('airborne');
+        expect(spaceOnly.conditions).not.toContain('grounded');
+    });
+
+    it('maps a Tank Entity and sparse runtime damage to authored sheet codes', () => {
+        const entity = new TestTankEntity();
+        entity.uuid.set(UUID);
+        entity.chassis.set('Test Tank');
+        entity.model.set('T-1');
+        entity.setTonnage(20);
+        entity.originalWalkMP.set(8);
+        entity.setArmorValue('Front', 'front', 3);
+        const runtime = createNonMekRuntimeForTest(
+            'unit:tank-sheet',
+            baseline(),
+            entity,
+            CORE_2026_RULESET,
+        );
+        const front = [...runtime.getIndex().locations.values()]
+            .find(location => location.code === 'Front')!;
+        const face = runtime.getIndex().armorFaces.get(front.armorFaceIds[0])!;
+        runtime.dispatch({
+            type: 'set-armor-damage',
+
+            faceId: face.id,
+            damage: 1,
+        });
+        const crewPositionId = [...runtime.getIndex().crewPositions.keys()][0]!;
+        const crewAssignment = Object.freeze({
+            positions: Object.freeze([Object.freeze({
+                positionId: crewPositionId,
+                name: 'Morgan Kell',
+                gunnery: 3,
+                piloting: 4,
+            })]),
+        });
+        runtime.dispatch({
+            type: 'set-crew-state',
+
+            positionId: crewPositionId,
+            wounds: 0,
+            unconscious: true,
+            ejected: false,
+        });
+
+        const snapshot = projectNonMekRecordSheet(
+            entity,
+            runtime.getIndex(),
+            runtime.snapshot(),
+            CORE_2026_RULESET,
+            queryNonMekRuntime({ ...runtime.mechanics(), crewAssignment: crewAssignment }, runtime.snapshot()),
+            95,
+            100,
+        );
+        const projectedFront = snapshot.locations.find(location => location.code === 'Front')!;
+
+        expect(snapshot.displayName).toBe('Test Tank T-1');
+        expect(snapshot.currentBattleValue).toBe(95);
+        expect(snapshot.pristineBattleValue).toBe(100);
+        expect(snapshot.movement).toEqual({ walk: 8, run: 0, maxRun: 0, jump: 0, umu: 0 });
+        expect(snapshot.crew[0]).toEqual(jasmine.objectContaining({
+            positionId: crewPositionId,
+            name: 'Morgan Kell',
+            gunnery: 3,
+            piloting: 4,
+            effectiveState: 'stunned',
+        }));
+        expect(projectedFront.sheetCode).toBe('FR');
+        expect(projectedFront.armor[0]).toEqual(jasmine.objectContaining({
+            faceId: face.id,
+            maximum: 3,
+            remaining: 2,
+            previewRemaining: 2,
+        }));
+    });
+
+    it('carries the permanent Driving Skill Roll modifiers of a damaged tank', () => {
+        const entity = new TestTankEntity();
+        entity.uuid.set(UUID);
+        entity.originalWalkMP.set(8);
+        const runtime = createNonMekRuntimeForTest('unit:tank-dsr', { ...baseline(), ruleset: TOTAL_WARFARE_RULESET }, entity,
+            TOTAL_WARFARE_RULESET);
+        for (const [system, timestamp] of [['commander', 10], ['driver', 20]] as const) {
+            expect(runtime.dispatch({
+                type: 'damage-track', damageTrackId: systemDamageId(system), amount: 1, target: 'committed', timestamp,
+            }).accepted).toBeTrue();
+        }
+
+        const sheet = projectNonMekRecordSheet(
+            entity, runtime.getIndex(), runtime.snapshot(), TOTAL_WARFARE_RULESET, runtime.query(), 100, 100,
+        );
+
+        // TW: Commander Hit +1 and Driver Hit +2 to all Driving Skill Rolls.
+        expect(sheet.controlRoll.shortLabel).toBe('DSR');
+        expect(sheet.controlRoll.modifiers).toEqual([
+            { modifier: 1, reason: 'Commander hit' },
+            { modifier: 2, reason: 'Driver/Pilot hit' },
+        ]);
+    });
+
+    it('projects one combined armor/internal row per Battle Armor trooper', () => {
+        const entity = new TestBattleArmorEntity();
+        entity.uuid.set(UUID);
+        entity.trooperCount.set(4);
+        entity.setArmorValue('Squad', 'front', 6);
+        const runtime = createNonMekRuntimeForTest(
+            'unit:battle-armor-sheet',
+            baseline(),
+            entity,
+            CORE_2026_RULESET,
+        );
+
+        const snapshot = projectNonMekRecordSheet(
+            entity,
+            runtime.getIndex(),
+            runtime.snapshot(),
+            CORE_2026_RULESET,
+            runtime.query(),
+            runtime.query().currentBaseBattleValue()!,
+            entity.battleValue(CORE_2026_RULESET),
+        );
+
+        expect(snapshot.locations.map(location => location.sheetCode)).toEqual(['T1', 'T2', 'T3', 'T4']);
+        expect(snapshot.locations.every(location => location.combinedPips === true)).toBeTrue();
+        expect(snapshot.locations.every(location => location.maximumInternal === 1
+            && location.armor[0]?.maximum === 6)).toBeTrue();
+    });
+
+    it('projects rules-derived Battle Armor destruction and zero movement', () => {
+        const entity = new TestBattleArmorEntity();
+        entity.uuid.set(UUID);
+        entity.trooperCount.set(1);
+        entity.originalWalkMP.set(1);
+        entity.propulsionMP.set(3);
+        entity.motiveType.set('Jump');
+        entity.setArmorValue('Squad', 'front', 2);
+        const runtime = createNonMekRuntimeForTest(
+            'unit:battle-armor-destroyed-sheet',
+            baseline(),
+            entity,
+            CORE_2026_RULESET,
+        );
+        const location = [...runtime.getIndex().locations.values()][0]!;
+        const face = runtime.getIndex().armorFaces.get(location.armorFaceIds[0]!)!;
+        runtime.dispatch({
+            type: 'set-armor-damage',
+
+            faceId: face.id,
+            damage: face.maximumPoints,
+        });
+        runtime.dispatch({
+            type: 'set-internal-damage',
+
+            locationId: location.id,
+            damage: location.internalPoints,
+        });
+
+        const snapshot = projectNonMekRecordSheet(
+            entity,
+            runtime.getIndex(),
+            runtime.snapshot(),
+            CORE_2026_RULESET,
+            runtime.query(),
+            runtime.query().currentBaseBattleValue()!,
+            entity.battleValue(CORE_2026_RULESET),
+        );
+
+        expect(snapshot.destroyed).toBeTrue();
+        expect(snapshot.movement).toEqual({ walk: 0, run: 0, maxRun: 0, jump: 0, umu: 0 });
+    });
+
+    it('shows no anti-\'Mech skill for conventional infantry that cannot make anti-\'Mech attacks', () => {
+        const piloting = (motive: 'Leg' | 'Wheeled') => {
+            const entity = new TestInfantryEntity();
+            entity.uuid.set(UUID);
+            entity.motiveType.set(motive);
+            const runtime = createNonMekRuntimeForTest('unit:infantry-sheet', baseline(), entity, CORE_2026_RULESET);
+            return projectNonMekRecordSheet(entity, runtime.getIndex(), runtime.snapshot(), CORE_2026_RULESET,
+                runtime.query(), runtime.query().currentBaseBattleValue()!, entity.battleValue(CORE_2026_RULESET),
+            ).crew[0]?.piloting;
+        };
+        // Untrained foot infantry keep the fixed 8; mechanized infantry cannot attempt anti-'Mech attacks at all.
+        expect(piloting('Leg')).toBe(8);
+        expect(piloting('Wheeled')).toBeNull();
+    });
+
+    it('projects conventional-infantry casualties onto the authored soldier grid', () => {
+        const entity = new TestInfantryEntity();
+        entity.uuid.set(UUID);
+        entity.squadSize.set(7);
+        entity.squadCount.set(4);
+        const runtime = createNonMekRuntimeForTest(
+            'unit:infantry-sheet',
+            baseline(),
+            entity,
+            CORE_2026_RULESET,
+        );
+
+        const snapshot = projectNonMekRecordSheet(
+            entity,
+            runtime.getIndex(),
+            runtime.snapshot(),
+            CORE_2026_RULESET,
+            runtime.query(),
+            runtime.query().currentBaseBattleValue()!,
+            entity.battleValue(CORE_2026_RULESET),
+        );
+
+        expect(snapshot.locations).toEqual([jasmine.objectContaining({
+            code: 'Infantry',
+            soldierPips: true,
+            maximumInternal: 28,
+        })]);
+    });
+
+    it('projects ProtoMek rules, crew controls, and effective movement', () => {
+        const entity = new TestProtoMekEntity();
+        entity.uuid.set(UUID);
+        entity.setTonnage(6);
+        entity.originalWalkMP.set(6);
+        const runtime = createNonMekRuntimeForTest(
+            'unit:protomek-sheet',
+            baseline(),
+            entity,
+            CORE_2026_RULESET,
+        );
+        const crewId = [...runtime.getIndex().crewPositions.keys()][0]!;
+        runtime.dispatch({
+            type: 'set-crew-state',
+
+            positionId: crewId,
+            wounds: 0,
+            unconscious: true,
+            ejected: false,
+        });
+
+        const snapshot = projectNonMekRecordSheet(
+            entity,
+            runtime.getIndex(),
+            runtime.snapshot(),
+            CORE_2026_RULESET,
+            runtime.query(),
+            runtime.query().currentBaseBattleValue()!,
+            entity.battleValue(CORE_2026_RULESET),
+        );
+
+        expect(snapshot.conditions).toContain('immobile');
+        expect(snapshot.conditionControlKeys).toEqual([
+            'swarmed', 'tagged', 'ecm-shielded', 'jammed',
+        ]);
+        expect(snapshot.crewStateControlKeys).toEqual(['stunned']);
+        expect(snapshot.crewStateDisplayKeys).toEqual(['stunned', 'killed']);
+        expect(snapshot.crew[0].effectiveState).toBe('stunned');
+        expect(snapshot.movement).toEqual({ walk: 0, run: 0, maxRun: 0, jump: 0, umu: 0 });
+    });
+
+    it('projects aerospace heat preview, dissipation, and effective destruction', () => {
+        const entity = new TestAeroSpaceFighterEntity();
+        entity.uuid.set(UUID);
+        entity.structuralIntegrity.set(8);
+        entity.heatSinkCount.set(10);
+        entity.heatSinkType.set('Double');
+        const runtime = createNonMekRuntimeForTest(
+            'unit:aero-sheet',
+            baseline(),
+            entity,
+            CORE_2026_RULESET,
+        );
+        runtime.dispatch({
+            type: 'set-pending-heat',
+
+            heat: 19,
+
+        });
+        runtime.dispatch({
+            type: 'set-heatsinks-off',
+
+            heatsinksOff: 2,
+        });
+        const snapshot = projectNonMekRecordSheet(
+            entity,
+            runtime.getIndex(),
+            runtime.snapshot(),
+            CORE_2026_RULESET,
+            runtime.query(),
+            runtime.query().currentBaseBattleValue()!,
+            entity.battleValue(CORE_2026_RULESET),
+        );
+
+        expect(snapshot.heat).toEqual(jasmine.objectContaining({
+            tracked: true,
+            current: 0,
+            pending: 19,
+            heatsinksOff: 2,
+            heatSinkCount: 10,
+            dissipation: 16,
+        }));
+        expect(snapshot.destroyed).toBeFalse();
+    });
+});
+
+const UUID = asUnitUuid('019f6767-0dcb-7bb8-992f-aef08202f5e1');
+
+function baseline(): InstanceBaselineRef {
+    return Object.freeze({
+        entity: UUID,
+        ruleset: CORE_2026_RULESET,
+        initialStateProfile: Object.freeze({
+            profileId: 'pristine-non-mek',
+        }),
+    });
+}
+
+import { createNonMekRuntimeForTest } from './testing/unit-runtime-owner-fixture';

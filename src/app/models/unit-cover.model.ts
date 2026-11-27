@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 // Author: Drake
 
-import type { UnitHeight } from './unit-summary.model';
+export type UnitHeight = 1 | 2 | 3;
 
 export type UnitWaterDepth = 'underwater-depth-1' | 'underwater-depth-2' | 'underwater-depth-3';
 export type UnitBuildingLevel = 'building-1' | 'building-2' | 'building-3';
@@ -12,6 +12,19 @@ export type SerializedUnitCover = 1 | 2 | 3 | 4 | 5 | 6 | 7 | 8;
 export interface UnitWaterState {
     partiallyUnderwater: boolean;
     submerged: boolean;
+}
+
+/** The force, building sheet and floor occupied by a target. */
+export interface ShelteringBuilding {
+    readonly forceId: string;
+    readonly unitId: string;
+    readonly location: string;
+}
+
+export function isShelteringBuilding(value: unknown): value is ShelteringBuilding {
+    if (!value || typeof value !== 'object') return false;
+    const ref = value as Partial<ShelteringBuilding>;
+    return [ref.forceId, ref.unitId, ref.location].every(key => typeof key === 'string' && key.length > 0 && key.length <= 128);
 }
 
 export type UnitBuildingCoverEffect = 'none' | 'partial' | 'heavy';
@@ -65,12 +78,13 @@ export function unitWaterDepthNumber(depth: UnitWaterDepth): 1 | 2 | 3 {
     return WATER_DEPTH_NUMBER[depth];
 }
 
-export function unitCoverWaterDepth(cover: UnitCover | undefined): 0 | 1 | 2 | 3 {
-    return isUnitWaterDepth(cover) ? unitWaterDepthNumber(cover) : 0;
-}
-
 export function isUnitBuildingLevel(cover: unknown): cover is UnitBuildingLevel {
     return cover === 'building-1' || cover === 'building-2' || cover === 'building-3';
+}
+
+export function isUnitCover(cover: unknown): cover is UnitCover {
+    return cover === 'light' || cover === 'heavy'
+        || isUnitWaterDepth(cover) || isUnitBuildingLevel(cover);
 }
 
 export function unitBuildingLevelNumber(level: UnitBuildingLevel): 1 | 2 | 3 {

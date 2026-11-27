@@ -145,16 +145,6 @@
     line-height: 1.45;
 }
 
-.chevron {
-    color: var(--text-color-secondary);
-    transition: transform 0.15s ease;
-    flex-shrink: 0;
-}
-
-.chevron.collapsed {
-    transform: rotate(-90deg);
-}
-
 .controls-panel {
     padding: 12px;
     overflow: auto;

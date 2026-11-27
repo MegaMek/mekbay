@@ -2,13 +2,15 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 // Author: Drake
 
-import { ArmorEquipment, StructureEquipment } from '../../../equipment.model';
+import { ArmorEquipment, StructureEquipment, createEquipment } from '../../../equipment.model';
 import { MountedArmor, MountedStructure } from '../../components';
-import { TestTankEntity } from '../../testing/test-entities';
+import { TestSupportTankEntity, TestTankEntity } from '../../testing/test-entities';
 import { createTestEquipmentRegistry } from '../../testing/test-equipment-registry';
+import { addTestEquipment } from '../../testing/test-mounted-equipment';
 import {
   calculateVehicleArmorWeight,
   calculateVehicleStructureWeight,
+  calculateVehicleTurretWeight,
   calculateVehicleWeightBreakdown,
 } from './vehicle-weight';
 
@@ -80,5 +82,21 @@ describe('combat vehicle construction mass', () => {
     entity.setTonnage(100);
     entity.hasNoControlSystems.set(true);
     expect(calculateVehicleWeightBreakdown(entity).controls).toBe(0);
+  });
+
+  it('leaves Modular Armor and heat sinks out of either turret\'s mass on combat and support vehicles (TM p. 241)', () => {
+    const laser = createEquipment({ id: 'Large Laser', name: 'Large Laser', type: 'weapon', stats: { tonnage: 5 } });
+    const modular = createEquipment({ id: 'Modular Armor', name: 'Modular Armor', type: 'misc', flags: ['F_MODULAR_ARMOR'], stats: { tonnage: 1 } });
+    const sink = createEquipment({ id: 'Heat Sink', name: 'Heat Sink', type: 'misc', flags: ['F_HEAT_SINK'], stats: { tonnage: 1 } });
+    for (const entity of [new TestTankEntity(), new TestSupportTankEntity()]) {
+      entity.setTonnage(50);
+      entity.hasTurret.set(true);
+      entity.hasDualTurret.set(true);
+      for (const location of ['Rear Turret', 'Front Turret'])
+        for (const item of [laser, modular, sink]) addTestEquipment(entity, item, { location });
+      // 5 t of laser, not 7 t with its armor and heat sink: 0.5 t per turret, not 1 t.
+      expect(calculateVehicleTurretWeight(entity, false)).withContext(entity.entityType).toBe(0.5);
+      expect(calculateVehicleTurretWeight(entity, true)).withContext(entity.entityType).toBe(0.5);
+    }
   });
 });

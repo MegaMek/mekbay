@@ -2,34 +2,47 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 // Author: Drake
 
-import type { Signal } from '@angular/core';
-import type { CBTForceUnit } from '../../models/cbt-force-unit.model';
-import type { MountedEquipment } from '../../models/mounted-equipment.model';
-import type { HandlerChoice, HandlerCommandContext, HandlerQueryContext, InventoryControlFireResult } from '../../services/equipment-interaction-registry.service';
-import type { InventoryControlRules } from '../../utils/inventory-control.util';
+import type { CBTForceMember } from '../../models/force-member.model';
+import type { CBTEquipmentChoiceCommand } from '../../models/cbt-force.types';
+import type { EquipmentInteractionKind } from '../../models/runtime/equipment-interaction';
+import type {
+    PickerChoiceColors,
+    PickerChoiceSelectionTone,
+    PickerDisplayType,
+    PickerValue,
+} from '../picker/picker.interface';
+import type { TooltipType } from '../tooltip/tooltip.component';
 
 export type EquipmentDialogTab = 'weapons' | 'ammo';
 
-export interface EquipmentDialogRegistry {
-    getChoices(entry: MountedEquipment, context: HandlerQueryContext): HandlerChoice[];
-    handleSelection(entry: MountedEquipment, choice: HandlerChoice, context: HandlerCommandContext): boolean | Promise<boolean>;
-    afterInventoryControlFire(entry: MountedEquipment): Promise<readonly InventoryControlFireResult[]>;
-    applyInventoryControlAmmoConsumption?(entry: MountedEquipment, count: number, context: HandlerQueryContext): number;
-    inventoryControlRules(context: HandlerQueryContext): InventoryControlRules;
+export interface EquipmentDialogDropdownChoice {
+    readonly label: string;
+    readonly value: PickerValue;
+    readonly command?: CBTEquipmentChoiceCommand;
+    readonly disabled?: boolean;
 }
 
-export interface EquipmentDialogContext {
-    registry: EquipmentDialogRegistry;
-    queryContext: HandlerQueryContext;
-    commandContext: HandlerCommandContext;
+/** Detached presentation choice projected from one runtime interaction. */
+export interface EquipmentDialogChoice {
+    readonly command?: CBTEquipmentChoiceCommand;
+    readonly interactionKind?: EquipmentInteractionKind;
+    readonly label: string;
+    readonly shortLabel?: string;
+    readonly value: PickerValue;
+    readonly disabled?: boolean;
+    readonly active?: boolean;
+    readonly selectionTone?: PickerChoiceSelectionTone;
+    readonly colors?: Readonly<PickerChoiceColors>;
+    readonly keepOpen?: boolean;
+    readonly displayType?: PickerDisplayType;
+    readonly choices?: readonly EquipmentDialogDropdownChoice[];
+    readonly tooltipType?: TooltipType;
+    readonly failureTarget?: number;
 }
 
+/** The equipment dialog has one authority: an admitted Entity + runtime member. */
 export interface EquipmentDialogData {
-    unit?: CBTForceUnit;
-    unitList?: CBTForceUnit[] | Signal<CBTForceUnit[]>;
-    unitIndex?: number;
-    onUnitChange?: (unit: CBTForceUnit, unitIndex: number) => void;
-    context: EquipmentDialogContext;
-    readOnly?: boolean;
-    initialTab?: EquipmentDialogTab;
+    readonly member: CBTForceMember;
+    readonly initialTab?: EquipmentDialogTab;
+    readonly onMemberChange?: (member: CBTForceMember, index: number) => void;
 }

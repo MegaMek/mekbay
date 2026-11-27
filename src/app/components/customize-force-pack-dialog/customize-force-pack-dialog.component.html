@@ -21,7 +21,7 @@
             <div class="unit-list">
                 @for (cu of customizableUnits(); let i = $index; track i) {
                     @let isOpen = openDropdownIndex() === i;
-                    @let isModified = cu.unit?.name !== cu.originalUnit?.name;
+                    @let isModified = cu.unit?.uuid !== cu.originalUnit?.uuid;
                     <unit-card-compact
                         [unit]="cu.unit"
                         [gameSystem]="gameSystem()"
@@ -42,8 +42,8 @@
                     <variant-dropdown-panel
                         [variants]="variantsForSelected()"
                         [gameSystem]="gameSystem()"
-                        [originalUnitName]="selectedUnit?.originalUnit?.name ?? null"
-                        [currentUnitName]="selectedUnit?.unit?.name ?? null"
+                        [originalUnitUuid]="selectedUnit?.originalUnit?.uuid ?? null"
+                        [currentUnitUuid]="selectedUnit?.unit?.uuid ?? null"
                         (selected)="onDockedVariantSelect($event)"
                         (infoRequested)="onDockedVariantInfo($event)">
                     </variant-dropdown-panel>

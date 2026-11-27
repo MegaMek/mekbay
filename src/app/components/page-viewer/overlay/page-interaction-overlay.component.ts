@@ -2,41 +2,46 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 // Author: Drake
 
-import {
-    Component,
-    ChangeDetectionStrategy,
-    inject,
-    Injector,
-    input,
-    computed,
-    ElementRef,
-    DestroyRef,
-    effect,
-} from '@angular/core';
-import { CommonModule } from '@angular/common';
 import { Overlay } from '@angular/cdk/overlay';
 import { ComponentPortal } from '@angular/cdk/portal';
-import { DialogsService } from '../../../services/dialogs.service';
-import { LoggerService } from '../../../services/logger.service';
-import { OverlayManagerService } from '../../../services/overlay-manager.service';
-import { DataService } from '../../../services/data.service';
-import { createHandlerCommandContext, createHandlerQueryContext, EquipmentInteractionRegistryService } from '../../../services/equipment-interaction-registry.service';
-import { ForceBuilderService } from '../../../services/force-builder.service';
-import { ToastService } from '../../../services/toast.service';
-import { CBTPhaseResolutionService } from '../../../services/cbt-phase-resolution.service';
-import type { CBTForceUnit } from '../../../models/cbt-force-unit.model';
-import type { CBTForce } from '../../../models/cbt-force.model';
-import { togglePsrWarningOverlay } from './page-psr-warning-panel.component';
-import { PageTurnSummaryPanelComponent } from './page-turn-summary-panel.component';
-import { PageViewerStateService } from '../internal/page-viewer-state.service';
-import { EquipmentDialogComponent } from '../../equipment-dialog/equipment-dialog.component';
-import type { EquipmentDialogContext, EquipmentDialogData } from '../../equipment-dialog/equipment-dialog.model';
 import {
-    UnitNotificationBadgesComponent,
-    type UnitNotificationActivation,
-} from '../../unit-notification-badges/unit-notification-badges.component';
+ChangeDetectionStrategy,
+Component,
+computed,
+DestroyRef,
+effect,
+ElementRef,
+inject,
+Injector,
+input,
+signal,
+} from '@angular/core';
+import { merge } from 'rxjs';
+import type { CBTForce } from '../../../models/cbt-force.model';
+import { hasNonMekRuntime } from '../../../models/cbt-unit-snapshot';
+import { isCBTMekForceMember } from '../../../models/force-member.model';
+import { mekTurnPanelPhase } from '../../../models/runtime/mek-turn-panel';
+import { CBTAutomationToastService } from '../../../services/cbt-automation-toast.service';
+import { DialogsService } from '../../../services/dialogs.service';
+import { ForceWorkspaceStateService } from '../../../services/force-workspace-state.service';
+import { GameTurnService } from '../../../services/game-turn.service';
+import { heatAutomationPolicy, OptionsService } from '../../../services/options.service';
+import { OverlayManagerService } from '../../../services/overlay-manager.service';
+import { ToastService } from '../../../services/toast.service';
+import { mekTurnMovementIndicator, nonMekTurnMovementIndicator } from '../../../utils/turn-movement-indicator.util';
+import { EquipmentDialogComponent } from '../../equipment-dialog/equipment-dialog.component';
+import type { EquipmentDialogData } from '../../equipment-dialog/equipment-dialog.model';
 import { WeaponTargetsOverlayController } from '../../equipment-dialog/weapon-targets-overlay.controller';
-import { getTurnMovementIndicator } from '../../../utils/turn-movement-indicator.util';
+import {
+UnitNotificationBadgesComponent,
+type UnitNotificationActivation,
+} from '../../unit-notification-badges/unit-notification-badges.component';
+import { projectRuntimeUnitNotifications } from '../../unit-notification-badges/unit-notification-runtime.util';
+import { PageViewerStateService } from '../internal/page-viewer-state.service';
+import type { PageViewerMember } from '../internal/types';
+import { togglePsrWarningOverlay } from './page-psr-warning-panel.component';
+import { toggleRuntimeHistoryOverlay } from './page-runtime-history-panel.component';
+import { PageTurnSummaryPanelComponent } from './page-turn-summary-panel.component';
 
 const PAGE_TARGETS_OVERLAY_PREFIX = 'page-viewer-targets';
 
@@ -50,27 +55,26 @@ const PAGE_TARGETS_OVERLAY_PREFIX = 'page-viewer-targets';
 @Component({
     selector: 'page-interaction-overlay',
     changeDetection: ChangeDetectionStrategy.OnPush,
-    imports: [CommonModule, UnitNotificationBadgesComponent],
+    imports: [UnitNotificationBadgesComponent],
     templateUrl: './page-interaction-overlay.component.html',
     host: {
         '[class.fixed-mode]': 'mode() === "fixed"'
     },
-    styleUrls: [`./page-interaction-overlay.component.scss`]
+    styleUrl: './page-interaction-overlay.component.scss'
 })
 export class PageInteractionOverlayComponent {
-    private logger = inject(LoggerService);
     private injector = inject(Injector);
     private destroyRef = inject(DestroyRef);
     private dialogsService = inject(DialogsService);
     private overlayManager = inject(OverlayManagerService);
+    protected readonly optionsService = inject(OptionsService);
     private overlay = inject(Overlay);
     private host = inject(ElementRef<HTMLElement>);
     private pageViewerState = inject(PageViewerStateService);
-    private dataService = inject(DataService);
-    private equipmentRegistryService = inject(EquipmentInteractionRegistryService);
-    private forceBuilderService = inject(ForceBuilderService);
+    private forceWorkspace = inject(ForceWorkspaceStateService);
     private toastService = inject(ToastService);
-    private phaseResolution = inject(CBTPhaseResolutionService);
+    private readonly automationToasts = inject(CBTAutomationToastService);
+    private readonly automationToastVisibilityOwner = {};
     private targetsOverlay = new WeaponTargetsOverlayController({
         overlay: this.overlay,
         overlayManager: this.overlayManager,
@@ -79,39 +83,98 @@ export class PageInteractionOverlayComponent {
     });
 
     // Inputs
-    unit = input<CBTForceUnit | null>(null);
+    member = input<PageViewerMember | null>(null);
     force = input<CBTForce | null>(null);
-    
+    private readonly runtimeVersion = signal(0);
+    readonly isMek = computed(() => isCBTMekForceMember(this.member()));
+    readonly supportsTargeting = computed(() => {
+        this.runtimeVersion();
+        const member = this.member();
+        return member !== null && member.force.getAttackerTargeting(member.id) !== null;
+    });
+    readonly turn = computed(() => {
+        this.runtimeVersion();
+        const member = this.member();
+        return isCBTMekForceMember(member) ? member.force.getMekTurnPanelSnapshot(
+            member.id,
+        ) : null;
+    });
+    readonly notificationSnapshot = computed(() => {
+        this.runtimeVersion();
+        const member = this.member();
+        return member
+            ? projectRuntimeUnitNotifications(
+                member.force.getUnitSnapshot(member.id),
+                {
+                    pilotSkillCheck: this.optionsService.cbtAutomationMode('pilotSkillCheck'),
+                    pilotHitsAndConsciousnessCheck: this.optionsService.cbtAutomationMode(
+                        'pilotHitsAndConsciousnessCheck',
+                    ),
+                    heatAndDissipationResolution: this.optionsService.cbtAutomationMode(
+                        'heatAndDissipationResolution',
+                    ),
+                    heatEffectsCheck: this.optionsService.cbtAutomationMode('heatEffectsCheck'),
+                },
+            )
+            : null;
+    });
+    private readonly entityTurn = computed(() => {
+        this.runtimeVersion();
+        const member = this.member();
+        if (!member || isCBTMekForceMember(member)) return null;
+        const snapshot = member.force.getUnitSnapshot(member.id);
+        return snapshot && hasNonMekRuntime(snapshot) ? snapshot : null;
+    });
     /**
      * When 'fixed', the overlay is bound to the container and stays stable during zoom/pan.
      * When 'page', the overlay is bound to the page-wrapper and moves with zoom/pan.
-     * Default is 'page' for backwards compatibility and multi-page mode.
+     * Page mode is the normal multi-page layout; fixed mode is opt-in.
      */
     mode = input<'fixed' | 'page'>('page');
+    showTopRightControls = input(true);
     
     get nativeElement(): HTMLElement {
         return this.host.nativeElement;
     }
 
+    protected readonly gameTurn = inject(GameTurnService);
     dirtyPhase = computed(() => {
-        const unit = this.unit();
-        if (!unit) return false;
-        return unit.turnState().dirtyPhase();
+        this.runtimeVersion();
+        const member = this.member();
+        return member?.force.getUnitSnapshot(member.id)?.query.hasPendingPhaseChanges() === true;
     });
 
-    movementIndicator = computed(() => {
-        const unit = this.unit();
-        if (!unit) return null;
-        const turnState = unit.turnState();
-        return getTurnMovementIndicator(
-            turnState.moveMode(),
-            turnState.getTotalTargetModifierAsDefender().modifier,
-        );
+    currentPhase = computed(() => {
+        const turn = this.turn();
+        return turn ? mekTurnPanelPhase(turn) : this.entityTurn() ? 'T' : 'M';
     });
+
+    readonly movementIndicator = computed(() =>
+        mekTurnMovementIndicator(this.turn()) ?? nonMekTurnMovementIndicator(this.entityTurn()));
 
     turnTrackerVisible = computed(() => !this.pageViewerState.inventoryDialogOpen());
 
     constructor() {
+        effect(() => {
+            const member = this.member();
+            this.automationToasts.setVisibleUnitIds(
+                this.automationToastVisibilityOwner,
+                member ? [member.id] : [],
+            );
+        });
+        this.destroyRef.onDestroy(() => this.automationToasts.clearVisibleUnitIds(
+            this.automationToastVisibilityOwner,
+        ));
+        effect(onCleanup => {
+            const member = this.member();
+            if (!member) return;
+            const subscription = merge(member.force.changed, member.force.sessionChanged).subscribe(changedUnitIds => {
+                if (changedUnitIds?.includes(member.id) ?? true) {
+                    this.runtimeVersion.update(value => value + 1);
+                }
+            });
+            onCleanup(() => subscription.unsubscribe());
+        });
         effect(() => {
             if (this.pageViewerState.inventoryDialogOpen()) {
                 this.closeAllOverlays();
@@ -119,12 +182,13 @@ export class PageInteractionOverlayComponent {
         });
     }
 
-    openTurnSummary(event: MouseEvent) {
+    openTurnSummary(event: Event): void {
         event.stopPropagation();
         if (!this.turnTrackerVisible()) return;
 
-        const unitId = this.unit()?.id;
-        const overlayKey = `turnSummary-${unitId}`;
+        const member = this.member();
+        if (!member) return;
+        const overlayKey = `turnSummary-${member.id}`;
 
         // Toggle: close if already open
         if (this.overlayManager.has(overlayKey)) {
@@ -136,17 +200,9 @@ export class PageInteractionOverlayComponent {
 
         const target = event.currentTarget as HTMLElement || (event.target as HTMLElement);
 
-        // Create a custom injector that provides this component as the parent
-        const customInjector = Injector.create({
-            providers: [
-                { provide: PageInteractionOverlayComponent, useValue: this }
-            ],
-            parent: this.injector
-        });
+        const portal = new ComponentPortal(PageTurnSummaryPanelComponent, null, this.injector);
 
-        const portal = new ComponentPortal(PageTurnSummaryPanelComponent, null, customInjector);
-
-        this.overlayManager.createManagedOverlay<PageTurnSummaryPanelComponent>(overlayKey, target, portal, {
+        const { componentRef } = this.overlayManager.createManagedOverlay<PageTurnSummaryPanelComponent>(overlayKey, target, portal, {
             hasBackdrop: false,
             panelClass: 'turn-summary-overlay-panel',
             closeOnOutsideClick: false,
@@ -154,82 +210,57 @@ export class PageInteractionOverlayComponent {
             sensitiveAreaReferenceElement: this.nativeElement,
             scrollStrategy: this.overlay.scrollStrategies.reposition()
         });
-    }
 
-    openNotification({ kind, event }: UnitNotificationActivation): void {
-        switch (kind) {
-            case 'fall':
-                if ((this.unit()?.pendingFallCount?.() ?? 0) > 0) {
-                    void this.openPendingFalls(event);
-                } else {
-                    this.openPsrWarning(event);
-                }
-                break;
-            case 'psr':
-                void this.openPendingUnitChecks(event);
-                break;
-            case 'critical-chance':
-                void this.openPendingCriticalChances(event);
-                break;
-            case 'critical-hit':
-                void this.openPendingCriticalHits(event);
-                break;
-            case 'unit-check':
-                void this.openPendingUnitChecks(event);
-                break;
+        if (componentRef) {
+            componentRef.setInput('member', member);
         }
     }
 
     openPsrWarning(event: Event): void {
         event.stopPropagation();
         if (!this.turnTrackerVisible()) return;
-        togglePsrWarningOverlay(this, this.overlayManager, this.injector, this.overlay, () => this.closeAllOverlays());
+        const member = this.member();
+        togglePsrWarningOverlay(
+            isCBTMekForceMember(member) ? member : null,
+            this.overlayManager,
+            this.injector,
+            this.overlay,
+            () => this.closeAllOverlays(),
+        );
     }
 
-    async openPendingCriticalHits(event: Event): Promise<void> {
+    async openNotification({ kind, event }: UnitNotificationActivation): Promise<void> {
+        if (kind === 'fall') {
+            const pendingFall = this.notificationSnapshot()?.pendingEvents.some(candidate =>
+                candidate.kind === 'fall' && candidate.count > 0) === true;
+            if (!pendingFall) {
+                this.openPsrWarning(event);
+                return;
+            }
+        }
         event.stopPropagation();
         if (!this.turnTrackerVisible()) return;
-        const unit = this.unit();
-        if (!unit) return;
+        const member = this.member();
+        if (!member) return;
         this.closeAllOverlays();
-        await this.phaseResolution.resumePendingChain(unit);
+        await member.force.resolvePendingUnitAutomation(member.id);
     }
 
-    async openPendingCriticalChances(event: Event): Promise<void> {
+    toggleUnitView(event: Event): void {
         event.stopPropagation();
-        if (!this.turnTrackerVisible()) return;
-        const unit = this.unit();
-        if (!unit) return;
         this.closeAllOverlays();
-        await this.phaseResolution.resumePendingChain(unit);
-    }
-
-    async openPendingUnitChecks(event: Event): Promise<void> {
-        event.stopPropagation();
-        if (!this.turnTrackerVisible()) return;
-        const unit = this.unit();
-        if (!unit) return;
-        this.closeAllOverlays();
-        await this.phaseResolution.resumePendingChain(unit);
-    }
-
-    async openPendingFalls(event: Event): Promise<void> {
-        event.stopPropagation();
-        if (!this.turnTrackerVisible()) return;
-        const unit = this.unit();
-        if (!unit) return;
-        this.closeAllOverlays();
-        await this.phaseResolution.resumePendingChain(unit);
+        const mode = this.optionsService.options().cbtUnitViewMode;
+        void this.optionsService.setOption('cbtUnitViewMode', mode === 'sheet' ? 'tactical' : 'sheet');
     }
 
     openTargets(event: MouseEvent): void {
         event.stopPropagation();
         if (!this.turnTrackerVisible()) return;
 
-        const unit = this.unit();
-        if (!unit) return;
+        const member = this.member();
+        if (!member || !this.supportsTargeting()) return;
 
-        const overlayKey = this.targetsOverlayKey(unit.id);
+        const overlayKey = this.targetsOverlayKey(member.id);
         if (this.targetsOverlay.has(overlayKey)) {
             this.targetsOverlay.close(overlayKey);
             return;
@@ -241,36 +272,44 @@ export class PageInteractionOverlayComponent {
         this.targetsOverlay.open({
             overlayKey,
             target,
-            unit,
-            sensitiveAreaReferenceElement: this.nativeElement,
-            afterTargetUpdate: updatedUnit => updatedUnit.syncInventoryControlSelectionSvg()
+            member,
+            sensitiveAreaReferenceElement: this.nativeElement
         });
     }
 
-    openWeaponEquipmentDialog(event: MouseEvent): void {
+    openRuntimeHistory(event: MouseEvent): void {
+        event.stopPropagation();
+        if (!this.turnTrackerVisible()) return;
+        const force = this.force();
+        if (!force) return;
+        toggleRuntimeHistoryOverlay(
+            force,
+            this.member()?.id ?? null,
+            event.currentTarget as HTMLElement,
+            this.nativeElement,
+            this.overlayManager,
+            this.overlay,
+            this.injector,
+            () => this.closeAllOverlays(),
+        );
+    }
+
+    openWeaponEquipmentDialog(event: Event, initialTab: 'weapons' | 'ammo' = 'weapons'): void {
         event.stopPropagation();
         if (!this.turnTrackerVisible()) return;
 
-        const unit = this.unit();
-        if (!unit) return;
+        const member = this.member();
+        if (!member) return;
 
         this.closeAllOverlays();
-        const unitList = this.pageViewerState.forceUnits().length > 0 ? this.pageViewerState.forceUnits() : [unit];
-        const equipmentCatalog = this.dataService.getEquipmentRegistry();
-        const context: EquipmentDialogContext = {
-            registry: this.equipmentRegistryService.getRegistry(),
-            queryContext: createHandlerQueryContext(equipmentCatalog),
-            commandContext: createHandlerCommandContext(equipmentCatalog, this.toastService, this.dialogsService),
-        };
         this.pageViewerState.beginInventoryDialog();
         const ref = this.dialogsService.createDialog<void>(EquipmentDialogComponent, {
+            panelClass: 'fullscreen-dialog',
             data: {
-                unitList,
-                unitIndex: Math.max(0, unitList.findIndex(candidate => candidate.id === unit.id)),
-                onUnitChange: (selectedUnit) => this.forceBuilderService.selectUnit(selectedUnit),
-                context,
-                initialTab: 'weapons'
-            } as EquipmentDialogData,
+                member,
+                initialTab,
+                onMemberChange: selected => this.forceWorkspace.selectUnit(selected),
+            } satisfies EquipmentDialogData,
         });
         ref.closed.subscribe(() => this.pageViewerState.endInventoryDialog());
     }
@@ -279,13 +318,56 @@ export class PageInteractionOverlayComponent {
         return `${PAGE_TARGETS_OVERLAY_PREFIX}-${unitId}`;
     }
 
-    async endPhase(event: MouseEvent): Promise<void> {
+    async endPhase(event: MouseEvent) {
         event.stopPropagation();
-        const unit = this.unit();
-        if (!unit) return;
-
         this.closeAllOverlays();
-        await this.phaseResolution.endPhase(unit);
+        await this.dispatchTurnBoundary('end-phase');
+    }
+
+    async endTurn(event: MouseEvent) {
+        event.stopPropagation();
+        await this.dispatchTurnBoundary('end-turn');
+    }
+
+    private async dispatchTurnBoundary(type: 'end-phase' | 'end-turn'): Promise<void> {
+        const member = this.member();
+        const snapshot = this.turn();
+        if (!member) return;
+        try {
+            const result = isCBTMekForceMember(member) && snapshot
+                ? await member.force.dispatchUnitCommand(member.id, type === 'end-turn'
+                    ? {
+                        type,
+                        policy: heatAutomationPolicy(this.optionsService),
+                    }
+                    : {
+                        type,
+                    })
+                : type === 'end-phase'
+                    ? await this.dispatchEntityTurnBoundary(member, 'end-phase')
+                    : await this.dispatchEntityTurnBoundary(member, 'end-turn');
+            if (result === null) return;
+            if (!result.accepted) {
+                this.toastService.showToast('This force is read-only.', 'error');
+            }
+        } catch (error) {
+            this.toastService.showToast(
+                `Turn action failed: ${error instanceof Error ? error.message : 'unexpected error'}`,
+                'error',
+            );
+        }
+    }
+
+    private dispatchEntityTurnBoundary(
+        member: PageViewerMember,
+        kind: 'end-phase' | 'end-turn',
+    ) {
+        const snapshot = member.force.getUnitSnapshot(member.id);
+        if (!snapshot || !hasNonMekRuntime(snapshot)) return Promise.resolve(null);
+        return member.force.dispatchUnitCommand(member.id, {
+            type: kind,
+            policy: 'automatic',
+        });
     }
 
     /**

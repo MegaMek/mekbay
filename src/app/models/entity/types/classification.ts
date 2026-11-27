@@ -4,14 +4,7 @@
 
 /** Broad Classic BattleTech classification exposed by an entity. */
 export type UnitType =
-  | 'Aero'
-  | 'Handheld Weapon'
-  | 'Infantry'
-  | 'Mek'
-  | 'Naval'
-  | 'ProtoMek'
-  | 'Tank'
-  | 'VTOL';
+  'Aero' | 'Building' | 'Handheld Weapon' | 'Infantry' | 'Mek' | 'Naval' | 'ProtoMek' | 'Tank' | 'VTOL';
 
 /** Detailed Classic BattleTech classification exposed by an entity. */
 export type UnitSubtype =
@@ -28,6 +21,8 @@ export type UnitSubtype =
   | 'Civilian Spheroid DropShip'
   | 'Combat Vehicle'
   | 'Combat Vehicle Omni'
+  | 'Building'
+  | 'Mobile Structure'
   | 'Conventional Fighter'
   | 'Conventional Infantry'
   | 'Fixed Wing Support Vehicle'

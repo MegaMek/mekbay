@@ -2,10 +2,12 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 // Author: Drake
 
-import { Component, ChangeDetectionStrategy, inject, input, signal, effect, computed, DestroyRef } from '@angular/core';
+import { UnitNameService } from '../../services/unit-name.service';
+import { Component, ChangeDetectionStrategy, inject, input, signal, effect, computed, PendingTasks } from '@angular/core';
 
 import { SpriteStorageService, type SpriteIconInfo } from '../../services/sprite-storage.service';
 import type { UnitSummary } from '../../models/unit-summary.model';
+import { BaseEntity } from '../../models/entity/base-entity';
 
 interface SpriteData {
   url: string;
@@ -18,11 +20,10 @@ const DEFAULT_HEIGHT = 72;
 
 @Component({
   selector: 'unit-icon',
-  standalone: true,
-  imports: [],
   changeDetection: ChangeDetectionStrategy.OnPush,
   template: `
     <div class="icon-container"
+         role="img" [attr.aria-label]="displayAlt()"
          [class]="styleClass()"
          [style.width.px]="containerWidth()"
          [style.height.px]="containerHeight()">
@@ -34,8 +35,8 @@ const DEFAULT_HEIGHT = 72;
              [style.background-position]="'-' + sprite.info.x + 'px -' + sprite.info.y + 'px'"
              [style.transform]="'scale(' + scale() + ')'">
         </div>
-      } @else if (!isLoading()) {
-        <img [src]="FALLBACK" [alt]="displayAlt()" draggable="false">
+      } @else {
+        <img [src]="FALLBACK" alt="" draggable="false">
       }
     </div>
   `,
@@ -59,13 +60,16 @@ const DEFAULT_HEIGHT = 72;
   `]
 })
 export class UnitIconComponent {
+  readonly unitNames = inject(UnitNameService);
   private spriteService = inject(SpriteStorageService);
-  private destroyed = false;
+  private pendingTasks = inject(PendingTasks);
   
   isLoading = this.spriteService.loading;
   
   // Inputs
-  unit = input<UnitSummary | undefined | null>(null);
+  unit = input<UnitSummary | BaseEntity | undefined | null>(null);
+  /** Direct tileset preview, used by the icon picker. */
+  iconPath = input<string>();
   alt = input<string | undefined>(undefined);
   styleClass = input<string>('');
   
@@ -82,10 +86,11 @@ export class UnitIconComponent {
 
   private unitLabel = computed(() => {
     const u = this.unit();
-    return u ? `${u.chassis || ''} ${u.model || ''}`.trim() : '';
+    if (!u) return '';
+    return this.unitNames.name(u);
   });
 
-  displayAlt = computed(() => this.alt() || this.unitLabel());
+  displayAlt = computed(() => this.alt() || this.unitLabel() || this.iconPath() || 'Unit icon');
 
   /** Container width: explicit input or sprite's natural width */
   containerWidth = computed(() => {
@@ -114,34 +119,25 @@ export class UnitIconComponent {
   });
 
   constructor() {
-    inject(DestroyRef).onDestroy(() => {
-      this.destroyed = true;
-    });
-    
-    effect(() => {
-      const path = this.unit()?.icon;
+    effect(onCleanup => {
+      const unit = this.unit();
       const loading = this.isLoading();
-
+      const path = this.iconPath() ?? (unit ? this.spriteService.resolveIconPath(unit) : '');
+      let current = true;
+      onCleanup(() => { current = false; });
       if (!path || loading) {
         this.spriteData.set(null);
         return;
       }
-
-      // Try synchronous cache first (hot path)
       const cached = this.spriteService.getCachedSpriteInfo(path);
-      if (cached) {
-        this.spriteData.set(cached);
-        return;
+      this.spriteData.set(cached);
+      if (!cached) {
+        void this.pendingTasks.run(() => this.spriteService.getSpriteInfo(path).then(info => {
+          if (current) this.spriteData.set(info);
+        }).catch(() => {
+          if (current) this.spriteData.set(null);
+        }));
       }
-
-      // Fallback to async load
-      this.spriteService.getSpriteInfo(path).then(info => {
-        // Guard against setting state on destroyed component
-        if (this.destroyed) return;
-        this.spriteData.set(info);
-      }).catch(() => {
-        this.spriteData.set(null);
-      });
     });
   }
 }

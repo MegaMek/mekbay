@@ -4,65 +4,104 @@
 
 import { Injectable, inject } from '@angular/core';
 
-import { REMOTE_HOST } from '../../models/common.model';
-import { EMPTY_EQUIPMENT_REGISTRY, EquipmentRegistry } from '../../models/equipment-lookup';
-import { type EquipmentMap, type RawEquipmentData, createEquipment } from '../../models/equipment.model';
-import { DbService } from '../db.service';
+import {
+    EMPTY_EQUIPMENT_REGISTRY,
+    type EquipmentRegistry,
+} from '../../models/equipment-lookup';
+import type { RawEquipmentData } from '../../models/equipment.model';
 import { LoggerService } from '../logger.service';
-import { CatalogBaseService } from './catalog-base.service';
+import {
+    CatalogBaseService,
+    type PreparedCatalogTransport,
+} from './catalog-base.service';
+import { buildEquipmentRegistry } from './equipment-catalog-builder';
+
+export { isPlaytestEquipment } from './equipment-catalog-policy';
+
+export interface PreparedEquipmentCatalog {
+    readonly transport: PreparedCatalogTransport<RawEquipmentData>;
+    readonly registry: EquipmentRegistry;
+    readonly contentRevision: string;
+}
 
 @Injectable({
     providedIn: 'root'
 })
 export class EquipmentCatalogService extends CatalogBaseService<RawEquipmentData, RawEquipmentData, RawEquipmentData> {
-    private readonly dbService = inject(DbService);
     private readonly catalogLogger = inject(LoggerService);
 
     private equipmentRegistry = EMPTY_EQUIPMENT_REGISTRY;
+    private contentRevision = 'unversioned';
 
     protected override get catalogKey(): string {
         return 'equipment';
     }
 
-    protected override get remoteUrl(): string {
-        return `${REMOTE_HOST}/equipment2.json`;
+    protected override get repositoryAssetPath(): string {
+        return 'online-assets/static/equipment.json';
     }
 
     public getEquipmentRegistry(): EquipmentRegistry {
         return this.equipmentRegistry;
     }
 
+    public override getCatalogRevision(): string {
+        return this.contentRevision;
+    }
+
+    public async prepareRemoteCatalog(
+        previous?: PreparedEquipmentCatalog,
+        signal?: AbortSignal,
+    ): Promise<PreparedEquipmentCatalog> {
+        return this.prepareCatalog(await this.prepareRemoteTransport(previous?.transport, signal));
+    }
+
+    /** Rebuilds runtime state from a bundle already verified at its trust boundary. */
+    public prepareBundledCatalog(
+        data: RawEquipmentData,
+    ): PreparedEquipmentCatalog {
+        return this.prepareCatalog(Object.freeze({ source: 'bundle' as const, data }));
+    }
+
+    /** Assignment-only commit used by the atomic application bundle coordinator. */
+    public commitPreparedCatalog(candidate: PreparedEquipmentCatalog): void {
+        this.equipmentRegistry = candidate.registry;
+        this.contentRevision = candidate.contentRevision;
+        this.markPreparedCatalogCommitted(candidate.transport.data);
+    }
+
     protected override hasHydratedData(): boolean {
         return this.equipmentRegistry.size > 0;
     }
 
-    protected override async loadFromCache(): Promise<RawEquipmentData | undefined> {
-        return await this.dbService.getEquipments() ?? undefined;
-    }
-
-    protected override saveToCache(data: RawEquipmentData): Promise<void> {
-        return this.dbService.saveEquipment(data);
-    }
-
     protected override hydrate(data: RawEquipmentData): void {
-        const normalizedEquipment: EquipmentMap = {};
-
-        for (const [internalName, cachedEquipment] of Object.entries(data.equipment ?? {})) {
-            try {
-                normalizedEquipment[internalName] = createEquipment(cachedEquipment);
-            } catch (error) {
-                this.catalogLogger.error(`Failed to hydrate cached equipment ${internalName}: ${error}`);
-            }
-        }
-
-        this.equipmentRegistry = new EquipmentRegistry(normalizedEquipment);
-        this.etag = data.etag || '';
+        this.equipmentRegistry = buildEquipmentRegistry(data, (internalName, error) => {
+            this.catalogLogger.error(`Failed to hydrate cached equipment ${internalName}: ${error}`);
+        });
+        this.transportRevision = data.assetHash || '';
     }
 
-    protected override normalizeFetchedData(data: RawEquipmentData, etag: string): RawEquipmentData {
+    protected override afterInitialize(): Promise<void> {
+        this.contentRevision = this.transportRevision || 'unversioned';
+        return Promise.resolve();
+    }
+
+    private prepareCatalog(
+        transport: PreparedCatalogTransport<RawEquipmentData>,
+    ): PreparedEquipmentCatalog {
+        const registry = buildEquipmentRegistry(transport.data);
+        if (registry.size === 0) throw new Error('Equipment catalog prepared to an empty registry');
+        return {
+            transport,
+            registry,
+            contentRevision: transport.data.assetHash || transport.data.version || 'unversioned',
+        };
+    }
+
+    protected override normalizeFetchedData(data: RawEquipmentData, assetHash: string): RawEquipmentData {
         return {
             ...data,
-            etag,
+            assetHash,
         };
     }
 

@@ -183,7 +183,7 @@ export interface MegaMekRulesetRecord {
 }
 
 export interface MegaMekRulesetsData {
-    etag: string;
+    assetHash: string;
     version: number;
     rulesets: MegaMekRulesetRecord[];
 }

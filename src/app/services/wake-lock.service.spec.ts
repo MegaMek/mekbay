@@ -4,7 +4,7 @@
 
 import { provideZonelessChangeDetection, signal } from '@angular/core';
 import { TestBed } from '@angular/core/testing';
-import { ForceBuilderService } from './force-builder.service';
+import { ForceWorkspaceStateService } from './force-workspace-state.service';
 import { LobbyService } from './lobby.service';
 import { LoggerService } from './logger.service';
 import { WakeLockService } from './wake-lock.service';
@@ -85,7 +85,7 @@ describe('WakeLockService', () => {
                 provideZonelessChangeDetection(),
                 WakeLockService,
                 {
-                    provide: ForceBuilderService,
+                    provide: ForceWorkspaceStateService,
                     useValue: { hasForces },
                 },
                 {
@@ -126,16 +126,6 @@ describe('WakeLockService', () => {
         expect(sentinels.length).toBe(1);
     });
 
-    it('acquires a wake lock when the user joins a lobby without loaded forces', async () => {
-        TestBed.inject(WakeLockService);
-
-        hasLobby.set(true);
-        await flushWakeLockTasks();
-
-        expect(requestSpy).toHaveBeenCalledOnceWith('screen');
-        expect(sentinels.length).toBe(1);
-    });
-
     it('releases the wake lock when all forces are unloaded', async () => {
         TestBed.inject(WakeLockService);
 
@@ -146,6 +136,16 @@ describe('WakeLockService', () => {
 
         expect(sentinels.length).toBe(1);
         expect(sentinels[0].release).toHaveBeenCalledTimes(1);
+    });
+
+    it('acquires a wake lock when the user joins a lobby without loaded forces', async () => {
+        TestBed.inject(WakeLockService);
+
+        hasLobby.set(true);
+        await flushWakeLockTasks();
+
+        expect(requestSpy).toHaveBeenCalledOnceWith('screen');
+        expect(sentinels.length).toBe(1);
     });
 
     it('keeps the wake lock after forces unload while the user remains in a lobby', async () => {

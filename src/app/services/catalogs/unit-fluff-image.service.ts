@@ -1,0 +1,174 @@
+// Copyright (C) 2026 The MegaMek Team
+// SPDX-License-Identifier: GPL-3.0-or-later
+// Author: Drake
+
+import { Injectable, computed, inject, signal } from '@angular/core';
+import { UnitArtworkService } from '../unit-artwork.service';
+import type { EntityType } from '../../models/entity/types';
+import type { BaseEntity } from '../../models/entity/base-entity';
+import type { FluffImageAssetRef } from '../../models/presentation-catalog.model';
+import type { UnitSummary } from '../../models/unit-summary.model';
+import {
+  MM_DATA_UNIT_PROVIDER_ID, CUSTOM_UNIT_PROVIDER_ID,
+  type DesignIdentity,
+} from '../unit-catalog/unit-catalog.types';
+import {
+  type FluffImageFacts,
+  type FluffImagePath,
+} from '../../utils/fluff-image-resolver';
+import { FluffImageCatalogService } from './fluff-image-catalog.service';
+import { ProvidedFluffImageService } from './provided-fluff-image.service';
+import { LoggerService } from '../logger.service';
+
+type PresentationUnit = Pick<
+  UnitSummary,
+  'uuid' | 'chassis' | 'model' | 'type' | 'subtype' | 'weightClass'
+> & Partial<Pick<UnitSummary, 'provider' | 'entityType' | 'baseChassis' | 'clanName'>>;
+
+/**
+ * The only production bridge from a unit to fluff art.
+ * mm-data units resolve through images.json; the persisted summary never owns an image path.
+ */
+@Injectable({ providedIn: 'root' })
+export class UnitFluffImageService {
+  private readonly catalog = inject(FluffImageCatalogService);
+  private readonly local = inject(UnitArtworkService);
+  private readonly provided = inject(ProvidedFluffImageService);
+  private readonly logger = inject(LoggerService);
+  private readonly ready = signal(false);
+  private initialization?: Promise<void>;
+  readonly revision = computed(() => this.local.revision() + this.provided.revision());
+
+  constructor() { void this.initialize(); }
+
+  initialize(): Promise<void> {
+    return this.initialization ??= Promise.all([this.local.initialize(), this.provided.initialize()])
+      .catch(error => this.logger.warn(`Cannot initialize unit images: ${String(error)}`))
+      .then(() => { this.ready.set(true); });
+  }
+
+  resolveUrl(unit: PresentationUnit | null | undefined): string | null {
+    if (!unit || !this.ready()) return null;
+
+    return this.local.url(unit.uuid) ?? this.resolveCatalogUrl(unit);
+  }
+
+  resolveEntityUrl(entity: BaseEntity, design?: DesignIdentity): string | null {
+    if (!this.ready()) return null;
+    return this.local.url(design?.uuid ?? entity.uuid()) ?? this.resolveEntityCatalogUrl(entity, design);
+  }
+
+  async loadEntityUrl(entity: BaseEntity, design?: DesignIdentity): Promise<string | null> {
+    await this.initialize();
+    const custom = this.local.url(design?.uuid ?? entity.uuid());
+    if (custom) return custom;
+    const provided = await this.loadEntityCatalogUrl(entity, design);
+    return this.local.url(design?.uuid ?? entity.uuid()) ?? provided;
+  }
+
+  resolveEntityCatalogUrl(entity: BaseEntity, design?: DesignIdentity): string | null {
+    if (!this.ready()) return null;
+    const url = this.entityCatalogUrl(entity, design);
+    return url ? this.provided.resolveUrl(url) : null;
+  }
+
+  async loadEntityCatalogUrl(entity: BaseEntity, design?: DesignIdentity): Promise<string | null> {
+    await this.initialize();
+    const url = this.entityCatalogUrl(entity, design);
+    return url ? this.provided.loadUrl(url) : null;
+  }
+
+  private entityCatalogUrl(entity: BaseEntity, design?: DesignIdentity): string | null {
+    const identity: DesignIdentity = design ?? {
+      provider: MM_DATA_UNIT_PROVIDER_ID,
+      uuid: entity.uuid(),
+    };
+    const resolution = this.catalog.resolveUnitImage({ ...identity, provider: identity.provider === CUSTOM_UNIT_PROVIDER_ID ? MM_DATA_UNIT_PROVIDER_ID : identity.provider }, {
+      entityType: entity.entityType,
+      baseChassis: entity.chassis(),
+      model: entity.model(),
+      ...(entity.clanName() ? { clanName: entity.clanName() } : {}),
+    });
+    return resolution.status === 'matched' ? fluffImageAssetUrl(resolution.asset) : null;
+  }
+
+  private resolveCatalogUrl(unit: PresentationUnit): string | null {
+    const design: DesignIdentity = {
+      provider: unit.provider === CUSTOM_UNIT_PROVIDER_ID ? MM_DATA_UNIT_PROVIDER_ID : unit.provider ?? MM_DATA_UNIT_PROVIDER_ID,
+      uuid: unit.uuid,
+    };
+
+    const entityType = unit.entityType ?? legacyEntityType(unit);
+    if (!entityType) return null;
+    const facts: FluffImageFacts = {
+      entityType,
+      baseChassis: unit.baseChassis ?? unit.chassis,
+      model: unit.model,
+      ...(unit.clanName !== undefined && { clanName: unit.clanName }),
+    };
+    const resolution = this.catalog.resolveUnitImage(design, facts);
+    return resolution.status === 'matched' ? this.provided.resolveUrl(fluffImageAssetUrl(resolution.asset)) : null;
+  }
+}
+
+/** URL construction is centralized so validated catalog paths cannot become arbitrary URLs. */
+export function fluffImageAssetUrl(asset: FluffImageAssetRef): string {
+  return joinFluffImageUrl(asset.baseUrl, asset.path);
+}
+
+function joinFluffImageUrl(baseUrl: string, path: FluffImagePath): string {
+  const encodedPath = path.split('/').map(encodeURIComponent).join('/');
+  return `${baseUrl}/images/fluff/${encodedPath}`;
+}
+
+function legacyEntityType(unit: PresentationUnit): EntityType | undefined {
+  switch (unit.subtype) {
+    case 'Battle Armor': return 'BattleArmor';
+    case 'Conventional Infantry':
+    case 'Mechanized Conventional Infantry':
+    case 'Motorized Conventional Infantry': return 'Infantry';
+    case 'Conventional Fighter': return 'ConvFighter';
+    case 'Fixed Wing Support Vehicle':
+    case 'Fixed Wing Support Vehicle Omni': return 'FixedWingSupport';
+    case 'Aerospace Fighter':
+    case 'Aerospace Fighter Omni': return 'Aero';
+    case 'Aerodyne Small Craft':
+    case 'Civilian Aerodyne Small Craft':
+    case 'Spheroid Small Craft': return 'SmallCraft';
+    case 'Aerodyne DropShip':
+    case 'Civilian Aerodyne DropShip':
+    case 'Civilian Spheroid DropShip':
+    case 'Spheroid DropShip': return 'DropShip';
+    case 'JumpShip': return 'JumpShip';
+    case 'WarShip': return 'WarShip';
+    case 'Civilian Space Station':
+    case 'Military Space Station': return 'SpaceStation';
+    case 'ProtoMek':
+    case 'Quad ProtoMek': return 'ProtoMek';
+    case 'Handheld Weapon': return 'HandheldWeapon';
+    case 'Building': return 'BuildingEntity';
+    default: break;
+  }
+
+  if (unit.type === 'Mek') return 'Mek';
+  if (unit.type === 'Infantry') return 'Infantry';
+  if (unit.type === 'ProtoMek') return 'ProtoMek';
+  if (unit.type === 'Aero') return 'Aero';
+  if (unit.type === 'Naval') {
+    return unit.subtype === 'Support Vehicle' || unit.subtype === 'Support Vehicle Omni'
+      ? 'SupportNaval'
+      : 'Naval';
+  }
+  if (unit.type === 'VTOL') {
+    return unit.subtype === 'Support Vehicle' || unit.subtype === 'Support Vehicle Omni'
+      ? 'SupportVTOL'
+      : 'VTOL';
+  }
+  if (unit.type === 'Tank') {
+    if (unit.subtype === 'Support Vehicle' || unit.subtype === 'Support Vehicle Omni') {
+      return unit.weightClass === 'Large Support Vehicle' ? 'LargeSupportTank' : 'SupportTank';
+    }
+    return 'Tank';
+  }
+  return undefined;
+}

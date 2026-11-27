@@ -1,0 +1,96 @@
+<div class="fields">
+  @if (!entity().isBridge()) {
+    <label
+      >Floors<input
+        class="bt-input"
+        type="number"
+        min="1"
+        step="1"
+        [disabled]="disabled() || entity().buildingClass() === 5 || entity().buildingClass() === 3"
+        [ngModel]="entity().height() ?? 1"
+        (ngModelChange)="setHeight($event)"
+    /></label>
+  }
+  <label
+    >Armor per {{ entity().usesHexsides() ? 'hexside' : 'hex' }}{{ entity().isCastleBrian() ? ' (capital points)' : ''
+    }}<input
+      class="bt-input"
+      type="number"
+      min="0"
+      step="1"
+      [disabled]="disabled()"
+      [ngModel]="entity().getArmorValue(entity().armorLocations[0])"
+      (ngModelChange)="setArmor($event)"
+  /></label>
+  @if (!entity().isBridge()) {
+    <div class="base-level-field">
+      <label for="construction-base-level">Lowest floor level (0 = G)</label>
+      <div class="base-level-controls">
+        <input
+          id="construction-base-level"
+          class="bt-input"
+          type="number"
+          step="1"
+          aria-label="Lowest floor level"
+          [attr.aria-describedby]="!entity().isMobile() ? 'construction-base-level-hint' : null"
+          [disabled]="disabled() || entity().isMobile() || entity().buildingOptions().baseLevel === null"
+          [ngModel]="entity().baseLevel()"
+          (ngModelChange)="setBaseLevel($event)"
+        />
+        @if (!entity().isMobile()) {
+          <label class="automatic-toggle">
+            <input
+              type="checkbox"
+              class="bt-checkbox"
+              aria-label="Automatic floor numbering"
+              aria-describedby="construction-base-level-hint"
+              [disabled]="disabled()"
+              [ngModel]="entity().buildingOptions().baseLevel === null"
+              (ngModelChange)="setAutomaticBaseLevel($event)"
+            />
+            Automatic from site
+          </label>
+        }
+      </div>
+      @if (!entity().isMobile()) {
+        <p class="hint" id="construction-base-level-hint">
+          Automatic uses G for surface buildings and roof cover depth for underground/underwater buildings. Set -2
+          manually for floors -2, -1, G, 1…
+        </p>
+      }
+    </div>
+  }
+</div>
+<p class="hint">
+  @if (entity().isBridge()) {
+    The deck has no interior floors. CF applies to each bridge hex.
+  } @else if (entity().isMobile()) {
+    Each hex can have its own height. Maximum height determines capacity and system mass for every hex. Floor numbering
+    includes the ground undercarriage or submerged naval levels.
+  } @else {
+    Height, construction factor, and armor apply uniformly to all
+    {{ entity().usesHexsides() ? 'segments' : 'hexes' }}.
+  }
+</p>
+@if (entity().limits(); as limits) {
+  <p class="hint">
+    CF {{ limits.minimumCF }}–{{ limits.maximumCF }} ·
+    {{ unlimitedLength() ? 'No length limit' : 'Up to ' + limits.hexes + ' hexes' }} · {{ limits.levels }}
+    {{ entity().isBridge() ? 'deck' : 'levels' }}
+  </p>
+}
+<p class="hint">
+  Capacity: {{ entity().capacityPerHex() }} t per {{ entity().usesHexsides() ? 'hexside' : 'hex' }} · Power:
+  {{ entity().powerSupply().label }}
+</p>
+@if (entity().isCastleBrian()) {
+  <p class="hint">
+    CF and armor use capital points: 1 capital point = 10 standard points. Environmental sealing is included.
+  </p>
+}
+@if (entity().buildingOptions().openSpace) {
+  <p class="hint">
+    Open-space construction: 600 t total. Ground equipment only; no rooftop equipment. Inner buildings are separate
+    designs.
+  </p>
+}

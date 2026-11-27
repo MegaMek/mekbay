@@ -4,8 +4,8 @@
 
 import { StructureEquipment } from '../../equipment.model';
 import { EquipmentRegistry } from '../../equipment-lookup';
-import { approx, EntityTechBase, EquipmentTechBase, type TechRatingSource } from '../types';
-import { TechAdvancement } from '../types/tech';
+import { EntityTechBase, EquipmentTechBase, STRUCTURE_TYPE, type TechRatingSource } from '../types';
+import { structureTechAdvancement } from './structure-tech-data';
 
 /**
  * Internal Structure system component.
@@ -25,7 +25,7 @@ export const STANDARD_STRUCTURE_EQUIPMENT = new StructureEquipment({
   type: 'structure',
   aliases: ['Standard Structure', 'IS Standard Structure', 'Clan Standard Structure'],
   tech: { base: 'All' },
-  structure: { typeId: 0 },
+  structure: { typeId: STRUCTURE_TYPE.STANDARD },
 });
 
 export interface MountedStructureOptions {
@@ -49,6 +49,11 @@ export class MountedStructure {
     this.structure = options.structure;
     this.techBase = options.techBase ?? options.structure.techBase;
     Object.freeze(this);
+  }
+
+  /** Integer damage marks needed to remove one construction point. */
+  get damagePerPoint(): number {
+    return this.structure.structureTypeId === STRUCTURE_TYPE.REINFORCED ? 2 : 1;
   }
 
   /** Complete effective equality: material and donor/chassis tonnage. */
@@ -85,15 +90,6 @@ interface StructureIndex {
   readonly byTypeId: ReadonlyMap<number, StructureVariants>;
   readonly byName: ReadonlyMap<string, StructureVariants>;
 }
-
-/** Built-in standard structure used when a unit file does not declare another type. */
-const STANDARD_STRUCTURE_TECH = {
-  techBase: 'All',
-  rating: 'D',
-  availability: ['C', 'C', 'C', 'C'],
-  level: 'Introductory',
-  dates: { prototype: approx(2430), production: 2439, common: 2505 },
-} as const satisfies TechAdvancement;
 
 const structureIndexes = new WeakMap<EquipmentRegistry, StructureIndex>();
 
@@ -154,5 +150,5 @@ export function getStructureByName(
 export function getStructureTechAdvancement(
   structure: StructureEquipment,
 ): TechRatingSource {
-  return structure.structureTypeId === 0 ? STANDARD_STRUCTURE_TECH : structure.tech;
+  return structureTechAdvancement(structure.structureTypeId, structure.tech);
 }

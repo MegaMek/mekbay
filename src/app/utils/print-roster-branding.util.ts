@@ -46,7 +46,7 @@ export function buildPrintRosterForceUrl(force: Force | null | undefined): strin
     return `${PRINT_FORCE_BASE_URL}/?instance=${encodeURIComponent(instanceId)}`;
 }
 
-function getPrintRosterLogoUrl(): string {
+export function getPrintRosterLogoUrl(): string {
     return new URL(PRINT_LOGO_PATH, window.location.origin || PRINT_FORCE_BASE_URL).toString();
 }
 

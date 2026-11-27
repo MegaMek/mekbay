@@ -10,7 +10,6 @@ import { APP_VERSION_STRING } from '../../build-meta';
 
 @Component({
     selector: 'beta-dialog',
-    standalone: true,
     changeDetection: ChangeDetectionStrategy.OnPush,
     imports: [
     BaseDialogComponent

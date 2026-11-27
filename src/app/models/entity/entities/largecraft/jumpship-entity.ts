@@ -13,11 +13,19 @@ import {
   LARGE_CRAFT_LOCATIONS,
   resolveWeightClass,
   WeightClass,
+  type EntityDamageLocation,
   type EntityFeature,
+  locationArmor,
 } from '../../types';
 import type { UnitSubtype } from '../../types';
 import type { TechRatingSource } from '../../types';
 import { getJumpshipConstructionTech } from '../../components';
+import { capitalCraftArmorPointsPerTon } from '../../utils/large-craft-armor';
+import { MiscEquipment } from '../../../equipment.model';
+import {
+  isPrintableLargeCraftMisc,
+  largeCraftMiscFeatureName,
+} from '../../utils/large-craft-features';
 
 // ============================================================================
 // JumpShip equipment location tags
@@ -42,6 +50,38 @@ export class JumpShipEntity extends LargeAeroEntity {
     return location === 'Hull' ? 'HULL' : super.componentLocationLabel(location);
   }
 
+  override damageLocations(): readonly EntityDamageLocation[] {
+    const locations = super.damageLocations().map(location => location.code === 'SI'
+      ? { ...location, sheetCode: this.entityType === 'WarShip' ? 'SI' : undefined }
+      : location);
+    if (this.driveCoreType() !== 'None') {
+      locations.push({
+        code: 'KF',
+        sheetCode: 'KF',
+        internalPoints: this.kfIntegrity(),
+        armor: locationArmor(0),
+      });
+    }
+    if (this.sail()) {
+      locations.push({
+        code: 'SAIL',
+        sheetCode: 'SAIL',
+        internalPoints: this.sailIntegrity(),
+        armor: locationArmor(0),
+      });
+    }
+    const dockingCollars = this.dockingCollarCount();
+    if (dockingCollars > 0) {
+      locations.push({
+        code: 'DC',
+        sheetCode: 'DC',
+        internalPoints: dockingCollars,
+        armor: locationArmor(0),
+      });
+    }
+    return locations;
+  }
+
   override unitSubtype(): UnitSubtype {
     return this.withOmniSubtype('JumpShip');
   }
@@ -50,6 +90,17 @@ export class JumpShipEntity extends LargeAeroEntity {
     const features = [...super.computeAeroFeatures()];
     if (this.lithiumFusion()) features.push('LF Battery');
     return features;
+  }
+
+  protected override computeEntityFeatures(): readonly EntityFeature[] {
+    const features = new Set<EntityFeature>(this.computeAeroFeatures());
+    for (const mount of this.equipment()) {
+      const equipment = mount.equipment;
+      if (!(equipment instanceof MiscEquipment) || !isPrintableLargeCraftMisc(equipment)) continue;
+      features.add(largeCraftMiscFeatureName(equipment, mount.size ?? 1));
+    }
+    for (const feature of this.computeTransportFeatures()) features.add(feature);
+    return [...features];
   }
 
   override entityTechAdvancements(): readonly TechRatingSource[] {
@@ -105,7 +156,10 @@ export class JumpShipEntity extends LargeAeroEntity {
     : Math.ceil(1.2 + this.jumpDriveWeight() / 60000));
 
   protected override computeMaximumArmorPoints(): number {
-    const pointsPerTon = 16 * (this.uniformArmor()?.armor.pptMultiplier ?? 1);
+    const mountedArmor = this.uniformArmor();
+    const pointsPerTon = mountedArmor
+      ? capitalCraftArmorPointsPerTon(this.tonnage(), mountedArmor.armor)
+      : 16;
 
     let maximumArmorWeight: number;
     if (this.entityType === 'WarShip') {
@@ -168,12 +222,7 @@ export class JumpShipEntity extends LargeAeroEntity {
   protected override computeMaxArmor(
     _structureValues: Map<string, number>,
   ): Map<string, number> {
-    const maxPerLoc = this.tonnage();
-    const maxArmor = new Map<string, number>();
-    for (const loc of this.locationOrder) {
-      maxArmor.set(loc, maxPerLoc);
-    }
-    return maxArmor;
+    return new Map(this.armorLocations.map(loc => [loc, this.maximumArmorPoints()]));
   }
 
   // ── Validation ────────────────────────────────────────────────────────

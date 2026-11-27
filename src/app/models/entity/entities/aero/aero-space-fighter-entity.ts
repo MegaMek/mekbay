@@ -3,6 +3,7 @@
 // Author: Drake
 
 import { AERO_EQUIP_LOCATIONS, AERO_LOCATIONS, EntityType, type TechRatingSource } from '../../types';
+import type { BombCapacity } from '../../../aerospace-bomb.model';
 import { AeroEntity } from './aero-entity';
 import { getAerospaceFighterConstructionTech } from '../../components';
 import type { UnitSubtype } from '../../types';
@@ -17,6 +18,10 @@ export class AeroSpaceFighterEntity extends AeroEntity {
 
   override entityTechAdvancements(): readonly TechRatingSource[] {
     return [getAerospaceFighterConstructionTech(this.isPrimitiveAero()), this.mountedCockpitTech()];
+  }
+
+  protected override computeBombCapacity(): BombCapacity {
+    return this.fighterBombCapacity();
   }
 
   get locationOrder(): readonly string[] {

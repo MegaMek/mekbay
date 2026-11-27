@@ -11,7 +11,7 @@ import { EntityMountedEquipment } from '../../types/equipment';
 import { calculateSmallCraftWeightBreakdown } from './small-craft-weight';
 
 describe('Small Craft and DropShip construction mass', () => {
-  it('includes automatic military Small Craft ECM exactly once', () => {
+  it('includes integral military ECM in the structure while weighing explicitly mounted ECM', () => {
     const automaticEcm = createEquipment({
       id: 'ISSingle-Hex ECM', name: 'Single-Hex ECM', type: 'misc', flags: ['F_ECM'],
       stats: { tonnage: 0.1 },
@@ -28,7 +28,7 @@ describe('Small Craft and DropShip construction mass', () => {
     addTestEquipment(entity, weapon, { location: 'Nose' });
 
     expect(entity.implicitSystemEquipment()).toEqual([automaticEcm]);
-    expect(calculateSmallCraftWeightBreakdown(entity).miscellaneous).toBe(0.1);
+    expect(calculateSmallCraftWeightBreakdown(entity).miscellaneous).toBe(0);
 
     addTestEquipment(entity, automaticEcm, { location: 'Nose' });
     expect(entity.implicitSystemEquipment()).toEqual([]);

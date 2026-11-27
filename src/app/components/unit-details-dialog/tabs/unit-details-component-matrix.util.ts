@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 // Author: Drake
 
-import type { UnitComponent } from '../../../models/unit-summary.model';
+import type { UnitConditionComponent as UnitComponent } from '../../../utils/unit-component-metadata-builder';
 
 type SlotSpec = string | string[];
 type MatrixSpec = SlotSpec[][];
@@ -76,21 +76,9 @@ export function buildComponentMatrixLayout(
     }
 
     const getBaysByLoc = (loc: string): UnitComponent[] => {
-        const matched = groupedBays.filter(group => normalizeComponentLocation(group.l) === loc);
-        if (!matched.length) return [];
-
-        const byName = new Map<string, UnitComponent>();
-        for (const group of matched) {
-            for (const bay of group.bays) {
-                const key = bay.n ?? '';
-                if (!byName.has(key)) byName.set(key, { ...bay });
-                else {
-                    const aggregate = byName.get(key)!;
-                    aggregate.q = (aggregate.q || 1) + (bay.q || 1);
-                }
-            }
-        }
-        return Array.from(byName.values()).sort(compareComponentsByName);
+        return groupedBays
+            .filter(group => normalizeComponentLocation(group.l) === loc)
+            .flatMap(group => group.bays);
     };
 
     const getCompsForLoc = (loc: string): UnitComponent[] => {
@@ -191,7 +179,7 @@ function getMergedBaysForCodes(codes: string[], getBaysByLoc: (loc: string) => U
     const merged = new Map<string, UnitComponent>();
     for (const code of codes) {
         for (const bay of getBaysByLoc(code)) {
-            const key = bay.n ?? '';
+            const key = `${bay.n ?? ''}|${bay.rear ?? false}|${bay.destroyed ?? false}`;
             if (!merged.has(key)) merged.set(key, { ...bay });
             else {
                 const aggregate = merged.get(key)!;

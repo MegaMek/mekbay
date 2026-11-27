@@ -1,0 +1,147 @@
+<ng-template #rollChip let-dice="dice" let-weapon="weapon" let-roll="roll" let-label="label">
+    <span class="roll-chip" [class.editable]="editable() && !locked()[weapon]">
+        <dice-roller [small]="true" [diceCount]="dice.length" [initialResults]="dice" />
+        @if (editable() && !locked()[weapon]) {
+            <select [attr.aria-label]="label" [title]="label" (change)="setRoll(weapon, roll, $event)">
+                @for (total of totals(dice); track total) {
+                    <option [value]="total" [selected]="total === sum(dice)">{{ total }}</option>
+                }
+            </select>
+        }
+    </span>
+</ng-template>
+
+<ng-template #modifierControl let-cluster="cluster" let-w="w" let-name="name">
+    @if (editable() && !locked()[w]) {
+        <select class="modifier" [attr.aria-label]="'Cluster modifier for ' + name"
+            title="Cluster modifier (before AMS)" (change)="setClusterModifier(w, $event)">
+            @for (modifier of clusterModifiers; track modifier) {
+                <option [value]="modifier" [selected]="modifier === cluster.modifier">{{ signed(modifier) }}</option>
+            }
+        </select>
+    } @else if (cluster.modifier !== 0) {
+        <span class="modifier">{{ signed(cluster.modifier) }}</span>
+    }
+</ng-template>
+
+<ol class="attack-weapons">
+    @for (weapon of weapons(); track $index; let w = $index) {
+        <li class="attack-weapon" [class.hit]="weapon.hit" [class.miss]="!weapon.hit">
+            <div class="weapon-line">
+                <strong class="weapon-name">{{ weapon.name }}</strong>
+                <span class="weapon-roll">
+                    @if (weapon.automaticHit) {
+                        <span class="tn">Auto</span>
+                    } @else {
+                        <span class="tn" title="Target number">TN {{ weapon.targetNumber }}</span>
+                    }
+                    @if (!weapon.automaticHit || weapon.rollForEffects) {
+                        <ng-container *ngTemplateOutlet="rollChip; context: {
+                            dice: weapon.toHit, weapon: w, roll: 'to-hit', label: 'Set ' + weapon.name + ' to-hit roll' }" />
+                    }
+                    <span class="verdict">{{ weapon.capacitorBurnout ? 'PPC BURNOUT' : weapon.hit ? 'HIT' : 'MISS' }}</span>
+                    @if (weapon.jammed) { <span class="jammed" title="The weapon jammed; its shots still fire">JAMMED</span> }
+                    @if (editable() && !locked()[w]) {
+                        <button type="button" class="reroll" [attr.aria-label]="'Re-roll ' + weapon.name"
+                            title="Re-roll this weapon" (click)="rerolled.emit(w)"></button>
+                    }
+                </span>
+            </div>
+            @if (concealed()[w]) {
+                @if (weapon.cluster; as cluster) {
+                    <div class="cluster-line">
+                        <span class="step-label">Cluster modifier</span>
+                        <ng-container *ngTemplateOutlet="modifierControl; context: { cluster, w, name: weapon.name }" />
+                    </div>
+                }
+            } @else {
+            @if (weapon.buildingDamage) { <div>Damage to building: {{ weapon.buildingDamage }}</div> }
+            @if (weapon.insulator; as insulator) {
+                <div class="cluster-line">
+                    <span class="step-label">Insulator</span>
+                    <ng-container *ngTemplateOutlet="rollChip; context: {
+                        dice: insulator.dice, weapon: w, roll: 'insulator', label: 'Set ' + weapon.name + ' laser insulator roll' }" />
+                    <span class="cluster-hits">{{ insulator.failed ? 'Critical hit on the laser' : 'No effect' }}</span>
+                </div>
+            }
+            @if (weapon.cluster; as cluster) {
+                <div class="cluster-line">
+                    <span class="step-label">Cluster</span>
+                    @if (cluster.additionalDice?.length) { <span>Column {{ missileColumns(cluster.projectiles)[0] }}</span> }
+                    <ng-container *ngTemplateOutlet="rollChip; context: {
+                        dice: cluster.dice, weapon: w, roll: 'cluster', label: 'Set ' + weapon.name + ' cluster roll' }" />
+                    @for (dice of cluster.additionalDice; track $index; let i = $index) {
+                        <span>Column {{ missileColumns(cluster.projectiles)[i + 1] }}</span>
+                        <ng-container *ngTemplateOutlet="rollChip; context: { dice, weapon: w, roll: { additionalCluster: i },
+                            label: 'Set ' + weapon.name + ' cluster roll ' + (i + 2) }" />
+                    }
+                    <ng-container *ngTemplateOutlet="modifierControl; context: { cluster, w, name: weapon.name }" />
+                    <span class="cluster-hits"><strong>{{ cluster.hits }}</strong> / {{ cluster.projectiles }} {{ weapon.hit ? 'hit' : 'hit the building' }}</span>
+                </div>
+            }
+            @if ((weapon.hit || weapon.buildingDamage) && weapon.heat; as heat) {
+                <!-- Plasma dice add heat to a unit that tracks it, and damage to any other. -->
+                <div class="cluster-line">
+                    <span class="step-label">{{ heat.value > 0 || heat.reduced ? 'Heat' : 'Damage' }}</span>
+                    @if (heat.dice.length > 0) {
+                        <ng-container *ngTemplateOutlet="rollChip; context: {
+                            dice: heat.dice, weapon: w, roll: 'heat',
+                            label: 'Set ' + weapon.name + (weapon.hit ? ' heat roll' : ' building damage roll') }" />
+                    }
+                    @if (heat.value > 0 || heat.reduced) {
+                        <span class="cluster-hits"><strong>+{{ heat.value }}</strong></span>
+                    }
+                </div>
+            }
+            @if (weapon.hit && weapon.aim; as aim) {
+                <div class="cluster-line">
+                    <span class="step-label">Aim</span>
+                    <ng-container *ngTemplateOutlet="rollChip; context: {
+                        dice: aim.dice, weapon: w, roll: 'aim', label: 'Set ' + weapon.name + ' aim roll' }" />
+                    <span class="cluster-hits"><strong>{{ aim.label }}</strong> {{ aim.strikes ? 'struck' : 'missed' }}</span>
+                </div>
+            }
+            @if (weapon.manualInfantry; as alternative) {
+                <div class="cluster-line">Standard infantry casualties shown. Mechanized infantry lose {{ alternative.mechanized }}.
+                    @if (alternative.armorApplies) { Apply the platoon's armor divisor. }</div>
+            }
+            @if (weapon.hit && weapon.collateral; as result) {
+                <div class="cluster-line">Occupants at the struck level in LOS take {{ result.damage }} damage per unit.
+                    @if (result.troopers !== undefined) { Conventional infantry lose {{ result.troopers }} troopers ({{ result.troopers * 2 }} mechanized). }
+                    Apply to each affected unit on its sheet.</div>
+            }
+            @if (weapon.amsDice?.length) { <div>AMS engaged ({{ weapon.amsDice!.join(' + ') }})</div> }
+            @if (weapon.groups.length > 0) {
+                <ol class="hit-groups">
+                    @for (group of weapon.groups; track $index; let g = $index) {
+                        <li class="hit-group">
+                            @if (weapon.inferno) {
+                                <span class="damage label">{{ infernoLabel }}</span>
+                            } @else if (weapon.narcPod) {
+                                <span class="damage label">Narc pod</span>
+                            } @else if (group.damage === 0) {
+                                <span class="damage label">{{ weapon.heat ? 'Heat' : '0' }}</span>
+                            } @else {
+                                <span class="damage" [title]="group.troopers ? 'Troopers' : 'Damage'">{{ group.damage }}</span>
+                            }
+                            @if (group.troopers) {
+                                @if (weapon.casualtyDice?.length) { <span>Casualty dice {{ weapon.casualtyDice!.join(' + ') }}</span> }
+                            } @else {
+                                <ng-container *ngTemplateOutlet="rollChip; context: {
+                                    dice: group.location, weapon: w, roll: g, label: 'Set hit location roll ' + (g + 1) }" />
+                            }
+                            @if (group.floating; as floating) { <span>Floating roll {{ sum(floating) }}</span> }
+                            @if (group.label !== null) {
+                                <span class="location">
+                                    {{ group.label }}
+                                    @if (group.criticalCheck) { <em>{{ group.criticalCheck }}</em> }
+                                </span>
+                            }
+                        </li>
+                    }
+                </ol>
+            }
+            }
+        </li>
+    }
+</ol>

@@ -62,7 +62,6 @@ export const CC_SQUADRON_ELEMENT: OrgComposedCountRule = {
     commandRank: 'Captain',
     tier: 2,
     childRoles: [{ matches: ['Element'] }],
-    childBucketBy: 'promotionBasic',
 };
 
 export const CC_SQUADRON_TRIPLE: OrgComposedCountRule = {
@@ -72,7 +71,6 @@ export const CC_SQUADRON_TRIPLE: OrgComposedCountRule = {
     commandRank: 'Captain',
     tier: 2,
     childRoles: [{ matches: ['Triple'] }],
-    childBucketBy: 'promotionBasic',
 };
 
 export const CC_FLIGHT: OrgComposedCountRule = {
@@ -82,7 +80,6 @@ export const CC_FLIGHT: OrgComposedCountRule = {
     commandRank: 'Major',
     tier: 3.1,
     childRoles: [{ matches: ['Squadron'] }],    
-    childBucketBy: 'promotionBasic',
 };
 
 export const CC_WING: OrgComposedCountRule = {
@@ -95,7 +92,6 @@ export const CC_WING: OrgComposedCountRule = {
         { matches: ['Flight'], min: 2 },
         { matches: ['Element', 'Triple'], min: 1, max: 1 },
     ],
-    childBucketBy: 'promotionBasic',
 };
 
 export const CC_FLEET_REGIMENT: OrgComposedCountRule = {
@@ -108,7 +104,6 @@ export const CC_FLEET_REGIMENT: OrgComposedCountRule = {
         { matches: ['Wing'], min: 2 },
         { matches: ['Element', 'Triple'], min: 2, max: 2 },
     ],
-    childBucketBy: 'promotionBasic',
 };
 
 export const CC_AIR_LANCE: OrgComposedCountRule = {
@@ -194,7 +189,6 @@ export const CC_AUGMENTED_COMPANY: OrgComposedCountRule = {
     commandRank: 'Captain',
     tier: IS_COMPANY.tier + 0.01,
     childRoles: [{ matches: ['Augmented Lance'] }],
-    childBucketBy: 'promotionBasic',
 };
 
 export const CC_AUGMENTED_BATTALION: OrgComposedCountRule = {
@@ -206,7 +200,6 @@ export const CC_AUGMENTED_BATTALION: OrgComposedCountRule = {
     commandRank: 'Major',
     tier: IS_BATTALION.tier + 0.01,
     childRoles: [{ matches: ['Augmented Company'] }],
-    childBucketBy: 'promotionBasic',
 };
 
 export const CC_AUGMENTED_REGIMENT: OrgComposedCountRule = {
@@ -220,7 +213,6 @@ export const CC_AUGMENTED_REGIMENT: OrgComposedCountRule = {
         { matches: ['Augmented Battalion'], min: 1 },
         { matches: ['Augmented Battalion', 'Battalion', 'Wing'] },
     ],
-    childBucketBy: 'promotionBasic',
 };
 
 export const CC_CORE_ORG: OrgDefinition = {
@@ -248,8 +240,4 @@ export const CC_CORE_ORG: OrgDefinition = {
         CC_AUGMENTED_REGIMENT,
     ],
     registry: DEFAULT_ORG_RULE_REGISTRY,
-    distanceFactor: 0.2,
-    minDistance: 2,
-    groupDistanceFactor: 0.25,
-    groupMinDistance: 1,
 };

@@ -3,43 +3,46 @@
 // Author: Drake
 
 import { EquipmentFlag } from './equipment-flags.type';
-import type { ForceUnit } from './force-unit.model';
-import type { MountedEquipment } from './mounted-equipment.model';
-import type { Equipment } from './equipment.model';
+import type { ComponentId } from './entity/entity-identifiers';
+import type { NonMekRuntimeIndex } from './runtime/non-mek-runtime-index';
 import type { SerializedC3NetworkGroup } from './force-serialization';
-import {
-    getC3EmergencyMasterMode,
-    getC3EmergencyMasterOperatingTurns,
-    isC3EmergencyMaster,
-    isC3EmergencyMasterFried,
-    isC3EmergencyMasterRequested,
-    type C3EmergencyMasterStatus,
-} from './c3-emergency-master.model';
+import { C3_EMERGENCY_MASTER_FLAG } from './c3-emergency-master.model';
+import type { Equipment } from './equipment.model';
 
-/**
- * C3 Network Types based on equipment flags
- */
-export enum C3NetworkType {
-    /** Standard C3 Network (Master/Slave) */
-    C3 = 'c3',
-    /** C3i Network */
-    C3I = 'c3i',
-    /** Naval C3 */
-    NAVAL = 'naval',
-    /** Nova CEWS */
-    NOVA = 'nova'
+export const C3NetworkType = Object.freeze({
+    C3: 'c3',
+    C3I: 'c3i',
+    NAVAL: 'naval',
+    NOVA: 'nova',
+} as const);
+export type C3NetworkType = typeof C3NetworkType[keyof typeof C3NetworkType];
+
+export const C3Role = Object.freeze({
+    MASTER: 'master',
+    SLAVE: 'slave',
+    PEER: 'peer',
+} as const);
+export type C3Role = typeof C3Role[keyof typeof C3Role];
+
+/** Role stored by a configured force network; a member may be a slave or sub-master. */
+export const C3NetworkRole = Object.freeze({
+    MASTER: 'master',
+    MEMBER: 'member',
+    PEER: 'peer',
+} as const);
+export type C3NetworkRole = typeof C3NetworkRole[keyof typeof C3NetworkRole];
+
+export function isC3NetworkType(value: unknown): value is C3NetworkType {
+    return value === C3NetworkType.C3
+        || value === C3NetworkType.C3I
+        || value === C3NetworkType.NAVAL
+        || value === C3NetworkType.NOVA;
 }
 
-/**
- * C3 Equipment Role
- */
-export enum C3Role {
-    /** C3 Master - can have slaves connected */
-    MASTER = 'master',
-    /** C3 Slave - connects to a master */
-    SLAVE = 'slave',
-    /** C3i/Nova/Naval - any unit can be master or slave */
-    PEER = 'peer'
+export function isC3NetworkRole(value: unknown): value is C3NetworkRole {
+    return value === C3NetworkRole.MASTER
+        || value === C3NetworkRole.MEMBER
+        || value === C3NetworkRole.PEER;
 }
 
 export function c3NetworkTypeName(type: C3NetworkType): string {
@@ -72,7 +75,7 @@ export const C3_FLAGS = {
     /** C3 Boosted Slave */
     C3SBS: 'F_C3SBS',
     /** C3 Emergency Master */
-    C3EM: 'F_C3EM',
+    C3EM: C3_EMERGENCY_MASTER_FLAG,
     /** C3 Master */
     C3M: 'F_C3M',
     /** C3 Boosted Master */
@@ -116,21 +119,146 @@ export const C3_SLAVE_FLAGS = [
 ] as const;
 
 /**
- * Peer flags (any unit can be master)
- */
-export const C3_PEER_FLAGS = [
-    C3_FLAGS.C3I,
-    C3_FLAGS.NOVA,
-    C3_FLAGS.NAVAL_C3
-] as const;
-
-/**
  * Boosted C3 flags (higher tax rate)
  */
 export const C3_BOOSTED_FLAGS = [
     C3_FLAGS.C3SBS,
     C3_FLAGS.C3MBS
 ] as const;
+
+export function isNavalC3Equipment(equipment: Equipment | null | undefined): boolean {
+    return equipment?.hasFlag(C3_FLAGS.NAVAL_C3) === true;
+}
+
+export function isNovaC3Equipment(equipment: Equipment | null | undefined): boolean {
+    return equipment?.hasFlag(C3_FLAGS.NOVA) === true;
+}
+
+export function isC3MasterEquipment(equipment: Equipment | null | undefined): boolean {
+    return equipment?.hasAnyFlag(C3_MASTER_FLAGS) === true;
+}
+
+export function isC3MastMountBonusEquipment(equipment: Equipment | null | undefined): boolean {
+    return equipment?.hasAnyFlag([C3_FLAGS.C3S, C3_FLAGS.C3SBS, C3_FLAGS.C3I]) === true;
+}
+
+export function c3SystemTypeForEquipment(
+    equipment: readonly (Equipment | null | undefined)[],
+): 'C3' | 'C3i' | 'Naval C3' | 'Nova CEWS' | 'None' {
+    if (equipment.some(item => item?.type === 'weapon' && isC3MasterEquipment(item))) return 'C3';
+    for (const item of equipment) {
+        if (item?.type !== 'misc') continue;
+        if (item.hasAnyFlag([C3_FLAGS.C3S, C3_FLAGS.C3SBS, C3_FLAGS.C3EM])) return 'C3';
+        if (item.hasFlag(C3_FLAGS.C3I)) return 'C3i';
+        if (isNavalC3Equipment(item)) return 'Naval C3';
+        if (isNovaC3Equipment(item)) return 'Nova CEWS';
+    }
+    return 'None';
+}
+
+export interface C3AlphaStrikeFacts {
+    readonly abilities: readonly string[];
+    readonly mobileHeadquarters?: number;
+    readonly emergencyMaster: boolean;
+}
+
+export function c3AlphaStrikeFacts(
+    equipment: Equipment | null | undefined,
+    battleArmorEquipment: boolean,
+): C3AlphaStrikeFacts {
+    if (!equipment) return Object.freeze({ abilities: Object.freeze([]), emergencyMaster: false });
+    if (isNovaC3Equipment(equipment)) {
+        return Object.freeze({
+            abilities: Object.freeze(['PRB', 'ECM', 'NOVA']),
+            mobileHeadquarters: 1.5,
+            emergencyMaster: false,
+        });
+    }
+    if (equipment.hasFlag(C3_FLAGS.C3I)) {
+        return Object.freeze({
+            abilities: Object.freeze(['C3I']),
+            mobileHeadquarters: battleArmorEquipment ? 2 : 2.5,
+            emergencyMaster: false,
+        });
+    }
+    if (equipment.hasFlag(C3_FLAGS.C3S)) {
+        const emergencyMaster = equipment.hasFlag(C3_FLAGS.C3EM);
+        return Object.freeze({
+            abilities: Object.freeze(['C3S']),
+            mobileHeadquarters: emergencyMaster ? 2 : 1,
+            emergencyMaster,
+        });
+    }
+    if (equipment.hasFlag(C3_FLAGS.C3SBS)) {
+        return Object.freeze({
+            abilities: Object.freeze(['C3BSS']),
+            mobileHeadquarters: 2,
+            emergencyMaster: false,
+        });
+    }
+    return Object.freeze({ abilities: Object.freeze([]), emergencyMaster: false });
+}
+
+export interface C3MasterWeaponAlphaStrikeFacts {
+    readonly ability?: 'C3BSM' | 'C3M';
+    readonly mobileHeadquarters?: number;
+}
+
+export function c3MasterWeaponAlphaStrikeFacts(
+    equipment: Equipment | null | undefined,
+): C3MasterWeaponAlphaStrikeFacts {
+    if (equipment?.hasFlag(C3_FLAGS.C3MBS) === true) {
+        return Object.freeze({ ability: 'C3BSM', mobileHeadquarters: 6 });
+    }
+    if (equipment?.hasFlag(C3_FLAGS.C3M) === true) {
+        return Object.freeze({ ability: 'C3M', mobileHeadquarters: 5 });
+    }
+    return Object.freeze({});
+}
+
+export function c3EquipmentOperatingHeat(equipment: Equipment | null | undefined): number {
+    return isNovaC3Equipment(equipment) ? 2 : 0;
+}
+
+export interface C3EquipmentTraits {
+    readonly networkTypes: readonly C3NetworkType[];
+    readonly ordinaryRoles: readonly C3Role[];
+    readonly emergencyMaster: boolean;
+    readonly boosted: boolean;
+    readonly contradictoryEmergencyRole: boolean;
+}
+
+/** One canonical interpretation of C3 equipment flags for every entity/runtime consumer. */
+export function c3EquipmentTraits(flags: ReadonlySet<string>): C3EquipmentTraits {
+    const standard = [C3_FLAGS.C3S, C3_FLAGS.C3SBS, C3_FLAGS.C3EM, C3_FLAGS.C3M, C3_FLAGS.C3MBS]
+        .some(flag => flags.has(flag));
+    const networkTypes = Object.freeze([
+        ...(standard ? ['c3' as const] : []),
+        ...(flags.has(C3_FLAGS.C3I) ? ['c3i' as const] : []),
+        ...(flags.has(C3_FLAGS.NAVAL_C3) ? ['naval' as const] : []),
+        ...(flags.has(C3_FLAGS.NOVA) ? ['nova' as const] : []),
+    ]);
+    const emergencyMaster = flags.has(C3_FLAGS.C3EM);
+    const ordinaryRoles: readonly C3Role[] = Object.freeze(
+        networkTypes.length === 1 && networkTypes[0] !== 'c3'
+        ? ['peer' as const]
+        : [
+            ...(C3_MASTER_FLAGS.some(flag => flags.has(flag)) ? ['master' as const] : []),
+            ...(C3_SLAVE_FLAGS.some(flag => flags.has(flag)) ? ['slave' as const] : []),
+        ],
+    );
+    return Object.freeze({
+        networkTypes,
+        ordinaryRoles,
+        emergencyMaster,
+        boosted: C3_BOOSTED_FLAGS.some(flag => flags.has(flag)),
+        contradictoryEmergencyRole: emergencyMaster && (
+            networkTypes.length !== 1
+            || networkTypes[0] !== 'c3'
+            || ordinaryRoles.includes('master')
+        ),
+    });
+}
 
 /**
  * Network compatibility groups - units can only link within the same group
@@ -182,33 +310,61 @@ export const NOVA_MAX_TAX_RATE = 0.35;
  * Represents a C3 component on a unit
  */
 export interface C3Component {
-    /** Runtime equipment endpoint; absent only for Alpha Strike specials. */
-    mount?: MountedEquipment;
+    /** Stable published endpoint identity. Required for a V2 Mek. */
+    componentId?: ComponentId;
     /** Network type */
     networkType: C3NetworkType;
     /** Role (master/slave/peer) */
     role: C3Role;
     /** Is this a boosted C3 */
     boosted: boolean;
+    /** Published C3 Emergency Master capability. */
+    emergency?: boolean;
+    /** Exact runtime lifecycle says the emergency endpoint has burned out. */
+    emergencyFried?: boolean;
     /** Index within this unit's normalized C3 endpoints. */
     index: number;
 }
 
+export interface C3UnitPresentation {
+    readonly chassis: string;
+    readonly model: string;
+    readonly icon: string;
+    readonly tons: number;
+    readonly walk: number;
+}
+
+/** Minimal capability source shared by editor, persistence, and mechanics boundaries. */
+export interface C3CapabilityView {
+    readonly c3Components?: readonly C3Component[];
+    getC3Specials?(): readonly string[];
+}
+
+/** Durable visual-editor position for one force unit. */
+export interface C3UnitPosition {
+    readonly unitId: string;
+    readonly x: number;
+    readonly y: number;
+}
+
+/** Narrow presentation/query surface; no force-unit mechanics owner is required. */
+export interface C3UnitView extends C3CapabilityView {
+    readonly id: string;
+    getC3Specials(): readonly string[];
+    getC3Presentation(): C3UnitPresentation;
+    alias(): string | undefined;
+    c3Position(): Readonly<{ x: number; y: number }> | null;
+    isC3Jammed(): boolean;
+    isC3EndpointOperational(index: number, component: C3Component): boolean;
+}
+
 export interface C3Node {
-    unit: ForceUnit;
+    unit: C3UnitView;
     c3Components: C3Component[];
     x: number;
     y: number;
     zIndex: number;
     pinOffsetsX: number[];
-}
-
-/**
- * Visual position for the network editor
- */
-export interface C3NodePosition {
-    x: number;
-    y: number;
 }
 
 /**
@@ -290,7 +446,7 @@ const AS_C3_PATTERNS: { pattern: RegExp; flag: EquipmentFlag; networkType: C3Net
  * @param specials Array of special ability strings from unit.as.specials
  * @returns Array of C3 info objects
  */
-export function parseASC3Specials(specials: string[]): ASC3Info[] {
+export function parseASC3Specials(specials: readonly string[]): ASC3Info[] {
     const results: ASC3Info[] = [];
     
     for (const special of specials) {
@@ -338,24 +494,15 @@ export interface C3RuntimeState {
 
 const UNLINKED_C3_STATE: C3RuntimeState = Object.freeze({ linked: false, degraded: false });
 
-/** One normalized, ordered snapshot of a unit's mounted or Alpha Strike C3 endpoints. */
+/** One normalized, ordered snapshot of a unit's published or Alpha Strike C3 endpoints. */
 export class C3Capabilities {
     readonly components: readonly C3Component[];
     readonly hasC3: boolean;
     readonly networkTypes: ReadonlySet<C3NetworkType>;
 
-    constructor(readonly unit: ForceUnit) {
-        const inventory = (unit as ForceUnit & { getInventory?: () => readonly MountedEquipment[] }).getInventory?.();
-        this.components = inventory
-            ? inventory.flatMap((mount): C3Component[] => {
-                const networkType = C3Capabilities.networkType(mount.equipment);
-                const role = C3Capabilities.role(mount.equipment);
-                return networkType && role ? [{
-                    mount, networkType, role,
-                    boosted: C3Capabilities.isBoosted(mount.equipment),
-                    index: 0,
-                }] : [];
-            }).map((component, index) => ({ ...component, index }))
+    constructor(readonly unit: C3CapabilityView) {
+        this.components = unit.c3Components
+            ? unit.c3Components.map((component, index) => Object.freeze({ ...component, index }))
             : C3Capabilities.fromAlphaStrike(unit);
         this.hasC3 = this.components.length > 0;
         this.networkTypes = new Set(this.components.map(component => component.networkType));
@@ -375,29 +522,9 @@ export class C3Capabilities {
             && (role === undefined || component.role === role));
     }
 
-    static hasFlag(equipment?: Equipment): boolean {
-        return !!equipment && ALL_C3_FLAGS.some(flag => equipment.flags.has(flag));
-    }
-
-    static networkType(equipment?: Equipment): C3NetworkType | null {
-        return C3_COMPATIBLE_NETWORKS.find(group => group.flags.some(flag => equipment?.flags.has(flag)))?.type ?? null;
-    }
-
-    static role(equipment?: Equipment): C3Role | null {
-        if (!equipment) return null;
-        if (C3_MASTER_FLAGS.some(flag => equipment.flags.has(flag))) return C3Role.MASTER;
-        if (C3_SLAVE_FLAGS.some(flag => equipment.flags.has(flag))) return C3Role.SLAVE;
-        if (C3_PEER_FLAGS.some(flag => equipment.flags.has(flag))) return C3Role.PEER;
-        return null;
-    }
-
-    static isBoosted(equipment?: Equipment): boolean {
-        return !!equipment && C3_BOOSTED_FLAGS.some(flag => equipment.flags.has(flag));
-    }
-
-    private static fromAlphaStrike(unit: ForceUnit): C3Component[] {
+    private static fromAlphaStrike(unit: C3CapabilityView): C3Component[] {
         const components: C3Component[] = [];
-        for (const info of parseASC3Specials(unit.getUnit().as?.specials ?? [])) {
+        for (const info of parseASC3Specials(unit.getC3Specials?.() ?? [])) {
             const count = info.role === C3Role.MASTER ? info.count : 1;
             for (let index = 0; index < count; index++) {
                 components.push({
@@ -410,6 +537,39 @@ export class C3Capabilities {
         }
         return components;
     }
+}
+
+/** Stable C3 endpoints mounted by any non-Mek Entity family. */
+export function projectNonMekC3Components(index: NonMekRuntimeIndex): readonly C3Component[] {
+    const components = [...index.components.values()]
+        .flatMap(({ id, mount }): C3Component[] => {
+            const flags = mount.equipment?.flags;
+            if (!flags) return [];
+            const networkTypes = C3_COMPATIBLE_NETWORKS
+                .filter(group => group.flags.some(flag => flags.has(flag)))
+                .map(group => group.type);
+            if (networkTypes.length !== 1) return [];
+            const networkType = networkTypes[0];
+            const roles = networkType === C3NetworkType.C3
+                ? [
+                    ...(C3_MASTER_FLAGS.some(flag => flags.has(flag)) ? [C3Role.MASTER] : []),
+                    ...(flags.has(C3_FLAGS.C3EM)
+                        || C3_SLAVE_FLAGS.some(flag => flags.has(flag)) ? [C3Role.SLAVE] : []),
+                ]
+                : [C3Role.PEER];
+            if (roles.length !== 1) return [];
+            return [{
+                componentId: id,
+                networkType,
+                role: roles[0],
+                boosted: C3_BOOSTED_FLAGS.some(flag => flags.has(flag)),
+                ...(flags.has(C3_FLAGS.C3EM) ? { emergency: true } : {}),
+                index: 0,
+            }];
+        })
+        .sort((left, right) => String(left.componentId).localeCompare(String(right.componentId)))
+        .map((component, index) => Object.freeze({ ...component, index }));
+    return Object.freeze(components);
 }
 
 /** Immutable indexed structural and runtime view of one serialized C3 revision. */
@@ -430,16 +590,16 @@ export class C3Network {
     private readonly linksByNetwork = new Map<string, C3Link[]>();
     private readonly incidentByNetworkUnit = new Map<string, C3Link[]>();
     private readonly exactLinks = new Map<string, C3Link>();
-    private readonly stateCache = new Map<string, C3RuntimeState>();
-    private readonly networkStateCache = new Map<string, C3RuntimeState>();
+    private readonly stateByUnitType = new Map<string, C3RuntimeState>();
+    private readonly stateByNetworkUnit = new Map<string, C3RuntimeState>();
     private readonly emergencyNetworkIds = new Set<string>();
-    private readonly emergencyMasterByNetworkId = new Map<string, { mount: MountedEquipment; endpoint: C3EndpointRef }>();
-    private readonly unitsById: ReadonlyMap<string, ForceUnit>;
+    private readonly emergencyMasterByNetworkId = new Map<string, C3EndpointRef>();
+    private readonly unitsById: ReadonlyMap<string, C3UnitView>;
     private readonly jammedUnitIds: ReadonlySet<string>;
 
     constructor(
         networks: readonly SerializedC3NetworkGroup[],
-        units: readonly ForceUnit[] = [],
+        units: readonly C3UnitView[] = [],
         includeRuntime = true,
     ) {
         this.networks = networks;
@@ -453,6 +613,7 @@ export class C3Network {
         this.topLevelNetworks = networks.filter(network => !this.parentById.has(network.id));
         this.links = includeRuntime ? this.buildLinks() : [];
         if (includeRuntime) this.indexLinks();
+        this.indexRuntimeStates();
     }
 
     capability(unitId: string): C3Capabilities | undefined { return this.capabilitiesByUnitId.get(unitId); }
@@ -494,9 +655,6 @@ export class C3Network {
                 return parsed.unitId === unitId && parsed.compIndex !== undefined;
             }));
     }
-    isUnitSlaveConnected(unitId: string): boolean {
-        return this.networksForUnit(unitId).some(network => network.members?.includes(unitId) ?? false);
-    }
     networkUnitIds(network: SerializedC3NetworkGroup): readonly string[] {
         const ids = new Set<string>();
         if (network.masterId) ids.add(network.masterId);
@@ -534,99 +692,19 @@ export class C3Network {
         return endpoints;
     }
     stateForNetwork(unitId: string, networkId: string): C3RuntimeState {
-        const cacheKey = `${networkId}\0${unitId}`;
-        const cached = this.networkStateCache.get(cacheKey);
-        if (cached) return cached;
         const network = this.network(networkId);
         if (!network || !this.networkUnitIds(network).includes(unitId)) return UNLINKED_C3_STATE;
-        const links = this.linksForNetwork(networkId);
-        const localKeys = new Set<string>();
-        for (const link of links) {
-            if (link.source.unitId === unitId) localKeys.add(C3Network.endpointKey(link.source));
-            if (link.target.unitId === unitId) localKeys.add(C3Network.endpointKey(link.target));
-        }
-        const adjacency = new Map<string, Set<string>>();
-        const operational = links.filter(link => link.operational);
-        for (const link of operational) {
-            C3Network.addToSet(adjacency, C3Network.endpointKey(link.source), C3Network.endpointKey(link.target));
-            C3Network.addToSet(adjacency, C3Network.endpointKey(link.target), C3Network.endpointKey(link.source));
-        }
-        const stack = [...localKeys].filter(key => adjacency.has(key));
-        if (stack.length === 0) {
-            const state = { linked: false, degraded: false, color: network.color };
-            this.networkStateCache.set(cacheKey, state);
-            return state;
-        }
-        const component = new Set<string>();
-        while (stack.length) {
-            const key = stack.pop()!;
-            if (component.has(key)) continue;
-            component.add(key);
-            for (const adjacent of adjacency.get(key) ?? []) stack.push(adjacent);
-        }
-        const componentLinks = operational.filter(link => component.has(C3Network.endpointKey(link.source))
-            && component.has(C3Network.endpointKey(link.target)));
-        const unitIds = new Set([...component].map(C3Network.endpointUnitId));
-        const jammed = (id: string) => this.jammedUnitIds.has(id);
-        const directSlaveIds = new Set((network.members ?? []).flatMap(member => {
-            const parsed = C3Network.parseMember(member);
-            return parsed.compIndex === undefined ? [parsed.unitId] : [];
-        }));
-        const effectiveMasterId = componentLinks[0]?.source.unitId;
-        const isEffectiveMaster = unitId === effectiveMasterId;
-        const degraded = network.type === C3NetworkType.C3
-            ? jammed(unitId) || (
-                isEffectiveMaster
-                    ? componentLinks.some(link => directSlaveIds.has(link.target.unitId) && jammed(link.target.unitId))
-                    : !!effectiveMasterId && jammed(effectiveMasterId)
-            )
-            : jammed(unitId) || [...unitIds].filter(id => id !== unitId).every(jammed);
-        const state = { linked: true, degraded, color: this.effectiveComponentColor(localKeys, network) };
-        this.networkStateCache.set(cacheKey, state);
-        return state;
+        return this.stateByNetworkUnit.get(`${networkId}\0${unitId}`) ?? UNLINKED_C3_STATE;
     }
     stateFor(unitId: string, type: C3NetworkType): C3RuntimeState {
-        const cacheKey = C3Network.unitTypeKey(unitId, type);
-        const cached = this.stateCache.get(cacheKey);
-        if (cached) return cached;
-        const states = this.networksForUnit(unitId)
-            .filter(network => network.type === type)
-            .map(network => this.stateForNetwork(unitId, network.id));
-        if (states.length === 0) return UNLINKED_C3_STATE;
-        const linked = states.filter(state => state.linked);
-        const state = linked.length === 0
-            ? { linked: false, degraded: false, color: states[0].color }
-            : {
-                linked: true,
-                degraded: linked.every(state => state.degraded),
-                color: (linked.find(state => !state.degraded) ?? linked[0]).color,
-            };
-        this.stateCache.set(cacheKey, state);
-        return state;
+        return this.stateByUnitType.get(C3Network.unitTypeKey(unitId, type)) ?? UNLINKED_C3_STATE;
     }
     statesFor(unitId: string): readonly C3RuntimeState[] {
         return this.networksForUnit(unitId).map(network => this.stateForNetwork(unitId, network.id));
     }
     hasLinkedNetwork(unitId: string): boolean { return this.statesFor(unitId).some(state => state.linked); }
-    emergencyMasterStatus(equipment: MountedEquipment): C3EmergencyMasterStatus {
-        if (!isC3EmergencyMaster(equipment)) return 'dormant';
-        if (isC3EmergencyMasterFried(equipment)) return 'fried';
-        const network = this.standardNetworkForEmergencyMaster(equipment);
-        if (!network) return 'dormant';
-        const requested = this.isEmergencyMasterRequested(network, equipment);
-        if (!requested) return 'dormant';
-        if (!this.isEndpointAvailable({
-            unitId: equipment.owner.id,
-            compIndex: this.emergencyMasterComponentIndex(equipment) ?? -1,
-        }, false)) return 'unavailable';
-        if (equipment.owner.isC3Jammed()) return 'standby';
-        return this.effectiveEmergencyMaster(network)?.mount === equipment ? 'active' : 'standby';
-    }
-    emergencyMasterOperatingTurns(equipment: MountedEquipment): number {
-        return getC3EmergencyMasterOperatingTurns(equipment);
-    }
     effectiveEmergencyMasterForNetwork(networkId: string): C3EndpointRef | undefined {
-        return this.emergencyMasterByNetworkId.get(networkId)?.endpoint;
+        return this.emergencyMasterByNetworkId.get(networkId);
     }
     rootOf(networkId: string): SerializedC3NetworkGroup | undefined {
         let current = this.network(networkId);
@@ -659,26 +737,6 @@ export class C3Network {
             for (const member of network.members ?? []) ids.add(C3Network.parseMember(member).unitId);
         }
         return ids;
-    }
-    /** Participating endpoint identities; distinct Master components on one unit count separately. */
-    treeEndpointKeys(networkId: string): ReadonlySet<string> {
-        const keys = new Set<string>();
-        for (const network of this.treeNetworks(networkId)) {
-            if (network.peerIds) {
-                for (const peerId of network.peerIds) keys.add(`peer:${peerId}`);
-                continue;
-            }
-            if (network.masterId && network.masterCompIndex !== undefined) {
-                keys.add(C3Network.masterEndpointKey(network.masterId, network.masterCompIndex));
-            }
-            for (const member of network.members ?? []) {
-                const endpoint = C3Network.parseMember(member);
-                keys.add(endpoint.compIndex === undefined
-                    ? `slave:${endpoint.unitId}`
-                    : C3Network.masterEndpointKey(endpoint.unitId, endpoint.compIndex));
-            }
-        }
-        return keys;
     }
     static masterEndpointKey(unitId: string, compIndex: number): string {
         return `master:${unitId}:${compIndex}`;
@@ -828,7 +886,7 @@ export class C3Network {
                 }
             } else if (network.masterId && network.masterCompIndex !== undefined) {
                 const emergencyMaster = this.emergencyMasterByNetworkId.get(network.id);
-                const source = emergencyMaster?.endpoint
+                const source = emergencyMaster
                     ?? { unitId: network.masterId, compIndex: network.masterCompIndex };
                 for (const member of network.members ?? []) {
                     const parsed = C3Network.parseMember(member);
@@ -860,39 +918,100 @@ export class C3Network {
         const unit = this.unitsById.get(endpoint.unitId);
         const component = this.capability(endpoint.unitId)?.component(endpoint.compIndex);
         return !!unit && !!component
-            && (!rejectFried || !component.mount || !isC3EmergencyMasterFried(component.mount))
+            && (!rejectFried || component.emergencyFried !== true)
             && unit.isC3EndpointOperational(endpoint.compIndex, component);
     }
-    private standardNetworkForEmergencyMaster(equipment: MountedEquipment): SerializedC3NetworkGroup | undefined {
-        return this.networksForUnit(equipment.owner.id).find(network => network.type === C3NetworkType.C3
-            && network.members?.includes(equipment.owner.id));
-    }
-    private emergencyMasterComponentIndex(equipment: MountedEquipment): number | undefined {
-        return this.capability(equipment.owner.id)?.components.find(component => component.mount === equipment)?.index;
-    }
-    private configuredMasterFailed(network: SerializedC3NetworkGroup): boolean {
-        if (!network.masterId || network.masterCompIndex === undefined) return false;
-        return this.jammedUnitIds.has(network.masterId)
-            || !this.isEndpointAvailable({ unitId: network.masterId, compIndex: network.masterCompIndex });
-    }
-    private isEmergencyMasterRequested(network: SerializedC3NetworkGroup, equipment: MountedEquipment): boolean {
-        return isC3EmergencyMasterRequested(equipment, this.configuredMasterFailed(network));
-    }
-    private effectiveEmergencyMaster(network: SerializedC3NetworkGroup): { mount: MountedEquipment; endpoint: C3EndpointRef } | undefined {
+    private effectiveEmergencyMaster(network: SerializedC3NetworkGroup): C3EndpointRef | undefined {
+        if (network.type !== C3NetworkType.C3
+            || network.masterId === undefined
+            || network.masterCompIndex === undefined) return undefined;
+        const configuredMaster = { unitId: network.masterId, compIndex: network.masterCompIndex };
+        if (this.isEndpointAvailable(configuredMaster, false)
+            && !this.jammedUnitIds.has(configuredMaster.unitId)) return undefined;
         for (const member of network.members ?? []) {
             const parsed = C3Network.parseMember(member);
             if (parsed.compIndex !== undefined) continue;
-            const capabilities = this.capability(parsed.unitId);
-            for (const component of capabilities?.components ?? []) {
-                const mount = component.mount;
-                if (component.role !== C3Role.SLAVE || component.networkType !== C3NetworkType.C3
-                    || !mount || !isC3EmergencyMaster(mount) || !this.isEmergencyMasterRequested(network, mount)
-                    || isC3EmergencyMasterFried(mount) || this.jammedUnitIds.has(parsed.unitId)
-                    || !this.isEndpointAvailable({ unitId: parsed.unitId, compIndex: component.index }, false)) continue;
-                return { mount, endpoint: { unitId: parsed.unitId, compIndex: component.index } };
-            }
+            const emergency = this.capability(parsed.unitId)?.components.find(component =>
+                component.networkType === C3NetworkType.C3
+                && component.role === C3Role.SLAVE
+                && component.emergency === true
+                && component.emergencyFried !== true);
+            if (!emergency) continue;
+            const candidate = { unitId: parsed.unitId, compIndex: emergency.index };
+            if (this.isEndpointAvailable(candidate)
+                && !this.jammedUnitIds.has(candidate.unitId)) return candidate;
         }
         return undefined;
+    }
+    private indexRuntimeStates(): void {
+        const statesByUnitType = new Map<string, C3RuntimeState[]>();
+        for (const network of this.networks) {
+            for (const unitId of this.networkUnitIds(network)) {
+                const state = this.computeNetworkState(unitId, network);
+                this.stateByNetworkUnit.set(`${network.id}\0${unitId}`, state);
+                const key = C3Network.unitTypeKey(unitId, network.type);
+                const states = statesByUnitType.get(key);
+                if (states) states.push(state);
+                else statesByUnitType.set(key, [state]);
+            }
+        }
+        for (const [key, states] of statesByUnitType) {
+            const linked = states.filter(state => state.linked);
+            this.stateByUnitType.set(key, Object.freeze(linked.length === 0
+                ? { linked: false, degraded: false, color: states[0].color }
+                : {
+                    linked: true,
+                    degraded: linked.every(state => state.degraded),
+                    color: (linked.find(state => !state.degraded) ?? linked[0]).color,
+                }));
+        }
+    }
+    private computeNetworkState(unitId: string, network: SerializedC3NetworkGroup): C3RuntimeState {
+        const links = this.linksForNetwork(network.id);
+        const localKeys = new Set<string>();
+        for (const link of links) {
+            if (link.source.unitId === unitId) localKeys.add(C3Network.endpointKey(link.source));
+            if (link.target.unitId === unitId) localKeys.add(C3Network.endpointKey(link.target));
+        }
+        const adjacency = new Map<string, Set<string>>();
+        const operational = links.filter(link => link.operational);
+        for (const link of operational) {
+            C3Network.addToSet(adjacency, C3Network.endpointKey(link.source), C3Network.endpointKey(link.target));
+            C3Network.addToSet(adjacency, C3Network.endpointKey(link.target), C3Network.endpointKey(link.source));
+        }
+        const stack = [...localKeys].filter(key => adjacency.has(key));
+        if (stack.length === 0) {
+            return Object.freeze({ linked: false, degraded: false, color: network.color });
+        }
+        const component = new Set<string>();
+        while (stack.length) {
+            const key = stack.pop()!;
+            if (component.has(key)) continue;
+            component.add(key);
+            for (const adjacent of adjacency.get(key) ?? []) stack.push(adjacent);
+        }
+        const componentLinks = operational.filter(link => component.has(C3Network.endpointKey(link.source))
+            && component.has(C3Network.endpointKey(link.target)));
+        const unitIds = new Set([...component].map(C3Network.endpointUnitId));
+        const jammed = (id: string) => this.jammedUnitIds.has(id);
+        const directSlaveIds = new Set((network.members ?? []).flatMap(member => {
+            const parsed = C3Network.parseMember(member);
+            return parsed.compIndex === undefined ? [parsed.unitId] : [];
+        }));
+        const effectiveMasterId = componentLinks[0]?.source.unitId;
+        const isEffectiveMaster = unitId === effectiveMasterId;
+        const degraded = network.type === C3NetworkType.C3
+            ? jammed(unitId) || (
+                isEffectiveMaster
+                    ? componentLinks.some(link => directSlaveIds.has(link.target.unitId) && jammed(link.target.unitId))
+                    : !!effectiveMasterId && jammed(effectiveMasterId)
+            )
+            : jammed(unitId) || [...unitIds].filter(id => id !== unitId).every(jammed);
+        return Object.freeze({
+            linked: true,
+            degraded,
+            color: this.effectiveComponentColor(localKeys, network),
+        });
     }
     private indexLinks(): void {
         for (const link of this.links) {
@@ -934,17 +1053,40 @@ export interface C3TaxUnit {
     tagBV(): number;
 }
 
-/** Structural BV tax calculator; damage and jamming intentionally do not affect tax. */
+export type C3TaxComponentEligibility = (
+    unit: C3TaxUnit & C3UnitView,
+    component: C3Component,
+) => boolean;
+
+/** Owns the single endpoint-eligibility gate for every C3-family BV tax. */
 export class C3TaxCalculator {
     private readonly model: C3Network;
     private readonly unitsById: ReadonlyMap<string, C3TaxUnit>;
+    private readonly eligibleComponentIndexes: ReadonlyMap<string, ReadonlySet<number>>;
     private readonly novaUnits: readonly C3TaxUnit[];
     private readonly novaBv: number;
 
-    constructor(networks: readonly SerializedC3NetworkGroup[], private readonly units: readonly C3TaxUnit[]) {
-        this.model = new C3Network(networks, units as unknown as readonly ForceUnit[], false);
+    constructor(
+        networks: readonly SerializedC3NetworkGroup[],
+        units: readonly (C3TaxUnit & C3UnitView)[],
+        isComponentEligible: C3TaxComponentEligibility = () => true,
+    ) {
         this.unitsById = new Map(units.map(unit => [unit.id, unit]));
-        this.novaUnits = units.filter(unit => this.model.capability(unit.id)?.has(C3NetworkType.NOVA));
+        const structuralModel = new C3Network(networks, units, false);
+        this.eligibleComponentIndexes = new Map(units.map(unit => [
+            unit.id,
+            new Set((structuralModel.capability(unit.id)?.components ?? [])
+                .filter(component => isComponentEligible(unit, component))
+                .map(component => component.index)),
+        ] as const));
+        this.model = new C3Network(
+            eligibleC3TaxNetworks(networks, structuralModel, this.eligibleComponentIndexes),
+            units,
+            false,
+        );
+        this.novaUnits = units.filter(unit =>
+            this.hasEligibleComponent(unit.id, component =>
+                component.networkType === C3NetworkType.NOVA));
         this.novaBv = this.novaUnits.reduce((sum, unit) =>
             sum + unit.getBaseBv() + unit.tagBV(), 0);
     }
@@ -955,7 +1097,7 @@ export class C3TaxCalculator {
         const networked = this.networkUnits(unit.id);
         if (networked.length < 2) return 0;
         const networkRate = Math.min(0.4, networked.length * C3_TAX_RATE);
-        const boosted = this.model.capability(unit.id)?.components.some(component => component.boosted) ?? false;
+        const boosted = this.hasEligibleComponent(unit.id, component => component.boosted);
         return (unit.getBaseBv() + unit.tagBV()) * (networkRate + (boosted ? C3_TAX_RATE : 0));
     }
 
@@ -964,14 +1106,15 @@ export class C3TaxCalculator {
         if (nova !== null) return nova;
         const networked = this.networkUnits(unit.id);
         if (networked.length < 2) return 0;
-        const boosted = this.model.capability(unit.id)?.components.some(component => component.boosted) ?? false;
+        const boosted = this.hasEligibleComponent(unit.id, component => component.boosted);
         const rate = boosted ? C3_BOOSTED_TAX_RATE : C3_TAX_RATE;
         return networked.reduce((sum, candidate) =>
             sum + candidate.getBaseBv() + candidate.tagBV(), 0) * rate;
     }
 
     private nova(unit: C3TaxUnit): number | null {
-        if (!this.model.capability(unit.id)?.has(C3NetworkType.NOVA)) return null;
+        if (!this.hasEligibleComponent(unit.id, component =>
+            component.networkType === C3NetworkType.NOVA)) return null;
         if (this.novaUnits.length < 2) return 0;
         const rate = Math.min(this.novaUnits.length * C3_TAX_RATE, NOVA_MAX_TAX_RATE);
         return (this.novaBv * rate) / this.novaUnits.length;
@@ -986,4 +1129,60 @@ export class C3TaxCalculator {
             return unit ? [unit] : [];
         });
     }
+
+    private hasEligibleComponent(
+        unitId: string,
+        predicate: (component: C3Component) => boolean,
+    ): boolean {
+        const eligible = this.eligibleComponentIndexes.get(unitId);
+        return this.model.capability(unitId)?.components.some(component =>
+            eligible?.has(component.index) === true && predicate(component)) ?? false;
+    }
+}
+
+function eligibleC3TaxNetworks(
+    networks: readonly SerializedC3NetworkGroup[],
+    model: C3Network,
+    eligible: ReadonlyMap<string, ReadonlySet<number>>,
+): SerializedC3NetworkGroup[] {
+    const result: SerializedC3NetworkGroup[] = [];
+    for (const network of networks) {
+        if (network.type !== C3NetworkType.C3) {
+            const peerIds = (network.peerIds ?? []).filter(unitId =>
+                eligibleNetworkComponent(model, eligible, unitId, network, C3Role.PEER));
+            if (new Set(peerIds).size >= 2) result.push({ ...network, peerIds });
+            continue;
+        }
+
+        const masterId = network.masterId;
+        if (!masterId
+            || !eligibleNetworkComponent(model, eligible, masterId, network, C3Role.MASTER)) {
+            continue;
+        }
+        const members = (network.members ?? []).filter(rawMember => {
+            const member = C3Network.parseMember(rawMember);
+            return eligibleNetworkComponent(
+                model,
+                eligible,
+                member.unitId,
+                network,
+                member.compIndex === undefined ? C3Role.SLAVE : C3Role.MASTER,
+            );
+        });
+        const distinctUnits = new Set([masterId, ...members.map(member =>
+            C3Network.parseMember(member).unitId)]);
+        if (members.length > 0 && distinctUnits.size >= 2) result.push({ ...network, members });
+    }
+    return result;
+}
+
+function eligibleNetworkComponent(
+    model: C3Network,
+    eligible: ReadonlyMap<string, ReadonlySet<number>>,
+    unitId: string,
+    network: SerializedC3NetworkGroup,
+    role: C3Role,
+): boolean {
+    const componentIndex = model.resolveComponentIndex(unitId, network, role);
+    return componentIndex !== undefined && eligible.get(unitId)?.has(componentIndex) === true;
 }

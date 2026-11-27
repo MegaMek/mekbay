@@ -1,0 +1,535 @@
+<div class="topology-layout">
+  <section class="map-panel framed-borders">
+    <header>
+      <div>
+        <h2>Building footprint</h2>
+        <p>
+          {{ entity().coordinates().length }} {{ entity().coordinates().length === 1 ? 'hex' : 'hexes' }} ·
+          @if (entity().isBridge()) {
+            {{ entity().mapLevels().length }} deck {{ entity().mapLevels().length === 1 ? 'elevation' : 'elevations' }}
+          } @else {
+            {{ floors().length }} {{ floors().length === 1 ? 'floor' : 'floors' }} · {{ entity().locationOrder.length }}
+            {{ entity().locationOrder.length === 1 ? 'location' : 'locations' }}
+          }
+        </p>
+      </div>
+      <div class="view-controls">
+        <label class="coordinate-toggle">
+          <input
+            type="checkbox"
+            class="bt-checkbox"
+            aria-label="Absolute coordinates"
+            [ngModel]="absoluteCoordinates()"
+            (ngModelChange)="setAbsoluteCoordinates($event)"
+          />
+          Absolute coordinates
+        </label>
+        <div class="view-toggle" role="group" aria-label="Building visualization">
+          <button class="bt-button" [attr.aria-pressed]="viewMode() === 'top'" (click)="setViewMode('top')">
+            Top view
+          </button>
+          <button class="bt-button" [attr.aria-pressed]="viewMode() === 'pancake'" (click)="setViewMode('pancake')">
+            Pancake view
+          </button>
+        </div>
+      </div>
+    </header>
+    <div
+      class="map-stage"
+      cdkDropList
+      [cdkDropListDisabled]="disabled()"
+      [cdkDropListSortingDisabled]="true"
+      [cdkDropListAutoScrollDisabled]="true"
+      (cdkDropListDropped)="equipmentDropped.emit($event)"
+    >
+      <svg
+        #mapSvg
+        class="hex-map"
+        [class.pannable]="pannable()"
+        [style.touch-action]="touchAction()"
+        [attr.viewBox]="viewBox()"
+        [attr.aria-label]="viewMode() === 'top' ? 'Building footprint hex map' : 'Building layers, highest level first'"
+        (wheel)="wheel($event)"
+        (pointerdown)="pointerDown($event)"
+        (pointermove)="pointerMove($event)"
+        (pointerup)="pointerUp($event)"
+        (pointercancel)="pointerUp($event)"
+      >
+        @if (viewMode() === 'pancake') {
+          @let stack = pancake();
+          @for (layer of stack.layers; track layer.floor) {
+            <g
+              class="pancake-layer"
+              [class.active-layer]="layer.floor === (entity().isBridge() ? entity().deckLevel(selected()) : floor())"
+              [attr.transform]="'translate(0 ' + layer.y + ')'"
+              [attr.data-floor]="layer.floor"
+              tabindex="0"
+              role="button"
+              [attr.aria-label]="'Open level ' + entity().levelLabel(layer.floor) + ' in top view'"
+              (click)="openFloor(layer.floor)"
+              (keydown.enter)="openFloor(layer.floor)"
+              (keydown.space)="openFloor(layer.floor); $event.preventDefault()"
+            >
+              <rect
+                class="layer-hit"
+                [attr.x]="stack.left"
+                [attr.y]="stack.top - 28"
+                [attr.width]="stack.right - stack.left"
+                [attr.height]="stack.bottom - stack.top + 30"
+                rx="6"
+              />
+              <text class="layer-label" [attr.x]="stack.left + 8" [attr.y]="stack.top - 10">
+                Level: {{ entity().levelLabel(layer.floor) }}
+              </text>
+              <text class="layer-count" [attr.x]="stack.right - 8" [attr.y]="stack.top - 10">
+                {{ layer.count }} equipped
+              </text>
+              @for (cell of layer.cells; track cell.key) {
+                @let target = dropLocation() === locationName(cell.hex, layer.floor);
+                <g
+                  class="occupied"
+                  [class.wall-hex]="entity().usesHexsides()"
+                  [class.equipped]="cell.count > 0"
+                  [class.feature-hex]="!!cell.fill"
+                  [class.drop-target]="target"
+                  [class.drop-rejected]="target && !!dropIssue()"
+                  [attr.data-location]="locationName(cell.hex, layer.floor)"
+                  [attr.transform]="'translate(' + cell.x + ' ' + cell.y + ')'"
+                >
+                  <polygon class="layer-surface" [attr.points]="polygon" transform="matrix(1 0 -0.35 0.38 0 0)" />
+                  <polygon [attr.points]="polygon" [style.fill]="cell.fill" transform="matrix(1 0 -0.35 0.38 0 0)" />
+                  @if (entity().usesHexsides()) {
+                    @for (line of sideLines; track line.side) {
+                      @if (entity().hasSide(cell.hex, line.side)) {
+                        <line
+                          class="structure-side"
+                          [attr.x1]="line.x1"
+                          [attr.y1]="line.y1"
+                          [attr.x2]="line.x2"
+                          [attr.y2]="line.y2"
+                          transform="matrix(1 0 -0.35 0.38 0 0)"
+                        />
+                      }
+                    }
+                  }
+                  <text
+                    y="3"
+                    class="pancake-coordinate"
+                    lengthAdjust="spacingAndGlyphs"
+                    [attr.textLength]="
+                      coordinateWidth(displayHex(cell.hex) + (cell.count ? ' · ' + cell.count : ''), cell.glyphs.length)
+                    "
+                  >
+                    @for (symbol of cell.glyphs; track symbol) {
+                      <tspan
+                        class="feature-symbol"
+                        [attr.data-building-symbol]="symbol"
+                        [textContent]="mapKey[symbol].glyph"
+                      />
+                    }
+                    <tspan
+                      [attr.dx]="cell.glyphs.length ? 2 : 0"
+                      [textContent]="displayHex(cell.hex) + (cell.count ? ' · ' + cell.count : '')"
+                    />
+                  </text>
+                </g>
+              }
+              @for (cell of layer.cells; track cell.key) {
+                <g class="map-decorations" [attr.transform]="'translate(' + cell.x + ' ' + cell.y + ')'">
+                  @for (door of cell.doors; track door.symbol + door.facing) {
+                    @if (door.line) {
+                      <polyline class="linked-door-opening" [attr.points]="door.line" fill="none" stroke="var(--text-color, white)"
+                        stroke-width="5" stroke-linecap="round" stroke-linejoin="round" transform="matrix(1 0 -0.35 0.38 0 0)" />
+                    }
+                    <polygon
+                      class="door-marker"
+                      [attr.data-building-symbol]="door.symbol"
+                      [style.fill]="mapKey[door.symbol].color"
+                      [attr.data-building-facing]="door.facing"
+                      [attr.points]="door.points"
+                      transform="matrix(1 0 -0.35 0.38 0 0)"
+                    />
+                  }
+                </g>
+              }
+            </g>
+            <g class="elevator-connections" [attr.stroke]="mapKey.elevator.color" aria-hidden="true">
+              @for (connection of layer.elevatorConnections; track $index) {
+                <line
+                  [attr.x1]="connection.x1"
+                  [attr.y1]="connection.y1"
+                  [attr.x2]="connection.x2"
+                  [attr.y2]="connection.y2"
+                />
+              }
+            </g>
+          }
+        } @else {
+          @for (cell of topCells(); track cell.key) {
+            @let target = cell.occupied && dropLocation() === locationName(cell.hex, floor());
+            <g
+              [attr.transform]="'translate(' + cell.x + ' ' + cell.y + ')'"
+              [class.occupied]="cell.occupied"
+              [class.wall-hex]="cell.occupied && entity().usesHexsides()"
+              [class.selected]="cell.occupied && cell.key === key(selected())"
+              [class.empty]="!cell.occupied"
+              [class.feature-hex]="cell.occupied && !!cell.fill"
+              [class.drop-target]="target"
+              [class.drop-rejected]="target && !!dropIssue()"
+              [attr.data-location]="cell.occupied ? locationName(cell.hex, floor()) : null"
+              [attr.tabindex]="cell.occupied || !disabled() ? 0 : -1"
+              role="button"
+              [attr.aria-label]="cell.occupied ? 'Select hex ' + displayHex(cell.hex) : 'Add neighboring hex'"
+              [attr.aria-pressed]="cell.occupied ? cell.key === key(selected()) : null"
+              (pointerenter)="hoveredKey.set(cell.key)"
+              (pointerleave)="hoveredKey.set(null)"
+              (click)="activate(cell.hex, cell.occupied)"
+              (keydown.enter)="activate(cell.hex, cell.occupied)"
+              (keydown.space)="activate(cell.hex, cell.occupied); $event.preventDefault()"
+            >
+              <polygon [attr.points]="polygon" [style.fill]="cell.occupied ? cell.fill : null" />
+              @if (cell.occupied && entity().usesHexsides()) {
+                @for (line of sideLines; track line.side) {
+                  @if (entity().hasSide(cell.hex, line.side)) {
+                    <line
+                      class="structure-side"
+                      [attr.data-side]="line.side"
+                      [attr.x1]="line.x1"
+                      [attr.y1]="line.y1"
+                      [attr.x2]="line.x2"
+                      [attr.y2]="line.y2"
+                    />
+                  }
+                }
+              }
+              @if (cell.occupied) {
+                <text
+                  y="-8"
+                  class="coordinate"
+                  lengthAdjust="spacingAndGlyphs"
+                  [attr.textLength]="
+                    coordinateWidth(displayLocation(locationName(cell.hex, floor()), true), cell.glyphs.length)
+                  "
+                >
+                  @for (symbol of cell.glyphs; track symbol) {
+                    <tspan
+                      class="feature-symbol"
+                      [attr.data-building-symbol]="symbol"
+                      [textContent]="mapKey[symbol].glyph"
+                    />
+                  }
+                  <tspan
+                    [attr.dx]="cell.glyphs.length ? 2 : 0"
+                    [textContent]="displayLocation(locationName(cell.hex, floor()), true)"
+                  />
+                </text>
+                <text y="9" class="equipment-count">{{ cell.count ? cell.count + ' equipped' : 'Empty' }}</text>
+                @if (isOrigin(cell.hex)) {
+                  <text y="25" class="origin">ORIGIN</text>
+                }
+              } @else {
+                <text y="6" class="add-hex">+</text>
+              }
+            </g>
+          }
+          @for (cell of topCells(); track cell.key) {
+            <g class="map-decorations" [attr.transform]="'translate(' + cell.x + ' ' + cell.y + ')'">
+              @for (door of cell.doors; track door.symbol + door.facing) {
+                @if (door.line) {
+                  <polyline class="linked-door-opening" [attr.points]="door.line" fill="none" stroke="var(--text-color, white)"
+                    stroke-width="5" stroke-linecap="round" stroke-linejoin="round" />
+                }
+                <polygon
+                  class="door-marker"
+                  [attr.data-building-symbol]="door.symbol"
+                  [style.fill]="mapKey[door.symbol].color"
+                  [attr.data-building-facing]="door.facing"
+                  [attr.points]="door.points"
+                />
+              }
+            </g>
+          }
+        }
+      </svg>
+      <button
+        class="bt-button map-transform map-rotate"
+        type="button"
+        aria-label="Rotate building footprint 60°"
+        title="Rotate 60°"
+        [disabled]="disabled()"
+        (click)="rotate()"
+      >
+        <svg
+          viewBox="0 0 24 24"
+          fill="none"
+          stroke="currentColor"
+          stroke-width="1.75"
+          aria-hidden="true"
+          focusable="false"
+        >
+          <path d="M20 6a10 10 0 1 0 0 12M20 2v4h-4" stroke-linecap="round" stroke-linejoin="round" />
+          <path d="m12 8 3.5 2v4L12 16l-3.5-2v-4Z" />
+        </svg>
+      </button>
+      <button
+        class="bt-button map-transform map-mirror"
+        type="button"
+        aria-label="Mirror building footprint"
+        title="Mirror"
+        [disabled]="disabled()"
+        (click)="mirror()"
+      >
+        <svg
+          viewBox="0 0 24 24"
+          fill="none"
+          stroke="currentColor"
+          stroke-width="1.75"
+          aria-hidden="true"
+          focusable="false"
+        >
+          <path d="M12 3v18" stroke-dasharray="2 2" />
+          <path d="M8 6 3 18h5ZM16 6l5 12h-5Z" stroke-linejoin="round" />
+        </svg>
+      </button>
+      @if (dropLocation(); as destination) {
+        <div class="equipment-drop-hint" [class.drop-rejected]="!!dropIssue()" role="status">
+          {{ dropIssue() || 'Release to place equipment at ' + displayLocation(destination) }}
+        </div>
+      }
+      <div class="map-zoom">
+        <label
+          >Zoom<input
+            aria-label="Map zoom"
+            type="range"
+            min="50"
+            max="400"
+            [ngModel]="zoom()"
+            (ngModelChange)="zoom.set($event)" /></label
+        ><span>{{ zoom() }}%</span>
+        <button class="bt-button" (click)="resetView()">Fit</button>
+
+        @if (viewMode() === 'top' && !entity().isBridge()) {
+          <label
+            >View floor<select
+              aria-label="View floor"
+              class="bt-select"
+              [ngModel]="floor()"
+              (ngModelChange)="selectFloor($event)"
+            >
+              @for (level of floors(); track level) {
+                <option [ngValue]="level">{{ entity().levelLabel(level, true) }}</option>
+              }
+            </select></label
+          >
+        }
+      </div>
+    </div>
+    @if (legend().length) {
+      <div class="topology-key" aria-label="Structure map legend">
+        @for (symbol of legend(); track symbol) {
+          <span
+            ><svg [attr.viewBox]="symbol === 'large-door' ? '-8 -6 30 12' : '-8 -6 16 12'"
+              [style.width.px]="symbol === 'large-door' ? 45 : 24" [attr.data-building-symbol]="symbol" aria-hidden="true">
+              @if (symbol === 'large-door') {
+                <line x1="0" y1="0" x2="14" y2="0" stroke="#111" stroke-width="2" />
+                <polygon points="0,-5 4,3 -4,3" [attr.fill]="mapKey[symbol].color" />
+                <polygon points="14,-5 18,3 10,3" [attr.fill]="mapKey[symbol].color" />
+              } @else if (!mapKey[symbol].glyph) {
+                <polygon points="0,-5 4,3 -4,3" [attr.fill]="mapKey[symbol].color" />
+              } @else {
+                <polygon points="-7,0 -3.5,-5 3.5,-5 7,0 3.5,5 -3.5,5" [attr.fill]="mapKey[symbol].color" />
+                <text y="2.5">{{ mapKey[symbol].glyph }}</text>
+              }</svg
+            >{{ mapKey[symbol].label }}</span
+          >
+        }
+      </div>
+    }
+    <p class="hint">
+      Drag equipment from the list onto a building hex to place it on that floor.
+      @if (viewMode() === 'pancake') {
+        Select a layer to open that level in top view for editing. Drag to pan. {{ optionsService.options().mouseWheelAction === 'zoom' ? 'Scroll to zoom; Ctrl + wheel to scroll.' : 'Scroll to pan; Ctrl + wheel to zoom.' }}
+      } @else {
+        @if (entity().isBridge()) {
+          Use + to extend the bridge. Set its endpoint elevations to calculate the deck slope.
+        } @else if (entity().usesHexsides()) {
+          Select a hex, then choose its occupied wall/fence sides. Use + to extend the drawing area.
+        } @else {
+          Select a hex to inspect its floors. Use + to extend the footprint on every level.
+        }
+        Drag to pan. {{ optionsService.options().mouseWheelAction === 'zoom' ? 'Scroll to zoom; Ctrl + wheel to scroll.' : 'Scroll to pan; Ctrl + wheel to zoom.' }}
+      }
+    </p>
+    @if (connected() > 1 && !entity().usesHexsides()) {
+      <p class="topology-warning" role="status">
+        {{ connected() }} disconnected sections. Add connecting hexes to join the footprint.
+      </p>
+    }
+  </section>
+  <aside>
+    <div class="topology-settings">
+      <section class="framed-borders topology-card">
+        <h2>Hex {{ displayLocation(selectedLocation()) }}</h2>
+        @if (entity().isMobile()) {
+          <div class="fields">
+            <label
+              >Hex floors<input
+                class="bt-input"
+                type="number"
+                min="1"
+                step="1"
+                aria-label="Hex floors"
+                [disabled]="disabled()"
+                [ngModel]="entity().hexHeight(selected())"
+                (ngModelChange)="setHexHeight($event)"
+            /></label>
+            @if (entity().mobileSystems().fuel) {
+              <label
+                >Fuel in hex (t)<input
+                  class="bt-input"
+                  type="number"
+                  min="0"
+                  step="0.5"
+                  aria-label="Fuel in hex"
+                  [disabled]="disabled()"
+                  [ngModel]="entity().fuelInHex(selected())"
+                  (ngModelChange)="setFuel($event)"
+              /></label>
+            }
+          </div>
+          @if (entity().mobileSystems().fuel) {
+            <p class="hint">
+              Allocate {{ entity().mobileSystems().fuel }} t total. Fuel may be concentrated in any occupied hexes.
+            </p>
+            <button class="bt-button" [disabled]="disabled()" (click)="distributeFuel()">Distribute fuel evenly</button>
+          }
+          <p class="hint">
+            Systems per hex: {{ entity().mobileSystems().powerPerHex }} t power +
+            {{ entity().mobileSystems().motivePerHex }} t motive + {{ entity().mobileSystems().sealingPerHex }} t
+            sealing. Required crew quarters are included.
+          </p>
+        }
+        @if (entity().usesHexsides()) {
+          <fieldset [disabled]="disabled()">
+            <legend>Occupied wall/fence hexsides</legend>
+            <construction-hex-sides
+              label="Structure side"
+              [hexLabel]="displayHex(selected())"
+              caption="Wall / fence"
+              marker="wall"
+              [selectedMask]="entity().sideMask(selected())"
+              [disabled]="disabled()"
+              (sideSelected)="setSide($event, !entity().hasSide(selected(), $event))"
+            />
+          </fieldset>
+        }
+        @if (entity().isBridge()) {
+          <p>Deck elevation: {{ entity().deckLevel(selected()) === 0 ? 'Ground' : entity().deckLevel(selected()) }}</p>
+          @if (bridgeSpan(); as span) {
+            <div class="fields">
+              <label
+                >Start {{ displayHex(span.start)
+                }}<input
+                  class="bt-input"
+                  aria-label="Bridge start elevation"
+                  type="number"
+                  min="0"
+                  step="1"
+                  [disabled]="disabled()"
+                  [ngModel]="entity().deckLevel(span.start)"
+                  (ngModelChange)="setBridgeEndpoint(true, $event)"
+              /></label>
+              <label
+                >End {{ displayHex(span.end)
+                }}<input
+                  class="bt-input"
+                  aria-label="Bridge end elevation"
+                  type="number"
+                  min="0"
+                  step="1"
+                  [disabled]="disabled() || span.length === 0"
+                  [ngModel]="entity().deckLevel(span.end)"
+                  (ngModelChange)="setBridgeEndpoint(false, $event)"
+              /></label>
+            </div>
+          }
+          <p class="hint">
+            Bridge ends must meet map terrain. A sloping deck rises steadily, at most one level per hex.
+          </p>
+        }
+        <div class="fields">
+          <label
+            >{{ absoluteCoordinates() ? 'Q' : 'Column'
+            }}<input
+              class="bt-input"
+              type="number"
+              step="1"
+              [disabled]="disabled() || isOrigin(selected())"
+              [ngModel]="moveColumn()"
+              (ngModelChange)="moveColumn.set($event)"
+          /></label>
+          <label
+            >{{ absoluteCoordinates() ? 'R' : 'Row'
+            }}<input
+              class="bt-input"
+              type="number"
+              step="1"
+              [disabled]="disabled() || isOrigin(selected())"
+              [ngModel]="moveRow()"
+              (ngModelChange)="moveRow.set($event)"
+          /></label>
+        </div>
+        <div class="hex-actions">
+          <button class="bt-button" [disabled]="disabled() || isOrigin(selected())" (click)="moveHex()">
+            Move hex
+          </button>
+          <button class="bt-button" [disabled]="disabled() || isOrigin(selected())" (click)="makeOrigin()">
+            Set as origin
+          </button>
+          <button class="bt-button" [disabled]="disabled() || entity().coordinates().length < 2" (click)="removeHex()">
+            Remove hex
+          </button>
+        </div>
+        <p class="hint">
+          Equipment follows moved hexes. Removing a hex or floor deletes its equipment; undo restores it. Removing the
+          origin rebases the remaining hexes.
+        </p>
+      </section>
+      <construction-building-services
+        [entity]="entity()"
+        [location]="selectedLocation()"
+        [absoluteCoordinates]="absoluteCoordinates()"
+        [disabled]="disabled()"
+        (editRequested)="editRequested.emit($event)"
+      />
+    </div>
+    <section class="framed-borders topology-card floor-equipment-card">
+      <h2>{{ floorName(floor()) }} equipment</h2>
+      <div class="floor-equipment">
+        <ng-content select="[topologyEquipment]" />
+      </div>
+      <label
+        >Move equipment from another location<select
+          class="bt-select"
+          [disabled]="disabled()"
+          [ngModel]="assignId()"
+          (ngModelChange)="assignId.set($event)"
+        >
+          <option value="">Choose equipment…</option>
+          @for (mount of available(); track mount.mountId) {
+            <option [value]="mount.mountId">
+              {{ mount.equipment?.name ?? mount.equipmentId }} ·
+              {{ displayLocation(mount.location, true) }}
+            </option>
+          }
+        </select></label
+      >
+      <button class="bt-button assign-button" [disabled]="disabled() || !assignId()" (click)="assign()">
+        Assign to this floor
+      </button>
+      <p class="hint">
+        Drag equipment here to install it, or onto a hex to move it. Select a weapon to edit its facing or turret.
+      </p>
+    </section>
+  </aside>
+</div>

@@ -2,8 +2,9 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 // Author: Drake
 
-import { ChangeDetectionStrategy, Component, output, signal } from '@angular/core';
+import { ChangeDetectionStrategy, Component, inject, output, signal } from '@angular/core';
 import type { PublicTagInfo } from '../../models/unit-summary.model';
+import { PlayerNamesService } from '../../services/player-names.service';
 
 /** Event data for tag selection with type information */
 export interface TagSelectionEvent {
@@ -21,11 +22,11 @@ export interface TagQuantityChangeEvent {
 @Component({
     selector: 'tag-selector',
     changeDetection: ChangeDetectionStrategy.OnPush,
-    imports: [],
     templateUrl: './tag-selector.component.html',
     styleUrl: './tag-selector.component.css'
 })
 export class TagSelectorComponent {
+    readonly playerNames = inject(PlayerNamesService);
     /** All unique tags available for unit-specific tagging */
     nameTags = signal<string[]>([]);
     /** All unique tags available for chassis-wide tagging */

@@ -1,0 +1,331 @@
+// Copyright (C) 2026 The MegaMek Team
+// SPDX-License-Identifier: GPL-3.0-or-later
+
+import { provideZonelessChangeDetection, signal } from '@angular/core';
+import { TestBed } from '@angular/core/testing';
+import { of, Subject } from 'rxjs';
+import { GameSystem } from '../models/common.model';
+import { CrewMember } from '../models/crew-member.model';
+import type { Force } from '../models/force.model';
+import type { ForcePersonnelSnapshot } from '../models/force-personnel';
+import type { UnitCrewPolicy } from '../models/unit-crew-policy';
+import { ProtoMekEntity } from '../models/entity/entities/protomek/protomek-entity';
+import { createTestEquipmentRegistry } from '../models/entity/testing/test-equipment-registry';
+import { TestBipedMekEntity, TestAeroSpaceFighterEntity, TestLamEntity, TestVtolEntity } from '../models/entity/testing/test-entities';
+import { EditPilotDialogComponent, type EditPilotDialogData, type EditPilotResult } from '../components/edit-pilot-dialog/edit-pilot-dialog.component';
+import { PilotSelectorService } from '../components/force-crew/pilot-selector.component';
+import { UnitCrewDialogComponent } from '../components/force-crew/unit-crew-dialog.component';
+import { DialogsService } from './dialogs.service';
+import { ToastService } from './toast.service';
+import { ForcePilotEditorService } from './force-pilot-editor.service';
+
+function ownerFixture(system: GameSystem) {
+  const personnel = signal<ForcePersonnelSnapshot>({
+    people: [{ id: 'person', name: 'Alex', gunnery: 3, piloting: 2, notes: 'Existing notes' }],
+    assignments: [],
+  });
+  const policy = signal<UnitCrewPolicy>({
+    kind: 'swappable',
+    canEdit: true,
+    positions: [{ positionId: 'crew:0', label: 'Pilot' }],
+  });
+  const update = jasmine.createSpy('updatePerson').and.resolveTo(true);
+  const unassign = jasmine.createSpy('unassignPerson').and.resolveTo(true);
+  const remove = jasmine.createSpy('deletePerson').and.resolveTo(true);
+  const owner = {
+    gameSystem: system,
+    personnel,
+    units: () => [],
+    members: () => [],
+    getUnitSnapshot: jasmine.createSpy('getUnitSnapshot').and.returnValue(null),
+    dispatchUnitCommand: jasmine.createSpy('dispatchUnitCommand').and.resolveTo({ accepted: true }),
+    faction: () => null,
+    era: () => null,
+    canEditPersonnel: () => policy().canEdit,
+    getUnitCrewPolicy: () => policy(),
+    updatePerson: update,
+    unassignPerson: unassign,
+    deletePerson: remove,
+  };
+  return { force: owner as unknown as Force, owner, personnel, policy, update, unassign, remove };
+}
+
+describe('ForcePilotEditorService personnel editing', () => {
+  let dialogs: jasmine.SpyObj<DialogsService>;
+  let editor: ForcePilotEditorService;
+  beforeEach(() => {
+    dialogs = jasmine.createSpyObj('DialogsService', ['createDialog']);
+    TestBed.configureTestingModule({
+      providers: [
+        provideZonelessChangeDetection(),
+        { provide: DialogsService, useValue: dialogs },
+        { provide: ToastService, useValue: { showToast: jasmine.createSpy('showToast') } },
+      ],
+    });
+    editor = TestBed.inject(ForcePilotEditorService);
+  });
+
+  it('edits an occupied station, lists the reserves for a vacant one, and lists stations for several', async () => {
+    const source = ownerFixture(GameSystem.CBT);
+    const occupant = signal<{ id: string } | undefined>(undefined);
+    Object.assign(source.owner, { getAssignedPerson: () => occupant() });
+    const open = spyOn(TestBed.inject(PilotSelectorService), 'open').and.returnValue(of(undefined));
+    dialogs.createDialog.and.returnValue({ closed: of(null) } as never);
+    const anchor = document.createElement('button');
+
+    await editor.editUnit(source.force, 'unit', anchor);
+    expect(open).toHaveBeenCalledOnceWith(source.force, 'unit', 'crew:0', anchor);
+    expect(dialogs.createDialog).not.toHaveBeenCalled();
+
+    occupant.set({ id: 'person' });
+    await editor.editStation(source.force, 'unit', 'crew:0');
+    expect(dialogs.createDialog.calls.mostRecent().args[0]).toBe(EditPilotDialogComponent);
+    expect(open).toHaveBeenCalledTimes(1);
+
+    source.policy.update((policy) => ({ ...policy, positions: [...policy.positions, { positionId: 'crew:1', label: 'Gunner' }] }));
+    await editor.editUnit(source.force, 'unit');
+    expect(dialogs.createDialog.calls.mostRecent().args[0]).toBe(UnitCrewDialogComponent);
+
+    source.policy.update((policy) => ({ ...policy, canEdit: false }));
+    dialogs.createDialog.calls.reset();
+    await editor.editStation(source.force, 'unit', 'crew:0');
+    expect(dialogs.createDialog).not.toHaveBeenCalled();
+  });
+
+  for (const [createEntity, skillSet] of [
+    [() => new TestBipedMekEntity(), 'ground'], [() => new TestVtolEntity(), 'ground'],
+    [() => new TestAeroSpaceFighterEntity(), 'aerospace'], [() => new TestLamEntity(), 'both'],
+  ] as const) {
+    it(`chooses ${skillSet} for ${createEntity().entityType} and retains both personal pairs`, async () => {
+      const source = ownerFixture(GameSystem.CBT);
+      source.personnel.set({ people: [{ id: 'person', gunnery: 2, piloting: 6, aeroGunnery: 5, aeroPiloting: 3 }],
+        assignments: [{ unitId: 'unit', positionId: 'crew:0', personId: 'person' }] });
+      source.owner.members = () => [{ kind: 'cbt', id: 'unit', entity: createEntity(),
+        currentBaseBattleValue: () => 1000, tagBattleValue: () => 0, c3BattleValue: () => 0, externalStoresBattleValue: () => 0 }] as never[];
+      dialogs.createDialog.and.callFake((_component, config) => ({ closed: of({
+        crew: (config!.data as EditPilotDialogData).crew, commander: false,
+      }) }) as never);
+      await editor.editPerson(source.force, 'person');
+      const data = dialogs.createDialog.calls.mostRecent().args[1]!.data as EditPilotDialogData;
+      expect(data.skillSet).toBe(skillSet);
+      expect(source.update.calls.mostRecent().args[1]).toEqual(jasmine.objectContaining({
+        gunnery: 2, piloting: 6, aeroGunnery: 5, aeroPiloting: 3,
+      }));
+    });
+  }
+
+  it('saves AS reserve notes, shared rating, abilities and commander to the existing person', async () => {
+    const source = ownerFixture(GameSystem.AS);
+    dialogs.createDialog.and.returnValue({
+      closed: of({
+        name: 'Alexandra',
+        notes: 'New notes',
+        portrait: 'Doctor_F_1',
+        edge: 3,
+        skill: 2,
+        abilities: ['marksman'],
+        formationAbilities: [],
+        commander: true,
+      }),
+    } as never);
+    await editor.editPerson(source.force, 'person');
+    const data = dialogs.createDialog.calls.mostRecent().args[1]!.data as Record<string, unknown>;
+    expect(data['notes']).toBe('Existing notes');
+    expect(data['edge']).toBe(0);
+    expect(data['personnelActions']).toEqual({ canUnassign: false, canDelete: true });
+    expect(source.update).toHaveBeenCalledOnceWith('person', {
+      name: 'Alexandra',
+      notes: 'New notes',
+      portrait: 'Doctor_F_1',
+      edge: 3,
+      gunnery: 2,
+      abilities: ['marksman'],
+      commander: true,
+    });
+  });
+
+  it('edits a ProtoMek pilot raw rating and explains the entity override without overwriting it', async () => {
+    const source = ownerFixture(GameSystem.CBT);
+    source.personnel.update((personnel) => ({
+      ...personnel,
+      assignments: [{ unitId: 'unit', positionId: 'crew:0', personId: 'person' }],
+    }));
+    source.owner.members = () =>
+      [
+        {
+          kind: 'cbt',
+          id: 'unit',
+          entity: new ProtoMekEntity(createTestEquipmentRegistry()),
+          currentBaseBattleValue: () => 500,
+          tagBattleValue: () => 0,
+          c3BattleValue: () => 0,
+          externalStoresBattleValue: () => 0,
+        },
+      ] as never[];
+    dialogs.createDialog.and.returnValue({
+      closed: of({ crew: [{ id: 'crew:0', name: 'Alex', gunnery: 3, piloting: 1 }], commander: false }),
+    } as never);
+    await editor.editPerson(source.force, 'person');
+    const data = dialogs.createDialog.calls.mostRecent().args[1]!.data as {
+      fixedPiloting: number;
+      crew: { piloting: number; notes: string }[];
+    };
+    expect(data.fixedPiloting).toBe(5);
+    expect(data.crew[0].piloting).toBe(2);
+    expect(data.crew[0].notes).toBe('Existing notes');
+    expect(source.update).toHaveBeenCalledOnceWith('person', {
+      name: 'Alex',
+      notes: undefined,
+      portrait: undefined,
+      edge: undefined,
+      gunnery: 3,
+      piloting: 1,
+      aeroGunnery: undefined, aeroPiloting: undefined,
+      commander: undefined,
+    });
+  });
+
+  it('passes current unit BV with fractional TAG, C3 and external stores costs and entity skill facts into the pilot preview', async () => {
+    const source = ownerFixture(GameSystem.CBT);
+    source.personnel.update((personnel) => ({
+      ...personnel,
+      assignments: [{ unitId: 'unit', positionId: 'crew:0', personId: 'person' }],
+    }));
+    const entity = new TestBipedMekEntity();
+    spyOn(entity, 'battleValue').and.returnValue(2000);
+    source.owner.members = () =>
+      [
+        {
+          kind: 'cbt',
+          id: 'unit',
+          entity,
+          currentBaseBattleValue: () => 1000,
+          tagBattleValue: () => 100.25,
+          c3BattleValue: () => 225.5,
+          externalStoresBattleValue: () => 50,
+        },
+      ] as never[];
+    dialogs.createDialog.and.returnValue({ closed: of(null) } as never);
+
+    await editor.editPerson(source.force, 'person');
+
+    const data = dialogs.createDialog.calls.mostRecent().args[1]!.data as EditPilotDialogData;
+    expect(data.preSkillBv).toBe(1375.75);
+    expect(data.skillFacts).toEqual({
+      unitType: 'Mek',
+      unitSubtype: 'BattleMek',
+      canMakeAntiMekAttacks: false,
+      hasAntiMekGear: false,
+    });
+    expect(source.update).not.toHaveBeenCalled();
+  });
+
+  it('keeps a reserve editable without inventing a unit BV preview', async () => {
+    const source = ownerFixture(GameSystem.CBT);
+    dialogs.createDialog.and.returnValue({
+      closed: of({ crew: [{ id: 'reserve', name: 'Alex', edge: 2, gunnery: 3, piloting: 2 }], commander: true }),
+    } as never);
+
+    await editor.editPerson(source.force, 'person');
+
+    const data = dialogs.createDialog.calls.mostRecent().args[1]!.data as EditPilotDialogData;
+    expect(data.preSkillBv).toBeUndefined();
+    expect(data.skillFacts).toBeUndefined();
+    expect(data.personnelActions).toEqual({ canUnassign: false, canDelete: true });
+    expect(data.crew[0].edge).toBe(0);
+    expect(source.update).toHaveBeenCalledOnceWith('person', {
+      name: 'Alex',
+      notes: undefined,
+      portrait: undefined,
+      edge: 2,
+      gunnery: 3,
+      piloting: 2,
+      commander: true,
+      aeroGunnery: undefined, aeroPiloting: undefined,
+    });
+  });
+
+  it('loads assigned health and saves edited wounds through the runtime while preserving status', async () => {
+    const source = ownerFixture(GameSystem.CBT);
+    source.personnel.update((personnel) => ({
+      ...personnel,
+      assignments: [{ unitId: 'unit', positionId: 'crew:0', personId: 'person' }],
+    }));
+    const health = CrewMember.from({ wounds: 2, unconscious: true, ejected: false });
+    source.owner.getUnitSnapshot.and.returnValue({ query: { crewState: () => health }, editContext: {} });
+    dialogs.createDialog.and.returnValue({
+      closed: of({ crew: [{ id: 'crew:0', name: 'Alex', gunnery: 3, piloting: 2, wounds: 4 }], commander: false }),
+    } as never);
+    await editor.editPerson(source.force, 'person');
+    const data = dialogs.createDialog.calls.mostRecent().args[1]!.data as EditPilotDialogData;
+    expect(data.editWounds).toBeTrue();
+    expect(data.crew[0].wounds).toBe(2);
+    expect(source.owner.dispatchUnitCommand).toHaveBeenCalledOnceWith(
+      'unit',
+      {
+        type: 'set-crew-state',
+        positionId: 'crew:0',
+        wounds: 4,
+        unconscious: true,
+        ejected: false,
+      },
+      {},
+    );
+  });
+
+  it('saves reserve wounds and preserves unconsciousness and recovery state', async () => {
+    const source = ownerFixture(GameSystem.CBT);
+    source.personnel.update((personnel) => ({
+      ...personnel,
+      people: [
+        { ...personnel.people[0], health: { wounds: 2, unconscious: true, ejected: false, recoveryReadyTurn: 3 } },
+      ],
+    }));
+    dialogs.createDialog.and.returnValue({
+      closed: of({ crew: [{ id: 'reserve', name: 'Alex', gunnery: 3, piloting: 2, wounds: 1 }], commander: false }),
+    } as never);
+    await editor.editPerson(source.force, 'person');
+    expect(source.update.calls.mostRecent().args).toEqual([
+      'person',
+      {
+        health: { wounds: 1, unconscious: true, ejected: false, recoveryReadyTurn: 3 },
+      },
+    ]);
+    expect(source.owner.dispatchUnitCommand).not.toHaveBeenCalled();
+  });
+
+  it('unassigns the same person from their current station after a move while the dialog is open', async () => {
+    const source = ownerFixture(GameSystem.CBT);
+    source.personnel.update((personnel) => ({
+      ...personnel,
+      assignments: [{ unitId: 'before', positionId: 'crew:0', personId: 'person' }],
+    }));
+    const closed = new Subject<EditPilotResult>();
+    dialogs.createDialog.and.returnValue({ closed } as never);
+    const editing = editor.editPerson(source.force, 'person');
+    source.personnel.update((personnel) => ({
+      ...personnel,
+      assignments: [{ unitId: 'after', positionId: 'crew:1', personId: 'person' }],
+    }));
+    closed.next({ action: 'unassign', crew: [], commander: false });
+    await editing;
+    expect(source.unassign).toHaveBeenCalledOnceWith('after', 'crew:1');
+    expect(source.update).not.toHaveBeenCalled();
+  });
+
+  it('uses core policy to omit integrated assignment actions and prevent read-only editing', async () => {
+    const source = ownerFixture(GameSystem.CBT);
+    source.personnel.update((personnel) => ({
+      ...personnel,
+      assignments: [{ unitId: 'unit', positionId: 'crew:0', personId: 'person' }],
+    }));
+    source.policy.update((policy) => ({ ...policy, kind: 'integrated' }));
+    dialogs.createDialog.and.returnValue({ closed: of(null) } as never);
+    await editor.editPerson(source.force, 'person');
+    const data = dialogs.createDialog.calls.mostRecent().args[1]!.data as { personnelActions: unknown };
+    expect(data.personnelActions).toEqual({ canUnassign: false, canDelete: false });
+    source.policy.update((policy) => ({ ...policy, canEdit: false }));
+    await editor.editPerson(source.force, 'person');
+    expect(dialogs.createDialog).toHaveBeenCalledTimes(1);
+  });
+});

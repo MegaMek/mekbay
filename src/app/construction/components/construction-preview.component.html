@@ -1,0 +1,41 @@
+<div class="preview-toolbar">
+    <nav class="preview-views" aria-label="Preview views">
+        <button class="bt-button" [class.active]="view() === 'sheet'" [attr.aria-pressed]="view() === 'sheet'"
+            [disabled]="!!working()" (click)="setView('sheet')">Sheet</button>
+        <button class="bt-button" [class.active]="view() === 'card'" [attr.aria-pressed]="view() === 'card'"
+            [disabled]="!!working()" (click)="setView('card')">Card</button>
+    </nav>
+    @if (view() === 'sheet') {
+        <div class="preview-actions">
+            <button class="bt-button" [disabled]="!ready() || !!working()" (click)="output('print')"
+                title="Print or save as PDF">{{ working() === 'print' ? 'Preparing…' : 'Print' }}</button>
+            <button class="bt-button" [disabled]="!ready() || !!working()" (click)="output('export')"
+                title="Download all pages as a PNG image">{{ working() === 'export' ? 'Exporting…' : 'Export PNG' }}</button>
+        </div>
+    }
+</div>
+@if (actionError()) { <p class="preview-error" role="alert">{{ actionError() }}</p> }
+@if (view() === 'sheet') {
+    <div class="sheet-stage" [attr.aria-busy]="sheet()?.loading() ?? true">
+        <svg-viewer-lite [unit]="unit()" [nativeEntity]="entity()" [fluffImageUrl]="fluffImageUrl()" [paperSize]="paperSize()" fitMode="page" [zoomable]="true" [printPreview]="true"></svg-viewer-lite>
+        @if (sheet()?.loading()) { <p class="preview-message" role="status">Generating record sheet…</p> }
+        @if (sheet()?.loadError(); as error) { <p class="preview-message preview-error" role="alert">{{ error }}</p> }
+    </div>
+    @if (sheet(); as viewer) {
+        <div class="zoom-controls">
+            <label for="construction-preview-zoom">Zoom</label>
+            <input id="construction-preview-zoom" type="range" [min]="viewer.minZoomPercent" [max]="viewer.maxZoomPercent"
+                [ngModel]="viewer.zoomPercent()" (ngModelChange)="viewer.setZoomPercent($event)" [disabled]="!viewer.ready()">
+            <span>{{ viewer.zoomPercent() }}%</span>
+            <button class="bt-button" [disabled]="!viewer.ready() || !viewer.isZoomPanActive()" (click)="viewer.resetZoom()">Fit</button>
+        </div>
+    }
+} @else {
+    <div class="card-stage">
+        @if (supportsCard()) {
+            <unit-details-card-tab [unit]="unit()" [fluffImageUrl]="fluffImageUrl()"></unit-details-card-tab>
+        } @else {
+            <p class="preview-message" role="status">Alpha Strike cards are not available for this unit type.</p>
+        }
+    </div>
+}

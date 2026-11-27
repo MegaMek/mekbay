@@ -14,7 +14,7 @@ import {
     type LinkedManifestEntry,
 } from './bfs-converter';
 import { parseRenderedBfs, renderBfsYaml } from './bfs-yaml';
-import { isUuidV7, readMegaMekUnitFileMetadata, type MegaMekUnitFileMetadata } from './megamek-unit-file-metadata';
+import { isCanonicalUuid, readMegaMekUnitFileMetadata, type MegaMekUnitFileMetadata } from './megamek-unit-file-metadata';
 import { listUnitFilesRecursive, normalizeRelativePath } from './unit-file-discovery';
 
 export interface BfsManifest {
@@ -99,16 +99,16 @@ function parseManifestEntry(value: unknown, index: number): BfsManifestEntry {
         cardSubtitle: optionalString(record, 'cardSubtitle', label),
         provenance: requireString(record, 'provenance', label),
     };
-    if (!isUuidV7(common.uuid)) {
-        throw new Error(`${label}.uuid is not an RFC variant-2 UUIDv7.`);
+    if (!isCanonicalUuid(common.uuid)) {
+        throw new Error(`${label}.uuid is not a canonical RFC UUID.`);
     }
     if (common.provenance !== 'existing' && common.provenance !== 'new') {
         throw new Error(`${label}.provenance must be existing or new.`);
     }
     if (dataset === 'ground') {
         const linkedUnitId = requireString(record, 'linkedUnitId', label);
-        if (!isUuidV7(linkedUnitId)) {
-            throw new Error(`${label}.linkedUnitId is not an RFC variant-2 UUIDv7.`);
+        if (!isCanonicalUuid(linkedUnitId)) {
+            throw new Error(`${label}.linkedUnitId is not a canonical RFC UUID.`);
         }
         return {
             dataset,

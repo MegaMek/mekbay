@@ -54,8 +54,8 @@ import {
     WD_UNIT,
 } from './definitions';
 import {
+    collectGroupUnits,
     compileGroupFacts,
-    compileGroupFactsList,
     compileUnitFactsList,
     DEFAULT_ORG_RULE_REGISTRY,
 } from './org-facts.util';
@@ -66,20 +66,24 @@ import {
 import {
     evaluateComposedCountRule,
     evaluateComposedPatternRule,
-    evaluateCIFormationRule,
-    evaluateFactionOrgDefinition as evaluateFactionOrgDefinitionForFixture,
-    evaluateLeafCountRule,
-    evaluateLeafPatternRule,
-    evaluateOrgDefinition,
-    getLastOrgSolveMetrics,
     materializeComposedCountRule,
     materializeComposedPatternRule,
+} from './org-composition.util';
+import {
+    evaluateCIFormationRule,
+    evaluateLeafCountRule,
+    evaluateLeafPatternRule,
     materializeCIFormationRule,
     materializeLeafCountRule,
     materializeLeafPatternRule,
+} from './org-leaf-rules.util';
+import {
+    evaluateFactionOrgDefinition as evaluateFactionOrgDefinitionForFixture,
+    evaluateOrgDefinition,
     resolveFromGroups as resolveFromGroupsForFixture,
     resolveFromUnits as resolveFromUnitsForFixture,
 } from './org-solver.util';
+import { getLastOrgSolveMetrics } from './org-solve-session';
 import type {
     GroupSizeResult,
     OrgComposedCountRule,
@@ -604,10 +608,20 @@ describe('org-solver.util', () => {
             createBattleMekGroup('Lance A', 'Lance', 1, 4),
             createBattleMekGroup('Lance B', 'Lance', 1, 4),
         ].map((group) => compileGroupFacts(group));
+        const scalarReads = spyOn(groups[0].unitTagCounts, 'entries').and.callThrough();
 
         // Abstraction
         const result = evaluateComposedCountRule(rule, groups);
         const materialized = materializeComposedCountRule(rule, groups);
+        // Evaluation and materialization compare the same immutable snapshot.
+        expect(scalarReads).toHaveBeenCalledTimes(1);
+
+        // A changed snapshot must get a new signature even if its logical ID stays.
+        const changed = { ...groups[0], type: 'Lance' as const };
+        const reevaluated = evaluateComposedCountRule(rule, [changed, ...groups.slice(1)]);
+        expect(reevaluated.emitted.length).toBe(1);
+        expect(reevaluated.leftoverCount).toBe(2);
+        expect(scalarReads).toHaveBeenCalledTimes(2);
 
         expect(result.emitted).toEqual([
             { modifierKey: '', perGroupCount: 2, copies: 1, tier: 2, compositionIndex: 0 },
@@ -790,7 +804,8 @@ describe('org-solver.util', () => {
             createUnit('Carrier 5', 'Mek', 'BattleMek Omni', true),
         ], 'Clan Test', 'HW Clan');
 
-        const result = evaluateComposedPatternRule(CLAN_NOVA, compileGroupFactsList([battleArmorStar[0], carrierStar[0]]));
+        const result = evaluateComposedPatternRule(CLAN_NOVA, [battleArmorStar[0], carrierStar[0]]
+            .map(group => compileGroupFacts(group)));
 
         expect(result.emitted).toHaveSize(1);
         expect(result.emitted[0]).toEqual(jasmine.objectContaining({
@@ -822,7 +837,8 @@ describe('org-solver.util', () => {
         expect(carrierStar[0].name).toBe('Star');
         expect(carrierStar[0].type).toBe('Star');
 
-        const result = materializeComposedPatternRule(CLAN_NOVA, compileGroupFactsList([battleArmorStar[0], carrierStar[0]]));
+        const result = materializeComposedPatternRule(CLAN_NOVA, [battleArmorStar[0], carrierStar[0]]
+            .map(group => compileGroupFacts(group)));
 
         expect(result.groups).toEqual([
             jasmine.objectContaining({ name: 'Nova', type: 'Nova', modifierKey: '' }),
@@ -856,7 +872,8 @@ describe('org-solver.util', () => {
         expect(battleArmorStar[0].type).toBe('Star');
         expect(carrierStar[0].name).toBe('Star');
         expect(carrierStar[0].type).toBe('Star');
-        const result = evaluateComposedPatternRule(CLAN_NOVA, compileGroupFactsList([battleArmorStar[0], carrierStar[0]]));
+        const result = evaluateComposedPatternRule(CLAN_NOVA, [battleArmorStar[0], carrierStar[0]]
+            .map(group => compileGroupFacts(group)));
 
         expect(result.emitted).toEqual([{modifierKey: '', perGroupCount: 2, copies: 1, tier: 1.9, compositionIndex: 0 }]);
         expect(result.leftoverCount).toBe(0);
@@ -888,7 +905,8 @@ describe('org-solver.util', () => {
         expect(carrierStar[0].name).toBe('Star');
         expect(carrierStar[0].type).toBe('Star');
 
-        const result = evaluateComposedPatternRule(CLAN_NOVA, compileGroupFactsList([battleArmorStar[0], carrierStar[0]]));
+        const result = evaluateComposedPatternRule(CLAN_NOVA, [battleArmorStar[0], carrierStar[0]]
+            .map(group => compileGroupFacts(group)));
 
         expect(result.emitted).toEqual([]);
         expect(result.leftoverCount).toBe(2);
@@ -918,7 +936,8 @@ describe('org-solver.util', () => {
         expect(battleArmorStar[0].type).toBe('Star');
         expect(carrierStar[0].type).toBe('Star');
 
-        const result = evaluateComposedPatternRule(CLAN_NOVA, compileGroupFactsList([battleArmorStar[0], carrierStar[0]]));
+        const result = evaluateComposedPatternRule(CLAN_NOVA, [battleArmorStar[0], carrierStar[0]]
+            .map(group => compileGroupFacts(group)));
 
         expect(result.emitted).toEqual([]);
         expect(result.leftoverCount).toBe(2);
@@ -2587,6 +2606,27 @@ function measureMedianScenarioMs(run: () => void, iterations: number = 3): { med
     };
 }
 
+function expectBlunderBrigadeSolveWithinGuardrail(
+    groupOneMultiplier: number,
+    faction: 'Random Mercs' | "Wolf's Dragoons",
+): void {
+    const groupResults = buildBlunderBrigadeGroupResults(groupOneMultiplier);
+    expect(groupResults.length).toBeGreaterThan(0);
+
+    const measurement = measureMedianScenarioMs(() => {
+        const result = resolveFromGroups(faction, 'Mercenary', groupResults);
+
+        expect(result.length).toBeGreaterThan(0);
+        expect(result.every(group => group.name.length > 0)).toBeTrue();
+    });
+
+    expect(measurement.medianMs)
+        .withContext(
+            `durations=${measurement.durations.join(',')}; metrics=${JSON.stringify(getLastOrgSolveMetrics())}`,
+        )
+        .toBeLessThan(BLUNDER_BRIGADE_MAX_SOLVE_MS);
+}
+
 function buildInnerSphereCompanyGroups(): GroupSizeResult[] {
     const companyGroups: GroupSizeResult[] = [];
 
@@ -3045,12 +3085,12 @@ describe('org-solver.util resolve parity', () => {
     });
 
     it('evaluates an Inner Sphere Platoon from four BA squads', () => {
-        const squadFacts = compileGroupFactsList(materializeLeafCountRule(IS_BA_SQUAD, compileUnitFactsList([
+        const squadFacts = materializeLeafCountRule(IS_BA_SQUAD, compileUnitFactsList([
             createUnit('BA 1', 'Infantry', 'Battle Armor', false, ['MEC'], 1),
             createUnit('BA 2', 'Infantry', 'Battle Armor', false, ['MEC'], 3),
             createUnit('BA 3', 'Infantry', 'Battle Armor', false, ['MEC'], 5),
             createUnit('BA 4', 'Infantry', 'Battle Armor', false, ['MEC'], 6),
-        ])).groups);
+        ])).groups.map(group => compileGroupFacts(group));
 
         const result = evaluateComposedCountRule(IS_BA_PLATOON, squadFacts);
 
@@ -3313,7 +3353,8 @@ describe('org-solver.util resolve parity', () => {
             groups: [...nonVehiclePoints.groups, ...protoPoints.groups, ...vehiclePoints.groups],
         };
 
-        const starEvaluation = evaluateComposedCountRule(CLAN_STAR, compileGroupFactsList(pointMaterialized.groups));
+        const starEvaluation = evaluateComposedCountRule(CLAN_STAR,
+            pointMaterialized.groups.map(group => compileGroupFacts(group)));
 
         expect(starEvaluation.emitted).toHaveSize(4);
         expect(starEvaluation.emitted.every((emission) => emission.perGroupCount === 5)).toBeTrue();
@@ -3909,38 +3950,34 @@ describe('org-solver.util performance guards', () => {
     });
 
     it('resolves the Blunder Brigade as Mercenary force within the performance guardrail', () => {
-        const startedAt = Date.now();
-        const groupResults = buildBlunderBrigadeGroupResults(10);
-        const result = resolveFromGroups('Random Mercs', 'Mercenary', groupResults);
-        const elapsedMs = Date.now() - startedAt;
-
-        expect(groupResults.length).toBeGreaterThan(0);
-        expect(result.length).toBeGreaterThan(0);
-        expect(result.every(group => group.name.length > 0)).toBeTrue();
-        expect(elapsedMs).toBeLessThan(BLUNDER_BRIGADE_MAX_SOLVE_MS);
+        expectBlunderBrigadeSolveWithinGuardrail(10, 'Random Mercs');
     }); 
 
     it('resolves the Blunder Brigade 7415 Wolf\'s Dragoons force within the performance guardrail', () => {
-        const startedAt = Date.now();
-        const groupResults = buildBlunderBrigadeGroupResults(1);
-        const result = resolveFromGroups('Wolf\'s Dragoons', 'Mercenary', groupResults);
-        const elapsedMs = Date.now() - startedAt;
-
-        expect(groupResults.length).toBeGreaterThan(0);
-        expect(result.length).toBeGreaterThan(0);
-        expect(result.every(group => group.name.length > 0)).toBeTrue();
-        expect(elapsedMs).toBeLessThan(BLUNDER_BRIGADE_MAX_SOLVE_MS);
+        expectBlunderBrigadeSolveWithinGuardrail(1, "Wolf's Dragoons");
     }); 
 
     it('resolves 5x the Blunder Brigade 7415 Wolf\'s Dragoons force within the performance guardrail', () => {
-        const startedAt = Date.now();
-        const groupResults = buildBlunderBrigadeGroupResults(5);
-        const result = resolveFromGroups('Wolf\'s Dragoons', 'Mercenary', groupResults);
-        const elapsedMs = Date.now() - startedAt;
+        expectBlunderBrigadeSolveWithinGuardrail(5, "Wolf's Dragoons");
+    });
 
-        expect(groupResults.length).toBeGreaterThan(0);
-        expect(result.length).toBeGreaterThan(0);
-        expect(result.every(group => group.name.length > 0)).toBeTrue();
-        expect(elapsedMs).toBeLessThan(BLUNDER_BRIGADE_MAX_SOLVE_MS);
+    it('solves all 457 Blunder Brigade units and their force organization within the performance guardrail', () => {
+        let groups: GroupSizeResult[] = [];
+        let result: GroupSizeResult[] = [];
+        const measurement = measureMedianScenarioMs(() => {
+            groups = buildBlunderBrigadeGroupResults(10);
+            result = resolveFromGroups("Wolf's Dragoons", 'Mercenary', groups);
+        });
+
+        const inputUnits = new Set(groups.flatMap(collectGroupUnits));
+        const outputUnits = new Set(result.flatMap(collectGroupUnits));
+        expect(inputUnits.size).toBe(457);
+        expect(outputUnits.size).toBe(inputUnits.size);
+        expect([...inputUnits].every(unit => outputUnits.has(unit))).toBeTrue();
+        expect(result.map(group => group.name)).toEqual(['Reinforced Regiment', 'Regiment', 'Regiment']);
+        expect(getLastOrgSolveMetrics()?.timedOut).toBeFalse();
+        expect(measurement.medianMs)
+            .withContext(`full-roster durations=${measurement.durations.join(',')}`)
+            .toBeLessThan(BLUNDER_BRIGADE_MAX_SOLVE_MS);
     });
 });

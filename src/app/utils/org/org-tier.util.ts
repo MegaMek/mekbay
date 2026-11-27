@@ -2,7 +2,26 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 // Author: Drake
 
+import type { OrgTypeModifier } from './org-types';
+
 export const ORG_TIER_GROUPING_FACTOR = 3;
+
+export function getModifierCount(value: number | OrgTypeModifier): number {
+    return typeof value === 'number' ? value : value.count;
+}
+
+export function getModifierTier(
+    baseTier: number,
+    regularCount: number,
+    modifierValue: number | OrgTypeModifier,
+    dynamicTier?: number,
+): number {
+    if (typeof modifierValue !== 'number' && modifierValue.tier !== undefined) {
+        return modifierValue.tier;
+    }
+
+    return getDynamicTierForModifier(baseTier, regularCount, getModifierCount(modifierValue), dynamicTier ?? 0);
+}
 
 function floorToTwoDecimals(value: number): number {
     return Math.floor(value * 100) / 100;
@@ -15,11 +34,6 @@ export function getEquivalentGroupCountAtTier(groupTier: number, baseTier: numbe
 export function getTierDeltaForEquivalentGroupCount(equivalentGroupCount: number): number {
     if (equivalentGroupCount <= 0) return 0;
     return Math.log(equivalentGroupCount) / Math.log(ORG_TIER_GROUPING_FACTOR);
-}
-
-export function getTierForRepeatedGroup(baseTier: number, repeatCount: number): number {
-    if (repeatCount <= 1) return baseTier;
-    return baseTier + getTierDeltaForEquivalentGroupCount(repeatCount);
 }
 
 export function getDynamicTierForModifier(
@@ -47,8 +61,4 @@ export function getAggregatedTier(groupTiers: ReadonlyArray<number>): number {
     return floorToTwoDecimals(
         baseTier + getTierDeltaForEquivalentGroupCount(equivalentBaseGroups),
     );
-}
-
-export function getRepeatCountForTierDelta(sourceTier: number, targetTier: number): number {
-    return Math.max(1, Math.floor(getEquivalentGroupCountAtTier(sourceTier, targetTier)));
 }

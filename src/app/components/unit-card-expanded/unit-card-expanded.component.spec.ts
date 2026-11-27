@@ -2,11 +2,9 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 // Author: Drake
 
-import { CommonModule } from '@angular/common';
 import { computed, provideZonelessChangeDetection, signal } from '@angular/core';
 import { TestBed } from '@angular/core/testing';
 import { GameSystem } from '../../models/common.model';
-import { CBTForceUnit } from '../../models/cbt-force-unit.model';
 import type { UnitSummary } from '../../models/unit-summary.model';
 import { AsAbilityLookupService } from '../../services/as-ability-lookup.service';
 import { DialogsService } from '../../services/dialogs.service';
@@ -18,10 +16,10 @@ import { createEmptyUnit } from '../../testing/unit-test-helpers';
 import { UnitCardExpandedComponent } from './unit-card-expanded.component';
 
 describe('UnitCardExpandedComponent MegaMek availability display', () => {
-    const currentGameSystemSignal = signal(GameSystem.CLASSIC);
+    const currentGameSystemSignal = signal(GameSystem.CBT);
 
     const gameServiceStub = {
-        isAlphaStrike: computed(() => currentGameSystemSignal() === GameSystem.ALPHA_STRIKE),
+        isAlphaStrike: computed(() => currentGameSystemSignal() === GameSystem.AS),
         currentGameSystem: currentGameSystemSignal,
     };
 
@@ -48,7 +46,7 @@ describe('UnitCardExpandedComponent MegaMek availability display', () => {
     }
 
     beforeEach(async () => {
-        currentGameSystemSignal.set(GameSystem.CLASSIC);
+        currentGameSystemSignal.set(GameSystem.CBT);
         optionsServiceStub.options.set({ forceViewerBVPVDisplay: 'both' });
 
         await TestBed.configureTestingModule({
@@ -63,7 +61,7 @@ describe('UnitCardExpandedComponent MegaMek availability display', () => {
         })
             .overrideComponent(UnitCardExpandedComponent, {
                 set: {
-                    imports: [CommonModule],
+                    imports: [],
                     template: '<div></div>',
                 },
             })
@@ -150,8 +148,8 @@ describe('UnitCardExpandedComponent MegaMek availability display', () => {
         });
     });
 
-    it('always displays adjusted and base BV for Classic search results', () => {
-        optionsServiceStub.options.set({ forceViewerBVPVDisplay: 'base' });
+    it('always displays adjusted and base BV for CBT search results', () => {
+        optionsServiceStub.options.set({ forceViewerBVPVDisplay: 'adjustedPreSkill' });
         const fixture = TestBed.createComponent(UnitCardExpandedComponent);
         const unit = createEmptyUnit({ bv: 12_600 });
 
@@ -165,32 +163,9 @@ describe('UnitCardExpandedComponent MegaMek availability display', () => {
         expect(fixture.componentInstance.resolvedBv()).toBe('16,632 (12,600)');
     });
 
-    it('uses rounded pre-skill BV for live force units in compact and expanded cards', () => {
-        const adjustedBv = signal(2_251);
-        const forceUnit = Object.create(CBTForceUnit.prototype) as CBTForceUnit;
-        Object.assign(forceUnit, {
-            getBv: adjustedBv,
-            getPreSkillBv: signal(2_250.6),
-            baseAdjustedBv: signal(2_251),
-        });
-        const fixture = TestBed.createComponent(UnitCardExpandedComponent);
-        fixture.componentRef.setInput('unit', forceUnit);
-
-        expect(fixture.componentInstance.resolvedBv()).toBe('2,251');
-        expect(fixture.componentInstance.resolvedCompactBv()).toBe('2,251');
-
-        adjustedBv.set(2_971);
-        expect(fixture.componentInstance.resolvedBv()).toBe('2,971 (2,251)');
-        expect(fixture.componentInstance.resolvedCompactBv()).toBe('2,971 (2,251)');
-
-        optionsServiceStub.options.set({ forceViewerBVPVDisplay: 'base' });
-        expect(fixture.componentInstance.resolvedBv()).toBe('2,251');
-        expect(fixture.componentInstance.resolvedCompactBv()).toBe('2,251');
-    });
-
     it('always displays adjusted and base PV for Alpha Strike search results', () => {
-        currentGameSystemSignal.set(GameSystem.ALPHA_STRIKE);
-        optionsServiceStub.options.set({ forceViewerBVPVDisplay: 'adjusted' });
+        currentGameSystemSignal.set(GameSystem.AS);
+        optionsServiceStub.options.set({ forceViewerBVPVDisplay: 'adjustedPostSkill' });
         const fixture = TestBed.createComponent(UnitCardExpandedComponent);
         const unit = createUnit();
         unit.as.PV = 40;
@@ -200,12 +175,45 @@ describe('UnitCardExpandedComponent MegaMek availability display', () => {
         fixture.componentRef.setInput('useBvPvDisplayOption', true);
         fixture.detectChanges();
 
-        expect(fixture.componentInstance.resolvedCompactBv()).toMatch(/^\d+ \(40\)$/);
+        expect(fixture.componentInstance.resolvedCompactBv()).toBe('48 (40)');
         expect(fixture.componentInstance.resolvedBv()).toBe(fixture.componentInstance.resolvedCompactBv());
     });
 
+    it('displays zero PV for unconverted Alpha Strike search results at any skill', () => {
+        currentGameSystemSignal.set(GameSystem.AS);
+        const fixture = TestBed.createComponent(UnitCardExpandedComponent);
+        fixture.componentRef.setInput('unit', createEmptyUnit({ as: { TP: 'XX', PV: 0 } }));
+        fixture.componentRef.setInput('useBvPvDisplayOption', true);
+
+        for (const skill of [4, 3, 5]) {
+            fixture.componentRef.setInput('gunnery', skill);
+            fixture.detectChanges();
+
+            expect(fixture.componentInstance.resolvedBv()).withContext(`expanded skill ${skill}`).toBe('0');
+            expect(fixture.componentInstance.resolvedCompactBv()).withContext(`compact skill ${skill}`).toBe('0');
+        }
+    });
+
+    it('uses the live force display instead of catalog BV and skills, including zero', () => {
+        const fixture = TestBed.createComponent(UnitCardExpandedComponent);
+
+        fixture.componentRef.setInput('unit', createEmptyUnit({ bv: 12_600 }));
+        fixture.componentRef.setInput('gunnery', 3);
+        fixture.componentRef.setInput('piloting', 4);
+        fixture.componentRef.setInput('useBvPvDisplayOption', true);
+        expect(fixture.componentInstance.resolvedBv()).toBe('16,632 (12,600)');
+
+        fixture.componentRef.setInput('bvPvDisplay', '2,971 (2,251)');
+        expect(fixture.componentInstance.resolvedBv()).toBe('2,971 (2,251)');
+        expect(fixture.componentInstance.resolvedCompactBv()).toBe('2,971 (2,251)');
+
+        fixture.componentRef.setInput('bvPvDisplay', '0');
+        expect(fixture.componentInstance.resolvedBv()).toBe('0');
+        expect(fixture.componentInstance.resolvedCompactBv()).toBe('0');
+    });
+
     it('always displays adjusted and base BV for normalized search results', () => {
-        optionsServiceStub.options.set({ forceViewerBVPVDisplay: 'base' });
+        optionsServiceStub.options.set({ forceViewerBVPVDisplay: 'adjustedPreSkill' });
         const fixture = TestBed.createComponent(UnitCardExpandedComponent);
 
         fixture.componentRef.setInput('unit', createEmptyUnit({ bv: 12_600 }));

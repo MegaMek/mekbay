@@ -56,10 +56,3 @@ export function hasProstheticAntiMekBonus(entity: InfantryEntity): boolean {
     entity.extraneousPair1(), entity.extraneousPair2(),
   ].some(value => ['GRAPPLER', 'CLIMBING_CLAWS'].includes(normalizedProsthetic(value)));
 }
-
-/** Mirrors ConvInfantry.canMakeAntiMekAttacks() for pristine units. */
-export function canMakeAntiMekAttacks(entity: InfantryEntity): boolean {
-  const mechanized = ['Tracked', 'Wheeled', 'Hover', 'VTOL', 'Submarine'].includes(entity.motiveType());
-  const hasFieldWeapon = entity.equipment().some(mount => mount.location === 'Field Guns');
-  return !mechanized && !entity.effectiveEncumberingArmor() && !hasFieldWeapon;
-}

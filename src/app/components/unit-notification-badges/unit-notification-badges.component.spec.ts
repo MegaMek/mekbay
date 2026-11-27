@@ -1,44 +1,212 @@
 // Copyright (C) 2026 The MegaMek Team
 // SPDX-License-Identifier: GPL-3.0-or-later
-// Author: Drake
 
 import { Overlay } from '@angular/cdk/overlay';
-import { provideZonelessChangeDetection, signal, type WritableSignal } from '@angular/core';
-import { ComponentFixture, TestBed } from '@angular/core/testing';
-import type { CBTForceUnit } from '../../models/cbt-force-unit.model';
-import type {
-    SerializedPendingMekCritical,
-    SerializedPendingMekCriticalChance,
-    SerializedPendingUnitCheck,
-} from '../../models/force-serialization';
-import { FALL_PSR_FAILURE, PSR_CHECK_KIND } from '../../models/rules/unit-type-rules';
-import { UnitNotificationBadgesComponent } from './unit-notification-badges.component';
+import { provideZonelessChangeDetection } from '@angular/core';
+import { TestBed } from '@angular/core/testing';
 
-describe('UnitNotificationBadgesComponent', () => {
-    let fixture: ComponentFixture<UnitNotificationBadgesComponent>;
-    let autoFall: WritableSignal<boolean>;
-    let automaticPsrFailure: WritableSignal<boolean>;
-    let psrOutcome: WritableSignal<'success' | 'failed' | undefined>;
-    let prone: WritableSignal<boolean>;
-    let pendingFallCount: WritableSignal<number>;
-    let psrCount: WritableSignal<number>;
-    let chanceCount: WritableSignal<number>;
-    let criticalHitCount: WritableSignal<number>;
-    let criticalOrder: WritableSignal<readonly ('mek-critical-chance' | 'mek-critical-hit')[]>;
-    let unitCheckCount: WritableSignal<number>;
+import type { CBTMekUnitSnapshot } from '../../models/cbt-unit-snapshot';
+import { AmmoEquipment } from '../../models/equipment.model';
+import type { MekPilotCheckV2 } from '../../models/runtime/mek-movement-psr-v2';
+import { createDirectMekRuntimeFixture } from '../../models/runtime/testing/direct-mek-runtime-fixture';
+import {
+projectRuntimeFallTooltip,
+projectRuntimePendingNotification,
+UnitNotificationBadgesComponent,
+} from './unit-notification-badges.component';
+import type { RuntimeUnitNotificationSnapshot } from './unit-notification-runtime.util';
+import { projectRuntimeUnitNotifications } from './unit-notification-runtime.util';
 
-    beforeEach(async () => {
-        autoFall = signal(false);
-        automaticPsrFailure = signal(false);
-        psrOutcome = signal(undefined);
-        prone = signal(false);
-        pendingFallCount = signal(0);
-        psrCount = signal(0);
-        chanceCount = signal(3);
-        criticalHitCount = signal(1);
-        criticalOrder = signal(['mek-critical-hit', 'mek-critical-chance']);
-        unitCheckCount = signal(2);
+describe('direct runtime unit notifications', () => {
+    it('aggregates the complete queue and follows origin/next priority', () => {
+        const snapshot = notificationSnapshot([
+            event('critical-hit', 1, 'Critical Hit: Left Torso'),
+            event('critical-chance', 3, 'Critical Chance: Center Torso'),
+            event('psr', 2, 'Piloting Skill Rolls'),
+            event('unit-check', 2, 'Consciousness check'),
+        ]);
 
+        expect(projectRuntimePendingNotification(snapshot)).toEqual({
+            kind: 'unit-check',
+            count: 8,
+            tooltip: [
+                { label: 'Consciousness check', value: 'Pending' },
+                { label: 'Critical Hit: Left Torso', value: 'Pending' },
+                { label: 'Critical Chance: Center Torso', value: 'Pending' },
+                { label: 'Piloting Skill Rolls', value: 'Pending' },
+            ],
+        });
+    });
+
+    it('uses the first queued critical type after higher-priority work is gone', () => {
+        const snapshot = notificationSnapshot([
+            event('critical-hit', 1, 'Critical Hit'),
+            event('critical-chance', 2, 'Critical Chance'),
+        ]);
+
+        expect(projectRuntimePendingNotification(snapshot)).toEqual(jasmine.objectContaining({
+            kind: 'critical-hit',
+            count: 3,
+        }));
+    });
+
+    it('groups pending fall consequences ahead of every other event', () => {
+        const snapshot = notificationSnapshot(
+            [event('fall', 1, 'Fall damage'), event('psr', 2, 'PSR')],
+            [{ label: 'Automatic fall', value: 'Gyro destroyed' }],
+        );
+
+        expect(projectRuntimePendingNotification(snapshot)).toEqual(jasmine.objectContaining({
+            kind: 'fall',
+            count: 3,
+        }));
+        expect(projectRuntimeFallTooltip(snapshot)).toEqual([
+            { label: 'Automatic fall', value: 'Gyro destroyed' },
+        ]);
+    });
+
+    it('keeps disabled PSRs visible from the exact End Phase preview', () => {
+        const fixture = createDirectMekRuntimeFixture('total-warfare');
+        const foot = [...fixture.index.slots.values()].find(candidate =>
+            fixture.index.locations.get(candidate.locationId)?.code === 'LL'
+            && candidate.componentIds.some(componentId => {
+                const component = fixture.index.components.get(componentId);
+                return component?.kind === 'system' && component.systemType === 'Foot Actuator';
+            }))!;
+        expect(fixture.instance.dispatch({
+            type: 'hit-critical',
+            slotId: foot.id,
+            hits: 1,
+            target: 'pending',
+        }).accepted).toBeTrue();
+        expect(fixture.instance.query().mekPilotChecks()).toEqual([]);
+
+        const projected = projectRuntimeUnitNotifications(
+            unitSnapshot(fixture),
+            { pilotSkillCheck: 'no', pilotHitsAndConsciousnessCheck: 'ask' },
+        );
+
+        expect(projectRuntimePendingNotification(projected)).toEqual({
+            kind: 'psr',
+            count: 1,
+            tooltip: [{ label: 'Leg Actuator hit', value: 'Target 6+' }],
+        });
+        expect(fixture.instance.query().mekPilotChecks()).toEqual([]);
+    });
+
+    it('projects an automatically failed PSR as a fall warning, not a numbered roll', () => {
+        const fixture = createDirectMekRuntimeFixture('total-warfare');
+        const pilot = [...fixture.index.crewPositions.keys()][0]!;
+        expect(fixture.instance.dispatch({
+            type: 'set-crew-state',
+            positionId: pilot,
+            wounds: 0,
+            unconscious: false,
+            ejected: true,
+        }).accepted).toBeTrue();
+        const foot = [...fixture.index.slots.values()].find(candidate =>
+            fixture.index.locations.get(candidate.locationId)?.code === 'LL'
+            && candidate.componentIds.some(componentId => {
+                const component = fixture.index.components.get(componentId);
+                return component?.kind === 'system' && component.systemType === 'Foot Actuator';
+            }))!;
+        expect(fixture.instance.dispatch({
+            type: 'hit-critical',
+            slotId: foot.id,
+            hits: 1,
+            target: 'pending',
+        }).accepted).toBeTrue();
+
+        const projected = projectRuntimeUnitNotifications(
+            unitSnapshot(fixture),
+            { pilotSkillCheck: 'ask', pilotHitsAndConsciousnessCheck: 'ask' },
+        );
+
+        expect(projectRuntimePendingNotification(projected)).toBeNull();
+        expect(projectRuntimeFallTooltip(projected)).toEqual([
+            { label: 'Leg Actuator hit', value: 'Automatic fall' },
+        ]);
+    });
+
+    it('keeps an independent shutdown PSR visible beside an automatic fall', () => {
+        const fixture = createDirectMekRuntimeFixture('total-warfare');
+        const base = unitSnapshot(fixture);
+        const shutdownCheck: MekPilotCheckV2 = Object.freeze({
+            checkId: 'shutdown-check',
+            source: Object.freeze({
+                sourceKind: 'action',
+                triggerKind: 'shutdown',
+                witness: '{}',
+                criticalSlotIds: Object.freeze([]),
+                locationIds: Object.freeze([]),
+            }),
+            producingRevision: 1,
+            ordinal: 0,
+            targetNumber: 8,
+            reason: 'Shutdown attempt',
+            status: 'pending',
+        });
+        const snapshot: CBTMekUnitSnapshot = Object.freeze({
+            ...base,
+            query: Object.freeze({ ...base.query, mekPilotChecks: () => Object.freeze([shutdownCheck]) }),
+            state: Object.freeze({
+                ...base.state,
+                movementPsr: Object.freeze({
+                    ...base.state.movementPsr,
+                    automaticFalls: Object.freeze([Object.freeze({
+                        triggerKind: 'gyro-destroyed',
+                        locationIds: Object.freeze([]),
+                    })]),
+                    checks: Object.freeze([shutdownCheck]),
+                }),
+            }),
+        });
+
+        const projected = projectRuntimeUnitNotifications(
+            snapshot,
+            { pilotSkillCheck: 'ask', pilotHitsAndConsciousnessCheck: 'ask' },
+        );
+
+        expect(projectRuntimePendingNotification(projected)).toEqual({
+            kind: 'psr',
+            count: 1,
+            tooltip: [{ label: 'Shutdown attempt', value: 'Target 8+' }],
+        });
+        expect(projectRuntimeFallTooltip(projected)).toEqual([
+            { label: 'Automatic fall', value: 'Gyro destroyed' },
+        ]);
+    });
+
+    it('lists the Mek heat ammunition explosion check only for loaded ammunition that can explode', () => {
+        const fixture = createDirectMekRuntimeFixture('total-warfare');
+        expect(fixture.instance.dispatch({ type: 'set-heat', heat: 19 }).accepted).toBeTrue();
+        expect(fixture.instance.dispatch({ type: 'end-phase', endTurnBoundary: true }).accepted).toBeTrue();
+        const ammoChecks = (snapshot: CBTMekUnitSnapshot) =>
+            projectRuntimeUnitNotifications(snapshot, {
+                pilotSkillCheck: 'ask',
+                pilotHitsAndConsciousnessCheck: 'ask',
+                heatAndDissipationResolution: 'no',
+                heatEffectsCheck: 'ask',
+            })!.pendingEvents
+                .flatMap(event => event.tooltip)
+                .filter(row => row.label === 'Heat ammunition explosion check');
+        const snapshot = unitSnapshot(fixture);
+        expect(ammoChecks(snapshot)).toEqual([
+            { label: 'Heat ammunition explosion check', value: 'Target 4+' },
+        ]);
+
+        const inert = new AmmoEquipment({
+            id: 'Test Inert Ammo', name: 'Test Inert Ammo', type: 'ammo',
+            stats: { explosive: true },
+            ammo: { type: 'AC_ULTRA', rackSize: 5, shots: 20, damagePerShot: 0 },
+        });
+        expect(ammoChecks(Object.freeze({
+            ...snapshot,
+            query: Object.freeze({ ...snapshot.query, ammoEquipment: () => inert }),
+        }))).toEqual([]);
+    });
+
+    it('renders the numbered warning used by both badge hosts', async () => {
         await TestBed.configureTestingModule({
             imports: [UnitNotificationBadgesComponent],
             providers: [
@@ -46,184 +214,77 @@ describe('UnitNotificationBadgesComponent', () => {
                 { provide: Overlay, useValue: {} },
             ],
         }).compileComponents();
-
-        fixture = TestBed.createComponent(UnitNotificationBadgesComponent);
-        fixture.componentRef.setInput('unit', createUnit());
-        fixture.detectChanges();
-    });
-
-    it('summarizes the complete mixed queue in event order', () => {
-        expect(fixture.componentInstance.pendingNotification()).toEqual({
-            kind: 'unit-check',
-            count: 6,
-            tooltip: [
-                { label: 'Consciousness check', value: 'Target 6+' },
-                { label: 'Consciousness check', value: 'Target 6+' },
-                { label: 'Critical Hit: Left Torso', value: '1 hit' },
-                { label: 'Critical Chance: Center Torso', value: 'Pending' },
-                { label: 'Critical Chance: Center Torso', value: 'Pending' },
-                { label: 'Critical Chance: Center Torso', value: 'Pending' },
-            ],
-        });
-    });
-
-    it('uses the first queued critical type after higher-priority work is gone', () => {
-        unitCheckCount.set(0);
-
-        expect(fixture.componentInstance.pendingNotification()).toEqual(jasmine.objectContaining({
-            kind: 'critical-hit',
-            count: 4,
-        }));
-
-        criticalOrder.set(['mek-critical-chance', 'mek-critical-hit']);
-
-        expect(fixture.componentInstance.pendingNotification()).toEqual(jasmine.objectContaining({
-            kind: 'critical-chance',
-            count: 4,
-        }));
-    });
-
-    it('groups pending fall damage but keeps automatic fall outside the numbered queue', () => {
-        autoFall.set(true);
-        pendingFallCount.set(1);
-
-        expect(fixture.componentInstance.hasPendingFalls()).toBeTrue();
-        expect(fixture.componentInstance.hasAutoFall()).toBeFalse();
-        expect(fixture.componentInstance.pendingNotification()).toEqual(jasmine.objectContaining({
-            kind: 'fall',
-            count: 7,
-        }));
-
-        pendingFallCount.set(0);
-        unitCheckCount.set(0);
-        chanceCount.set(1);
-        criticalHitCount.set(0);
-        psrCount.set(1);
-
-        expect(fixture.componentInstance.hasAutoFall()).toBeTrue();
-        expect(fixture.componentInstance.pendingNotification()).toEqual(jasmine.objectContaining({
-            kind: 'critical-chance',
-            count: 1,
-        }));
-    });
-
-    it('shows an automatic-fall badge when an unconscious pilot will fail every pending PSR', () => {
-        unitCheckCount.set(0);
-        chanceCount.set(0);
-        criticalHitCount.set(0);
-        psrCount.set(2);
-        automaticPsrFailure.set(true);
-        fixture.detectChanges();
-
-        expect(fixture.componentInstance.pendingNotification()).toBeNull();
-        expect(fixture.componentInstance.hasAutoFall()).toBeTrue();
-        expect(fixture.componentInstance.fallTooltip()).toEqual([
-            { label: 'PSR 1', value: 'Fall' },
-            { label: 'PSR 2', value: 'Fall' },
-        ]);
-        expect(fixture.nativeElement.querySelector('.automatic-fall-warning')).not.toBeNull();
-    });
-
-    it('keeps the automatic-fall badge visible for a stored failed PSR until its fall is applied', () => {
-        unitCheckCount.set(0);
-        chanceCount.set(0);
-        criticalHitCount.set(0);
-        psrCount.set(1);
-        automaticPsrFailure.set(true);
-        psrOutcome.set('failed');
-        fixture.detectChanges();
-
-        expect(fixture.componentInstance.pendingNotification()).toBeNull();
-        expect(fixture.componentInstance.hasAutoFall()).toBeTrue();
-        expect(fixture.componentInstance.fallTooltip()).toEqual([
-            { label: 'PSR 1', value: 'Fall' },
-        ]);
-
-        prone.set(true);
-        fixture.detectChanges();
-        expect(fixture.componentInstance.hasAutoFall()).toBeFalse();
-    });
-
-    it('emits activation only when interaction is enabled', () => {
-        const activated = jasmine.createSpy('activated');
-        const event = jasmine.createSpyObj<Event>('event', ['preventDefault', 'stopPropagation']);
-        fixture.componentInstance.activated.subscribe(activated);
-
-        fixture.componentInstance.activate(event, 'unit-check');
-        expect(activated).not.toHaveBeenCalled();
-
+        const fixture = TestBed.createComponent(UnitNotificationBadgesComponent);
+        fixture.componentRef.setInput('snapshot', notificationSnapshot([
+            event('psr', 2, 'Piloting Skill Rolls'),
+        ]));
         fixture.componentRef.setInput('interactive', true);
+        fixture.componentRef.setInput('display', 'overlay');
         fixture.detectChanges();
-        fixture.componentInstance.activate(event, 'unit-check');
 
-        expect(event.preventDefault).toHaveBeenCalledTimes(1);
-        expect(event.stopPropagation).toHaveBeenCalledTimes(1);
-        expect(activated).toHaveBeenCalledOnceWith({ kind: 'unit-check', event });
+        const badge = fixture.nativeElement.querySelector('.pending-events-warning.psr-warning');
+        expect(badge).not.toBeNull();
+        expect(badge.getAttribute('aria-label')).toBe('Resume 2 pending events; next: PSR checks');
+        expect(badge.querySelector('text')?.textContent?.trim()).toBe('2!');
     });
 
-    function createUnit(): CBTForceUnit {
-        const checks = (): SerializedPendingUnitCheck[] => Array.from(
-            { length: unitCheckCount() },
-            (_, index) => ({
-                type: 'unit-check',
-                id: `consciousness:${index}`,
-                kind: 'consciousness',
-                target: 6,
-                crewId: 0,
-                pilotDamageGroup: 'combat:closed',
-            }),
-        );
-        const chances = (): SerializedPendingMekCriticalChance[] => Array.from(
-            { length: chanceCount() },
-            (_, index) => ({
-                type: 'mek-critical-chance',
-                id: `chance:${index}`,
-                location: 'CT',
-            }),
-        );
-        const hits = (): SerializedPendingMekCritical[] => criticalHitCount() > 0 ? [{
-            type: 'mek-critical-hit',
-            id: 'critical:0',
-            location: 'LT',
-            targetLocation: 'LT',
-            remainingHits: criticalHitCount(),
-        }] : [];
-        const turnState = {
-            autoFall: () => autoFall(),
-            automaticPSRFailure: () => automaticPsrFailure(),
-            isPSRCheckAutomaticFailure: () => automaticPsrFailure(),
-            actionablePSRRollsCount: () => autoFall() || automaticPsrFailure() || psrOutcome() !== undefined
-                ? 0
-                : psrCount(),
-            PSRRollsCount: () => psrOutcome() === undefined ? psrCount() : 0,
-            getPSRChecks: () => Array.from({ length: psrCount() }, (_, index) => ({
-                id: `psr:${index}`,
-                kind: PSR_CHECK_KIND.DAMAGE_THRESHOLD,
-                failure: FALL_PSR_FAILURE,
-                fallCheck: 1,
-                reason: `PSR ${index + 1}`,
-            })),
-            getPSROutcome: () => psrOutcome(),
-            pendingCriticalChanceCount: () => chanceCount(),
-            pendingCriticalHitCount: () => criticalHitCount(),
-            getPendingCriticalChances: chances,
-            getPendingCriticalHits: hits,
-            getPendingEvents: () => criticalOrder().flatMap<
-                SerializedPendingMekCriticalChance | SerializedPendingMekCritical
-            >(type => type === 'mek-critical-chance' ? chances() : hits()),
-            pendingUnitCheckCount: () => unitCheckCount(),
-            actionablePendingUnitChecks: checks,
-        };
-        return {
-            gameRules: { aggregatedEndPhaseConsciousRolls: false },
-            rules: { controlRollFullLabel: 'Piloting Skill Rolls' },
-            pendingFallCount: () => pendingFallCount(),
-            turnState: () => turnState,
-            PSRTargetRoll: () => 7,
-            getHeat: () => ({ current: 19 }),
-            getCrewMember: () => undefined,
-            getCrewMembers: () => [],
-            getCondition: (condition: string) => condition === 'prone' && prone(),
-        } as unknown as CBTForceUnit;
-    }
+    it('shows the crippling test as its own badge ahead of PSR checks', async () => {
+        await TestBed.configureTestingModule({
+            imports: [UnitNotificationBadgesComponent],
+            providers: [
+                provideZonelessChangeDetection(),
+                { provide: Overlay, useValue: {} },
+            ],
+        }).compileComponents();
+        const fixture = TestBed.createComponent(UnitNotificationBadgesComponent);
+        fixture.componentRef.setInput('snapshot', notificationSnapshot([
+            event('psr', 2, 'Piloting Skill Rolls'),
+            event('crippling', 1, 'Crippling destruction'),
+        ]));
+        fixture.detectChanges();
+
+        const badge = fixture.nativeElement.querySelector('.pending-events-warning.crippling-warning');
+        expect(badge).not.toBeNull();
+        expect(badge.getAttribute('aria-label')).toBe('3 pending events; next: crippling destruction test');
+        expect(badge.querySelector('.event-count')?.textContent).toBe('3');
+        expect(fixture.nativeElement.querySelector('.psr-warning')).toBeNull();
+    });
 });
+
+function event(
+    kind: RuntimeUnitNotificationSnapshot['pendingEvents'][number]['kind'],
+    count: number,
+    label: string,
+): RuntimeUnitNotificationSnapshot['pendingEvents'][number] {
+    return Object.freeze({
+        kind,
+        count,
+        tooltip: Object.freeze([{ label, value: 'Pending' }]),
+    });
+}
+
+function notificationSnapshot(
+    pendingEvents: RuntimeUnitNotificationSnapshot['pendingEvents'],
+    automaticFallTooltip: RuntimeUnitNotificationSnapshot['automaticFallTooltip'] = null,
+): RuntimeUnitNotificationSnapshot {
+    return Object.freeze({
+        pendingEvents: Object.freeze(pendingEvents),
+        automaticFallTooltip,
+    });
+}
+
+function unitSnapshot(
+    fixture: ReturnType<typeof createDirectMekRuntimeFixture>,
+): CBTMekUnitSnapshot {
+    return Object.freeze({
+        instanceId: 'unit:direct-fixture',
+        entity: fixture.entity,
+        index: fixture.index,
+        uuid: fixture.identity,
+        ruleset: fixture.instance.ruleset(),
+        crewAssignment: fixture.instance.query().crewAssignment(),
+        editContext: { owner: fixture.instance, state: fixture.instance.snapshot() },
+        state: fixture.instance.snapshot(),
+        query: fixture.instance.query(),
+    });
+}

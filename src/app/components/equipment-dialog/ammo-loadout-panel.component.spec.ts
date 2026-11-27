@@ -1,192 +1,261 @@
 // Copyright (C) 2026 The MegaMek Team
 // SPDX-License-Identifier: GPL-3.0-or-later
-// Author: Drake
 
 import { TestBed } from '@angular/core/testing';
+import { of } from 'rxjs';
+
+import { CORE_2026_RULESET } from '../../models/cbt-ruleset.model';
+import { asComponentId } from '../../models/entity/entity-identifiers';
+import { createTestEquipmentRegistry } from '../../models/entity/testing/test-equipment-registry';
 import { AmmoEquipment } from '../../models/equipment.model';
-import { EquipmentRegistry } from '../../models/equipment-lookup';
-import type { CBTForceUnit } from '../../models/cbt-force-unit.model';
-import { MountedEquipment } from '../../models/mounted-equipment.model';
-import type { CriticalSlot } from '../../models/force-serialization';
-import {
-    createHandlerCommandContext,
-    type HandlerCommandContext,
-    type HandlerDialogsService,
-    type HandlerToastService,
-} from '../../services/equipment-interaction-registry.service';
-import { AmmoLoadoutPanelComponent, type AmmoLoadoutPanelData } from './ammo-loadout-panel.component';
-import type { AmmoControlEntry } from '../../utils/ammo-interaction.util';
-import type { EquipmentStatus } from '../../models/equipment-status.model';
+import type { Era } from '../../models/eras.model';
+import type { EquipmentPanelBombs, EquipmentPanelComponent } from '../../models/runtime/equipment-panel';
+import { DialogsService } from '../../services/dialogs.service';
+import { EquipmentCatalogService } from '../../services/catalogs/equipment-catalog.service';
+import { AmmoValidityUtil } from '../../utils/ammo-validity.util';
+import { SetAmmoDialogComponent, type SetAmmoDialogData } from '../set-ammo-dialog/set-ammo.dialog.component';
+import { AmmoLoadoutPanelComponent } from './ammo-loadout-panel.component';
+import type { EquipmentDialogRuntimeController } from './equipment-dialog-runtime.controller';
+import { BOUND_OPTIONAL_RULE_DEFAULTS } from '../../models/runtime/bound-optional-rules';
 
-function createAmmo(id: string): AmmoEquipment {
-    return new AmmoEquipment({
-        id,
-        name: id,
-        type: 'ammo',
-        ammo: { type: 'AC_ULTRA', rackSize: 20, shots: 5 }
-    });
+function ammoRow(
+    id: string,
+    location: string,
+    remaining: number,
+    status: 'available' | 'disabled' | 'destroyed' = 'available',
+    options: {
+        readonly displayName?: string;
+        readonly exposed?: boolean;
+        readonly capacity?: number;
+        readonly munitionKey?: string;
+        readonly hotLoaded?: boolean;
+    } = {},
+): EquipmentPanelComponent {
+    const displayName = options.displayName ?? 'AC/20 Ammo';
+    const capacity = options.capacity ?? 5;
+    const munitionKey = options.munitionKey ?? `ammo:${displayName.toLowerCase().replace(/[^a-z0-9]+/g, '-')}`;
+    return {
+        componentId: asComponentId(id),
+        label: displayName,
+        locations: [{
+            locationId: `location:${location.toLowerCase()}`,
+            code: location,
+            status,
+            exposed: options.exposed ?? false,
+        }],
+        status,
+        previewStatus: status,
+        modes: [],
+        jammed: false,
+        ammo: {
+            defaultMunitionKey: munitionKey,
+            munitionKey,
+            displayName,
+            remaining,
+            capacity,
+            hotLoaded: options.hotLoaded,
+            loadouts: [{ munitionKey, displayName, capacity, profile: {} }],
+        },
+    } as unknown as EquipmentPanelComponent;
 }
 
-function createCritEntry(params: {
-    loc: string;
-    slot: number;
-    ammo: AmmoEquipment;
-    consumed?: number;
-    destroyed?: boolean;
-    status?: EquipmentStatus;
-    owner: Pick<CBTForceUnit, 'id' | 'readOnly' | 'getUnit'>;
-}): AmmoControlEntry {
-    const owner = params.owner as CBTForceUnit;
-    owner.getEquipmentStatus ??= source => source instanceof MountedEquipment && source.committedDestroyed()
-        || !(source instanceof MountedEquipment) && !!source.destroyed
-        ? 'destroyed'
-        : 'available';
-    owner.isEquipmentOperational ??= source => owner.getEquipmentStatus(source) === 'available';
-    const source = {
-        id: `${params.ammo.internalName}@${params.loc}#${params.slot}`,
-        name: params.ammo.internalName,
-        loc: params.loc,
-        slot: params.slot,
-        eq: params.ammo,
-        totalAmmo: 5,
-        consumed: params.consumed ?? 0,
-        destroyed: params.destroyed ? Date.now() : undefined,
-    } as CriticalSlot;
-
-    return {
-        id: `crit:${params.loc}:${params.slot}:${params.ammo.internalName}`,
-        owner,
-        source,
-        sourceType: 'crit',
-        locationLabel: params.loc,
-        displayName: params.ammo.name,
-        displayBinName: `Bin #1 [${params.loc}]`,
-        currentAmmo: params.ammo,
-        originalAmmo: params.ammo,
-        originalTotalAmmo: 5,
-        totalAmmo: 5,
-        consumed: params.consumed ?? 0,
-        status: params.status ?? (params.destroyed ? 'destroyed' : 'available'),
-    };
-}
-
-function createToastServiceMock() {
-    const toasts: Array<{ id: string; message: string; type: 'info' | 'success' | 'error'; data?: Record<string, unknown> }> = [];
-    return {
-        showToast: jasmine.createSpy('showToast').and.callFake((message: string, type: 'info' | 'success' | 'error', id?: string, data?: Record<string, unknown>) => {
-            const toastId = id ?? `toast-${toasts.length + 1}`;
-            const existingIndex = toasts.findIndex(toast => toast.id === toastId);
-            if (existingIndex === -1) {
-                toasts.push({ id: toastId, message, type, data });
-            } else {
-                toasts[existingIndex] = { id: toastId, message, type, data };
+function createComponent(
+    rows: readonly EquipmentPanelComponent[] | (() => readonly EquipmentPanelComponent[]),
+    readOnly = false,
+    bombs: EquipmentPanelBombs | null = null,
+    era: Era | null = null,
+    hotLoadedAmmo = false,
+) {
+    const currentRows = () => typeof rows === 'function' ? rows() : rows;
+    const changeAmmo = jasmine.createSpy('changeAmmo').and.callFake(
+        (row: EquipmentPanelComponent, delta: number) => {
+            if (row.ammo) {
+                (row.ammo as { remaining: number }).remaining = Math.max(
+                    0,
+                    Math.min(row.ammo.capacity, row.ammo.remaining + delta),
+                );
             }
-            return toastId;
-        }),
-        toasts: () => toasts,
-    };
-}
-
-function createCommandContext(
-    equipmentCatalog = new EquipmentRegistry({}),
-    toastService: HandlerToastService = createToastServiceMock(),
-): HandlerCommandContext {
-    const dialogsService = jasmine.createSpyObj<HandlerDialogsService>(
-        'HandlerDialogsService',
-        ['createDialog', 'showError', 'showNoticeHtml'],
+            return Promise.resolve();
+        },
     );
-    return createHandlerCommandContext(equipmentCatalog, toastService, dialogsService);
+    const configureAmmo = jasmine.createSpy('configureAmmo').and.resolveTo();
+    const setBombsSpent = jasmine.createSpy('setBombsSpent').and.resolveTo();
+    const runtime = {
+        ammo: currentRows,
+        bombs: () => bombs,
+        snapshot: () => ({ unitType: 'Mek', ruleset: CORE_2026_RULESET }),
+        member: { force: { readOnly: () => readOnly, era: () => era,
+            getUnitSnapshot: () => ({ query: { boundRules: () => ({ ...BOUND_OPTIONAL_RULE_DEFAULTS, hotLoadedAmmo }) } }) } },
+        changeAmmo,
+        configureAmmo,
+        setBombsSpent,
+    } as unknown as EquipmentDialogRuntimeController;
+    TestBed.configureTestingModule({
+        imports: [AmmoLoadoutPanelComponent],
+        providers: [
+            { provide: DialogsService, useValue: jasmine.createSpyObj('DialogsService', ['createDialog']) },
+            { provide: EquipmentCatalogService, useValue: { getEquipmentRegistry: () => ({ equipment: {} }) } },
+        ],
+    });
+    const fixture = TestBed.createComponent(AmmoLoadoutPanelComponent);
+    fixture.componentRef.setInput('runtime', runtime);
+    fixture.detectChanges();
+    return { fixture, component: fixture.componentInstance, runtime, changeAmmo, configureAmmo, setBombsSpent };
 }
 
 describe('AmmoLoadoutPanelComponent', () => {
-    function configurePanel(data: AmmoLoadoutPanelData): AmmoLoadoutPanelComponent {
-        TestBed.configureTestingModule({
-            imports: [AmmoLoadoutPanelComponent],
-        });
+    for (const scope of ['group', 'bin'] as const) {
+        for (const period of ['future', 'extinct', 'unrestricted'] as const) {
+            it(`preserves the force era for ${period} ammunition in the ${scope} dialog`, async () => {
+                const ammo = new AmmoEquipment({
+                    id: 'Test Era Ammo', name: 'Test Era Ammo', type: 'ammo',
+                    tech: { base: 'IS', advancement: { is: { production: '2700', extinct: '2850', reintroduced: '3050' } } },
+                    ammo: { type: 'AC', rackSize: 20, shots: 5 },
+                });
+                const era: Era | null = period === 'unrestricted' ? null : {
+                    id: 1, name: 'Test Era', factions: [], units: [],
+                    years: period === 'future' ? { from: 2500, to: 2600 } : { from: 2900, to: 3000 },
+                };
+                const rows = ['LT', 'RT'].map(location => ammoRow(`ammo:${location}`, location, 5, 'available', {
+                    displayName: ammo.name, munitionKey: ammo.internalName,
+                }));
+                const { component } = createComponent(rows, false, null, era);
+                spyOn(TestBed.inject(EquipmentCatalogService), 'getEquipmentRegistry').and.returnValue(
+                    createTestEquipmentRegistry({ [ammo.id]: ammo }),
+                );
+                const dialogs = TestBed.inject(DialogsService) as jasmine.SpyObj<DialogsService>;
+                dialogs.createDialog.and.returnValue({ closed: of(null) } as never);
+                const group = component.groups()[0];
 
-        const fixture = TestBed.createComponent(AmmoLoadoutPanelComponent);
-        fixture.componentRef.setInput('data', data);
-        fixture.detectChanges();
-        return fixture.componentInstance;
+                if (scope === 'group') await component.setAmmo(group);
+                else await component.setAmmoBin(group.entries[0]);
+
+                const data = dialogs.createDialog.calls.mostRecent().args[1]?.data as SetAmmoDialogData;
+                expect(data.era).toBe(era);
+                expect(AmmoValidityUtil.getAmmoSelectionIssues(ammo, data).map(issue => issue.reason)).toEqual(
+                    period === 'unrestricted' ? [] : [period === 'future' ? 'not-yet-existing-in-era' : 'extinct-in-era'],
+                );
+            });
+        }
     }
 
+    for (const bound of [true, false]) {
+        it(`allows hot-loading in the group dialog only when the unit is bound to Hot-Loaded Ammo (${bound})`, async () => {
+            const ammo = new AmmoEquipment({
+                id: 'Test Group Ammo', name: 'Test Group Ammo', type: 'ammo', ammo: { type: 'LRM', rackSize: 10, shots: 12 },
+            });
+            const rows = ['LT', 'RT'].map(location => ammoRow(`ammo:${location}`, location, 12, 'available', {
+                displayName: ammo.name, munitionKey: ammo.internalName,
+            }));
+            const { component } = createComponent(rows, false, null, null, bound);
+            spyOn(TestBed.inject(EquipmentCatalogService), 'getEquipmentRegistry').and.returnValue(
+                createTestEquipmentRegistry({ [ammo.id]: ammo }),
+            );
+            const dialogs = TestBed.inject(DialogsService) as jasmine.SpyObj<DialogsService>;
+            dialogs.createDialog.and.returnValue({ closed: of(null) } as never);
+
+            await component.setAmmo(component.groups()[0]);
+
+            expect((dialogs.createDialog.calls.mostRecent().args[1]?.data as SetAmmoDialogData).hotLoadAllowed).toBe(bound);
+        });
+    }
+
+    for (const scope of ['group', 'bin'] as const) {
+        it(`preserves Artemis compatibility when opening the ${scope} ammo dialog`, async () => {
+            const guidedAmmo = new AmmoEquipment({
+                id: 'IS LRM 15 Artemis Ammo', name: 'LRM 15 Artemis-capable Ammo', type: 'ammo',
+                ammo: { type: 'LRM', rackSize: 15, shots: 8, munitionType: ['M_ARTEMIS_CAPABLE'] },
+            });
+            const compatibilityFacts = { artemisIV: [guidedAmmo.internalName], artemisV: [] };
+            const rows = ['LT', 'RT'].map(location => {
+                const row = ammoRow(`ammo:${location}`, location, 24, 'available', {
+                    capacity: 24, displayName: guidedAmmo.name, munitionKey: guidedAmmo.internalName,
+                });
+                return { ...row, ammo: { ...row.ammo!, compatibilityFacts } };
+            });
+            const { component } = createComponent(rows);
+            spyOn(TestBed.inject(EquipmentCatalogService), 'getEquipmentRegistry').and.returnValue(
+                createTestEquipmentRegistry({ [guidedAmmo.id]: guidedAmmo }),
+            );
+            const dialogs = TestBed.inject(DialogsService) as jasmine.SpyObj<DialogsService>;
+            dialogs.createDialog.and.returnValue({ closed: of(null) } as never);
+            const group = component.groups()[0];
+
+            if (scope === 'group') await component.setAmmo(group);
+            else await component.setAmmoBin(group.entries[0]);
+
+            expect(dialogs.createDialog).toHaveBeenCalledTimes(1);
+            const [dialog, options] = dialogs.createDialog.calls.mostRecent().args;
+            expect(dialog).toBe(SetAmmoDialogComponent);
+            const data = options?.data as SetAmmoDialogData;
+            expect(data.quantity).toBe(scope === 'group' ? 48 : 24);
+            expect(data.compatibilityFacts).toEqual(compatibilityFacts);
+            expect(AmmoValidityUtil.getAmmoSelectionIssues(guidedAmmo, data)).toEqual([]);
+        });
+    }
+
+    it('lists carried bombs with hardpoint use and spends or restores them without ammo bins', () => {
+        const load = { section: 'external', bombId: 'HEBomb', count: 3, spent: 1 } as const;
+        const { fixture, setBombsSpent } = createComponent([], false, {
+            capacity: { external: 10, internal: 0 }, loads: [load],
+        });
+        const element = fixture.nativeElement as HTMLElement;
+        expect(element.querySelector('.ammo-empty-state')).toBeNull();
+        expect(element.querySelector('.bomb-loadout')!.textContent).toContain('EXT 3/10');
+        const row = element.querySelectorAll('.bomb-loadout .ammo-control-row')[1]!;
+        expect(row.querySelector('.ammo-count')!.textContent!.replace(/s/g, '')).toBe('2/3');
+        const [spend, restore] = [...row.querySelectorAll<HTMLButtonElement>('button')];
+        spend!.click();
+        restore!.click();
+        expect(setBombsSpent.calls.allArgs()).toEqual([[load, 2], [load, 0]]);
+    });
+
+    it('keeps ordinary and hot-loaded bins separate and labels the hot-loaded group', () => {
+        const { fixture, component } = createComponent([
+            ammoRow('ammo:normal', 'LT', 5),
+            ammoRow('ammo:hot', 'RT', 5, 'available', { hotLoaded: true }),
+        ]);
+        expect(component.groups().map(group => group.hotLoaded)).toEqual(jasmine.arrayWithExactContents([false, true]));
+        const badges = fixture.nativeElement.querySelectorAll('.hot-loaded-badge');
+        expect(badges.length).toBe(1);
+        expect(badges[0].textContent.trim()).toBe('HOT-LOADED');
+    });
+
     it('recomputes visible groups from live entries while open', () => {
-        const standardAmmo = createAmmo('Clan Ultra AC/20 Ammo');
-        const precisionAmmo = createAmmo('Clan Ultra AC/20 Precision Ammo');
-        const owner = {
-            id: 'unit-1',
-            readOnly: () => false,
-            getUnit: () => ({ techBase: 'Clan' }),
-        } as unknown as Pick<CBTForceUnit, 'id' | 'readOnly' | 'getUnit'>;
-        let liveEntries = [
-            createCritEntry({ loc: 'LT', slot: 0, ammo: standardAmmo, owner }),
-            createCritEntry({ loc: 'LT', slot: 1, ammo: standardAmmo, owner }),
+        let liveRows: readonly EquipmentPanelComponent[] = [
+            ammoRow('ammo:left', 'LT', 5, 'available', { displayName: 'Ultra AC/20 Ammo' }),
+            ammoRow('ammo:right', 'RT', 5, 'available', { displayName: 'Ultra AC/20 Ammo' }),
         ];
-        const data: AmmoLoadoutPanelData = {
-            entries: liveEntries,
-            getEntries: () => liveEntries,
-            context: createCommandContext(),
-        };
-        const component = configurePanel(data);
+        const { component } = createComponent(() => liveRows);
 
         let groups = component.groups();
         expect(groups.length).toBe(1);
         expect(groups[0].entries.length).toBe(2);
         expect(component.groupRemaining(groups[0])).toBe(10);
 
-        liveEntries = [
-            createCritEntry({ loc: 'LT', slot: 0, ammo: precisionAmmo, owner }),
-            createCritEntry({ loc: 'LT', slot: 1, ammo: standardAmmo, destroyed: true, owner }),
+        liveRows = [
+            ammoRow('ammo:left', 'LT', 5, 'available', { displayName: 'Ultra AC/20 Precision Ammo' }),
+            ammoRow('ammo:right', 'RT', 5, 'destroyed', { displayName: 'Ultra AC/20 Ammo' }),
         ];
 
         groups = component.groups();
-        expect(groups.length).toBe(2);
-        expect(groups.map(group => group.displayName)).toEqual(['Clan Ultra AC/20 Precision Ammo', 'Clan Ultra AC/20 Ammo']);
+        expect(groups.map(group => group.displayName)).toEqual([
+            'Ultra AC/20 Precision',
+            'Ultra AC/20',
+        ]);
         expect(groups.map(group => group.status)).toEqual(['available', 'destroyed']);
-        expect(component.groupRemaining(groups[0])).toBe(5);
-        expect(component.groupRemaining(groups[1])).toBe(0);
+        expect(groups.map(group => component.groupRemaining(group))).toEqual([5, 0]);
     });
 
     it('allows a single-bin ammo group to expand', () => {
-        const standardAmmo = createAmmo('Clan Ultra AC/20 Ammo');
-        const owner = {
-            id: 'unit-1',
-            readOnly: () => false,
-            getUnit: () => ({ techBase: 'Clan' }),
-        } as unknown as Pick<CBTForceUnit, 'id' | 'readOnly' | 'getUnit'>;
-        const data: AmmoLoadoutPanelData = {
-            entries: [createCritEntry({ loc: 'LT', slot: 0, ammo: standardAmmo, owner })],
-            context: createCommandContext(),
-        };
+        const { fixture } = createComponent([ammoRow('ammo:left', 'LT', 5)]);
 
-        TestBed.configureTestingModule({
-            imports: [AmmoLoadoutPanelComponent],
-        });
-        const fixture = TestBed.createComponent(AmmoLoadoutPanelComponent);
-        fixture.componentRef.setInput('data', data);
-        fixture.detectChanges();
-
-        const expandButton: HTMLButtonElement | null = fixture.nativeElement.querySelector('.ammo-expand-button');
-        expect(expandButton).toBeNull();
+        expect(fixture.nativeElement.querySelector('.ammo-expand-button')).toBeNull();
         expect(fixture.nativeElement.querySelector('.ammo-bin-list')).toBeNull();
     });
 
     it('styles a disabled ammo source separately from a destroyed source', () => {
-        const standardAmmo = createAmmo('Clan Ultra AC/20 Ammo');
-        const owner = {
-            id: 'unit-1',
-            readOnly: () => false,
-            getUnit: () => ({ techBase: 'Clan' }),
-        } as unknown as Pick<CBTForceUnit, 'id' | 'readOnly' | 'getUnit'>;
-        const data: AmmoLoadoutPanelData = {
-            entries: [createCritEntry({ loc: 'LT', slot: 0, ammo: standardAmmo, owner, status: 'disabled' })],
-            context: createCommandContext(),
-        };
-
-        TestBed.configureTestingModule({ imports: [AmmoLoadoutPanelComponent] });
-        const fixture = TestBed.createComponent(AmmoLoadoutPanelComponent);
-        fixture.componentRef.setInput('data', data);
-        fixture.detectChanges();
+        const { fixture } = createComponent([ammoRow('ammo:left', 'LT', 5, 'disabled')]);
 
         const row = fixture.nativeElement.querySelector('.ammo-control-row') as HTMLElement;
         const badge = fixture.nativeElement.querySelector('.ammo-location-badge') as HTMLElement;
@@ -194,56 +263,32 @@ describe('AmmoLoadoutPanelComponent', () => {
         expect(row.classList.contains('destroyed-entry')).toBeFalse();
         expect(badge.classList.contains('disabled')).toBeTrue();
         expect(badge.classList.contains('destroyed')).toBeFalse();
+        expect(row.querySelector('.ammo-count')?.textContent?.trim()).toBe('0/5');
         expect(fixture.nativeElement.querySelector('.ammo-control-actions')).toBeNull();
     });
 
     it('shows location badges beside the group name', () => {
-        const standardAmmo = createAmmo('Clan Ultra AC/20 Ammo');
-        const owner = {
-            id: 'unit-1',
-            readOnly: () => false,
-            getUnit: () => ({ techBase: 'Clan' }),
-            getLocations: () => ({
-                LT: { armor: 0 },
-                RT: { armor: 6 },
-            }),
-            locations: {
-                armor: new Map([
-                    ['LT', { loc: 'LT', rear: false, points: 10 }],
-                    ['RT', { loc: 'RT', rear: false, points: 6 }],
-                    ['CT', { loc: 'CT', rear: false, points: 12 }],
-                ]),
-            },
-        } as unknown as Pick<CBTForceUnit, 'id' | 'readOnly' | 'getUnit'>;
-        const data: AmmoLoadoutPanelData = {
-            entries: [
-                createCritEntry({ loc: 'LT', slot: 0, ammo: standardAmmo, owner }),
-                createCritEntry({ loc: 'LT', slot: 1, ammo: standardAmmo, owner }),
-                createCritEntry({ loc: 'RT', slot: 2, ammo: standardAmmo, owner }),
-                createCritEntry({ loc: 'CT', slot: 3, ammo: standardAmmo, destroyed: true, owner }),
-            ],
-            context: createCommandContext(),
-        };
+        const { fixture } = createComponent([
+            ammoRow('ammo:lt-1', 'LT', 5),
+            ammoRow('ammo:lt-2', 'LT', 5),
+            ammoRow('ammo:rt', 'RT', 5, 'available', { exposed: true }),
+            ammoRow('ammo:ct', 'CT', 5, 'destroyed'),
+        ]);
 
-        TestBed.configureTestingModule({
-            imports: [AmmoLoadoutPanelComponent],
-        });
-        const fixture = TestBed.createComponent(AmmoLoadoutPanelComponent);
-        fixture.componentRef.setInput('data', data);
-        fixture.detectChanges();
-
-        const badges = Array.from(fixture.nativeElement.querySelectorAll('.ammo-location-badge')) as HTMLElement[];
-
+        const badges = Array.from(
+            fixture.nativeElement.querySelectorAll('.ammo-location-badge'),
+        ) as HTMLElement[];
         expect(badges.map(badge => badge.textContent?.trim())).toEqual(['2× LT', 'RT', 'CT']);
         expect(badges[0].classList.contains('exposed')).toBeFalse();
         expect(badges[0].classList.contains('destroyed')).toBeFalse();
         expect(badges[1].classList.contains('exposed')).toBeTrue();
         expect(badges[2].classList.contains('destroyed')).toBeTrue();
 
-        fixture.nativeElement.querySelector('.ammo-expand-button')?.click();
+        (fixture.nativeElement.querySelector('.ammo-expand-button') as HTMLButtonElement).click();
         fixture.detectChanges();
-        const binBadges = Array.from(fixture.nativeElement.querySelectorAll('.ammo-bin .ammo-location-badge')) as HTMLElement[];
-
+        const binBadges = Array.from(
+            fixture.nativeElement.querySelectorAll('.ammo-bin .ammo-location-badge'),
+        ) as HTMLElement[];
         expect(binBadges.map(badge => badge.textContent?.trim())).toEqual(['LT', 'LT', 'RT', 'CT']);
         expect(binBadges[0].classList.contains('exposed')).toBeFalse();
         expect(binBadges[1].classList.contains('exposed')).toBeFalse();
@@ -252,67 +297,32 @@ describe('AmmoLoadoutPanelComponent', () => {
     });
 
     it('groups location badges by location and state until expanded', () => {
-        const standardAmmo = createAmmo('Clan Ultra AC/20 Ammo');
-        const owner = {
-            id: 'unit-1',
-            readOnly: () => false,
-            getUnit: () => ({ techBase: 'Clan' }),
-        } as unknown as Pick<CBTForceUnit, 'id' | 'readOnly' | 'getUnit'>;
-        const data: AmmoLoadoutPanelData = {
-            entries: [
-                createCritEntry({ loc: 'RT', slot: 0, ammo: standardAmmo, owner }),
-                createCritEntry({ loc: 'RT', slot: 1, ammo: standardAmmo, owner }),
-                createCritEntry({ loc: 'RT', slot: 2, ammo: standardAmmo, destroyed: true, owner }),
-            ],
-            context: createCommandContext(),
-        };
+        const { fixture } = createComponent([
+            ammoRow('ammo:rt-1', 'RT', 5),
+            ammoRow('ammo:rt-2', 'RT', 5),
+            ammoRow('ammo:rt-3', 'RT', 5, 'destroyed'),
+        ]);
 
-        TestBed.configureTestingModule({
-            imports: [AmmoLoadoutPanelComponent],
-        });
-        const fixture = TestBed.createComponent(AmmoLoadoutPanelComponent);
-        fixture.componentRef.setInput('data', data);
-        fixture.detectChanges();
-
-        const groupBadges = Array.from(fixture.nativeElement.querySelectorAll('.ammo-expand-button .ammo-location-badge')) as HTMLElement[];
-
+        const groupBadges = Array.from(
+            fixture.nativeElement.querySelectorAll('.ammo-expand-button .ammo-location-badge'),
+        ) as HTMLElement[];
         expect(groupBadges.map(badge => badge.textContent?.trim())).toEqual(['2× RT', 'RT']);
         expect(groupBadges[0].classList.contains('destroyed')).toBeFalse();
         expect(groupBadges[1].classList.contains('destroyed')).toBeTrue();
 
-        fixture.nativeElement.querySelector('.ammo-expand-button')?.click();
+        (fixture.nativeElement.querySelector('.ammo-expand-button') as HTMLButtonElement).click();
         fixture.detectChanges();
-
-        expect(fixture.nativeElement.querySelectorAll('.ammo-expand-button .ammo-location-badge').length).toBe(0);
+        expect(fixture.nativeElement.querySelectorAll(
+            '.ammo-expand-button .ammo-location-badge',
+        ).length).toBe(0);
         expect(fixture.nativeElement.querySelectorAll('.ammo-bin .ammo-location-badge').length).toBe(3);
     });
 
     it('shows per-bin quantity controls only for active bins', () => {
-        const standardAmmo = createAmmo('Clan Ultra AC/20 Ammo');
-        const owner = {
-            id: 'unit-1',
-            readOnly: () => false,
-            setCritSlot: jasmine.createSpy('setCritSlot'),
-            getUnit: () => ({ techBase: 'Clan' }),
-            svg: () => null,
-        } as unknown as Pick<CBTForceUnit, 'id' | 'readOnly' | 'setCritSlot' | 'getUnit' | 'svg'>;
-        const activeEntry = createCritEntry({ loc: 'LT', slot: 0, ammo: standardAmmo, owner, consumed: 1 });
-        const destroyedEntry = createCritEntry({ loc: 'LT', slot: 1, ammo: standardAmmo, owner, destroyed: true });
-        const data: AmmoLoadoutPanelData = {
-            entries: [activeEntry, destroyedEntry],
-            context: createCommandContext(
-                new EquipmentRegistry({ [standardAmmo.internalName]: standardAmmo }),
-                createToastServiceMock(),
-            ),
-        };
-
-        TestBed.configureTestingModule({
-            imports: [AmmoLoadoutPanelComponent],
-        });
-        const fixture = TestBed.createComponent(AmmoLoadoutPanelComponent);
-        fixture.componentRef.setInput('data', data);
-        fixture.detectChanges();
-        fixture.nativeElement.querySelector('.ammo-expand-button')?.click();
+        const active = ammoRow('ammo:active', 'LT', 4);
+        const destroyed = ammoRow('ammo:destroyed', 'LT', 5, 'destroyed');
+        const { fixture, changeAmmo } = createComponent([active, destroyed]);
+        (fixture.nativeElement.querySelector('.ammo-expand-button') as HTMLButtonElement).click();
         fixture.detectChanges();
 
         const binRows = Array.from(fixture.nativeElement.querySelectorAll('.ammo-bin')) as HTMLElement[];
@@ -321,39 +331,37 @@ describe('AmmoLoadoutPanelComponent', () => {
 
         (binRows[0].querySelector('.ammo-bin-adjust') as HTMLButtonElement).click();
         fixture.detectChanges();
-
-        expect(activeEntry.consumed).toBe(2);
-        expect(owner.setCritSlot).toHaveBeenCalledWith(activeEntry.source as CriticalSlot);
+        expect(changeAmmo).toHaveBeenCalledOnceWith(active, -1);
         expect(binRows[0].querySelector('.ammo-count')?.textContent?.trim()).toBe('3/5');
     });
 
     it('keeps rebuilt groups open after a bin changes ammo type', () => {
-        const standardAmmo = createAmmo('Clan Ultra AC/20 Ammo');
-        const precisionAmmo = createAmmo('Clan Ultra AC/20 Precision Ammo');
-        const owner = {
-            id: 'unit-1',
-            readOnly: () => false,
-            getUnit: () => ({ techBase: 'Clan' }),
-        } as unknown as Pick<CBTForceUnit, 'id' | 'readOnly' | 'getUnit'>;
-        const changedEntry = createCritEntry({ loc: 'LT', slot: 0, ammo: standardAmmo, owner });
-        const remainingEntry = createCritEntry({ loc: 'LT', slot: 1, ammo: standardAmmo, owner });
-        const data: AmmoLoadoutPanelData = {
-            entries: [changedEntry, remainingEntry],
-            getEntries: () => [changedEntry, remainingEntry],
-            context: createCommandContext(),
-        };
-        const component = configurePanel(data);
+        const unchanged = ammoRow('ammo:right', 'RT', 5, 'available', {
+            displayName: 'Ultra AC/20 Ammo',
+        });
+        let liveRows: readonly EquipmentPanelComponent[] = [
+            ammoRow('ammo:left', 'LT', 5, 'available', { displayName: 'Ultra AC/20 Ammo' }),
+            unchanged,
+        ];
+        const { component } = createComponent(() => liveRows);
         const group = component.groups()[0];
 
         component.toggleGroup(group);
         expect(component.isExpanded(group)).toBeTrue();
 
-        changedEntry.currentAmmo = precisionAmmo;
-        changedEntry.displayName = precisionAmmo.name;
+        liveRows = [
+            ammoRow('ammo:left', 'LT', 5, 'available', {
+                displayName: 'Ultra AC/20 Precision Ammo',
+            }),
+            unchanged,
+        ];
 
         const rebuiltGroups = component.groups();
-
         expect(rebuiltGroups.length).toBe(2);
         expect(rebuiltGroups.every(rebuiltGroup => component.isExpanded(rebuiltGroup))).toBeTrue();
+    });
+
+    it('has no legacy panel-data input', () => {
+        expect(Object.hasOwn(AmmoLoadoutPanelComponent.prototype, 'panelData')).toBeFalse();
     });
 });

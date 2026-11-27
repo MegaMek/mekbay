@@ -3,6 +3,7 @@
 // Author: Drake
 
 import { AmmoEquipment, Equipment, EquipmentMap, WeaponEquipment } from './equipment.model';
+import { isBattleArmorAmmo } from './equipment-platform.model';
 
 function normalizeEquipmentLookupKey(name: string): string {
     return name.trim().toLowerCase();
@@ -84,7 +85,7 @@ export class EquipmentRegistry {
 
     /** Returns catalog ammo in the same type and Battle Armor class for loadout selection. */
     getAmmoForAmmo(ammo: AmmoEquipment): readonly AmmoEquipment[] {
-        return this.#ammoByType.get(ammoTypeKey(ammo.ammoType, ammo.hasFlag('F_BATTLEARMOR'))) ?? [];
+        return this.#ammoByType.get(ammoTypeKey(ammo.ammoType, isBattleArmorAmmo(ammo))) ?? [];
     }
 
     private addVariant(key: string, item: Equipment): void {
@@ -100,7 +101,7 @@ export class EquipmentRegistry {
         for (const item of Object.values(this.equipment)) {
             if (!(item instanceof AmmoEquipment) || indexed.has(item)) continue;
             indexed.add(item);
-            const battleArmor = item.hasFlag('F_BATTLEARMOR');
+            const battleArmor = isBattleArmorAmmo(item);
             addIndexedAmmo(byType, ammoTypeKey(item.ammoType, battleArmor), item);
             addIndexedAmmo(byWeapon, ammoWeaponKey(item.ammoType, item.rackSize, battleArmor), item);
         }

@@ -46,7 +46,6 @@ function coverLevelOptions(kind: CoverLevelPickerKind): readonly CoverLevelOptio
 
 @Component({
     selector: 'cover-level-indicator',
-    standalone: true,
     changeDetection: ChangeDetectionStrategy.OnPush,
     template: `
         @if (kind() === 'water') {
@@ -86,7 +85,6 @@ export class CoverLevelIndicatorComponent {
 
 @Component({
     selector: 'cover-level-picker-panel',
-    standalone: true,
     imports: [CoverLevelIndicatorComponent],
     changeDetection: ChangeDetectionStrategy.OnPush,
     template: `
@@ -183,7 +181,6 @@ export class CoverLevelPickerPanelComponent {
 
 @Component({
     selector: 'cover-level-picker',
-    standalone: true,
     imports: [CoverLevelIndicatorComponent],
     changeDetection: ChangeDetectionStrategy.OnPush,
     host: {

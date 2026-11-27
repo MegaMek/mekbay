@@ -4,7 +4,9 @@
 
 import {
   approx,
+  calculateCompositeStaticTechLevel,
   DATE_PS,
+  type ComponentTechLevel,
   type TechAdvancement,
 } from '../types';
 
@@ -58,3 +60,13 @@ export const PATCHWORK_ARMOR_TECH = {
   level: 'Advanced',
   dates: { prototype: DATE_PS, production: approx(3080) },
 } as const satisfies TechAdvancement;
+
+/** Minimum static construction level imposed by any armored equipment mount. */
+export function armoredComponentStaticTechLevel(
+  componentLevel: ComponentTechLevel,
+): ComponentTechLevel {
+  return calculateCompositeStaticTechLevel([
+    { rating: 'E', level: componentLevel, availability: ['X', 'X', 'X', 'X'] },
+    { rating: 'E', level: 'Advanced', availability: ['X', 'X', 'F', 'E'] },
+  ]);
+}

@@ -2,7 +2,8 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 // Author: Drake
 
-import { CommonModule } from '@angular/common';
+import { UnitNameService } from '../../services/unit-name.service';
+import { DecimalPipe } from '@angular/common';
 import { CdkMenuModule } from '@angular/cdk/menu';
 import {
     ChangeDetectionStrategy,
@@ -21,6 +22,7 @@ import {
 import { MeasureClampOverflowDirective } from '../../directives/measure-clamp-overflow.directive';
 import {
     getForcePreviewResolvedUnits,
+    getForcePreviewUnitDisplay,
     getForcePreviewUnitPilotStats,
     type ForcePreviewEntry,
     type ForcePreviewGroup,
@@ -32,21 +34,23 @@ import { CleanModelStringPipe } from '../../pipes/clean-model-string.pipe';
 import { DialogsService } from '../../services/dialogs.service';
 import { ForceTaggingService } from '../../services/force-tagging.service';
 import { OptionsService } from '../../services/options.service';
-import { LanceTypeIdentifierUtil } from '../../utils/lance-type-identifier.util';
+import { FormationAnalyzer } from '../../utils/formation/formation-analysis.util';
 import {
     NOTE_PREVIEW_LINE_COUNT,
     hasVisibleNoteText,
 } from '../../utils/note-preview.util';
-import { formationNameMatchesGroupName, NO_FORMATION_ID, type FormationTypeDefinition } from '../../utils/formation-type.model';
-import { getOrgFromForce, getOrgFromGroup } from '../../utils/org/org-namer.util';
+import { formationNameMatchesGroupName, NO_FORMATION_ID, type FormationTypeDefinition } from '../../utils/formation/formation-type.model';
+import { getOrgFromForce, getOrgFromGroup } from '../../utils/org/org-analysis.util';
 import { FormationInfoDialogComponent, type FormationInfoDialogData } from '../formation-info-dialog/formation-info-dialog.component';
 import { UnitDetailsDialogComponent, type UnitDetailsDialogData } from '../unit-details-dialog/unit-details-dialog.component';
 import { ForceTagsComponent, type ForceTagClickEvent } from '../force-tags/force-tags.component';
 import { UnitIconComponent } from '../unit-icon/unit-icon.component';
+import { CommanderIconComponent } from '../commander-icon/commander-icon.component';
+import { ForceReservesPreviewComponent } from '../force-reserves-preview/force-reserves-preview.component';
 import { GameSystem } from '../../models/common.model';
 import { adjustPointValueForSkill } from '../../utils/pv-skill-adjustment.util';
 import { DEFAULT_GUNNERY_SKILL, DEFAULT_PILOTING_SKILL } from '../../models/crew-member.model';
-import { BVCalculatorUtil } from '../../utils/bv-calculator.util';
+import { calculateAdjustedBV } from '../../utils/cbt-common.util';
 
 const UNIT_TILE_MIN_WIDTH = 86;
 const UNIT_TILE_MAX_WIDTH = 114;
@@ -70,8 +74,7 @@ export interface ForcePreviewUnitMenuActionEvent {
 
 @Component({
     selector: 'force-preview-panel',
-    standalone: true,
-    imports: [CommonModule, CdkMenuModule, CleanModelStringPipe, MeasureClampOverflowDirective, UnitIconComponent, ForceTagsComponent],
+    imports: [DecimalPipe, CdkMenuModule, CleanModelStringPipe, MeasureClampOverflowDirective, UnitIconComponent, ForceTagsComponent, ForceReservesPreviewComponent, CommanderIconComponent],
     changeDetection: ChangeDetectionStrategy.OnPush,
     template: `
     @let unitDisplayName = effectiveUnitDisplayName();
@@ -136,9 +139,7 @@ export interface ForcePreviewUnitMenuActionEvent {
                     class="force-preview-note-toggle"
                     [attr.aria-expanded]="noteExpanded()"
                     (click)="toggleNoteExpanded()">
-                    <svg class="chevron" width="12px" height="12px" fill="currentColor" viewBox="0 0 10 10" xmlns="http://www.w3.org/2000/svg" [class.collapsed]="!noteExpanded()">
-                        <path d="M0 2l5 6 5-6z"/>
-                    </svg>
+                    <span class="chevron" [class.collapsed]="!noteExpanded()" aria-hidden="true"></span>
                     <span
                         class="force-preview-note-summary"
                         [class.clamped]="!noteExpanded()"
@@ -191,28 +192,21 @@ export interface ForcePreviewUnitMenuActionEvent {
                             (pointerleave)="onUnitHover(null)">
                             <div class="unit-square compact-mode"
                                 [class.destroyed]="unitEntry.destroyed"
-                                [class.missing]="!unitEntry.unit"
+                                [class.missing]="!unitEntry.unit && !unitEntry.embeddedCustom"
                                 [class.clickable]="!!unitEntry.unit"
                                 (click)="onUnitClick(unitEntry)">
                                 @if (unitEntry.commander) {
                                     <div class="group-commander-indicator" aria-hidden="true">
-                                        <svg class="group-commander-icon" width="42.08" height="51.88" viewBox="0 0 21.04 25.94" preserveAspectRatio="xMidYMid meet" xmlns="http://www.w3.org/2000/svg" focusable="false">
-                                            <g transform="translate(-.02)">
-                                                <g transform="matrix(.265 0 0 .265 -21.1 0)" fill="currentColor">
-                                                    <path d="m79.7 70 39.3-70 40 70.1h-27l-13-22.1-13 22.1z" />
-                                                    <path d="m81.4 97.9 11.3-21.6h52.3l12 21.6z" />
-                                                </g>
-                                            </g>
-                                        </svg>
+                                        <commander-icon />
                                     </div>
                                 }
                                 <div class="unit-content">
-                                    <unit-icon [unit]="unitEntry.unit" [size]="32"></unit-icon>
-                                    @if (unitDisplayName === 'chassisModel'
-                                        || unitDisplayName === 'both'
-                                        || !unitEntry.alias) {
-                                    <div class="unit-model">{{ unitEntry.unit?.model | cleanModelString }}</div>
-                                    <div class="unit-chassis">{{ unitEntry.unit?.chassis }}</div>
+                                    @let display = getUnitDisplay(unitEntry, unitDisplayName);
+                                    <unit-icon [unit]="unitEntry.unit" [iconPath]="display.iconPath" [size]="32"
+                                        [alt]="unitNames.name(display.name)"></unit-icon>
+                                    @if (display.showName) {
+                                    <div class="unit-model">{{ display.name?.model | cleanModelString }}</div>
+                                    <div class="unit-chassis">{{ unitNames.chassis(display.name) }}</div>
                                     }
                                     @if (unitDisplayName === 'alias' || unitDisplayName === 'both') {
                                     <div class="unit-alias"
@@ -250,7 +244,7 @@ export interface ForcePreviewUnitMenuActionEvent {
                                             aria-label="Unit options"
                                             [cdkMenuTriggerFor]="unitMenu"
                                             #unitMenuTrigger="cdkMenuTriggerFor"
-                                            (click)="onUnitMenuClick($event, unitEntry)">
+                                            (click)="onUnitMenuClick($event)">
                                             <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="5" r="1"/><circle cx="12" cy="12" r="1"/><circle cx="12" cy="19" r="1"/></svg>
                                         </button>
                                         <ng-template #unitMenu>
@@ -308,6 +302,9 @@ export interface ForcePreviewUnitMenuActionEvent {
                         }
                     </div>
                 </div>
+                }
+                @if (showReserves() && (entry.reserveCount ?? 0) > 0) {
+                    <force-reserves-preview [count]="entry.reserveCount ?? 0"></force-reserves-preview>
                 }
             </div>
         </div>
@@ -484,14 +481,7 @@ export interface ForcePreviewUnitMenuActionEvent {
         }
 
         .chevron {
-            color: var(--text-color-secondary);
-            transition: transform 0.15s ease;
-            flex-shrink: 0;
             margin-top: 2px;
-        }
-
-        .chevron.collapsed {
-            transform: rotate(-90deg);
         }
 
         .game-type-badge {
@@ -635,11 +625,8 @@ export interface ForcePreviewUnitMenuActionEvent {
             left: 3px;
         }
 
-        .group-commander-icon {
+        commander-icon {
             width: 16px;
-            height: auto;
-            transform: rotate(180deg);
-            flex-shrink: 0;
         }
 
         .unit-content {
@@ -824,6 +811,8 @@ export interface ForcePreviewUnitMenuActionEvent {
     `],
 })
 export class ForcePreviewPanelComponent {
+    readonly unitNames = inject(UnitNameService);
+    readonly getUnitDisplay = getForcePreviewUnitDisplay;
     private readonly dialogsService = inject(DialogsService);
     private readonly forceTaggingService = inject(ForceTaggingService);
     readonly optionsService = inject(OptionsService);
@@ -834,6 +823,8 @@ export class ForcePreviewPanelComponent {
     readonly showHeader = input(true);
     readonly showHint = input(true);
     readonly showNote = input(true);
+    /** False when the host lists the reserve crew itself. */
+    readonly showReserves = input(true);
     readonly scrollUnitsOnly = input(false);
     readonly showLockControls = input(false);
     readonly showUnitCost = input(false);
@@ -963,11 +954,11 @@ export class ForcePreviewPanelComponent {
         if (!loadForceUnit.unit) {
             return '';
         }
-        if (this.force().type == GameSystem.ALPHA_STRIKE) {
+        if (this.force().type == GameSystem.AS) {
             const adjustedPV = adjustPointValueForSkill(loadForceUnit.unit.as.PV, loadForceUnit.skill ?? DEFAULT_GUNNERY_SKILL);
             return `PV: ${adjustedPV}`;
         }
-        const adjustedBV = BVCalculatorUtil.calculateAdjustedBV(loadForceUnit.unit, loadForceUnit.unit.bv, loadForceUnit.gunnery ?? DEFAULT_GUNNERY_SKILL, loadForceUnit.piloting ?? DEFAULT_PILOTING_SKILL);
+        const adjustedBV = calculateAdjustedBV(loadForceUnit.unit, loadForceUnit.unit.bv, loadForceUnit.gunnery ?? DEFAULT_GUNNERY_SKILL, loadForceUnit.piloting ?? DEFAULT_PILOTING_SKILL);
         return `BV: ${adjustedBV}`;
     }
 
@@ -977,7 +968,7 @@ export class ForcePreviewPanelComponent {
         }
 
         const unitList = this.resolvedUnits();
-        const unitIndex = unitList.findIndex((unit: UnitSummary) => unit === loadForceUnit.unit || unit.name === loadForceUnit.unit?.name);
+        const unitIndex = unitList.findIndex((unit: UnitSummary) => unit.uuid === loadForceUnit.unit?.uuid);
         const variantChange = this.variantChange();
         this.dialogsService.createDialog(UnitDetailsDialogComponent, {
             data: {
@@ -1035,7 +1026,7 @@ export class ForcePreviewPanelComponent {
             return null;
         }
 
-        return LanceTypeIdentifierUtil.getDefinitionById(group.formationId, gameSystem);
+        return FormationAnalyzer.getDefinitionById(group.formationId, gameSystem);
     }
 
     private getPreviewFormationDisplayName(
@@ -1070,7 +1061,7 @@ export class ForcePreviewPanelComponent {
         this.lockToggle()?.(loadForceUnit);
     }
 
-    onUnitMenuClick(event: Event, loadForceUnit: ForcePreviewUnit): void {
+    onUnitMenuClick(event: Event): void {
         event.stopPropagation();
     }
 

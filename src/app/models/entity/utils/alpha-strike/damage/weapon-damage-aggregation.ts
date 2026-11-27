@@ -4,6 +4,7 @@
 
 import { AmmoEquipment, WeaponEquipment } from '../../../../equipment.model';
 import type { BaseEntity } from '../../../base-entity';
+import { isActuatorEnhancementSystem } from '../../../../myomer-equipment.model';
 import { MekEntity } from '../../../entities';
 import type { EntityMountedWeapon } from '../../../types';
 import {
@@ -12,6 +13,10 @@ import {
   type AlphaStrikeRangeIndex,
 } from './weapon-damage-profile';
 import { alphaStrikeAmmoDamageMultiplier } from './weapon-modifiers';
+import {
+  entityHasTargetingComputer,
+  targetingComputerDamageMultiplier,
+} from '../../targeting-computer';
 
 /** Sums unrounded Alpha Strike weapon damage after common unit-wide modifiers. */
 export function sumAlphaStrikeWeaponDamage(
@@ -21,7 +26,7 @@ export function sumAlphaStrikeWeaponDamage(
 ): [number, number, number, number] {
   const weapons = entity.rangedWeapons();
   const ammunition = entity.equipment().filter(mount => mount.equipment instanceof AmmoEquipment);
-  const targetingComputer = entity.equipment().some(mount => mount.equipment?.hasFlag('F_TARGETING_COMPUTER'));
+  const targetingComputer = entityHasTargetingComputer(entity);
   const total: [number, number, number, number] = [0, 0, 0, 0];
 
   for (const mount of weapons) {
@@ -53,9 +58,9 @@ export function alphaStrikeWeaponDamageModifier(
   const weapon = mount.equipment;
   let modifier = alphaStrikeAmmoDamageMultiplier(weapon, weapons, ammunition, battleArmor);
   if (weapon.oneShotCount === 1) modifier *= 0.1;
-  if (targetingComputer && weapon.hasFlag('F_DIRECT_FIRE')) modifier *= 1.1;
+  modifier *= targetingComputerDamageMultiplier(targetingComputer, weapon);
   if (entity instanceof MekEntity && ['LA', 'RA'].includes(mount.location)
     && entity.getEquipmentAtLocation(mount.location).some(candidate =>
-      candidate.equipment?.hasFlag('F_ACTUATOR_ENHANCEMENT_SYSTEM'))) modifier *= 1.05;
+      isActuatorEnhancementSystem(candidate.equipment))) modifier *= 1.05;
   return modifier;
 }

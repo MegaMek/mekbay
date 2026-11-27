@@ -1,0 +1,184 @@
+// Copyright (C) 2026 The MegaMek Team
+// SPDX-License-Identifier: GPL-3.0-or-later
+
+import { CrewMember } from '../../../models/crew-member.model';
+import { TestBed } from '@angular/core/testing';
+import { Subject } from 'rxjs';
+import { asComponentId } from '../../../models/entity/entity-identifiers';
+import type { CBTMekForceMember } from '../../../models/force-member.model';
+import { projectMekRecordSheet,type MekRecordSheetSnapshot } from '../../../models/runtime/mek-record-sheet';
+import { createDirectMekRuntimeFixture,emptyCBTEncounterSnapshot } from '../../../models/runtime/testing/direct-mek-runtime-fixture';
+import { createUnitEditContextFixture } from '../../../models/runtime/testing/unit-edit-context-fixture';
+import { LoggerService } from '../../../services/logger.service';
+import { UnitNameService } from '../../../services/unit-name.service';
+import {
+recordSheetCommand,
+recordSheetDamagePickerRange,
+type MekRecordSheetCommandSource,
+} from '../mek-record-sheet-interaction.util';
+import type { DirectRecordSheetInteraction } from '../record-sheet-interaction';
+import { PageViewerOverlayService } from './page-viewer-overlay.service';
+import { PageViewerMekInteractionService } from './page-viewer-mek-interaction.service';
+import { PageViewerMekRuntimeService } from './page-viewer-mek-runtime.service';
+
+const editContext = createUnitEditContextFixture();
+
+describe('PageViewerMekRuntimeService sheet interactivity', () => {
+    for (const readOnly of [false, true]) {
+        it(`owns the live sheet gate across replacement and cleanup when readOnly=${readOnly}`, () => {
+            const fixture = createDirectMekRuntimeFixture();
+            const context = { owner: fixture.instance, state: fixture.instance.snapshot() };
+            const snapshot = {
+                ...projectMekRecordSheet(fixture.entity, fixture.index, fixture.instance.ruleset(), context.state,
+                    fixture.instance.query(), emptyCBTEncounterSnapshot(), null, false, {}),
+                editContext: context,
+            };
+            const interactions = jasmine.createSpyObj<PageViewerMekInteractionService>('interactions', ['handle']);
+            const overlays = jasmine.createSpyObj<PageViewerOverlayService>('overlays',
+                ['clearUnitControls', 'clearSheetControls', 'livePlay']);
+            TestBed.configureTestingModule({ providers: [
+                PageViewerMekRuntimeService,
+                { provide: PageViewerMekInteractionService, useValue: interactions },
+                { provide: PageViewerOverlayService, useValue: overlays },
+                { provide: LoggerService, useValue: { warn: () => {} } },
+                { provide: UnitNameService, useValue: { applyToRecordSheet: () => {} } },
+            ] });
+            const service = TestBed.inject(PageViewerMekRuntimeService);
+            const member = {
+                kind: 'cbt', id: 'mek', entity: fixture.entity, mekRecordSheetSnapshot: () => snapshot,
+                force: {
+                    readOnly: () => readOnly, changed: new Subject(), sessionChanged: new Subject(),
+                    getEquipmentPanelSnapshot: () => null,
+                },
+            } as unknown as CBTMekForceMember;
+            const first = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
+            first.innerHTML = '<g data-mekbay-random-hit="1"></g>';
+            expect(first.classList.contains('interactive-sheet')).toBeFalse();
+            expect(service.bind(member, first)).toBeTrue();
+            expect(first.classList.contains('interactive-sheet')).toBeTrue();
+            expect(first.classList.contains('read-only')).toBe(readOnly);
+            first.querySelector('g')!.dispatchEvent(new PointerEvent('pointerdown', { bubbles: true, button: 0 }));
+            expect(interactions.handle).toHaveBeenCalledOnceWith(member, jasmine.objectContaining({ kind: 'random-hit' }), jasmine.any(PointerEvent));
+
+            const replacement = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
+            service.bind(member, replacement);
+            expect(first.classList.contains('interactive-sheet')).toBeFalse();
+            expect(replacement.classList.contains('interactive-sheet')).toBeTrue();
+            service.cleanupUnused(new Set());
+            expect(replacement.classList.contains('interactive-sheet')).toBeFalse();
+            expect(overlays.clearUnitControls).toHaveBeenCalledWith('mek');
+        });
+    }
+});
+
+describe('page-viewer published Mek runtime commands', () => {
+    const revision = 9 as MekRecordSheetSnapshot['stateRevision'];
+    const snapshot = {
+        stateRevision: revision, editContext: editContext(revision),
+        locations: [{
+            locationId: 'loc-ct', code: 'CT', maximumInternal: 7,
+            committedRemainingInternal: 5, previewRemainingInternal: 3,
+            armor: [{ faceId: 'face-ct', locationCode: 'CT', face: 'front', maximum: 10, committedRemaining: 8, previewRemaining: 6 }],
+        }],
+        criticalSlots: [{
+            slotId: 'slot-ct-0', locationCode: 'CT', slotIndex: 0,
+            hitCapacity: 1, committedHits: 0, previewHits: 1,
+        }],
+        shields: [{
+            componentId: 'shield-la', locationId: 'loc-la', locationCode: 'LA',
+            track: 'absorption', maximum: 5, committedDamage: 0, previewDamage: 2,
+            committedRemaining: 4, previewRemaining: 2,
+        }],
+        crew: [{ positionId: 'crew-0', state: { wounds: 1, unconscious: true } }],
+        heatSinks: { count: 10, heatsinksOff: 2 },
+        conditions: ['prone'],
+    } as unknown as MekRecordSheetSnapshot;
+    const source: MekRecordSheetCommandSource = {
+        query: {
+            crewState: () => CrewMember.from({ wounds: 1, unconscious: true, ejected: false }),
+            hasCondition: condition => snapshot.conditions.includes(condition),
+        },
+        heatSinkCount: 10,
+    };
+
+    it('maps entity-owned armor IDs to pending or committed commands without SVG data', () => {
+        const interaction = {
+            kind: 'armor', faceId: 'face-ct', locationId: 'loc-ct', button: 'primary', context: editContext(revision),
+        } as unknown as DirectRecordSheetInteraction;
+        expect(recordSheetCommand(interaction, source, true)).toEqual(jasmine.objectContaining({
+            type: 'damage-armor', faceId: 'face-ct', amount: 1, target: 'pending',
+        }));
+        expect(recordSheetCommand({ ...interaction, button: 'secondary' } as DirectRecordSheetInteraction, source, false))
+            .toEqual(jasmine.objectContaining({ type: 'repair-armor', faceId: 'face-ct', amount: 1, target: 'committed' }));
+        expect(recordSheetCommand(interaction, source, true, 4)).toEqual(jasmine.objectContaining({ type: 'damage-armor', amount: 4 }));
+        expect(recordSheetCommand(interaction, source, true, -2)).toEqual(jasmine.objectContaining({ type: 'repair-armor', amount: 2 }));
+    });
+
+    it('derives picker bounds from entity maxima and runtime state', () => {
+        const armor = {
+            kind: 'armor', faceId: 'face-ct', locationId: 'loc-ct', button: 'primary', context: editContext(revision),
+        } as unknown as Extract<DirectRecordSheetInteraction, { kind: 'armor' }>;
+        expect(recordSheetDamagePickerRange(armor, snapshot, false)).toEqual({ min: -2, max: 13, threshold: 8, title: 'CT Armor' });
+        expect(recordSheetDamagePickerRange(armor, snapshot, true)).toEqual({ min: -4, max: 9, threshold: 6, title: 'CT Armor' });
+        expect(recordSheetDamagePickerRange({
+            kind: 'critical', slotId: 'slot-ct-0', componentIds: [], button: 'primary', context: editContext(revision),
+        } as unknown as Extract<DirectRecordSheetInteraction, { kind: 'critical' }>, snapshot, true))
+            .toEqual({ min: -1, max: 0, title: 'CT Critical 1' });
+    });
+
+    it('maps critical, heat, and crew interactions to typed runtime commands', () => {
+        expect(recordSheetCommand({
+            kind: 'critical', slotId: 'slot-ct-0', componentIds: ['component-a'], button: 'primary', context: editContext(revision),
+        } as unknown as DirectRecordSheetInteraction, source, true)).toEqual(jasmine.objectContaining({
+            type: 'hit-critical', slotId: 'slot-ct-0', hits: 1, target: 'pending',
+        }));
+        expect(recordSheetCommand({ kind: 'heat', heat: 12, context: editContext(revision)}, source, true))
+            .toEqual(jasmine.objectContaining({ type: 'set-pending-heat', heat: 12 }));
+        expect(recordSheetCommand({
+            kind: 'crew-wounds', positionId: 'crew-0', wounds: 2, context: editContext(revision),
+        } as unknown as DirectRecordSheetInteraction, source, false)).toEqual(jasmine.objectContaining({
+            type: 'set-crew-state', positionId: 'crew-0', wounds: 2, unconscious: true,
+        }));
+        expect(recordSheetCommand({ kind: 'heat-sinks-off', context: editContext(revision)}, source, false, 4))
+            .toEqual(jasmine.objectContaining({ type: 'set-heatsinks-off', heatsinksOff: 4 }));
+        expect(recordSheetCommand({ kind: 'condition', condition: 'prone', context: editContext(revision)}, source, false))
+            .toEqual(jasmine.objectContaining({ type: 'set-condition', condition: 'prone', active: false }));
+    });
+
+    it('maps authored shield tracks to bounded sparse runtime commands', () => {
+        const interaction = {
+            kind: 'shield', componentId: asComponentId('shield-la'), track: 'absorption',
+            button: 'primary', context: editContext(revision),
+        } as const;
+        expect(recordSheetDamagePickerRange(interaction, snapshot, false)).toEqual({
+            min: 0, max: 4, title: 'LA Shield DA',
+        });
+        expect(recordSheetDamagePickerRange(interaction, snapshot, true)).toEqual({
+            min: -2, max: 2, title: 'LA Shield DA',
+        });
+        expect(recordSheetCommand(interaction, source, true, 2)).toEqual(jasmine.objectContaining({
+            type: 'damage-shield', componentId: 'shield-la', track: 'absorption',
+            amount: 2, target: 'pending',
+        }));
+        expect(recordSheetCommand({ ...interaction, button: 'secondary' }, source, false, -1))
+            .toEqual(jasmine.objectContaining({
+                type: 'repair-shield', componentId: 'shield-la', track: 'absorption',
+                amount: 1, target: 'committed',
+            }));
+    });
+
+    it('maps the manual shutdown control to transient state without declaring a PSR action', () => {
+        const interaction = { kind: 'shutdown', context: editContext(revision)} as DirectRecordSheetInteraction;
+        expect(recordSheetCommand(interaction, source, false)).toEqual(jasmine.objectContaining({
+            type: 'set-mek-shutdown-state',
+            shutdown: true,
+        }));
+        expect(recordSheetCommand(interaction, {
+            ...source,
+            query: { ...source.query, hasCondition: condition => condition === 'shutdown' },
+        }, false)).toEqual(jasmine.objectContaining({
+            type: 'set-mek-shutdown-state',
+            shutdown: false,
+        }));
+    });
+});

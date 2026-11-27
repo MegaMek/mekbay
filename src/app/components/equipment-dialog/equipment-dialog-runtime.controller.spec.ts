@@ -1,0 +1,922 @@
+// Copyright (C) 2026 The MegaMek Team
+// SPDX-License-Identifier: GPL-3.0-or-later
+
+import { Subject } from 'rxjs';
+
+import type {
+CBTEquipmentChoiceCommand,
+CBTEquipmentInteraction,
+} from '../../models/cbt-force.types';
+import type { ComponentId } from '../../models/entity/entity-identifiers';
+import { TestBipedMekEntity,TestTankEntity } from '../../models/entity/testing/test-entities';
+import { MiscEquipment,WeaponEquipment,type AmmoEquipment,type Equipment } from '../../models/equipment.model';
+import type { CBTForceMember,CBTMekForceMember } from '../../models/force-member.model';
+import {
+BOOBY_TRAP_ARMED_MODE,
+BOOBY_TRAP_DETONATED_MODE,
+} from '../../models/runtime/component-booby-trap';
+import type { EquipmentPanelComponent,EquipmentPanelSnapshot,MekPhysicalAttackRow } from '../../models/runtime/equipment-panel';
+import type { OptionsService } from '../../services/options.service';
+import type { ToastService } from '../../services/toast.service';
+import { EquipmentDialogRuntimeController, type AttackResolutionPort } from './equipment-dialog-runtime.controller';
+import { createUnitEditContextFixture } from '../../models/runtime/testing/unit-edit-context-fixture';
+
+function snapshot(displayName: string): EquipmentPanelSnapshot {
+    return {
+        published: {},
+        stateRevision: 0,
+        targetRegistryRevision: 0,
+        displayName,
+        heat: { current: 0, pending: null, sinksOff: 0 },
+        crew: { gunnery: 4, piloting: 5 },
+        components: [],
+        physicalAttacks: [],
+        physicalAttackBlockers: [],
+        targets: [],
+    } as unknown as EquipmentPanelSnapshot;
+}
+
+describe('EquipmentDialogRuntimeController', () => {
+    describe('ammo loadout reset', () => {
+        function createResetController(mek: boolean) {
+            const ammo = {
+                defaultMunitionKey: 'Ammo_AC_10',
+                munitionKey: 'Ammo_AC_10_Precision',
+                displayName: 'AC/10 Precision Ammo',
+                remaining: 3,
+                capacity: 5,
+                loadouts: [
+                    { munitionKey: 'Ammo_AC_10', displayName: 'AC/10 Ammo', capacity: 10, equipment: {} as AmmoEquipment },
+                    { munitionKey: 'Ammo_AC_10_Precision', displayName: 'AC/10 Precision Ammo', capacity: 5, equipment: {} as AmmoEquipment },
+                ],
+            };
+            const panel = {
+                ...snapshot('Ammo reset'),
+                components: [{
+                    componentId: 'mount:ammo' as ComponentId,
+                    label: 'AC/10 Ammo',
+                    locations: [],
+                    status: 'available',
+                    previewStatus: 'available',
+                    modes: [],
+                    jammed: false,
+                    ammo,
+                }],
+            } satisfies EquipmentPanelSnapshot;
+            const dispatch = jasmine.createSpy('dispatchUnitCommand').and.resolveTo({ accepted: true });
+            const readOnly = jasmine.createSpy('readOnly').and.returnValue(false);
+            const context = createUnitEditContextFixture()(0);
+            const getUnitSnapshot = jasmine.createSpy('getUnitSnapshot').and.returnValue({ editContext: context });
+            const force = {
+                changed: new Subject<void>(),
+                sessionChanged: new Subject<void>(),
+                readOnly,
+                getUnitSnapshot,
+                getEquipmentPanelSnapshot: () => panel,
+                getEquipmentInteractions: () => [],
+                dispatchUnitCommand: dispatch,
+            };
+            const dialogs = {
+                requestConfirmation: jasmine.createSpy('requestConfirmation').and.resolveTo(false),
+                showNoticeHtml: jasmine.createSpy('showNoticeHtml'),
+            };
+            const controller = new EquipmentDialogRuntimeController(
+                {
+                    kind: 'cbt', id: 'unit:ammo-reset', force,
+                    entity: mek ? new TestBipedMekEntity() : new TestTankEntity(),
+                } as unknown as CBTForceMember,
+                { options: () => ({}) } as unknown as OptionsService,
+                { showToast: jasmine.createSpy('showToast') } as unknown as ToastService,
+                dialogs,
+            );
+            return { controller, dialogs, dispatch, readOnly, ammo, panel, context, getUnitSnapshot };
+        }
+
+        for (const mek of [true, false]) {
+            it(`confirms one atomic ${mek ? 'Mek' : 'non-Mek'} reset and leaves cancellation unchanged`, async () => {
+                const { controller, dialogs, dispatch, context } = createResetController(mek);
+                try {
+                    await controller.resetAmmoLoadout();
+                    expect(dialogs.requestConfirmation).toHaveBeenCalledOnceWith(
+                        jasmine.stringContaining('default ammunition and full quantities'),
+                        'Reset Ammo Loadout',
+                        'warning',
+                    );
+                    expect(dispatch).not.toHaveBeenCalled();
+                    expect(controller.busy()).toBeFalse();
+
+                    dialogs.requestConfirmation.and.resolveTo(true);
+                    await controller.resetAmmoLoadout();
+                    expect(dispatch).toHaveBeenCalledOnceWith('unit:ammo-reset',
+                        { type: 'reset-ammo-loadout' }, context);
+                    expect(controller.busy()).toBeFalse();
+                } finally {
+                    controller.dispose();
+                }
+            });
+        }
+
+        for (const mek of [true, false]) {
+            it(`retains the opening ${mek ? 'Mek' : 'non-Mek'} owner during ammo reset confirmation`, async () => {
+                const { controller, dialogs, dispatch, context, getUnitSnapshot } = createResetController(mek);
+                try {
+                    let confirm!: (accepted: boolean) => void;
+                    dialogs.requestConfirmation.and.returnValue(new Promise<boolean>(resolve => confirm = resolve));
+                    const reset = controller.resetAmmoLoadout();
+                    getUnitSnapshot.and.returnValue({ editContext: createUnitEditContextFixture()(0) });
+                    dispatch.and.resolveTo({ accepted: false, changed: false });
+                    confirm(true);
+                    await reset;
+                    expect(dispatch).toHaveBeenCalledOnceWith('unit:ammo-reset',
+                        { type: 'reset-ammo-loadout' }, context);
+                } finally {
+                    controller.dispose();
+                }
+            });
+        }
+
+        it('compares quantities with the default ammo capacity and disables a no-op reset', async () => {
+            const { controller, dialogs, ammo, panel } = createResetController(true);
+            try {
+                expect(controller.hasAmmoLoadoutChanges()).toBeTrue();
+                ammo.munitionKey = ammo.defaultMunitionKey;
+                ammo.remaining = 5;
+                expect(controller.hasAmmoLoadoutChanges()).toBeTrue();
+                ammo.remaining = 10;
+                expect(controller.hasAmmoLoadoutChanges()).toBeFalse();
+                await controller.resetAmmoLoadout();
+                expect(dialogs.requestConfirmation).not.toHaveBeenCalled();
+
+                panel.components = [];
+                controller.snapshot.set({ ...panel });
+                expect(controller.hasAmmoLoadoutChanges()).toBeFalse();
+                await controller.resetAmmoLoadout();
+                expect(dialogs.requestConfirmation).not.toHaveBeenCalled();
+            } finally {
+                controller.dispose();
+            }
+        });
+
+        it('prevents repeated prompts and rechecks write access after confirmation', async () => {
+            const { controller, dialogs, dispatch, readOnly } = createResetController(true);
+            try {
+                readOnly.and.returnValue(true);
+                await controller.resetAmmoLoadout();
+                expect(dialogs.requestConfirmation).not.toHaveBeenCalled();
+                readOnly.and.returnValue(false);
+
+                let confirm!: (accepted: boolean) => void;
+                dialogs.requestConfirmation.and.returnValue(new Promise<boolean>(resolve => confirm = resolve));
+                const reset = controller.resetAmmoLoadout();
+                expect(controller.busy()).toBeTrue();
+                await controller.resetAmmoLoadout();
+                expect(dialogs.requestConfirmation).toHaveBeenCalledTimes(1);
+                readOnly.and.returnValue(true);
+                confirm(true);
+                await reset;
+                expect(dispatch).not.toHaveBeenCalled();
+                expect(controller.busy()).toBeFalse();
+            } finally {
+                controller.dispose();
+            }
+        });
+    });
+
+    it('captures the admitted member before reading its initial snapshot and follows force changes', () => {
+        const changed = new Subject<void>();
+        const first = snapshot('Crab CRB-20');
+        const second = snapshot('Crab CRB-20 updated');
+        const getSnapshot = jasmine.createSpy('getEquipmentPanelSnapshot').and.returnValues(first, second);
+        const force = {
+            changed,
+            sessionChanged: new Subject<void>(),
+            getEquipmentPanelSnapshot: getSnapshot,
+            getEquipmentInteractions: () => [],
+        };
+        const member = {
+            kind: 'cbt', id: 'mek-1', force, entity: new TestBipedMekEntity(),
+        } as unknown as CBTMekForceMember;
+        const controller = new EquipmentDialogRuntimeController(
+            member,
+            {
+                options: () => ({}),
+                cbtAutomationMode: () => 'no',
+            } as unknown as OptionsService,
+            { showToast: jasmine.createSpy('showToast') } as unknown as ToastService,
+        );
+
+        expect(controller.member).toBe(member);
+        expect(controller.snapshot()).toBe(first);
+        expect(controller.weapons()).toEqual([]);
+
+        changed.next();
+
+        expect(controller.snapshot()).toBe(second);
+        expect(getSnapshot).toHaveBeenCalledTimes(2);
+
+        controller.dispose();
+        changed.next();
+        expect(getSnapshot).toHaveBeenCalledTimes(2);
+    });
+
+    it('lists only handler-backed passive equipment', () => {
+        const changed = new Subject<void>();
+        const row = (
+            componentId: string,
+            heatSink?: boolean,
+        ): EquipmentPanelComponent => ({
+            componentId: componentId as ComponentId,
+            label: componentId,
+            ...(heatSink === undefined ? {} : {
+                equipment: {
+                    hasAnyFlag: () => heatSink,
+                } as unknown as Equipment,
+            }),
+            locations: [],
+            status: 'available',
+            previewStatus: 'available',
+            modes: ['Standard', 'Rapid'],
+            defaultMode: 'Standard',
+            mode: 'Standard',
+            jammed: false,
+        });
+        const panel = {
+            ...snapshot('Inventory filtering'),
+            components: [
+                row('system:engine'),
+                row('mount:heat-sink', true),
+                row('mount:ecm', false),
+            ],
+        } as EquipmentPanelSnapshot;
+        const interactions = [{
+            componentId: 'mount:ecm' as ComponentId,
+            componentLabel: 'mount:ecm',
+            stateRevision: 0,
+            choices: [],
+        }] as unknown as readonly CBTEquipmentInteraction[];
+        const getInteractions = jasmine.createSpy('getEquipmentInteractions')
+            .and.returnValue(interactions);
+        const force = {
+            changed,
+            sessionChanged: new Subject<void>(),
+            getEquipmentPanelSnapshot: () => panel,
+            getEquipmentInteractions: getInteractions,
+        };
+        const member = {
+            kind: 'cbt', id: 'mek-1', force, entity: new TestBipedMekEntity(),
+        } as unknown as CBTMekForceMember;
+        const controller = new EquipmentDialogRuntimeController(
+            member,
+            { options: () => ({}) } as unknown as OptionsService,
+            { showToast: jasmine.createSpy('showToast') } as unknown as ToastService,
+        );
+
+        expect(controller.equipment().map(candidate => candidate.componentId))
+            .toEqual(['mount:ecm' as ComponentId]);
+        expect(getInteractions).toHaveBeenCalledWith('mek-1', 'inventory');
+        const charge = {
+            effect: {
+                kind: 'damage', damage: 16, maximumDamage: 56, baseDamage: 14,
+                weakened: false, boosted: false, displayFormula: '13.5×(TMM+1)+2',
+            },
+        } as MekPhysicalAttackRow;
+
+        expect(controller.physicalDamage(charge)).toBe('13.5×(TMM+1)+2');
+        if (charge.effect.kind !== 'damage') throw new Error('Charge damage fixture is missing');
+        expect(controller.physicalDamage({
+            ...charge,
+            effect: {
+                ...charge.effect,
+                displayFormula: undefined,
+                damage: 14,
+                maximumDamage: 14,
+                alternateDamage: 7,
+            },
+        })).toBe('14 [7]');
+    });
+
+    it('dispatches pending status and ammunition edits through the non-Mek Entity owner', async () => {
+        const changed = new Subject<void>();
+        const component = {
+            componentId: 'mount:ammo-1' as ComponentId,
+            label: 'AC/10 Ammo',
+            locations: [],
+            status: 'available',
+            previewStatus: 'available',
+            modes: ['Standard', 'Rapid'],
+            defaultMode: 'Standard',
+            mode: 'Standard',
+            jammed: false,
+            ammo: {
+                defaultMunitionKey: 'Ammo_AC_10',
+                munitionKey: 'Ammo_AC_10',
+                displayName: 'AC/10 Ammo',
+                remaining: 10,
+                capacity: 10,
+                loadouts: [{
+                    munitionKey: 'Ammo_AC_10',
+                    displayName: 'AC/10 Ammo',
+                    capacity: 10,
+                    equipment: {} as AmmoEquipment,
+                }],
+            },
+        } satisfies EquipmentPanelComponent;
+        const panel = {
+            ...snapshot('Vedette Medium Tank'),
+            components: [component],
+        } as EquipmentPanelSnapshot;
+        const dispatch = jasmine.createSpy('dispatchUnitCommand').and.resolveTo({
+            accepted: true,
+            changed: true,
+            state: {},
+        });
+        const force = {
+            changed,
+            sessionChanged: new Subject<void>(),
+            getEquipmentPanelSnapshot: () => panel,
+            getUnitSnapshot: () => null,
+            getEquipmentInteractions: jasmine.createSpy('getEquipmentInteractions').and.returnValue([]),
+            dispatchUnitCommand: dispatch,
+        };
+        const member = {
+            kind: 'cbt',
+            id: 'tank-1',
+            force,
+            entity: new TestTankEntity(),
+        } as unknown as CBTForceMember;
+        const controller = new EquipmentDialogRuntimeController(
+            member,
+            {
+                options: () => ({
+                    trackPhaseAndTurn: true,
+                    CBTOptionalRules: { extremeRange: false },
+                }),
+            } as unknown as OptionsService,
+            { showToast: jasmine.createSpy('showToast') } as unknown as ToastService,
+        );
+
+        await controller.changeStatus(component);
+        expect(dispatch).toHaveBeenCalledWith('tank-1', jasmine.objectContaining({
+            type: 'hit-components',
+            componentIds: [component.componentId],
+            target: 'pending',
+        }), undefined);
+
+        await controller.configureAmmo(component, 'Ammo_AC_10', 7);
+        expect(dispatch).toHaveBeenCalledWith('tank-1', jasmine.objectContaining({
+            type: 'configure-ammo-source',
+            componentId: component.componentId,
+            munitionKey: 'Ammo_AC_10',
+            remaining: 7,
+        }), undefined);
+
+        await controller.changeMode(component, 'Rapid');
+        expect(dispatch).toHaveBeenCalledWith('tank-1', jasmine.objectContaining({
+            type: 'set-component-mode',
+            componentId: component.componentId,
+            mode: 'Rapid',
+        }), undefined);
+        controller.dispose();
+    });
+
+    it('uses the force-owned interaction projection and typed command for non-Mek equipment', async () => {
+        const changed = new Subject<void>();
+        const entity = new TestTankEntity();
+        const componentId = 'mount:supercharger' as ComponentId;
+        const command: CBTEquipmentChoiceCommand = {
+            instanceId: 'tank-1',
+            entityUuid: entity.uuid(),
+            componentId,
+            handlerId: 'escalating-failure-handler',
+            value: 0,
+        };
+        const projected: CBTEquipmentInteraction = {
+            componentId,
+            componentLabel: 'Test Supercharger',
+            choices: [{
+                command,
+                interactionKind: 'escalating-failure',
+                label: '3+',
+                shortLabel: '3+',
+                failureTarget: 3,
+                active: false,
+                disabled: false,
+            }],
+        };
+        const getInteractions = jasmine.createSpy('getEquipmentInteractions').and.returnValue([projected]);
+        const dispatch = jasmine.createSpy('dispatchEquipmentChoice').and.resolveTo({
+            accepted: true,
+            changed: true,
+        });
+        const force = {
+            changed,
+            sessionChanged: new Subject<void>(),
+            getEquipmentPanelSnapshot: () => snapshot('Test Supercharger Tank'),
+            getEquipmentInteractions: getInteractions,
+            dispatchEquipmentChoice: dispatch,
+        };
+        const controller = new EquipmentDialogRuntimeController(
+            { kind: 'cbt', id: 'tank-1', force, entity } as unknown as CBTForceMember,
+            { options: () => ({}) } as unknown as OptionsService,
+            { showToast: jasmine.createSpy('showToast') } as unknown as ToastService,
+        );
+
+        const interaction = controller.interactions()[0]!;
+        expect(interaction.componentLabel).toBe('Test Supercharger');
+        await controller.chooseInteraction(interaction, interaction.choices[0]!.command);
+
+        expect(getInteractions).toHaveBeenCalledWith('tank-1', 'inventory');
+        expect(dispatch).toHaveBeenCalledOnceWith(command);
+        controller.dispose();
+    });
+
+    it('confirms non-Mek Booby Trap detonation before dispatching its atomic command', async () => {
+        const changed = new Subject<void>();
+        const equipment = new MiscEquipment({
+            id: 'test-booby-trap',
+            name: 'Booby Trap',
+            type: 'misc',
+            flags: ['F_BOOBY_TRAP'],
+        });
+        const component = {
+            componentId: 'mount:booby-trap' as ComponentId,
+            label: 'Booby Trap',
+            equipment,
+            locations: [],
+            status: 'available',
+            previewStatus: 'available',
+            modes: [BOOBY_TRAP_ARMED_MODE, BOOBY_TRAP_DETONATED_MODE],
+            defaultMode: BOOBY_TRAP_ARMED_MODE,
+            mode: BOOBY_TRAP_ARMED_MODE,
+            jammed: false,
+        } satisfies EquipmentPanelComponent;
+        const panel = {
+            ...snapshot('Vedette Booby Trap'),
+            components: [component],
+        } as EquipmentPanelSnapshot;
+        const dispatch = jasmine.createSpy('dispatchUnitCommand').and.resolveTo({
+            accepted: true,
+            changed: true,
+            state: {},
+        });
+        const context = createUnitEditContextFixture()(0);
+        const getUnitSnapshot = jasmine.createSpy('getUnitSnapshot').and.returnValue({ editContext: context });
+        const force = {
+            changed,
+            sessionChanged: new Subject<void>(),
+            getEquipmentPanelSnapshot: () => panel,
+            getUnitSnapshot,
+            readOnly: () => false,
+            getEquipmentInteractions: jasmine.createSpy('getEquipmentInteractions').and.returnValue([]),
+            dispatchUnitCommand: dispatch,
+        };
+        const member = {
+            kind: 'cbt',
+            id: 'tank-1',
+            force,
+            entity: new TestTankEntity(),
+        } as unknown as CBTForceMember;
+        const dialogs = {
+            requestConfirmation: jasmine.createSpy('requestConfirmation').and.resolveTo(false),
+            showNoticeHtml: jasmine.createSpy('showNoticeHtml').and.resolveTo(),
+        };
+        const controller = new EquipmentDialogRuntimeController(
+            member,
+            { options: () => ({}) } as unknown as OptionsService,
+            { showToast: jasmine.createSpy('showToast') } as unknown as ToastService,
+            dialogs,
+        );
+
+        await controller.changeMode(component, BOOBY_TRAP_DETONATED_MODE);
+        expect(dispatch).not.toHaveBeenCalled();
+        expect(dialogs.showNoticeHtml).not.toHaveBeenCalled();
+
+        let confirm!: (accepted: boolean) => void;
+        dialogs.requestConfirmation.and.returnValue(new Promise<boolean>(resolve => confirm = resolve));
+        const detonation = controller.changeMode(component, BOOBY_TRAP_DETONATED_MODE);
+        getUnitSnapshot.and.returnValue({ editContext: createUnitEditContextFixture()(0) });
+        dispatch.and.resolveTo({ accepted: false, changed: false });
+        confirm(true);
+        await detonation;
+        expect(dispatch).toHaveBeenCalledOnceWith('tank-1', jasmine.objectContaining({
+            type: 'detonate-booby-trap',
+            componentId: component.componentId,
+        }), context);
+        expect(dialogs.showNoticeHtml).not.toHaveBeenCalled();
+
+        dispatch.calls.reset();
+        dispatch.and.resolveTo({ accepted: true, changed: true });
+        getUnitSnapshot.and.returnValue({ editContext: context });
+        dialogs.requestConfirmation.and.resolveTo(true);
+        await controller.changeMode(component, BOOBY_TRAP_DETONATED_MODE);
+        expect(dialogs.showNoticeHtml).toHaveBeenCalledOnceWith(
+            jasmine.stringContaining('Resolve the Booby Trap blast'),
+            'Booby Trap Detonated',
+        );
+        controller.dispose();
+    });
+
+    it('uses the shared targeting lane for non-Mek weapon selection, ammo preference, and reset', async () => {
+        const changed = new Subject<void>();
+        const weaponId = 'mount:ac-10' as ComponentId;
+        const ammoId = 'mount:ac-10-ammo' as ComponentId;
+        const weapon = {
+            componentId: weaponId,
+            label: 'AC/10',
+            locations: [],
+            status: 'available',
+            previewStatus: 'available',
+            modes: [],
+            jammed: false,
+            weapon: {
+                heat: 3,
+                firingHeat: 3,
+                selectable: true,
+                damage: 10,
+                damageText: '10',
+                damageTextByRange: { short: '10', medium: '10', long: '10', extreme: '10' },
+                hit: {
+                    default: { profile: [0], value: 0, changed: false, weakened: false, modifierBreakdown: [] },
+                    byRange: {
+                        short: { profile: [0], value: 0, changed: false, weakened: false, modifierBreakdown: [] },
+                        medium: { profile: [0], value: 0, changed: false, weakened: false, modifierBreakdown: [] },
+                        long: { profile: [0], value: 0, changed: false, weakened: false, modifierBreakdown: [] },
+                        extreme: { profile: [0], value: 0, changed: false, weakened: false, modifierBreakdown: [] },
+                    },
+                    indirectByRange: {
+                        short: { profile: [0], value: 0, changed: false, weakened: false, modifierBreakdown: [] },
+                        medium: { profile: [0], value: 0, changed: false, weakened: false, modifierBreakdown: [] },
+                        long: { profile: [0], value: 0, changed: false, weakened: false, modifierBreakdown: [] },
+                        extreme: { profile: [0], value: 0, changed: false, weakened: false, modifierBreakdown: [] },
+                    },
+                },
+                toHitModifier: 0,
+                hitModifierBreakdown: [],
+                ranges: [5, 10, 15, 20],
+                minimumRange: 0,
+                selection: { kind: 'target', targetId: 'target:a' as never },
+                ammoSelection: { munitionKey: 'Ammo_AC_10', preferredSourceId: ammoId },
+                ammoSources: [],
+                underwater: false,
+                attackerSubmerged: false,
+                disabledTargetReasons: {},
+            },
+        } satisfies EquipmentPanelComponent;
+        const panel = {
+            ...snapshot('Vedette Medium Tank'),
+            components: [weapon],
+        } as EquipmentPanelSnapshot;
+        const dispatchTargeting = jasmine.createSpy('dispatchAttackerTargeting').and.resolveTo({
+            accepted: true,
+            idempotent: false,
+            currentRevision: 1,
+        });
+        const fire = jasmine.createSpy('fireSelectedWeapons').and.resolveTo({
+            accepted: true,
+            idempotent: false,
+            currentRevision: 1,
+        });
+        const force = {
+            changed,
+            sessionChanged: new Subject<void>(),
+            getEquipmentPanelSnapshot: () => panel,
+            getUnitSnapshot: () => null,
+            getEquipmentInteractions: jasmine.createSpy('getEquipmentInteractions').and.returnValue([]),
+            getAttackerTargeting: () => ({ stateRevision: 0, registryRevision: 0, state: {} }),
+            dispatchAttackerTargeting: dispatchTargeting,
+            fireSelectedWeapons: fire,
+        };
+        const member = {
+            kind: 'cbt',
+            id: 'tank-1',
+            force,
+            entity: new TestTankEntity(),
+        } as unknown as CBTForceMember;
+        const controller = new EquipmentDialogRuntimeController(
+            member,
+            {
+                options: () => ({}),
+                cbtAutomationMode: () => 'no',
+            } as unknown as OptionsService,
+            { showToast: jasmine.createSpy('showToast') } as unknown as ToastService,
+        );
+
+        expect(controller.supportsTargetingTools()).toBeTrue();
+        expect(controller.supportsMekTurnTools()).toBeFalse();
+        expect(controller.canFireSelectedWeapons()).toBeTrue();
+        await controller.selectTarget([weapon], 'target:b');
+        await controller.selectWeaponAmmo(weapon, `${ammoId}\u0000Ammo_AC_10`);
+        await controller.resetSelections();
+        await controller.fire();
+
+        expect(dispatchTargeting.calls.allArgs().map(args => args[1].edit)).toEqual([
+            {
+                kind: 'set-component-selection',
+                componentId: weaponId,
+                selection: { kind: 'target', targetId: 'target:b' },
+            },
+            {
+                kind: 'set-component-ammo',
+                componentId: weaponId,
+                ammo: { preferredSourceId: ammoId, munitionKey: 'Ammo_AC_10' },
+            },
+            {
+                kind: 'set-component-selection',
+                componentId: weaponId,
+                selection: null,
+            },
+        ]);
+        expect(fire).toHaveBeenCalledOnceWith('tank-1', jasmine.objectContaining({
+            type: 'fire-selected-weapons',
+        }));
+        controller.dispose();
+    });
+
+    it('dispatches a weapon bay target and status as atomic member batches', async () => {
+        const changed = new Subject<void>();
+        const firstId = 'mount:bay-weapon-1' as ComponentId;
+        const secondId = 'mount:bay-weapon-2' as ComponentId;
+        const attack = {
+            kind: 'weapon-bay' as const,
+            source: 'authored-bay' as const,
+            members: [firstId, secondId].map(componentId => ({
+                componentId,
+                selectable: true,
+                ammoSources: [],
+            })),
+        };
+        const row = {
+            componentId: firstId,
+            label: 'AC/10 Bay',
+            locations: [],
+            status: 'available',
+            previewStatus: 'available',
+            modes: [],
+            jammed: false,
+            attack,
+            weapon: {
+                selectable: true,
+                selection: undefined,
+                ammoSelection: undefined,
+                ammoSources: [],
+            },
+        } as unknown as EquipmentPanelComponent;
+        const panel = {
+            ...snapshot('Bay fixture'),
+            components: [row],
+        } as EquipmentPanelSnapshot;
+        const dispatchTargeting = jasmine.createSpy('dispatchAttackerTargeting').and.resolveTo({
+            accepted: true,
+            idempotent: false,
+            currentRevision: 1,
+        });
+        const dispatchUnit = jasmine.createSpy('dispatchUnitCommand').and.resolveTo({
+            accepted: true,
+            changed: true,
+            state: {},
+        });
+        const force = {
+            changed,
+            sessionChanged: new Subject<void>(),
+            getEquipmentPanelSnapshot: () => panel,
+            getUnitSnapshot: () => null,
+            getEquipmentInteractions: jasmine.createSpy('getEquipmentInteractions').and.returnValue([]),
+            getAttackerTargeting: () => ({ stateRevision: 0, registryRevision: 0, state: {} }),
+            dispatchAttackerTargeting: dispatchTargeting,
+            dispatchUnitCommand: dispatchUnit,
+        };
+        const controller = new EquipmentDialogRuntimeController(
+            {
+                kind: 'cbt', id: 'dropship-1', force, entity: new TestTankEntity(),
+            } as unknown as CBTForceMember,
+            { options: () => ({}) } as unknown as OptionsService,
+            { showToast: jasmine.createSpy('showToast') } as unknown as ToastService,
+        );
+
+        await controller.selectTarget([row], 'range:long');
+        await controller.changeStatus(row);
+
+        expect(dispatchTargeting).toHaveBeenCalledOnceWith('dropship-1', jasmine.objectContaining({
+            edit: {
+                kind: 'set-component-selections',
+                componentIds: [firstId, secondId],
+                selection: { kind: 'manual-range', range: 'long' },
+            },
+        }));
+        expect(dispatchUnit).toHaveBeenCalledOnceWith('dropship-1', jasmine.objectContaining({
+            type: 'hit-components',
+            componentIds: [firstId, secondId],
+            target: 'committed',
+        }), undefined);
+        controller.dispose();
+    });
+
+    it('selects several weapon rows as one batch sharing ammo reservations', async () => {
+        const firstId = 'mount:ac-1' as ComponentId;
+        const secondId = 'mount:ac-2' as ComponentId;
+        const binA = 'mount:ammo-a' as ComponentId;
+        const binB = 'mount:ammo-b' as ComponentId;
+        const ammoSources = [binA, binB].map(componentId => ({
+            componentId,
+            status: 'available',
+            remaining: 1,
+            munitionKey: 'Ammo_AC_10',
+        }));
+        const rows = [firstId, secondId].map(componentId => ({
+            componentId,
+            weapon: { selectable: true, ammoSources },
+        })) as unknown as EquipmentPanelComponent[];
+        const dispatchTargeting = jasmine.createSpy('dispatchAttackerTargeting').and.resolveTo({
+            accepted: true,
+            idempotent: false,
+            currentRevision: 1,
+        });
+        const force = {
+            changed: new Subject<void>(),
+            sessionChanged: new Subject<void>(),
+            getEquipmentPanelSnapshot: () => ({ ...snapshot('Batch fixture'), components: rows }),
+            getEquipmentInteractions: () => [],
+            dispatchAttackerTargeting: dispatchTargeting,
+        };
+        const controller = new EquipmentDialogRuntimeController(
+            { kind: 'cbt', id: 'tank-1', force, entity: new TestTankEntity() } as unknown as CBTForceMember,
+            { options: () => ({}) } as unknown as OptionsService,
+            { showToast: jasmine.createSpy('showToast') } as unknown as ToastService,
+        );
+
+        await controller.selectTarget(rows, 'selected');
+
+        expect(dispatchTargeting.calls.allArgs().map(args => args[1].edit)).toEqual([
+            {
+                kind: 'set-component-ammos',
+                updates: [
+                    { componentId: firstId, ammo: { preferredSourceId: binA, munitionKey: 'Ammo_AC_10' } },
+                    { componentId: secondId, ammo: { preferredSourceId: binB, munitionKey: 'Ammo_AC_10' } },
+                ],
+            },
+            {
+                kind: 'set-component-selections',
+                componentIds: [firstId, secondId],
+                selection: { kind: 'selected' },
+            },
+        ]);
+        controller.dispose();
+    });
+
+    it('submits and reports the exact prototype-laser heat roll', async () => {
+        const changed = new Subject<void>();
+        const weaponId = 'mount:prototype-medium-pulse' as ComponentId;
+        const equipment = new WeaponEquipment({
+            id: 'ISMediumPulseLaserPrototype',
+            name: 'Prototype Medium Pulse Laser',
+            type: 'weapon',
+            weapon: { damage: 6, heat: 4, ranges: [2, 4, 6, 8] },
+        });
+        const panel = {
+            ...snapshot('Prototype laser fixture'),
+            unitType: 'Mek',
+            tracksHeat: true,
+            components: [{
+                componentId: weaponId,
+                label: equipment.name,
+                equipment,
+                status: 'available',
+                weapon: { selectable: true, selection: { kind: 'selected' } },
+            } as unknown as EquipmentPanelComponent],
+        } as EquipmentPanelSnapshot;
+        const fire = jasmine.createSpy('fireSelectedWeapons').and.resolveTo({
+            accepted: true,
+            idempotent: false,
+            currentRevision: 1,
+            prototypeHeat: [{
+                weaponId,
+                roll: 6,
+                additionalHeat: 6,
+                detail: '1D6 roll: 6',
+            }],
+        });
+        const toast = jasmine.createSpyObj<ToastService>('ToastService', ['showToast']);
+        const force = {
+            changed,
+            sessionChanged: new Subject<void>(),
+            getEquipmentPanelSnapshot: () => panel,
+            getEquipmentInteractions: () => [],
+            fireSelectedWeapons: fire,
+        };
+        const member = {
+            kind: 'cbt', id: 'mek-1', force, entity: new TestBipedMekEntity(),
+        } as unknown as CBTMekForceMember;
+        spyOn(Math, 'random').and.returnValue(5 / 6);
+        const controller = new EquipmentDialogRuntimeController(
+            member,
+            { cbtAutomationMode: () => 'no', options: () => ({ realPhases: false }) } as unknown as OptionsService,
+            toast,
+        );
+
+        await controller.fire();
+
+        expect(fire).toHaveBeenCalledOnceWith('mek-1', jasmine.objectContaining({
+            type: 'fire-selected-weapons',
+            prototypeHeatRolls: [{ weaponId, roll: 6 }],
+        }));
+        expect(toast.showToast).toHaveBeenCalledOnceWith(
+            'Prototype Medium Pulse Laser: +6 heat (1D6 roll: 6)',
+            'info',
+        );
+        controller.dispose();
+    });
+
+    it('resolves only the attacks a fire records, not one the rules refuse', async () => {
+        const equipment = new WeaponEquipment({ id: 'MediumLaser', name: 'Medium Laser', type: 'weapon' });
+        const panel = {
+            ...snapshot('Refused fire fixture'),
+            components: [{
+                componentId: 'mount:medium-laser' as ComponentId,
+                label: equipment.name,
+                equipment,
+                status: 'available',
+                weapon: { selectable: true, selection: { kind: 'selected' } },
+            } as unknown as EquipmentPanelComponent],
+        } as EquipmentPanelSnapshot;
+        const fire = jasmine.createSpy('fireSelectedWeapons').and.resolveTo({
+            accepted: true, changed: false, prototypeHeat: [],
+        });
+        const resolution = { deliveries: [], jammed: [], insulatorFailed: [], burnedOutPpcs: [], noLock: ['mount:medium-laser' as ComponentId], physical: [] };
+        const rollAttacks = jasmine.createSpy('rollAttacks').and.resolveTo(resolution);
+        const settleAttacks = jasmine.createSpy('settleAttacks').and.resolveTo();
+        const member = {
+            kind: 'cbt',
+            id: 'tank-1',
+            force: {
+                changed: new Subject<void>(),
+                sessionChanged: new Subject<void>(),
+                getEquipmentPanelSnapshot: () => panel,
+                getEquipmentInteractions: () => [],
+                getWeaponAttackContext: () => ({}),
+                fireSelectedWeapons: fire,
+            },
+            entity: new TestTankEntity(),
+        } as unknown as CBTForceMember;
+        const controller = new EquipmentDialogRuntimeController(
+            member,
+            { cbtAutomationMode: () => 'no', options: () => ({ realPhases: false }) } as unknown as OptionsService,
+            jasmine.createSpyObj<ToastService>('ToastService', ['showToast']),
+            undefined,
+            { rollAttacks, settleAttacks, resolvesAttacks: () => true, inPhysicalPhase: () => false } as unknown as AttackResolutionPort,
+        );
+
+        // The attacks are rolled before they fire, and a missed lock reaches the fire command.
+        await controller.fire();
+        expect(fire).toHaveBeenCalledWith('tank-1', jasmine.objectContaining({ noLock: ['mount:medium-laser'] }));
+        expect(settleAttacks).not.toHaveBeenCalled();
+
+        fire.and.resolveTo({ accepted: true, changed: true, prototypeHeat: [] });
+        await controller.fire();
+        expect(settleAttacks).toHaveBeenCalledOnceWith(member, resolution);
+
+        // Dismissing the attack dialog takes the attack back: nothing fires and no roll is settled.
+        fire.calls.reset();
+        settleAttacks.calls.reset();
+        rollAttacks.and.resolveTo('dismissed');
+        await controller.fire();
+        expect(fire).not.toHaveBeenCalled();
+        expect(settleAttacks).not.toHaveBeenCalled();
+        controller.dispose();
+    });
+
+    it('dispatches presentation row order outside gameplay commands', async () => {
+        const changed = new Subject<void>();
+        const panel = snapshot('Crab CRB-20');
+        const dispatchEquipmentRowOrder = jasmine.createSpy('dispatchEquipmentRowOrder').and.resolveTo({
+            accepted: true,
+            idempotent: false,
+            currentRevision: 1,
+        });
+        const dispatchUnitCommand = jasmine.createSpy('dispatchUnitCommand');
+        const force = {
+            changed,
+            sessionChanged: new Subject<void>(),
+            getEquipmentPanelSnapshot: () => panel,
+            getEquipmentInteractions: () => [],
+            dispatchEquipmentRowOrder,
+            dispatchUnitCommand,
+        };
+        const member = {
+            kind: 'cbt', id: 'mek-1', force, entity: new TestBipedMekEntity(),
+        } as unknown as CBTMekForceMember;
+        const controller = new EquipmentDialogRuntimeController(
+            member,
+            { options: () => ({}) } as unknown as OptionsService,
+            { showToast: jasmine.createSpy('showToast') } as unknown as ToastService,
+        );
+
+        await controller.reorderEquipmentRows('ranged', [2, 0, 1]);
+
+        expect(dispatchEquipmentRowOrder).toHaveBeenCalledOnceWith('mek-1', {
+            group: 'ranged',
+            permutation: [2, 0, 1],
+        });
+        expect(dispatchUnitCommand).not.toHaveBeenCalled();
+        controller.dispose();
+    });
+});

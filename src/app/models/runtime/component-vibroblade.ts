@@ -1,0 +1,68 @@
+// Copyright (C) 2026 The MegaMek Team
+// SPDX-License-Identifier: GPL-3.0-or-later
+
+import type { PickerChoice } from '../../components/picker/picker.interface';
+import { getVibrobladeProfileFromFlags } from '../rules/vibroblade-rules';
+import {
+isVibrobladeMode,
+VIBROBLADE_OFF_MODE,
+VIBROBLADE_ON_MODE,
+} from '../vibroblade-mode.model';
+import { type CBTMekUnit } from './cbt-unit';
+import {
+ComponentModeHandler,
+type ComponentModeDefinition,
+} from './component-mode';
+import type {
+EquipmentInteractionCommandContext,
+EquipmentInteractionQueryContext,
+} from './equipment-interaction';
+
+export class VibrobladeHandler extends ComponentModeHandler {
+    readonly id = 'vibroblade-handler';
+    override readonly flags = ['F_PHYSICAL_WEAPON'] as const;
+    override readonly anyFlags = [
+        'S_VIBRO_SMALL',
+        'S_VIBRO_MEDIUM',
+        'S_VIBRO_LARGE',
+    ] as const;
+    override readonly priority = 20;
+
+    applicableToComponent(definition: ComponentModeDefinition): boolean {
+        return getVibrobladeProfileFromFlags(definition.flags) !== null;
+    }
+
+    getComponentModeChoices(
+        runtime: CBTMekUnit,
+        definition: ComponentModeDefinition,
+        _context: EquipmentInteractionQueryContext,
+    ): PickerChoice[] {
+        const mode = runtime.query().componentMode(definition.componentId);
+        if (!isVibrobladeMode(mode)) return [];
+        return [{
+            label: 'Mode',
+            value: mode,
+            displayType: 'dropdown',
+            choices: [
+                { label: VIBROBLADE_ON_MODE, value: VIBROBLADE_ON_MODE },
+                { label: VIBROBLADE_OFF_MODE, value: VIBROBLADE_OFF_MODE },
+            ],
+            keepOpen: true,
+        }];
+    }
+
+    handleComponentModeSelection(
+        runtime: CBTMekUnit,
+        definition: ComponentModeDefinition,
+        choice: PickerChoice,
+        _context: EquipmentInteractionCommandContext,
+    ): boolean {
+        if (!isVibrobladeMode(choice.value)) return false;
+        if (runtime.query().componentMode(definition.componentId) === choice.value) return true;
+        return runtime.dispatch({
+            type: 'set-component-mode',
+            componentId: definition.componentId,
+            mode: choice.value,
+        }).accepted;
+    }
+}

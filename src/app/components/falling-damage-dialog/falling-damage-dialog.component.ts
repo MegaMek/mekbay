@@ -1,62 +1,67 @@
-// Copyright (C) 2026 The MegaMek Team
 // SPDX-License-Identifier: GPL-3.0-or-later
-// Author: Drake
 
-import { ChangeDetectionStrategy, Component, computed, inject, signal } from '@angular/core';
 import { DIALOG_DATA, DialogRef } from '@angular/cdk/dialog';
-import type {
-    CBTForceUnit,
-    CBTMekFallDamageRoll,
-    CBTUnitAutomationTrigger,
-} from '../../models/cbt-force-unit.model';
-import { unitCoverWaterDepth } from '../../models/unit-cover.model';
+import { ChangeDetectionStrategy, Component, computed, inject, signal } from '@angular/core';
+
+import type { CBTRuleset } from '../../models/cbt-ruleset.model';
 import {
-    isResolvedMekFallHitLocation,
-    resolvedMekFallDamageGroups,
-    rollMekFallDice,
     resolveMekFallDamage,
     resolveMekHitLocation,
     resolveMekFallOrientation,
-    twoD6ForTotal,
-    twoD6Total,
-    type MekFallHitLocationResult,
+    resolvedMekFallDamageGroups,
+    type MekFallDamageBreakdown,
+    type MekHitLocationResult,
     type MekFallOrientation,
-    type ResolvedMekFallDamageGroup,
-} from '../../utils/mek-falling.util';
-import { clusterTableForUnit, type MekHitLocationTable } from '../../utils/record-sheet-reference-table';
-
-export type FallingAutomationTrigger = Extract<CBTUnitAutomationTrigger, { readonly kind: 'falling' }>;
+} from '../../models/runtime/mek-fall-rules';
+import type { MekHitLocationTable } from '../../utils/record-sheet-reference-table';
+import { roll2D6, twoD6Total } from '../../models/runtime/mek-automation-rules';
 
 export interface FallingDamageDialogData {
-    readonly unit: CBTForceUnit;
-    readonly trigger: FallingAutomationTrigger;
+    readonly unitName: string;
+    readonly sourceMessage: string;
+    readonly ruleset: CBTRuleset;
+    readonly tons: number;
+    readonly levelsFallen: number;
+    /** Every damage group strikes the rear (a missed death from above); facing is still rolled. */
+    readonly alwaysRear?: boolean;
+    readonly waterDepth: number;
+    /** The 'Mech falls into the water from above its surface (`resolveMekFallDamage`). */
+    readonly aboveSurface?: boolean;
+    readonly hitLocationTable: MekHitLocationTable;
+    readonly floatingCriticals?: boolean;
+    readonly armorNote?: string;
+}
+
+export interface ResolvedMekFallDamageGroup extends MekHitLocationResult {
+    readonly damage: number;
 }
 
 export interface AcceptedFallingDamageDialogResult {
     readonly action: 'accept';
+    readonly damage: MekFallDamageBreakdown;
     readonly orientation: MekFallOrientation;
     readonly groups: readonly ResolvedMekFallDamageGroup[];
 }
 
 export type FallingDamageDialogResult = AcceptedFallingDamageDialogResult
-    | { readonly action: 'ignore' }
+    | { readonly action: 'skip' }
     | { readonly action: 'close' };
 
 interface FallingDamageGroupRoll {
-    readonly hitLocationDice: readonly [number, number] | null;
+    readonly hitLocationRoll: number | null;
+    readonly floatingRoll?: number;
     readonly tripodLegRoll: number | null;
 }
 
 interface FallingDamageGroupRow extends FallingDamageGroupRoll {
     readonly index: number;
     readonly damage: number;
-    readonly hitLocationRoll: number | null;
-    readonly result: MekFallHitLocationResult | null;
+    readonly result: MekHitLocationResult | null;
 }
 
 @Component({
     selector: 'falling-damage-dialog',
-    standalone: true,
+    imports: [],
     changeDetection: ChangeDetectionStrategy.OnPush,
     templateUrl: './falling-damage-dialog.component.html',
     styleUrls: [
@@ -67,122 +72,94 @@ interface FallingDamageGroupRow extends FallingDamageGroupRoll {
 export class FallingDamageDialogComponent {
     readonly data = inject<FallingDamageDialogData>(DIALOG_DATA);
     private readonly dialogRef = inject<DialogRef<FallingDamageDialogResult | undefined>>(DialogRef);
-    private readonly pending = this.data.unit.getPendingFall(this.data.trigger.id);
-
-    readonly rulesId = this.data.unit.gameRules.id;
-    readonly tons = this.data.unit.getUnit().tons;
-    readonly levelsFallen = this.data.trigger.levelsFallen;
-    readonly fallDamage = resolveMekFallDamage(
-        this.rulesId,
-        this.tons,
-        this.levelsFallen,
-        unitCoverWaterDepth(this.data.unit.turnState().cover()),
+    readonly damage = resolveMekFallDamage(
+        this.data.ruleset,
+        this.data.tons,
+        this.data.levelsFallen,
+        this.data.waterDepth,
+        this.data.aboveSurface,
     );
-    readonly totalDamage = this.fallDamage.totalDamage;
-    readonly damageGroups = resolvedMekFallDamageGroups(this.fallDamage);
-    readonly hitLocationTable: MekHitLocationTable = clusterTableForUnit(this.data.unit.getUnit()).hitLocationTable
-        ?? 'biped';
-    readonly orientationRoll = signal<number | null>(this.pending?.orientationRoll ?? null);
+    readonly totalDamage = this.damage.totalDamage;
+    readonly damageGroups = resolvedMekFallDamageGroups(this.damage);
+    readonly orientationRoll = signal<number | null>(null);
     private readonly groupRolls = signal<readonly FallingDamageGroupRoll[]>(
-        this.damageGroups.map((_damage, index) => {
-            const pendingRoll = this.pending?.damageRolls[index];
-            return {
-                hitLocationDice: pendingRoll?.hitLocationDice ?? null,
-                tripodLegRoll: pendingRoll?.tripodLegRoll ?? null,
-            };
-        }),
+        this.damageGroups.map(() => ({ hitLocationRoll: null, tripodLegRoll: null })),
     );
-
     readonly d6Rolls = [1, 2, 3, 4, 5, 6] as const;
     readonly twoD6Rolls = [2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12] as const;
     readonly orientation = computed(() => {
         const roll = this.orientationRoll();
-        return roll === null ? null : resolveMekFallOrientation(this.rulesId, roll);
+        return roll === null ? null : resolveMekFallOrientation(this.data.ruleset, roll, this.data.alwaysRear);
     });
     readonly groupRows = computed<readonly FallingDamageGroupRow[]>(() => {
         const orientation = this.orientation();
-        return this.groupRolls().map((roll, index) => {
-            const hitLocationRoll = roll.hitLocationDice ? twoD6Total(roll.hitLocationDice) : null;
-            return {
-                index,
-                damage: this.damageGroups[index],
-                ...roll,
-                hitLocationRoll,
-                result: orientation && hitLocationRoll !== null
-                    ? resolveMekHitLocation(
-                        this.hitLocationTable,
-                        orientation.hitArc,
-                        hitLocationRoll,
-                        roll.tripodLegRoll ?? undefined,
-                    )
-                    : null,
-            };
-        });
+        return this.groupRolls().map((roll, index) => ({
+            index,
+            damage: this.damageGroups[index]!,
+            ...roll,
+            result: orientation && roll.hitLocationRoll !== null
+                && !(this.data.floatingCriticals && roll.hitLocationRoll === 2 && roll.floatingRoll === undefined)
+                ? resolveMekHitLocation(
+                    this.data.hitLocationTable,
+                    orientation.hitArc,
+                    roll.hitLocationRoll,
+                    roll.tripodLegRoll ?? undefined,
+                    roll.floatingRoll,
+                )
+                : null,
+        }));
     });
-    readonly allResolved = computed(() => {
-        if (!this.orientation()) return false;
-        return this.groupRows().every(row => row.result && isResolvedMekFallHitLocation(row.result));
-    });
-    readonly sourceMessage = this.data.trigger.source === 'stand-attempt'
-        ? 'The stand-up attempt failed, so the Mek falls again.'
-        : 'A failed Piloting Skill Roll caused the Mek to fall.';
-    readonly armorNote = this.data.unit.hasArmorType('IMPACT_RESISTANT')
-        ? 'Impact-Resistant Armor is resolved against the armor in each struck location.'
-        : null;
+    readonly allResolved = computed(() => this.orientation() !== null
+        && this.groupRows().every(row => row.result !== null && row.result.location !== null));
 
     setOrientationRoll(roll: number | null): void {
         this.orientationRoll.set(validRoll(roll, 1, 6));
-        this.persistRolls();
     }
 
-    setHitLocationRoll(index: number, roll: number | null): void {
-        this.updateGroupRoll(index, {
-            hitLocationDice: twoD6ForTotal(roll),
-        });
+    setHitLocationRoll(index: number, roll: number | null, floating = false): void {
+        const total = validRoll(roll, 2, 12);
+        this.updateGroupRoll(index, floating ? { floatingRoll: total ?? undefined } : { hitLocationRoll: total, floatingRoll: undefined });
     }
 
     setTripodLegRoll(index: number, roll: number | null): void {
-        this.updateGroupRoll(index, {
-            tripodLegRoll: validRoll(roll, 1, 6),
-        });
+        this.updateGroupRoll(index, { tripodLegRoll: validRoll(roll, 1, 6) });
     }
 
     rollOrientation(random: () => number = Math.random): void {
-        const rolled = rollMekFallDice(this.rulesId, this.hitLocationTable, 0, { random });
-        this.orientationRoll.set(rolled.orientationRoll);
-        this.persistRolls();
+        this.orientationRoll.set(randomD6(random));
     }
 
     rollHitLocations(random: () => number = Math.random): void {
-        const orientationRoll = this.orientationRoll();
-        if (orientationRoll === null) return;
-        const rolled = rollMekFallDice(this.rulesId, this.hitLocationTable, this.damageGroups.length, {
-            orientationRoll,
+        if (this.orientationRoll() === null) return;
+        this.groupRolls.set(this.damageGroups.map(() => rollDamageGroup(
+            this.data.hitLocationTable,
+            this.orientation()!.hitArc,
             random,
-        });
-        this.groupRolls.set(rolled.damageRolls);
-        this.persistRolls();
+            this.data.floatingCriticals,
+        )));
     }
 
     rollAllResults(random: () => number = Math.random): void {
-        const rolled = rollMekFallDice(this.rulesId, this.hitLocationTable, this.damageGroups.length, { random });
-        this.orientationRoll.set(rolled.orientationRoll);
-        this.groupRolls.set(rolled.damageRolls);
-        this.persistRolls();
+        this.rollOrientation(random);
+        this.rollHitLocations(random);
     }
 
     apply(): void {
         const orientation = this.orientation();
         if (!orientation || !this.allResolved()) return;
-        const groups = this.groupRows().map(row => ({
-            ...row.result!,
-            damage: row.damage,
-        })) as ResolvedMekFallDamageGroup[];
-        this.dialogRef.close({ action: 'accept', orientation, groups });
+        this.dialogRef.close(Object.freeze({
+            action: 'accept',
+            damage: this.damage,
+            orientation,
+            groups: Object.freeze(this.groupRows().map(row => Object.freeze({
+                ...row.result!,
+                damage: row.damage,
+            }))),
+        }));
     }
 
-    ignore(): void {
-        this.dialogRef.close({ action: 'ignore' });
+    skip(): void {
+        this.dialogRef.close({ action: 'skip' });
     }
 
     close(): void {
@@ -196,16 +173,55 @@ export class FallingDamageDialogComponent {
     private updateGroupRoll(index: number, update: Partial<FallingDamageGroupRoll>): void {
         this.groupRolls.update(current => current.map((roll, rollIndex) =>
             rollIndex === index ? { ...roll, ...update } : roll));
-        this.persistRolls();
     }
+}
 
-    private persistRolls(): void {
-        this.data.unit.setPendingFallRolls(
-            this.data.trigger.id,
-            this.orientationRoll(),
-            this.groupRolls() satisfies readonly CBTMekFallDamageRoll[],
-        );
-    }
+export function resolveAutomaticFallingDamage(
+    data: FallingDamageDialogData,
+    random: () => number = Math.random,
+): AcceptedFallingDamageDialogResult {
+    const damage = resolveMekFallDamage(
+        data.ruleset,
+        data.tons,
+        data.levelsFallen,
+        data.waterDepth,
+        data.aboveSurface,
+    );
+    const orientation = resolveMekFallOrientation(data.ruleset, randomD6(random), data.alwaysRear);
+    const groups = resolvedMekFallDamageGroups(damage).map(group => {
+        const roll = rollDamageGroup(data.hitLocationTable, orientation.hitArc, random, data.floatingCriticals);
+        return Object.freeze({
+            ...resolveMekHitLocation(
+                data.hitLocationTable,
+                orientation.hitArc,
+                roll.hitLocationRoll!,
+                roll.tripodLegRoll ?? undefined,
+                roll.floatingRoll,
+            ),
+            damage: group,
+        });
+    });
+    return Object.freeze({ action: 'accept', damage, orientation, groups: Object.freeze(groups) });
+}
+
+function rollDamageGroup(
+    table: MekHitLocationTable,
+    arc: MekFallOrientation['hitArc'],
+    random: () => number,
+    floatingCriticals = false,
+): FallingDamageGroupRoll {
+    const hitLocationRoll = twoD6Total(roll2D6(random));
+    const floatingRoll = floatingCriticals && hitLocationRoll === 2 ? twoD6Total(roll2D6(random)) : undefined;
+    const unresolved = resolveMekHitLocation(table, arc, hitLocationRoll, undefined, floatingRoll);
+    return Object.freeze({
+        hitLocationRoll,
+        floatingRoll,
+        tripodLegRoll: unresolved.location === null ? randomD6(random) : null,
+    });
+}
+
+function randomD6(random: () => number): number {
+    return Math.floor(random() * 6) + 1;
 }
 
 function validRoll(value: number | null, min: number, max: number): number | null {

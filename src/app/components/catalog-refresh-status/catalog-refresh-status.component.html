@@ -1,0 +1,39 @@
+@let status = view();
+@if (status.kind !== 'hidden') {
+<section
+    class="catalog-refresh-status"
+    animate.leave="catalog-refresh-status-leave"
+    [class.warning]="status.kind === 'notice'"
+    role="status"
+    aria-live="polite"
+    aria-atomic="true"
+    [attr.aria-busy]="status.kind === 'progress' ? 'true' : 'false'">
+    <div class="catalog-refresh-text">
+        <span class="catalog-refresh-title">{{ status.title }}</span>
+        <span class="catalog-refresh-detail">{{ status.detail }}</span>
+    </div>
+    @if (status.kind === 'progress') {
+        @if (status.mode === 'determinate') {
+        <div
+            class="catalog-refresh-track"
+            role="progressbar"
+            aria-valuemin="0"
+            aria-valuemax="100"
+            [attr.aria-label]="status.title"
+            [attr.aria-valuenow]="status.percent"
+            [attr.aria-valuetext]="status.ariaValueText">
+            <span class="catalog-refresh-fill" [style.width.%]="status.percent"></span>
+        </div>
+        } @else {
+        <div
+            class="catalog-refresh-track indeterminate"
+            role="progressbar"
+            aria-valuemin="0"
+            aria-valuemax="100"
+            [attr.aria-label]="status.title">
+            <span class="catalog-refresh-fill"></span>
+        </div>
+        }
+    }
+</section>
+}

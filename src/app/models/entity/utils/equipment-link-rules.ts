@@ -2,39 +2,58 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 // Author: Drake
 
-import { EquipmentFlag } from '../../equipment-flags.type';
-import { Equipment, MiscEquipment, WeaponEquipment } from '../../equipment.model';
+import { AmmoEquipment, Equipment, MiscEquipment, WeaponEquipment, ammoMatchesWeapon } from '../../equipment.model';
 import type { EntityMountedEquipment } from '../types';
+import {
+  isLaserInsulatorCompatibleWeapon,
+  isLaserInsulatorEquipment,
+} from '../../laser-insulator.model';
+import { isApolloEquipment } from '../../apollo-mode.model';
+import {
+  isRiscLaserPulseCompatibleWeapon,
+  isRiscLaserPulseModule,
+} from '../../risc-laser-mode.model';
+import {
+  isPpcCapacitorCompatibleWeapon,
+  isPpcCapacitorEquipment,
+} from '../../ppc-capacitor.model';
+import {
+  isArtemisCompatibleWeapon,
+  isArtemisEquipment,
+} from '../../artemis-equipment.model';
+import { isWeaponEnhancementEquipment as hasWeaponEnhancementMarker } from '../../weapon-enhancement.model';
 
-const ARTEMIS_FLAGS: EquipmentFlag[] = ['F_ARTEMIS', 'F_ARTEMIS_V', 'F_ARTEMIS_PROTO'];
-const LASER_MODULE_FLAGS: EquipmentFlag[] = ['F_LASER_INSULATOR', 'F_RISC_LASER_PULSE_MODULE'];
-const WEAPON_ENHANCEMENT_FLAGS: EquipmentFlag[] = [
-  ...ARTEMIS_FLAGS,
-  'F_APOLLO',
-  'F_PPC_CAPACITOR',
-  ...LASER_MODULE_FLAGS,
-];
+export { isPpcCapacitorCompatibleWeapon } from '../../ppc-capacitor.model';
 
 export interface EquipmentLinkContext {
   readonly year: number;
+  readonly tonnage?: number;
 }
 
-export function isArtemisCompatibleWeapon(weapon: Equipment): boolean {
-  return weapon.hasFlag('F_ARTEMIS_COMPATIBLE');
+export { isArtemisCompatibleWeapon, isArtemisVEquipment } from '../../artemis-equipment.model';
+
+export function isArtemisVCompatibleWeapon(equipment: Equipment | undefined): boolean {
+  return isArtemisCompatibleWeapon(equipment);
 }
 
-export function isPpcCapacitorCompatibleWeapon(
-  weapon: Equipment,
-  context?: EquipmentLinkContext,
-): boolean {
-  return weapon.hasFlag('F_PPC')
-    && weapon.hasFlag('F_PPC_CAPACITOR_COMPATIBLE')
-    && !(context && weapon.id === 'CLERPPC' && context.year < 3101);
+export function isWeaponEnhancementEquipment(equipment: Equipment | undefined): boolean {
+  return hasWeaponEnhancementMarker(equipment);
 }
 
 export function isWeaponEnhancement(mount: EntityMountedEquipment): boolean {
   return mount.equipment instanceof MiscEquipment
-    && mount.equipment.hasAnyFlag(WEAPON_ENHANCEMENT_FLAGS);
+    && (isArtemisEquipment(mount.equipment)
+      || isApolloEquipment(mount.equipment)
+      || isPpcCapacitorEquipment(mount.equipment)
+      || isRiscLaserPulseModule(mount.equipment)
+      || isLaserInsulatorEquipment(mount.equipment));
+}
+
+/** Sources whose directed links are encoded by native equipment order/attachment flags. */
+export function isEquipmentLinkSource(mount: EntityMountedEquipment): boolean {
+  return isWeaponEnhancement(mount) || (mount.equipment instanceof WeaponEquipment && mount.isDWP === true)
+    || (mount.equipment instanceof MiscEquipment && (['F_AP_MOUNT', 'F_ARMORED_GLOVE', 'F_DETACHABLE_WEAPON_PACK'] as const)
+      .some(flag => mount.equipment!.hasFlag(flag)));
 }
 
 /**
@@ -45,20 +64,39 @@ export function canLinkEquipment(
   source: EntityMountedEquipment,
   target: EntityMountedEquipment,
   context: EquipmentLinkContext,
+  attached: readonly EntityMountedEquipment[] = [],
 ): boolean {
   const enhancement = source.equipment;
   const weapon = target.equipment;
+  // An enhancement may sit in either location of a weapon split over two (TM pp. 57, 207)
+  const sharesLocation = source.location === target.location
+    || (target.isSplitAcrossLocations && target.getOccupiedLocations().includes(source.location));
+  if (source.mountId === target.mountId || !sharesLocation) return false;
+  // TO:AUE p. 134 allows redundant insulators. IO:AE p. 87 limits each laser to one pulse module.
+  for (const other of attached) {
+    if (other.mountId === source.mountId) continue;
+    if (isLaserInsulatorEquipment(other.equipment)
+        && (isLaserInsulatorEquipment(enhancement) || isRiscLaserPulseModule(enhancement))) continue;
+    if (isRiscLaserPulseModule(other.equipment) && isLaserInsulatorEquipment(enhancement)) continue;
+    return false;
+  }
+  if (enhancement instanceof WeaponEquipment && weapon instanceof AmmoEquipment) {
+    return source.isDWP === true && target.isDWP === true && ammoMatchesWeapon(enhancement, weapon);
+  }
   if (!(enhancement instanceof MiscEquipment) || !(weapon instanceof WeaponEquipment)) return false;
-  if (source.mountId === target.mountId || source.location !== target.location) return false;
+  if (enhancement.hasFlag('F_AP_MOUNT') || enhancement.hasFlag('F_ARMORED_GLOVE')) return target.isAPM === true && weapon.isInfantryWeapon();
+  if (enhancement.hasFlag('F_DETACHABLE_WEAPON_PACK')) return target.isDWP === true;
 
-  if (enhancement.hasAnyFlag(ARTEMIS_FLAGS)) return isArtemisCompatibleWeapon(weapon);
-  if (enhancement.hasFlag('F_APOLLO')) return weapon.ammoType === 'MRM';
-  if (enhancement.hasFlag('F_PPC_CAPACITOR')) {
+  if (isArtemisEquipment(enhancement)) return isArtemisCompatibleWeapon(weapon);
+  if (isApolloEquipment(enhancement)) return weapon.ammoType === 'MRM';
+  if (isPpcCapacitorEquipment(enhancement)) {
     return isPpcCapacitorCompatibleWeapon(weapon, context);
   }
-  if (enhancement.hasFlag('F_RISC_LASER_PULSE_MODULE')) {
-    return weapon.hasFlag('F_LASER') && !weapon.hasFlag('F_PULSE') && weapon.techBase !== 'Clan';
+  if (isRiscLaserPulseModule(enhancement)) {
+    return isRiscLaserPulseCompatibleWeapon(weapon);
   }
-  if (enhancement.hasFlag('F_LASER_INSULATOR')) return weapon.hasFlag('F_LASER');
+  if (isLaserInsulatorEquipment(enhancement)) {
+    return (context.tonnage === undefined || context.tonnage <= 200) && isLaserInsulatorCompatibleWeapon(weapon);
+  }
   return false;
 }

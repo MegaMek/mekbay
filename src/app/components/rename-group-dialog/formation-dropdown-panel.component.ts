@@ -3,15 +3,19 @@
 // Author: Drake
 
 import { ChangeDetectionStrategy, Component, computed, input, output, signal } from '@angular/core';
-import { type FormationTypeDefinition, NO_FORMATION, NO_FORMATION_ID } from '../../utils/formation-type.model';
+import { type FormationTypeDefinition, NO_FORMATION, NO_FORMATION_ID } from '../../utils/formation/formation-type.model';
 import { FormationInfoComponent } from '../formation-info/formation-info.component';
 import { GameSystem } from '../../models/common.model';
+import type { FormationEvaluation } from '../../utils/formation/formation-requirement.model';
+import type { FormationUnitLike } from '../../utils/formation/formation-facts.util';
 
 
 export interface FormationDisplayItem {
     definition: FormationTypeDefinition;
     displayName: string;
     isValid: boolean;
+    evaluation?: FormationEvaluation;
+    units?: readonly FormationUnitLike[];
     /** Whether this formation required organization-level requirement filtering. */
     requirementsFiltered: boolean;
     /** Optional org composition name that caused requirement filtering. */
@@ -107,14 +111,12 @@ export interface FormationDropdownPointerHoverEvent {
                                         [class.active]="isActiveTarget(item.definition.id, 'details')"
                                         [class.expanded]="expandedId() === item.definition.id"
                                         title="Show details">
-                                    <svg width="16" height="16" viewBox="0 0 10 10" fill="currentColor">
-                                        <path d="M3 1l5 4-5 4z"/>
-                                    </svg>
+                                    <span class="chevron" [class.collapsed]="expandedId() !== item.definition.id" aria-hidden="true"></span>
                                 </button>
                             </div>
                             @if (expandedId() === item.definition.id) {
                                 <div class="formation-option-details">
-                                    <formation-info [formation]="item.definition" [gameSystem]="gameSystem()" [showTitle]="false" [isValid]="true" [requirementsFiltered]="item.requirementsFiltered" [requirementsFilterCompositionName]="item.requirementsFilterCompositionName" [requirementsFilterNotice]="item.requirementsFilterNotice"></formation-info>
+                                    <formation-info [formation]="item.definition" [evaluation]="item.evaluation" [units]="item.units ?? []" [gameSystem]="gameSystem()" [showTitle]="false" [isValid]="true" [requirementsFiltered]="item.requirementsFiltered" [requirementsFilterCompositionName]="item.requirementsFilterCompositionName" [requirementsFilterNotice]="item.requirementsFilterNotice"></formation-info>
                                 </div>
                             }
                         </div>
@@ -126,7 +128,7 @@ export interface FormationDropdownPointerHoverEvent {
                 }
 
                 @if (otherFormations().length > 0) {
-                    <div class="section-label">Invalid Formations</div>
+                    <div class="section-label">Incomplete or Invalid Formations</div>
                     @for (item of otherFormations(); let optionIndex = $index; track item.definition.id) {
                         <div class="formation-option-wrapper not-matching"
                              role="option"
@@ -148,14 +150,12 @@ export interface FormationDropdownPointerHoverEvent {
                                         [class.active]="isActiveTarget(item.definition.id, 'details')"
                                         [class.expanded]="expandedId() === item.definition.id"
                                         title="Show details">
-                                    <svg width="16" height="16" viewBox="0 0 10 10" fill="currentColor">
-                                        <path d="M3 1l5 4-5 4z"/>
-                                    </svg>
+                                    <span class="chevron" [class.collapsed]="expandedId() !== item.definition.id" aria-hidden="true"></span>
                                 </button>
                             </div>
                             @if (expandedId() === item.definition.id) {
                                 <div class="formation-option-details">
-                                    <formation-info [formation]="item.definition" [gameSystem]="gameSystem()" [showTitle]="false" [isValid]="false" [requirementsFiltered]="item.requirementsFiltered" [requirementsFilterCompositionName]="item.requirementsFilterCompositionName" [requirementsFilterNotice]="item.requirementsFilterNotice"></formation-info>
+                                    <formation-info [formation]="item.definition" [evaluation]="item.evaluation" [units]="item.units ?? []" [gameSystem]="gameSystem()" [showTitle]="false" [isValid]="false" [requirementsFiltered]="item.requirementsFiltered" [requirementsFilterCompositionName]="item.requirementsFilterCompositionName" [requirementsFilterNotice]="item.requirementsFilterNotice"></formation-info>
                                 </div>
                             }
                         </div>
@@ -298,14 +298,6 @@ export interface FormationDropdownPointerHoverEvent {
             background: rgba(255, 255, 255, 0.12);
         }
 
-        .expand-btn svg {
-            transition: transform 0.2s;
-        }
-
-        .expand-btn.expanded svg {
-            transform: rotate(90deg);
-        }
-
         .formation-option-details {
             padding: 4px 12px 12px 16px;
             border-top: 1px solid rgba(255, 255, 255, 0.06);
@@ -347,7 +339,7 @@ export class FormationDropdownPanelComponent {
 
     formations = input.required<FormationDisplayItem[]>();
     selectedFormationId = input<string | null>(null);
-    gameSystem = input<GameSystem>(GameSystem.ALPHA_STRIKE);
+    gameSystem = input<GameSystem>(GameSystem.AS);
     label = input('Select formation');
     optionsId = input('');
     activeKey = input(AUTOMATIC_FORMATION_KEY);

@@ -1,0 +1,685 @@
+// Copyright (C) 2026 The MegaMek Team
+// SPDX-License-Identifier: GPL-3.0-or-later
+
+import { mekMovesOnTracks } from '../chassis-equipment.model';
+import { mekConversionModes, mekConvertedMotiveModes } from '../mek-conversion-mode';
+import { nextHeat } from './cbt-unit-runtime';
+import type { OptionalRules } from '../options.model';
+
+import type { UnitUuid } from '../../services/unit-catalog/unit-catalog.types';
+import { compareText } from '../../utils/string.util';
+import {
+    formatMekCriticalSlotLines,
+    mekCriticalMountName,
+    mekSystemSlotLabel,
+} from '../../utils/mek-critical-display.util';
+import { isCoolantPodEquipment } from './component-coolant-pod';
+import { recordSheetAmmoName } from '../../utils/record-sheet-ammo.util';
+import { recordSheetInventoryWeaponMounts } from '../../utils/sheets/record-sheet-svg-rendering';
+import type { CBTRuleset } from '../cbt-ruleset.model';
+import type { CrewMemberRuntimeState,CrewMemberState } from '../crew-member.model';
+import type { MekEntity } from '../entity/entities/mek/mek-entity';
+import type {
+ArmorFaceId,
+ComponentId,
+CrewPositionId,
+CriticalSlotId,
+LocationId,
+} from '../entity/entity-identifiers';
+import type { EntityTechBase,MekLocation } from '../entity/types';
+import { RUN_WITHOUT_MASC_CALCULATION, STANDARD_MOVEMENT_CALCULATION } from '../entity/types/move';
+import type { EquipmentStatus } from '../equipment-status.model';
+import { MiscEquipment } from '../equipment.model';
+import { isModularArmorEquipment,MODULAR_ARMOR_POINTS_PER_MOUNT } from '../modular-armor.model';
+import type { UnitConditionKey } from '../unit-condition.model';
+import type { TargetRegistrySnapshot } from './encounter-runtime';
+import {
+mekAttackModifierSets,
+projectMekEquipmentPanel,
+projectMekPhysicalAttackPresentation,
+type EquipmentPanelComponent,
+type EquipmentPanelTarget,
+type MekPhysicalAttackPresentation,
+} from './equipment-panel';
+import { ammoLoadoutDisplay, mekAmmoDefaultMunitionKey, mekAmmoLoadouts } from './mek-ammo';
+import { mekCriticalSlotHittable,mekCriticalSlotMaximumHits } from './mek-critical-slot-rules';
+import type { MekHeatProjectionResultV2,MekHeatStateV2 } from './mek-heat-state-v2';
+import { projectMekLifeSupportPilotDamage,type MekLifeSupportPilotDamage } from './mek-life-support';
+import { mekLocationDestructionParentId } from './mek-location-state-kernel';
+import type { MekMovementPsrProjectionResultV2,MekMovementPsrStateV2 } from './mek-movement-psr-v2';
+import type { MekRuntimeIndex } from './mek-runtime-index';
+import {
+MEK_LOCATION_CONDITION_KEYS,
+type MekLocationConditionKey,
+type MekUnitRuntimeState,
+} from './runtime-state';
+import type { UnitEditContext } from './unit-edit-context';
+import type { MekUnitQueryPort } from './unit-instance';
+import { getMotiveModesByUnit, motiveModeFactsForEntity } from '../motiveModes.model';
+import { mekAttackMovementModifier } from './mek-turn-panel';
+import type { RecordSheetMovementSelection } from './record-sheet-movement';
+
+export interface MekRecordSheetArmorFace {
+    readonly faceId: ArmorFaceId;
+    readonly locationId: LocationId;
+    readonly locationCode: MekLocation;
+    readonly face: 'front' | 'rear';
+    readonly maximum: number;
+    readonly committedRemaining: number;
+    readonly previewRemaining: number;
+}
+
+export interface MekRecordSheetLocation {
+    readonly locationId: LocationId;
+    readonly code: MekLocation;
+    readonly maximumInternal: number;
+    readonly committedRemainingInternal: number;
+    readonly previewRemainingInternal: number;
+    /** Direct structural loss at this location; inherited torso loss is detachment. */
+    readonly committedStructurallyDestroyed: boolean;
+    readonly previewStructurallyDestroyed: boolean;
+    /** Direct blow-off or physical loss inherited from this location's parent. */
+    readonly committedDetached: boolean;
+    readonly previewDetached: boolean;
+    /** Functional parent loss, such as flooding, without physical detachment. */
+    readonly committedDisabled: boolean;
+    readonly previewDisabled: boolean;
+    readonly conditions: readonly Readonly<{
+        condition: MekLocationConditionKey;
+        committed: number;
+        preview: number;
+    }>[];
+    readonly armor: readonly MekRecordSheetArmorFace[];
+    readonly modularArmor: Readonly<{
+        readonly maximum: number;
+        readonly committedDamage: number;
+        readonly previewDamage: number;
+        readonly committedRemaining: number;
+        readonly previewRemaining: number;
+    }>;
+}
+
+export interface MekRecordSheetSlotComponent {
+    readonly componentId: ComponentId;
+    readonly label: string;
+    readonly system?: string;
+    readonly status: EquipmentStatus;
+    readonly ammo?: Readonly<{
+        munitionKey: string;
+        displayName: string;
+        custom: boolean;
+        capacity: number;
+        remaining: number;
+    }>;
+}
+
+export interface MekRecordSheetCriticalSlot {
+    readonly slotId: CriticalSlotId;
+    readonly locationId: LocationId;
+    readonly locationCode: MekLocation;
+    readonly slotIndex: number;
+    readonly armored: boolean;
+    readonly hittable: boolean;
+    readonly hitCapacity: number;
+    readonly committedHits: number;
+    readonly previewHits: number;
+    readonly components: readonly MekRecordSheetSlotComponent[];
+}
+
+/** Critical-table lines of a slot, with each ammo bin's remaining shots and loadout. */
+export function mekRecordSheetSlotLines(slot: MekRecordSheetCriticalSlot): readonly string[] {
+    return formatMekCriticalSlotLines(slot.components.map(component => component.ammo
+        ? { ammo: {
+            name: recordSheetAmmoName(component.ammo.displayName),
+            shots: component.ammo.remaining,
+            custom: component.ammo.custom,
+        } }
+        : { label: component.label }));
+}
+
+export interface MekRecordSheetShieldTrack {
+    readonly componentId: ComponentId;
+    readonly locationId: LocationId;
+    readonly locationCode: 'LA' | 'RA';
+    readonly track: 'absorption' | 'capacity';
+    readonly maximum: number;
+    /** Direct combat damage only; critical and actuator losses remain derived. */
+    readonly committedDamage: number;
+    /** Direct combat damage including the pending delta. */
+    readonly previewDamage: number;
+    readonly committedRemaining: number;
+    readonly previewRemaining: number;
+}
+
+export interface MekRecordSheetCrewPosition {
+    readonly positionId: CrewPositionId;
+    readonly positionKey: string;
+    readonly occurrence: number;
+    readonly name: string;
+    readonly gunnery: number;
+    readonly piloting: number;
+    readonly aeroGunnery?: number;
+    readonly aeroPiloting?: number;
+    readonly state: CrewMemberRuntimeState;
+    /** Rule-derived display state, including lethal wounds and cockpit loss. */
+    readonly effectiveState: Extract<CrewMemberState, 'healthy' | 'ejected' | 'unconscious' | 'dead' | 'vacant'>;
+}
+
+/** Lightweight status facts for force cards and other non-sheet presentation. */
+export interface MekUnitStatusSnapshot {
+    readonly stateRevision: number;
+    readonly conditions: readonly UnitConditionKey[];
+    readonly crew: readonly Readonly<{
+        readonly positionId: CrewPositionId;
+        readonly effectiveState: MekRecordSheetCrewPosition['effectiveState'];
+    }>[];
+    readonly hasNarc: boolean;
+}
+
+/**
+ * Complete record-sheet data projection. A supplied SVG is only a layout for
+ * these facts; no sheet attribute or text node participates in this model.
+ */
+export interface MekRecordSheetSnapshot {
+    readonly editContext: UnitEditContext;
+    readonly entityUuid: UnitUuid;
+    readonly ruleset: CBTRuleset;
+    readonly stateRevision: number;
+    readonly identity: Readonly<{
+        baseChassis: string;
+        model: string;
+        clanName?: string;
+        displayName: string;
+        massTons: number;
+        year: number;
+        techBase: EntityTechBase;
+        mixedTech?: boolean;
+        form: 'biped' | 'quad' | 'tripod' | 'lam' | 'quadvee';
+        engine: string;
+        cockpit: string;
+        gyro: string;
+        myomer: string;
+    }>;
+    /** Construction materials for runtime views; the generated sheet prints its own subtitles. */
+    readonly construction: Readonly<{
+        armor: string;
+        structure: string;
+    }>;
+    readonly battleValue: Readonly<{
+        pristine: number | null;
+        current: number | null;
+        adjusted: number | null;
+    }>;
+    readonly movement: Readonly<{
+        walkMp: number;
+        runMp: number;
+        jumpMp: number;
+        secondaryMode: 'jump' | 'UMU';
+        motiveType: string;
+        declared: ReturnType<MekUnitQueryPort['mekMovementMode']>;
+        projection: MekMovementPsrProjectionResultV2;
+        psr: MekMovementPsrStateV2;
+    }>;
+    readonly movementSelection: RecordSheetMovementSelection;
+    readonly heatSinks: Readonly<{
+        count: number;
+        equipmentKey?: string;
+        unavailableUnits: number;
+        /** The RISC Heat Sink Override Kit, which lowers every roll to avoid shutdown. */
+        riscOverrideKit: boolean;
+    }>;
+    readonly heat: MekHeatStateV2;
+    /** End Turn calculates the turn's heat (heat resolution Yes or Ask). */
+    readonly endTurnCalculatesHeat: boolean;
+    readonly heatProjection: MekHeatProjectionResultV2;
+    readonly lifeSupport: MekLifeSupportPilotDamage;
+    readonly destroyed: boolean;
+    readonly crippled: boolean;
+    readonly conditions: readonly UnitConditionKey[];
+    readonly locations: readonly MekRecordSheetLocation[];
+    readonly criticalSlots: readonly MekRecordSheetCriticalSlot[];
+    readonly shields: readonly MekRecordSheetShieldTrack[];
+    readonly equipment: readonly EquipmentPanelComponent[];
+    /** The inventory's weapon order, as the generated sheet prints it, for a layout that prints weapons without IDs. */
+    readonly weaponOrder: readonly string[];
+    readonly targets: readonly EquipmentPanelTarget[];
+    readonly physicalAttacks: MekPhysicalAttackPresentation;
+    readonly crew: readonly MekRecordSheetCrewPosition[];
+}
+
+export interface MekRecordSheetBattleValueSnapshot {
+    readonly pristine: number | null;
+    readonly current: number | null;
+    readonly adjusted: number | null;
+}
+
+/** Projects only the runtime facts needed by compact unit-status presentation. */
+export function projectMekUnitStatus(
+    index: MekRuntimeIndex,
+    state: MekUnitRuntimeState,
+    query: MekUnitQueryPort,
+): MekUnitStatusSnapshot {
+    if (state.stateRevision !== query.stateRevision) {
+        throw new Error('Unit-status state and query revisions do not match');
+    }
+    if (query.mekDestruction().kind === 'unsupported') {
+        throw new Error('Mek destruction mechanics context is unsupported');
+    }
+    const crew = [...index.crewPositions.values()]
+        .sort((left, right) => left.occurrence - right.occurrence
+            || compareText(left.id, right.id))
+        .map(position => Object.freeze({
+            positionId: position.id,
+            effectiveState: query.crewEffectiveState(position.id),
+        }));
+    return Object.freeze({
+        stateRevision: state.stateRevision,
+        conditions: Object.freeze([...query.conditions()].sort(compareText)),
+        crew: Object.freeze(crew),
+        hasNarc: [...index.locations.keys()].some(locationId =>
+            query.locationCondition(locationId, 'narc', 'preview') > 0),
+    });
+}
+
+export function projectMekRecordSheet(
+    entity: MekEntity,
+    index: MekRuntimeIndex,
+    ruleset: CBTRuleset,
+    state: MekUnitRuntimeState,
+    query: MekUnitQueryPort,
+    targetRegistry: TargetRegistrySnapshot,
+    suppliedBattleValue: MekRecordSheetBattleValueSnapshot | null,
+    endTurnCalculatesHeat: boolean,
+    optionalRules: OptionalRules,
+): Omit<MekRecordSheetSnapshot, 'editContext'> {
+    if (state.stateRevision !== query.stateRevision) {
+        throw new Error('Record-sheet state and query revisions do not match');
+    }
+    const assignment = query.crewAssignment();
+    const assignedById = new Map(assignment.positions.map(position => [position.positionId, position] as const));
+    const destruction = query.mekDestruction();
+    if (destruction.kind === 'unsupported') {
+        throw new Error('Mek destruction mechanics context is unsupported');
+    }
+    const unitStatus = projectMekUnitStatus(index, state, query);
+
+    const modularArmorByLocation = new Map<LocationId, Set<ComponentId>>();
+    for (const slot of index.slots.values()) {
+        for (const componentId of slot.componentIds) {
+            const component = index.components.get(componentId);
+            if (component?.kind !== 'equipment'
+                || !isModularArmorEquipment(component.mount.equipment)
+                || query.componentStatus(componentId, 'committed') !== 'available') continue;
+            const components = modularArmorByLocation.get(slot.locationId) ?? new Set<ComponentId>();
+            components.add(componentId);
+            modularArmorByLocation.set(slot.locationId, components);
+        }
+    }
+    const locations = [...index.locations.values()]
+        .sort(compareLocation)
+        .map(location => {
+            const conditions = MEK_LOCATION_CONDITION_KEYS
+                .map(condition => Object.freeze({
+                    condition,
+                    committed: query.locationCondition(location.id, condition, 'committed'),
+                    preview: query.locationCondition(location.id, condition, 'preview'),
+                }))
+                .filter(row => row.committed > 0 || row.preview > 0);
+            const armor = location.armorFaceIds.map(faceId => {
+                const face = index.armorFaces.get(faceId);
+                if (!face || face.locationId !== location.id) {
+                    throw new Error(`Armor face ${faceId} is not owned by ${location.id}`);
+                }
+                return Object.freeze({
+                    faceId,
+                    locationId: location.id,
+                    locationCode: location.code,
+                    face: face.face,
+                    maximum: face.maximumPoints,
+                    committedRemaining: query.remainingArmor(faceId, 'committed'),
+                    previewRemaining: query.remainingArmor(faceId, 'preview'),
+                });
+            });
+            const parentId = mekLocationDestructionParentId(index, location.id);
+            const committedParentStatus = parentId === null
+                ? 'available'
+                : query.locationStatus(parentId, 'committed');
+            const previewParentStatus = parentId === null
+                ? 'available'
+                : query.locationStatus(parentId, 'preview');
+            const committedBlownOff = query.locationCondition(location.id, 'blown-off', 'committed') > 0;
+            const previewBlownOff = query.locationCondition(location.id, 'blown-off', 'preview') > 0;
+            const committedFlooded = query.locationCondition(location.id, 'flooded', 'committed') > 0;
+            const previewFlooded = query.locationCondition(location.id, 'flooded', 'preview') > 0;
+            const committedStructurallyDestroyed = query.remainingInternal(location.id, 'committed') === 0;
+            const previewStructurallyDestroyed = query.remainingInternal(location.id, 'preview') === 0;
+            const modularArmorComponents = [...modularArmorByLocation.get(location.id) ?? []];
+            const modularArmor = Object.freeze({
+                maximum: modularArmorComponents.length * MODULAR_ARMOR_POINTS_PER_MOUNT,
+                committedDamage: modularArmorComponents.reduce((sum, componentId) =>
+                    sum + query.modularArmorDamage(componentId, 'committed'), 0),
+                previewDamage: modularArmorComponents.reduce((sum, componentId) =>
+                    sum + query.modularArmorDamage(componentId, 'preview'), 0),
+                committedRemaining: modularArmorComponents.reduce((sum, componentId) =>
+                    sum + query.modularArmorRemaining(componentId, 'committed'), 0),
+                previewRemaining: modularArmorComponents.reduce((sum, componentId) =>
+                    sum + query.modularArmorRemaining(componentId, 'preview'), 0),
+            });
+            return Object.freeze({
+                locationId: location.id,
+                code: location.code,
+                maximumInternal: location.internalPoints,
+                committedRemainingInternal: query.remainingInternal(location.id, 'committed'),
+                previewRemainingInternal: query.remainingInternal(location.id, 'preview'),
+                committedStructurallyDestroyed,
+                previewStructurallyDestroyed,
+                committedDetached: committedBlownOff || committedParentStatus === 'destroyed',
+                previewDetached: previewBlownOff || previewParentStatus === 'destroyed',
+                committedDisabled: !committedFlooded
+                    && !committedStructurallyDestroyed
+                    && !committedBlownOff
+                    && committedParentStatus === 'disabled',
+                previewDisabled: !previewFlooded
+                    && !previewStructurallyDestroyed
+                    && !previewBlownOff
+                    && previewParentStatus === 'disabled',
+                conditions: Object.freeze(conditions),
+                armor: Object.freeze(armor),
+                modularArmor,
+            });
+        });
+    const criticalSlots = [...index.slots.values()]
+        .sort((left, right) => compareText(left.locationId, right.locationId)
+            || left.slotIndex - right.slotIndex
+            || compareText(left.id, right.id))
+        .map(slot => {
+            const location = index.locations.get(slot.locationId);
+            if (!location) throw new Error(`Slot ${slot.id} has no location`);
+            const components = slot.componentIds.map(componentId => {
+                const component = index.components.get(componentId);
+                if (!component) throw new Error(`Slot ${slot.id} references unknown component ${componentId}`);
+                const label = component.kind === 'equipment'
+                    ? mekCriticalMountName(entity, component.mount)
+                    : mekSystemSlotLabel(entity, component.systemType, location.code, slot.slotIndex);
+                // Coolant pods are catalogued as ammunition but print as equipment, as MegaMekLab does.
+                const loadouts = component.kind === 'equipment' && isCoolantPodEquipment(component.mount.equipment)
+                    ? [] : mekAmmoLoadouts(entity, index, componentId, ruleset);
+                const ammo = loadouts.length === 0
+                    ? undefined
+                    : (() => {
+                        const loadout = query.ammoLoadout(componentId);
+                        const selected = loadouts.find(candidate => candidate.munitionKey === loadout.munitionKey)
+                            ?? loadouts[0]!;
+                        const display = ammoLoadoutDisplay(mekAmmoDefaultMunitionKey(entity, index, componentId)!, selected.equipment);
+                        return Object.freeze({
+                            munitionKey: loadout.munitionKey,
+                            displayName: display.name,
+                            custom: display.custom,
+                            capacity: query.ammoCapacity(componentId),
+                            remaining: query.remainingAmmo(componentId),
+                        });
+                    })();
+                return Object.freeze({
+                    componentId,
+                    label,
+                    ...(component.kind === 'system' ? { system: component.systemType } : {}),
+                    status: query.componentStatusAtLocation(componentId, slot.locationId),
+                    ...(ammo === undefined ? {} : { ammo }),
+                });
+            });
+            return Object.freeze({
+                slotId: slot.id,
+                locationId: slot.locationId,
+                locationCode: location.code,
+                slotIndex: slot.slotIndex,
+                armored: slot.armored,
+                hittable: mekCriticalSlotHittable(index, slot),
+                hitCapacity: mekCriticalSlotMaximumHits(index, ruleset, slot),
+                committedHits: query.criticalHits(slot.id, 'committed'),
+                previewHits: query.criticalHits(slot.id, 'preview'),
+                components: Object.freeze(components),
+            });
+        });
+    const committedShields = query.mekShields('committed');
+    const previewShields = query.mekShields('preview');
+    const previewShieldById = previewShields.kind === 'supported'
+        ? new Map(previewShields.shields.map(shield => [shield.componentId, shield] as const))
+        : new Map();
+    const shields: MekRecordSheetShieldTrack[] = committedShields.kind === 'supported'
+        ? committedShields.shields.flatMap(shield => {
+            const preview = previewShieldById.get(shield.componentId);
+            if (!preview) throw new Error(`Preview shield projection is missing ${shield.componentId}`);
+            return [
+                Object.freeze({
+                    componentId: shield.componentId,
+                    locationId: shield.locationId,
+                    locationCode: shield.locationCode,
+                    track: 'absorption' as const,
+                    maximum: shield.maximumAbsorption,
+                    committedDamage: query.shieldDamage(shield.componentId, 'absorption', 'committed'),
+                    previewDamage: query.shieldDamage(shield.componentId, 'absorption', 'preview'),
+                    committedRemaining: shield.absorption,
+                    previewRemaining: preview.absorption,
+                }),
+                Object.freeze({
+                    componentId: shield.componentId,
+                    locationId: shield.locationId,
+                    locationCode: shield.locationCode,
+                    track: 'capacity' as const,
+                    maximum: shield.maximumCapacity,
+                    committedDamage: query.shieldDamage(shield.componentId, 'capacity', 'committed'),
+                    previewDamage: query.shieldDamage(shield.componentId, 'capacity', 'preview'),
+                    committedRemaining: shield.capacity,
+                    previewRemaining: preview.capacity,
+                }),
+            ];
+        })
+        : [];
+    const effectiveCrewStateById = new Map(unitStatus.crew.map(position => [
+        position.positionId,
+        position.effectiveState,
+    ] as const));
+    const crew = [...index.crewPositions.values()]
+        .sort((left, right) => left.occurrence - right.occurrence
+            || compareText(left.id, right.id))
+        .map(position => {
+            const assigned = assignedById.get(position.id);
+            const crewState = query.crewState(position.id);
+            const effectiveState = effectiveCrewStateById.get(position.id);
+            if (effectiveState === undefined) throw new Error(`Crew status is missing ${position.id}`);
+            return Object.freeze({
+                positionId: position.id,
+                positionKey: position.id,
+                occurrence: position.occurrence,
+                name: assigned?.name ?? '',
+                gunnery: assigned?.gunnery ?? 4,
+                piloting: assigned?.piloting ?? 5,
+                ...(entity.unitSubtype() === 'Land-Air BattleMek' ? {
+                    aeroGunnery: assigned?.aeroGunnery ?? 4,
+                    aeroPiloting: assigned?.aeroPiloting ?? 5,
+                } : {}),
+                state: Object.freeze({
+                    ...crewState.toRuntimeState(),
+                    ejected: crewState.ejected === true,
+                }),
+                effectiveState,
+            });
+        });
+    // The sheet reads the panel's rows and targets; physical attacks keep their supported/unsupported shape.
+    const attackModifiers = mekAttackModifierSets(entity, index, ruleset, query);
+    const { components: equipment, targets } = projectMekEquipmentPanel(
+        entity, index, ruleset, query, targetRegistry, optionalRules, attackModifiers,
+    );
+    const physicalAttacks = projectMekPhysicalAttackPresentation(
+        entity, index, ruleset, query, query.attackerTargetingState(), attackModifiers,
+    );
+    const movement = query.mekMovementPsr();
+    const conversionModes = mekConversionModes(entity);
+    const conversionMode = query.conversionMode();
+    const declaredAirborne = query.turnState().airborne;
+    const airborne = declaredAirborne === true;
+    // An AirMech offers its ground and its airborne movement side by side. A fighter's one column offers its flight
+    // until it is declared landed. Every other mode has one set.
+    const movementOptions = conversionMode === 'mek'
+        ? [...getMotiveModesByUnit(motiveModeFactsForEntity(entity), airborne),
+            ...(mekMovesOnTracks(entity) ? ['tracked' as const] : [])]
+            .map(mode => ({ mode, airborne, ownState: false }))
+        : (conversionMode === 'airmek' ? [false, true]
+            : conversionMode === 'fighter' ? [declaredAirborne !== false] : [airborne]).flatMap(state =>
+            mekConvertedMotiveModes(conversionMode, state).map(mode => ({
+                // Choosing a movement in a state the unit has not declared also declares that state.
+                mode, airborne: state, ownState: mode !== 'stationary' && state !== declaredAirborne,
+            })));
+    const airGroundMp = movement.kind === 'supported' ? movement.airGroundMp : undefined;
+    const construction = constructionLabels(index);
+    const battleValue = suppliedBattleValue ?? Object.freeze({
+        pristine: safePristineMekBattleValue(entity, ruleset),
+        current: safeCurrentMekBattleValue(query),
+        adjusted: null,
+    });
+    const heatProjection = query.heatProjection();
+    const heat = query.heatState();
+    const lifeSupport = projectMekLifeSupportPilotDamage(
+        entity,
+        index,
+        ruleset,
+        query,
+        Math.max(0, nextHeat(heat)),
+    );
+
+    return Object.freeze({
+        entityUuid: entity.uuid(),
+        ruleset,
+        stateRevision: state.stateRevision,
+        identity: Object.freeze({
+            baseChassis: entity.chassis(),
+            model: entity.model(),
+            ...(entity.clanName().trim() ? { clanName: entity.clanName() } : {}),
+            displayName: entity.displayName(),
+            massTons: entity.tonnage(),
+            year: entity.year(),
+            techBase: entity.techBase(),
+            mixedTech: entity.mixedTech(),
+            form: mekForm(entity),
+            engine: `${entity.mountedEngine().rating} ${entity.mountedEngine().type()}`.trim(),
+            cockpit: entity.cockpitType(),
+            gyro: entity.gyroType(),
+            myomer: entity.myomerType(),
+        }),
+        construction,
+        battleValue,
+        movement: Object.freeze({
+            walkMp: entity.computeWalkMP({ ...STANDARD_MOVEMENT_CALCULATION, ruleset }),
+            runMp: entity.computeRunMP({ ...RUN_WITHOUT_MASC_CALCULATION, ruleset }),
+            jumpMp: entity.umuMP() > 0 ? entity.umuMP() : entity.jumpMP(),
+            secondaryMode: entity.umuMP() > 0 ? 'UMU' : 'jump',
+            motiveType: entity.motiveType(),
+            declared: query.mekMovementMode(),
+            projection: movement,
+            psr: query.mekMovementPsrState(),
+        }),
+        movementSelection: Object.freeze({
+            selectedMode: query.mekMovementPsrState().movement?.mode ?? null,
+            airborne,
+            ...(conversionModes.length === 0 ? {} : {
+                conversion: Object.freeze({ mode: conversionMode, modes: Object.freeze(conversionModes) }),
+            }),
+            options: Object.freeze(movementOptions.flatMap(option => {
+                const mode = option.mode;
+                if (mode === 'VTOL') return [];
+                const action = movement.kind === 'supported'
+                    ? movement.actions.find(action => action.kind === mode) : undefined;
+                // The projection moves in the declared state; the other state is judged on its own MP.
+                const stateMp = airGroundMp?.[option.airborne ? 'airborne' : 'grounded'];
+                const legal = option.airborne === airborne || stateMp === undefined || mode === 'stationary'
+                    ? action?.legal === true
+                    : action !== undefined && action.reasons.every(reason => reason.code === 'NO_MOVEMENT_POINTS')
+                        && (mode === 'run' ? stateMp.runMp : stateMp.walkMp) > 0;
+                return [{ mode, modifier: mekAttackMovementModifier(mode, option.airborne, conversionMode),
+                    legal, minimumMp: action?.minimumMp ?? 0,
+                    ...(option.ownState ? { airborne: option.airborne } : {}) }];
+            })),
+        }),
+        heatSinks: Object.freeze({
+            count: entity.totalHeatSinks(),
+            ...(entity.heatSinkEquipment()?.internalName === undefined
+                ? {}
+                : { equipmentKey: entity.heatSinkEquipment()!.internalName }),
+            unavailableUnits: equipment.reduce((total, component) => {
+                if (!(component.equipment instanceof MiscEquipment)
+                    || !component.equipment.isHeatSink
+                    || component.status === 'available') return total;
+                return total + component.equipment.heatSinkUnitsPerMount;
+            }, 0),
+            riscOverrideKit: entity.hasRiscHeatSinkOverrideKit(),
+        }),
+        heat,
+        endTurnCalculatesHeat,
+        heatProjection,
+        lifeSupport,
+        destroyed: destruction.facts.committed.destroyed,
+        crippled: destruction.facts.preview.crippled,
+        conditions: unitStatus.conditions,
+        locations: Object.freeze(locations),
+        criticalSlots: Object.freeze(criticalSlots),
+        shields: Object.freeze(shields),
+        equipment,
+        weaponOrder: Object.freeze(recordSheetInventoryWeaponMounts(entity).map(mount => String(mount.mountId))),
+        targets,
+        physicalAttacks,
+        crew: Object.freeze(crew),
+    });
+}
+
+function safeCurrentMekBattleValue(query: MekUnitQueryPort): number | null {
+    try {
+        const result = query.mekBattleValue();
+        return result.kind === 'complete' ? result.battleValue : null;
+    } catch {
+        return null;
+    }
+}
+
+function safePristineMekBattleValue(entity: MekEntity, ruleset: CBTRuleset): number | null {
+    try {
+        return entity.battleValue(ruleset);
+    } catch {
+        return null;
+    }
+}
+
+function constructionLabels(index: MekRuntimeIndex): Readonly<{ armor: string; structure: string }> {
+    const locations = [...index.locations.values()];
+    const armor = distinctSorted(locations.map(location => location.armor.armor.name));
+    const structure = distinctSorted(locations.map(location => location.structure.structure.name));
+    return Object.freeze({
+        armor: formatConstruction(armor),
+        structure: formatConstruction(structure),
+    });
+}
+
+function mekForm(entity: MekEntity): MekRecordSheetSnapshot['identity']['form'] {
+    switch (entity.chassisConfig) {
+        case 'Quad': return 'quad';
+        case 'Tripod': return 'tripod';
+        case 'LAM': return 'lam';
+        case 'QuadVee': return 'quadvee';
+        default: return 'biped';
+    }
+}
+
+function distinctSorted(values: readonly (string | undefined)[]): readonly string[] {
+    return Object.freeze([...new Set(values.filter((value): value is string => !!value?.trim()))].sort(compareText));
+}
+
+function formatConstruction(values: readonly string[]): string {
+    if (values.length === 0) return '';
+    return values.length === 1 ? values[0]! : `Mixed: ${values.join(', ')}`;
+}
+
+function compareLocation(
+    left: { readonly code: string; readonly id: LocationId },
+    right: { readonly code: string; readonly id: LocationId },
+): number {
+    return compareText(left.code, right.code) || compareText(left.id, right.id);
+}

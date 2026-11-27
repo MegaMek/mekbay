@@ -11,6 +11,44 @@ import { TagsService } from './tags.service';
 import { PublicTagsService } from './public-tags.service';
 import { UnitSearchIndexService } from './unit-search-index.service';
 import { getUnitTechBaseDisplay } from '../models/tech.model';
+import {
+    type DeferredUnitDescriptor,
+    type PersistedUnitIdentity,
+} from '../models/persisted-unit-state';
+import { isRecord } from '../utils/json-value.util';
+import {
+    asUnitProviderId,
+    asUnitUuid,
+    encodeDesignIdentity,
+    type DesignIdentity,
+    type UnitUuid,
+} from './unit-catalog/unit-catalog.types';
+
+export interface SerializedUnitIdentityReference {
+    readonly unit: string;
+    readonly chassis?: string;
+    readonly model?: string;
+    readonly type?: string;
+    /** Historical V1 identity object. */
+    readonly entityIdentity?: unknown;
+}
+
+export type UnitReferenceResolution =
+    | {
+        readonly kind: 'resolved';
+        readonly unit: UnitSummary;
+        readonly uuid: UnitUuid;
+        readonly usedLegacyNameFallback: boolean;
+    }
+    | {
+        readonly kind: 'deferred';
+        readonly descriptor: DeferredUnitDescriptor;
+    };
+
+export interface PreparedUnitRuntimeCatalog {
+    readonly unitNameMap: ReadonlyMap<string, readonly UnitSummary[]>;
+    readonly unitUuidMap: ReadonlyMap<UnitUuid, UnitSummary>;
+}
 
 @Injectable({
     providedIn: 'root'
@@ -20,54 +58,76 @@ export class UnitRuntimeService {
     private readonly publicTagsService = inject(PublicTagsService);
     private readonly unitSearchIndexService = inject(UnitSearchIndexService);
 
-    private unitsByNameMap = new Map<string, UnitSummary[]>();
-    private unitUuidMap = new Map<string, UnitSummary>();
+    private unitNameMap: ReadonlyMap<string, readonly UnitSummary[]> = new Map();
+    private unitUuidMap: ReadonlyMap<UnitUuid, UnitSummary> = new Map();
 
     private static getUnitNameKey(name: string): string {
         return name.toLowerCase();
     }
 
-    public preprocessUnits(units: UnitSummary[]): void {
-        this.unitsByNameMap.clear();
-        this.unitUuidMap.clear();
+    /** Builds lookup maps and unit-local display fields without changing live lookup state. */
+    public prepareRuntimeCatalog(units: UnitSummary[]): PreparedUnitRuntimeCatalog {
+        const unitNameMap = new Map<string, UnitSummary[]>();
+        const unitUuidMap = new Map<UnitUuid, UnitSummary>();
         for (const unit of units) {
-            // Older cached catalogs and additional servers may still export -1.
-            if (unit.heat === -1) unit.heat = null;
-            if (unit.dissipation === -1) unit.dissipation = null;
             unit._techBaseDisplay = getUnitTechBaseDisplay(unit);
-            const nameKey = UnitRuntimeService.getUnitNameKey(unit.name);
-            const matchingUnits = this.unitsByNameMap.get(nameKey);
-            if (matchingUnits) {
-                matchingUnits.push(unit);
-            } else {
-                this.unitsByNameMap.set(nameKey, [unit]);
+            if (!unit.isCustom) {
+                const nameKey = UnitRuntimeService.getUnitNameKey(unit.name);
+                const nameMatches = unitNameMap.get(nameKey) ?? [];
+                nameMatches.push(unit);
+                unitNameMap.set(nameKey, nameMatches);
             }
-            this.unitUuidMap.set(unit.uuid, unit);
+            unitUuidMap.set(unit.uuid, unit);
         }
-        this.unitSearchIndexService.prepareUnits(units);
+        return Object.freeze({ unitNameMap, unitUuidMap });
     }
 
-    public postprocessUnits(units: UnitSummary[], eras: Era[]): void {
+    /** Final reference-only lookup switch. */
+    public commitPreparedRuntimeCatalog(candidate: PreparedUnitRuntimeCatalog): void {
+        this.unitNameMap = candidate.unitNameMap;
+        this.unitUuidMap = candidate.unitUuidMap;
+    }
+
+    public postprocessUnits(
+        units: UnitSummary[],
+        eras: Era[],
+        options: { readonly loadTags?: boolean } = {},
+    ): void {
         for (const unit of units) {
             unit._era = this.findEraForYear(unit.year, eras);
         }
 
-        void this.loadUnitTags(units);
-    }
-
-    public linkEquipmentToUnits(units: UnitSummary[], equipmentRegistry: EquipmentRegistry): void {
-        for (const unit of units) {
-            if (!unit.comp) {
-                continue;
-            }
-
-            this.linkEquipmentToComponents(unit.comp, equipmentRegistry);
+        if (options.loadTags ?? true) {
+            void this.loadUnitTags(units);
         }
     }
 
-    public async loadUnitTags(units: UnitSummary[]): Promise<void> {
+    /** Links one detached mechanics/display unit; catalog summary arrays stay untouched. */
+    public linkEquipmentToUnit(unit: UnitSummary, equipmentRegistry: EquipmentRegistry): void {
+        if (unit.comp) this.linkEquipmentToComponents(unit.comp, equipmentRegistry);
+    }
+
+    public async loadUnitTags(
+        units: UnitSummary[],
+        options: { readonly rebuildTagSearchIndex?: boolean } = {},
+    ): Promise<TagData | null> {
         const tagData = await this.tagsService.migrateTagKeys(units);
-        this.applyTagDataToUnits(units, tagData);
+        // This cleanup can change the in-memory tag document before persisting
+        // it. Await it so callers using tag hydration as a catalog-settlement
+        // boundary never publish or acknowledge an index built from the
+        // pre-cleanup view.
+        await this.tagsService.fixNameTagsCoveredByChassis(units, tagData);
+        this.assignTagDataToUnits(units, tagData, options);
+        return tagData;
+    }
+
+    /** Applies an already hydrated tag snapshot without starting async migration work. */
+    public applyPreparedTagDataToUnits(
+        units: UnitSummary[],
+        tagData: TagData | null,
+        options: { readonly rebuildTagSearchIndex?: boolean } = {},
+    ): void {
+        this.assignTagDataToUnits(units, tagData, options);
     }
 
     public applyTagDataToUnits(
@@ -80,23 +140,36 @@ export class UnitRuntimeService {
         }
 
         void this.tagsService.fixNameTagsCoveredByChassis(units, tagData);
-        const tags = tagData?.tags || {};
+        this.assignTagDataToUnits(units, tagData, options);
+    }
+
+    private assignTagDataToUnits(
+        units: UnitSummary[],
+        tagData: TagData | null,
+        options?: { readonly rebuildTagSearchIndex?: boolean },
+    ): void {
+        const tags = Object.values(tagData?.tags || {});
+        const nameTags = new Map<string, UnitTagEntry[]>();
+        const chassisTags = new Map<string, UnitTagEntry[]>();
+        // Build reverse lookups once. The previous units × tags scan dominated
+        // activation for large personal tag collections.
+        for (const entry of tags) {
+            for (const [unitKey, value] of Object.entries(entry.units)) {
+                const values = nameTags.get(unitKey) ?? [];
+                values.push({ tag: entry.label, quantity: this.getTagQuantity(value) });
+                nameTags.set(unitKey, values);
+            }
+            for (const [chassisKey, value] of Object.entries(entry.chassis)) {
+                const values = chassisTags.get(chassisKey) ?? [];
+                values.push({ tag: entry.label, quantity: this.getTagQuantity(value) });
+                chassisTags.set(chassisKey, values);
+            }
+        }
 
         for (const unit of units) {
-            const unitKey = TagsService.getUnitTagKey(unit);
             const chassisKey = TagsService.getChassisTagKey(unit);
-            unit._nameTags = Object.values(tags)
-                .filter(entry => entry.units[unitKey] !== undefined)
-                .map(entry => ({
-                    tag: entry.label,
-                    quantity: this.getTagQuantity(entry.units[unitKey])
-                } as UnitTagEntry));
-            unit._chassisTags = Object.values(tags)
-                .filter(entry => entry.chassis[chassisKey] !== undefined)
-                .map(entry => ({
-                    tag: entry.label,
-                    quantity: this.getTagQuantity(entry.chassis[chassisKey])
-                } as UnitTagEntry));
+            unit._nameTags = nameTags.get(TagsService.getUnitTagKey(unit)) ?? [];
+            unit._chassisTags = chassisTags.get(chassisKey) ?? [];
         }
 
         if (options?.rebuildTagSearchIndex ?? true) {
@@ -109,24 +182,168 @@ export class UnitRuntimeService {
         return quantity && quantity > 0 ? quantity : 1;
     }
 
-    public applyPublicTagsToUnits(units: UnitSummary[]): void {
+    public applyPublicTagsToUnits(
+        units: UnitSummary[],
+        options: { readonly rebuildTagSearchIndex?: boolean } = {},
+    ): void {
         for (const unit of units) {
             unit._publicTags = this.publicTagsService.getPublicTagsForUnit(unit);
         }
 
-        this.unitSearchIndexService.rebuildTagSearchIndex(units);
+        if (options.rebuildTagSearchIndex ?? true) {
+            this.unitSearchIndexService.rebuildTagSearchIndex(units);
+        }
     }
 
-    public getUnitByName(name: string): UnitSummary | undefined {
-        return this.getUnitsByName(name).at(-1);
+    /** UUIDs identify any unit; names identify only a unique non-custom catalog unit. */
+    public getUnitByIdentifier(identifier: string): UnitSummary | undefined {
+        const unit = this.unitUuidMap.get(identifier.toLowerCase() as UnitUuid);
+        if (unit) return unit;
+        const matches = this.getUnitsByName(identifier);
+        return matches.length === 1 ? matches[0] : undefined;
     }
 
     public getUnitsByName(name: string): readonly UnitSummary[] {
-        return this.unitsByNameMap.get(UnitRuntimeService.getUnitNameKey(name)) ?? [];
+        return this.unitNameMap.get(UnitRuntimeService.getUnitNameKey(name)) ?? [];
     }
 
-    public getUnitByUuid(uuid: string): UnitSummary | undefined {
+    public getUnitByUuid(uuid: UnitUuid): UnitSummary | undefined {
         return this.unitUuidMap.get(uuid);
+    }
+
+    public resolveUnitReference(
+        reference: SerializedUnitIdentityReference,
+        catalogReady = true,
+    ): UnitReferenceResolution {
+        let savedUuid: UnitUuid | undefined;
+        if (reference.entityIdentity !== undefined) {
+            try {
+                if (!isRecord(reference.entityIdentity)) throw new Error('invalid V1 entity identity');
+                savedUuid = asUnitUuid(String(reference.entityIdentity['uuid'] ?? ''));
+            } catch {
+                return {
+                    kind: 'deferred',
+                    descriptor: this.makeDeferredDescriptor(reference, [], catalogReady ? 'not-found' : 'catalog-not-ready'),
+                };
+            }
+        }
+
+        if (savedUuid) {
+            const unit = this.unitUuidMap.get(savedUuid);
+            if (unit !== undefined) {
+                return {
+                    kind: 'resolved',
+                    unit,
+                    uuid: savedUuid,
+                    usedLegacyNameFallback: false,
+                };
+            }
+            return {
+                kind: 'deferred',
+                descriptor: this.makeDeferredDescriptor(
+                    reference,
+                    [],
+                    catalogReady ? 'not-found' : 'catalog-not-ready',
+                    savedUuid,
+                ),
+            };
+        }
+
+        const uuidMatch = this.unitUuidMap.get(reference.unit.toLowerCase() as UnitUuid);
+        if (uuidMatch) {
+            return {
+                kind: 'resolved',
+                unit: uuidMatch,
+                uuid: uuidMatch.uuid,
+                usedLegacyNameFallback: false,
+            };
+        }
+        const nameMatches = this.getUnitsByName(reference.unit);
+        if (nameMatches.length === 1) {
+            const unit = nameMatches[0];
+            return {
+                kind: 'resolved',
+                unit,
+                uuid: unit.uuid,
+                usedLegacyNameFallback: true,
+            };
+        }
+        return {
+            kind: 'deferred',
+            descriptor: this.makeDeferredDescriptor(
+                reference,
+                this.designCandidates(nameMatches),
+                nameMatches.length > 1 ? 'ambiguous' : catalogReady ? 'not-found' : 'catalog-not-ready',
+            ),
+        };
+    }
+
+    public resolvePersistedUnitIdentity(
+        reference: SerializedUnitIdentityReference,
+        catalogReady = true,
+    ): PersistedUnitIdentity {
+        const resolution = this.resolveUnitReference(reference, catalogReady);
+        if (resolution.kind === 'resolved') {
+            return { kind: 'resolved', uuid: resolution.uuid };
+        }
+        if (resolution.kind === 'deferred') {
+            return {
+                kind: 'unresolved',
+                rawLegacyName: resolution.descriptor.rawLegacyName,
+                rawChassis: resolution.descriptor.rawChassis,
+                rawModel: resolution.descriptor.rawModel,
+                rawEntityType: resolution.descriptor.rawEntityType,
+                candidates: resolution.descriptor.candidates,
+                reason: resolution.descriptor.reason,
+            };
+        }
+        return {
+            kind: 'unresolved',
+            rawLegacyName: reference.unit,
+            rawChassis: reference.chassis,
+            rawModel: reference.model,
+            rawEntityType: reference.type,
+            candidates: [],
+            reason: catalogReady ? 'not-found' : 'catalog-not-ready',
+        };
+    }
+
+    private designCandidates(units: readonly UnitSummary[]): DesignIdentity[] {
+        const identities = new Map<string, DesignIdentity>();
+        for (const unit of units) {
+            const identity = this.getCatalogIdentity(unit);
+            if (!identity) continue;
+            identities.set(encodeDesignIdentity(identity), identity);
+        }
+        return Array.from(identities.values());
+    }
+
+    private getCatalogIdentity(unit: UnitSummary): DesignIdentity | undefined {
+        try {
+            return {
+                provider: asUnitProviderId(unit.provider),
+                uuid: asUnitUuid(unit.uuid),
+            };
+        } catch {
+            return undefined;
+        }
+    }
+
+    private makeDeferredDescriptor(
+        reference: SerializedUnitIdentityReference,
+        candidates: readonly DesignIdentity[],
+        reason: DeferredUnitDescriptor['reason'],
+        requestedUuid?: UnitUuid,
+    ): DeferredUnitDescriptor {
+        return {
+            rawLegacyName: reference.unit,
+            rawChassis: reference.chassis,
+            rawModel: reference.model,
+            rawEntityType: reference.type,
+            requestedUuid,
+            candidates,
+            reason,
+        };
     }
 
     private findEraForYear(year: number, eras: Era[]): Era | undefined {

@@ -68,7 +68,6 @@ export const COMSTAR_LEVEL_II: OrgComposedCountRule = {
     commandRank: 'Adept',
     tier: 1,
     childRoles: [{ matches: ['Level I'] }],
-    childBucketBy: 'promotionBasic',
 };
 
 export const COMSTAR_CHOIR: OrgLeafPatternRule = {
@@ -114,7 +113,6 @@ export const COMSTAR_LEVEL_III: OrgComposedCountRule = {
     commandRank: 'Adept (Demi-Precentor)',
     tier: 2,
     childRoles: [{ matches: ['Level II'] }],
-    childBucketBy: 'promotionBasic',
 };
 
 export const COMSTAR_LEVEL_IV: OrgComposedCountRule = {
@@ -124,7 +122,6 @@ export const COMSTAR_LEVEL_IV: OrgComposedCountRule = {
     commandRank: 'Precentor',
     tier: 3,
     childRoles: [{ matches: ['Level III'] }],
-    childBucketBy: 'promotionBasic',
 };
 
 export const COMSTAR_LEVEL_V: OrgComposedCountRule = {
@@ -134,7 +131,6 @@ export const COMSTAR_LEVEL_V: OrgComposedCountRule = {
     commandRank: 'Precentor',
     tier: 4,
     childRoles: [{ matches: ['Level IV'] }],
-    childBucketBy: 'promotionBasic',
 };
 
 export const COMSTAR_LEVEL_VI: OrgComposedCountRule = {
@@ -145,7 +141,6 @@ export const COMSTAR_LEVEL_VI: OrgComposedCountRule = {
     tier: 5,
     dynamicTier: 1,
     childRoles: [{ matches: ['Level V'] }],
-    childBucketBy: 'promotionBasic',
 };
 
 export const COMSTAR_CORE_ORG: OrgDefinition = {
@@ -160,8 +155,4 @@ export const COMSTAR_CORE_ORG: OrgDefinition = {
         COMSTAR_LEVEL_VI,
     ],
     registry: DEFAULT_ORG_RULE_REGISTRY,
-    distanceFactor: 0.2,
-    minDistance: 2,
-    groupDistanceFactor: 0.25,
-    groupMinDistance: 1,
 };

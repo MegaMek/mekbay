@@ -9,11 +9,11 @@
 // signals. Keeps parser validation separate from entity domain types.
 // ============================================================================
 
+/** TM p. 127: an ICE burns petrochemicals unless it is built for alcohol or natural gas. */
+export const ICE_FUEL_TYPES = ['PETROCHEMICALS', 'ALCOHOL', 'NATURAL_GAS'] as const;
+
 /** Valid fuel types for vehicles */
-export const VALID_FUEL_TYPES = new Set([
-  'PETROCHEMICALS', 'ALCOHOL', 'NATURAL_GAS', 'COAL', 'WOOD',
-  'METHANE', 'KEROSENE', 'DIESEL', 'GASOLINE',
-]);
+export const VALID_FUEL_TYPES = new Set<string>(ICE_FUEL_TYPES);
 
 /** Canonical system manufacturer/model keys (from MegaMek's System enum) */
 export type SystemManufacturerKey = 'CHASSIS' | 'ENGINE' | 'ARMOR' | 'JUMP_JET' | 'COMMUNICATIONS' | 'TARGETING';
@@ -45,18 +45,25 @@ export function normalizeSystemManufacturerKey(raw: string): SystemManufacturerK
   return SYSTEM_MANUFACTURER_KEY_ALIASES[raw];
 }
 
-/** Valid BLK tech-level strings in the `type` block */
+/**
+ * BLK `type` values accepted by MegaMek's BLKFile.setTechLevel().
+ *
+ * Mixed-tech values use named rules-level suffixes rather than the numeric
+ * `Level N` form used by IS and Clan values.
+ */
 export const VALID_TECH_BASE_STRINGS = new Set([
+  'IS',
   'IS Level 1', 'IS Level 2', 'IS Level 3', 'IS Level 4', 'IS Level 5',
-  'Clan Level 1', 'Clan Level 2', 'Clan Level 3', 'Clan Level 4', 'Clan Level 5',
-  'Mixed (IS Chassis) Level 1', 'Mixed (IS Chassis) Level 2', 'Mixed (IS Chassis) Level 3',
-  'Mixed (IS Chassis) Level 4', 'Mixed (IS Chassis) Level 5',
-  'Mixed (Clan Chassis) Level 1', 'Mixed (Clan Chassis) Level 2', 'Mixed (Clan Chassis) Level 3',
-  'Mixed (Clan Chassis) Level 4', 'Mixed (Clan Chassis) Level 5',
-  'IS Level 2 (Unofficial)', 'IS Level 3 (Unofficial)',
-  'Clan Level 2 (Unofficial)', 'Clan Level 3 (Unofficial)',
-  'Mixed (IS Chassis) Level 2 (Unofficial)', 'Mixed (IS Chassis) Level 3 (Unofficial)',
-  'Mixed (Clan Chassis) Level 2 (Unofficial)', 'Mixed (Clan Chassis) Level 3 (Unofficial)',
+  'Clan',
+  'Clan Level 2', 'Clan Level 3', 'Clan Level 4', 'Clan Level 5',
+  'Mixed (IS Chassis)',
+  'Mixed (IS Chassis) Advanced',
+  'Mixed (IS Chassis) Experimental',
+  'Mixed (IS Chassis) Unofficial',
+  'Mixed (Clan Chassis)',
+  'Mixed (Clan Chassis) Advanced',
+  'Mixed (Clan Chassis) Experimental',
+  'Mixed (Clan Chassis) Unofficial',
 ]);
 
 /** Valid BA weight classes */

@@ -1,0 +1,22 @@
+:host { --as-red: #7b0000; --as-red-bright: #cd0000; }
+.frame { fill: #E3ECED; stroke: #221F20; opacity: .7; stroke-width: 3.36; }
+:host(.monochrome) .frame { fill: #fff; }
+text { font-family: Roboto, sans-serif; fill: #000; }
+.caption { font-size:33.6px; font-weight:500; }
+.value { font-size:33.6px; font-weight:900; fill:var(--as-red); }
+.clickable, .special, .pilot-ability { cursor:pointer; }
+.clickable:hover, .special:hover { text-decoration:underline; }
+.special.exhausted { fill:var(--as-red-bright); text-decoration:line-through; }
+.era-icon.unavailable { opacity:.3; }
+:host(.monochrome) .era-icon { filter:saturate(0) invert(1) brightness(1.25); }
+:host:not(.monochrome) .fluff-image { filter:saturate(0) invert(1) brightness(1.25); mix-blend-mode:lighten; }
+.pilot-ability { font-size:28px; font-weight:700; fill:#fff; stroke:#000; stroke-width:8.4px; paint-order:stroke fill; }
+:host(.monochrome) .pilot-ability { fill:#000; stroke:#fff; }
+.pilot-ability:hover { fill:#cdb0ff; }
+.damage-track { cursor:pointer; }
+.damage-value { font-size:53.76px; font-weight:900; fill:var(--as-red-bright); }
+.pending-value { font-size:44.8px; font-weight:900; }
+.pending-damage .pending-value { fill:var(--damage-color); }
+.pending-heal .pending-value { fill:#03a9f4; }
+.screen-only { pointer-events:none; }
+@media print { .screen-only { display:none; } }

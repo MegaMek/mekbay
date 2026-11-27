@@ -9,11 +9,15 @@ import {
     type PvNormalizationSettings,
     type UnitSearchNumericRange,
 } from '../models/unit-search-result.model';
-import type { UnitSummary } from '../models/unit-summary.model';
 import { adjustPointValueForSkill } from './pv-skill-adjustment.util';
 import { isValidNormalizationSkillRange, isWithinNumericRange } from './unit-search-normalization-range.util';
 
 type PvNormalizationMatch = Extract<UnitSearchNormalizationMatch, { kind: 'pv' }>;
+type PvNormalizationUnit = {
+    readonly as?: {
+        readonly PV?: number | null;
+    } | null;
+};
 
 export function isValidTargetPvRange(range: UnitSearchNumericRange): boolean {
     return Number.isInteger(range.min)
@@ -34,11 +38,12 @@ export function isValidPvNormalizationSettings(settings: PvNormalizationSettings
  * preserved.
  */
 export function findPvNormalizationMatch(
-    unit: UnitSummary,
+    unit: PvNormalizationUnit,
     settings: PvNormalizationSettings,
 ): PvNormalizationMatch | null {
     const basePv = unit.as?.PV;
     if (!isValidPvNormalizationSettings(settings)
+        || typeof basePv !== 'number'
         || !Number.isInteger(basePv)
         || basePv <= 0) {
         return null;

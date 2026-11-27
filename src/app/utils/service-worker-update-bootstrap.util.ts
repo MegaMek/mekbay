@@ -2,8 +2,6 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 // Author: Drake
 
-const SW_UPDATE_RELOAD_HASH_STORAGE_KEY = 'mekbay:sw-update-reload-hash';
-
 const DEFAULT_LOGO_URL = '/images/logo.png';
 const UPDATE_CHECK_TIMEOUT_MS = 5000;
 const UPDATE_INSTALL_TIMEOUT_MS = 90000;
@@ -176,8 +174,6 @@ export async function runServiceWorkerUpdateBootstrap(options: BootstrapUpdateOp
     const showCheckingTimeoutId = window.setTimeout(() => {
         screen.show('Checking for updates...', 12, true);
     }, CHECKING_SCREEN_DELAY_MS);
-    let latestHash: string | null = null;
-
     const messageHandler = (event: MessageEvent<NgswMessage>) => {
         const data = event.data;
         switch (data?.type) {
@@ -186,7 +182,6 @@ export async function runServiceWorkerUpdateBootstrap(options: BootstrapUpdateOp
                 screen.show('Installing update...', 38, true);
                 break;
             case 'VERSION_READY':
-                latestHash = getLatestServiceWorkerHash(data);
                 window.clearTimeout(showCheckingTimeoutId);
                 screen.show('Preparing restart...', 82);
                 break;
@@ -208,8 +203,6 @@ export async function runServiceWorkerUpdateBootstrap(options: BootstrapUpdateOp
 
         window.clearTimeout(showCheckingTimeoutId);
         screen.show('Activating update...', 90);
-        recordUpdateReloadHash(latestHash);
-
         const activated = await postServiceWorkerOperation(serviceWorker, controller, 'ACTIVATE_UPDATE', UPDATE_ACTIVATE_TIMEOUT_MS);
         if (activated) {
             screen.update('Restarting...', 100);
@@ -243,7 +236,6 @@ async function runFakeServiceWorkerUpdateBootstrap(options: BootstrapUpdateOptio
         screen.show('Preparing restart...', 82);
         await delay(DEBUG_FAKE_BOOTSTRAP_UPDATE_STEP_MS);
         screen.show('Activating update...', 90);
-        recordUpdateReloadHash('debug-fake-bootstrap-update');
         await delay(DEBUG_FAKE_BOOTSTRAP_UPDATE_STEP_MS);
         screen.update('Restarting...', 100);
         await delay(DEBUG_FAKE_BOOTSTRAP_UPDATE_STEP_MS);
@@ -274,40 +266,6 @@ function setSessionFlag(key: string): void {
 
 function delay(ms: number): Promise<void> {
     return new Promise((resolve) => window.setTimeout(resolve, ms));
-}
-
-export function getLatestServiceWorkerHash(event: { latestVersion?: { hash?: string } }): string | null {
-    const hash = event.latestVersion?.hash?.trim();
-    return hash ? hash : null;
-}
-
-export function getRecordedUpdateReloadHash(): string | null {
-    try {
-        const hash = localStorage.getItem(SW_UPDATE_RELOAD_HASH_STORAGE_KEY)?.trim();
-        return hash ? hash : null;
-    } catch {
-        return null;
-    }
-}
-
-export function recordUpdateReloadHash(hash: string | null): void {
-    if (!hash) {
-        return;
-    }
-
-    try {
-        localStorage.setItem(SW_UPDATE_RELOAD_HASH_STORAGE_KEY, hash);
-    } catch {
-        // Best effort only; startup must continue even if storage is unavailable.
-    }
-}
-
-export function clearRecordedUpdateReloadHash(): void {
-    try {
-        localStorage.removeItem(SW_UPDATE_RELOAD_HASH_STORAGE_KEY);
-    } catch {
-        // Best effort only; startup must continue even if storage is unavailable.
-    }
 }
 
 function isAngularServiceWorker(worker: ServiceWorker): boolean {

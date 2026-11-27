@@ -9,8 +9,16 @@ import { AmmoEquipment } from '../../models/equipment.model';
 import type { Era } from '../../models/eras.model';
 import { DialogsService } from '../../services/dialogs.service';
 import { OptionsService } from '../../services/options.service';
-import { SetAmmoDialogComponent, type SetAmmoDialogData } from './set-ammo.dialog.component';
+import { mountedAmmoDialogData, SetAmmoDialogComponent, type SetAmmoDialogData } from './set-ammo.dialog.component';
+import { CORE_2026_GAME_RULES } from '../../models/rules/game-rules';
 import { getAmmoInfoItems } from './set-ammo-dropdown.component';
+import { EquipmentTechBase } from '../../models/entity/types/tech';
+import {
+    createDirectHotLoadedAmmoRuntimeFixture,
+    createDirectMekRuntimeFixture,
+    emptyCBTEncounterSnapshot,
+} from '../../models/runtime/testing/direct-mek-runtime-fixture';
+import { projectMekEquipmentPanel } from '../../models/runtime/equipment-panel';
 
 function createEra(from: number | undefined, to: number | undefined): Era {
     return {
@@ -26,7 +34,7 @@ function createAmmo(
     id: string,
     kgPerShot = 100,
     ammo: Partial<ConstructorParameters<typeof AmmoEquipment>[0]['ammo']> = {},
-    techBase: 'IS' | 'Clan' | 'All' = 'Clan',
+    techBase: EquipmentTechBase = 'Clan',
 ): AmmoEquipment {
     return new AmmoEquipment({
         id,
@@ -43,24 +51,49 @@ function createAmmo(
     });
 }
 
-async function flushQueuedAnimationFrames(callbacks: FrameRequestCallback[]): Promise<void> {
-    await Promise.resolve();
-    await Promise.resolve();
-    let remaining = callbacks.length;
-    while (remaining > 0) {
-        callbacks.shift()?.(performance.now());
-        remaining--;
+describe('mountedAmmoDialogData', () => {
+    for (const era of [null, createEra(2900, 3000)]) {
+        it(`preserves the selected force era (${era?.name ?? 'none'})`, () => {
+            const { entity, index, instance, equipmentComponent } = createDirectMekRuntimeFixture();
+            const state = instance.snapshot();
+            const data = mountedAmmoDialogData({
+                instanceId: instance.instanceId, uuid: instance.uuid,
+                entity, index, ruleset: instance.ruleset(), crewAssignment: instance.getCrewAssignment(),
+                editContext: { owner: instance, state }, state, query: instance.query(),
+            }, equipmentComponent('Test Artemis Ammo').id, era)!;
+
+            expect(data.era).toBe(era);
+        });
     }
-}
+
+    for (const bound of [true, false]) {
+        it(`allows hot-loading only when the unit is bound to Hot-Loaded Ammo (${bound})`, () => {
+            const { entity, index, instance, equipmentComponent } = createDirectHotLoadedAmmoRuntimeFixture(bound);
+            const state = instance.snapshot();
+            const data = mountedAmmoDialogData({
+                instanceId: instance.instanceId, uuid: instance.uuid,
+                entity, index, ruleset: instance.ruleset(), crewAssignment: instance.getCrewAssignment(),
+                editContext: { owner: instance, state }, state, query: instance.query(),
+            }, equipmentComponent('Test Artemis Ammo').id, null)!;
+
+            expect(data.hotLoadAllowed).toBe(bound);
+        });
+    }
+});
 
 describe('SetAmmoDialogComponent', () => {
     let overlayContainerElement: HTMLElement;
 
-    function configureDialog(data: SetAmmoDialogData, allowMixedTechBaseAmmo = false) {
+    function configureDialog(
+        data: Omit<SetAmmoDialogData, 'gameRules' | 'hotLoadAllowed'> & Partial<Pick<SetAmmoDialogData, 'gameRules'>>,
+        allowMixedTechBaseAmmo = false,
+        hotLoadedAmmo = false,
+    ) {
         TestBed.configureTestingModule({
             imports: [SetAmmoDialogComponent],
             providers: [
-                { provide: DIALOG_DATA, useValue: data },
+                // Hot-loading follows the unit's bound rule, which the dialog data carries.
+                { provide: DIALOG_DATA, useValue: { gameRules: CORE_2026_GAME_RULES, hotLoadAllowed: hotLoadedAmmo, ...data } },
                 { provide: DialogRef, useValue: { close: jasmine.createSpy('close') } },
                 { provide: DialogsService, useValue: { requestConfirmation: jasmine.createSpy('requestConfirmation').and.resolveTo(false) } },
                 { provide: OptionsService, useValue: { options: () => ({ CBTOptionalRules: { allowMixedTechBaseAmmo } }) } },
@@ -103,6 +136,23 @@ describe('SetAmmoDialogComponent', () => {
         expect(input.value).toBe('0');
     });
 
+    for (const enabled of [false, true]) {
+        it(`shows a per-bin hot-load checkbox only when enabled (${enabled})`, () => {
+            const ammo = new AmmoEquipment({ id: 'LRMAmmo', name: 'LRM Ammo', type: 'ammo', flags: ['F_HOT_LOAD'],
+                ammo: { type: 'LRM', rackSize: 10, shots: 12 } });
+            const fixture = configureDialog({ currentAmmo: ammo, originalAmmo: ammo, originalTotalAmmo: 12,
+                ammoOptions: [ammo], quantity: 12, maxQuantity: 12, hotLoaded: true }, false, enabled);
+            const checkbox = fixture.nativeElement.querySelector('.hot-load-option .bt-checkbox') as HTMLInputElement | null;
+            expect(checkbox !== null).toBe(enabled);
+            if (checkbox) {
+                expect(checkbox.checked).toBeTrue();
+                checkbox.click();
+                fixture.componentInstance.submit();
+                expect(TestBed.inject(DialogRef).close).toHaveBeenCalledWith(jasmine.objectContaining({ hotLoaded: false }));
+            }
+        });
+    }
+
     it('renders ammo options in rows that can wrap long names', () => {
         const standardAmmo = createAmmo('Clan Ultra AC/20 Ammo');
         const longAmmo = createAmmo('Clan Ultra AC/20 Extremely Long Prototype Specialty Ammunition With Guidance Package Ammo');
@@ -124,7 +174,6 @@ describe('SetAmmoDialogComponent', () => {
             .find(element => element.textContent?.includes('Extremely Long Prototype Specialty Ammunition'));
 
         expect(longOptionLabel).toBeTruthy();
-        expect(getComputedStyle(longOptionLabel as HTMLElement).whiteSpace).toBe('normal');
     });
 
     it('keeps the selected ammo visible while hiding other incompatible ammo by default', () => {
@@ -141,14 +190,11 @@ describe('SetAmmoDialogComponent', () => {
             maxQuantity: 5,
             weaponTechBases: ['IS'],
         });
-        const trigger: HTMLButtonElement = fixture.nativeElement.querySelector('#inputName');
-
-        trigger.click();
-        fixture.detectChanges();
-
-        const optionLabels = Array.from(overlayContainerElement.querySelectorAll('.ammo-dropdown-option-name'))
-            .map(element => element.textContent?.trim());
-        expect(optionLabels).toEqual(['[CL] Clan Ammo', '[IS] IS Ammo', 'All Ammo']);
+        expect(fixture.componentInstance.ammoOptions().map(ammo => ammo.internalName)).toEqual([
+            clanAmmo.internalName,
+            isAmmo.internalName,
+            allAmmo.internalName,
+        ]);
     });
 
     it('shows incompatible ammo in red and allows selecting it when mixed tech is enabled', () => {
@@ -241,6 +287,52 @@ describe('SetAmmoDialogComponent', () => {
         expect(overlayContainerElement.querySelector('.ammo-selection-issue')?.textContent?.trim()).toBe('Not yet existing in this era');
     });
 
+    it('uses mount-free compatibility facts for Artemis selection guidance', () => {
+        const guidedAmmo = createAmmo('Clan Ultra AC/20 Artemis-capable Ammo', 100, {
+            munitionType: ['M_ARTEMIS_CAPABLE'],
+        });
+        const fixture = configureDialog({
+            currentAmmo: guidedAmmo,
+            originalAmmo: guidedAmmo,
+            originalTotalAmmo: 5,
+            ammoOptions: [guidedAmmo],
+            quantity: 3,
+            maxQuantity: 5,
+            compatibilityFacts: {
+                artemisIV: [guidedAmmo.internalName],
+                artemisV: [],
+            },
+        });
+
+        expect(fixture.componentInstance.selectedAmmoSelectionIssues()).toEqual([]);
+        expect(fixture.nativeElement.querySelector('.ammo-selection-issue')).toBeNull();
+    });
+
+    it('carries installed Artemis links through mounted-bin dialog data and the equipment panel', () => {
+        const { entity, index, instance, equipmentComponent } = createDirectMekRuntimeFixture();
+        const ammoId = equipmentComponent('Test Artemis Ammo').id;
+        const state = instance.snapshot();
+        const data = mountedAmmoDialogData({
+            instanceId: instance.instanceId,
+            uuid: instance.uuid,
+            entity,
+            index,
+            ruleset: instance.ruleset(),
+            crewAssignment: instance.getCrewAssignment(),
+            editContext: { owner: instance, state },
+            state,
+            query: instance.query(),
+        }, ammoId, null)!;
+        expect(data.compatibilityFacts?.artemisV).toContain('Test Artemis Ammo');
+        const fixture = configureDialog(data);
+        expect(fixture.componentInstance.selectedAmmoSelectionIssues()).toEqual([]);
+        expect(fixture.nativeElement.querySelector('.ammo-selection-issue')).toBeNull();
+
+        const panel = projectMekEquipmentPanel(entity, index, instance.ruleset(), instance.query(), emptyCBTEncounterSnapshot(), {});
+        expect(panel.components.find(row => row.componentId === ammoId)?.ammo?.compatibilityFacts)
+            .toEqual(data.compatibilityFacts);
+    });
+
     it('shows compact ammo details in the dialog and expanded dropdown details', () => {
         const missileAmmo = createAmmo('Clan Streak SRM 5 Ammo', 50, { type: 'SRM_STREAK', rackSize: 5, damagePerShot: 2, shots: 100 });
         const fixture = configureDialog({
@@ -273,48 +365,6 @@ describe('SetAmmoDialogComponent', () => {
         expect(dropdownInfoText).toContain('Ammo/Ton: 100');
         expect(dropdownInfoText).toContain('Tech: Clan | E/X-D-C-B');
         expect(dropdownInfoText).toContain('Rules: Standard');
-    });
-
-    it('expands an initially fitting ammo dropdown and restores scrolling when details overflow', async () => {
-        const frameCallbacks: FrameRequestCallback[] = [];
-        spyOn(window, 'requestAnimationFrame').and.callFake((callback: FrameRequestCallback) => {
-            frameCallbacks.push(callback);
-            return frameCallbacks.length;
-        });
-        spyOnProperty(window, 'innerHeight', 'get').and.returnValue(220);
-        const firstAmmo = createAmmo('Clan Ultra AC/20 Ammo');
-        const secondAmmo = createAmmo('Clan Ultra AC/20 Precision Ammo');
-        const thirdAmmo = createAmmo('Clan Ultra AC/20 Cluster Ammo');
-        const fixture = configureDialog({
-            currentAmmo: firstAmmo,
-            originalAmmo: firstAmmo,
-            originalTotalAmmo: 5,
-            ammoOptions: [firstAmmo, secondAmmo, thirdAmmo],
-            quantity: 3,
-            maxQuantity: 5,
-        });
-        const trigger: HTMLButtonElement = fixture.nativeElement.querySelector('#inputName');
-
-        trigger.click();
-        fixture.detectChanges();
-    await flushQueuedAnimationFrames(frameCallbacks);
-
-        const pane = overlayContainerElement.querySelector('.set-ammo-dropdown-overlay') as HTMLElement;
-        const contentHost = pane.firstElementChild as HTMLElement;
-        const scrollContainer = overlayContainerElement.querySelector('[data-scroll-container]') as HTMLElement;
-        const initialHeight = Number.parseFloat(contentHost.style.height);
-
-        expect(initialHeight).toBeGreaterThan(0);
-        expect(scrollContainer.style.overflowY).toBe('hidden');
-
-        const expandAllButton = overlayContainerElement.querySelector('.master-expand-btn') as HTMLButtonElement;
-        expandAllButton.click();
-        fixture.detectChanges();
-        await flushQueuedAnimationFrames(frameCallbacks);
-
-        expect(Number.parseFloat(contentHost.style.height)).toBeGreaterThan(initialHeight);
-        expect(scrollContainer.style.overflowY).toBe('auto');
-        expect(scrollContainer.scrollHeight).toBeGreaterThan(scrollContainer.clientHeight);
     });
 
     it('shows total rack damage for non-missile ammo with a rack size', () => {

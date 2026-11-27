@@ -4,7 +4,12 @@
 
 import { EMPTY_EQUIPMENT_REGISTRY } from '../../equipment-lookup';
 import { ParseContext } from './parse-context';
-import { parseTransporterLines, serializeTransporterLines } from './transporter-codec';
+import {
+  MAX_NATIVE_TRANSPORTER_LINES,
+  parseTransporterLines,
+  serializeTransporterLines,
+  TransporterSourceLimitError,
+} from './transporter-codec';
 import type { EntityTechBase } from '../types';
 import { projectRecordSheetBays } from '../bays/record-sheet-bay-projection';
 
@@ -13,6 +18,12 @@ function parse(lines: string[], techBase: EntityTechBase = 'IS') {
 }
 
 describe('transporter codec', () => {
+  it('fails before attempting unbounded native bay-number allocation', () => {
+    const lines = Array.from({ length: MAX_NATIVE_TRANSPORTER_LINES + 1 }, () => 'dockingcollar');
+
+    expect(() => parse(lines)).toThrowError(TransporterSourceLimitError);
+  });
+
   it('normalizes BLK aliases and specialized bay configuration', () => {
     expect(parse([
       'mechbay:2:1:4',
@@ -57,6 +68,16 @@ describe('transporter codec', () => {
     ], 'IS', context);
     expect(transporters.map(transporter => transporter.kind === 'bay' ? transporter.bayNumber : transporter.kind === 'docking-collar' ? transporter.collarNumber : undefined)).toEqual([2, 1, 3]);
     expect(context.warnings.length).toBe(1);
+  });
+
+  it('rejects non-decimal and junk-suffix capacities', () => {
+    const context = new ParseContext('test.blk', EMPTY_EQUIPMENT_REGISTRY);
+
+    expect(parseTransporterLines([
+      'cargobay:0x10:1:1',
+      'cargobay:12tons:1:2',
+    ], 'IS', context)).toEqual([]);
+    expect(context.warnings).toHaveSize(2);
   });
 
   it('round trips canonical construction data through BLK lines', () => {

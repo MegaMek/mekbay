@@ -10,7 +10,6 @@ import { DialogRef } from '@angular/cdk/dialog';
 @Component({
     selector: 'data-export-license-dialog',
     changeDetection: ChangeDetectionStrategy.OnPush,
-    imports: [],
     host: {
         class: 'fullscreen-dialog-host glass'
     },

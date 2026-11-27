@@ -3,10 +3,13 @@
 // Author: Drake
 
 import { Injectable, signal, inject, computed, effect, untracked } from '@angular/core';
+import { toSignal } from '@angular/core/rxjs-interop';
+import { NavigationEnd, Router } from '@angular/router';
+import { filter, map } from 'rxjs';
 import { OptionsService } from './options.service';
-import { ForceBuilderService } from './force-builder.service';
+import { ForceWorkspaceStateService } from './force-workspace-state.service';
 import { GameSystem } from '../models/common.model';
-import { UrlService } from './url.service';
+import { MEANINGFUL_URL_PARAMS, UrlService } from './url.service';
 
 /*
  * This service manages the current game system selection (Alpha Strike or Classic BattleTech).
@@ -29,8 +32,13 @@ import { UrlService } from './url.service';
 })
 export class GameService {
     private readonly optionsService = inject(OptionsService);
-    private readonly forceBuilderService = inject(ForceBuilderService);
+    private readonly forceWorkspace = inject(ForceWorkspaceStateService);
     private readonly urlService = inject(UrlService);
+    private readonly router = inject(Router);
+    private readonly queryParams = toSignal(this.router.events.pipe(
+        filter(event => event instanceof NavigationEnd),
+        map(event => this.router.parseUrl(event.urlAfterRedirects).queryParams),
+    ), { initialValue: this.router.parseUrl(this.router.url).queryParams });
 
     public readonly currentGameSystem = signal<GameSystem>(this.optionsService.options().gameSystem);
 
@@ -56,7 +64,7 @@ export class GameService {
          * 3. User options (default fallback)
          */
         effect(() => {
-            const forceGameSystem = this.forceBuilderService.forceGameSystem();
+            const forceGameSystem = this.forceWorkspace.forceGameSystem();
             let gameSystem: GameSystem;
             if (forceGameSystem) {
                 gameSystem = forceGameSystem;
@@ -76,22 +84,22 @@ export class GameService {
             this.currentGameSystem.set(gameSystem);
         });
 
-        // Update URL with current game system, but only when no force is loaded
-        // (ForceBuilderService handles URL when a force exists)
+        // Keep search and shared links in the selected system as URL content changes.
+        // ForceUrlStateService owns the game system when forces are loaded.
         effect(() => {
             const gs = this.currentGameSystem();
-            // Skip URL update if forces are loaded - ForceBuilderService handles all URL params
+            // Skip URL update if forces are loaded - ForceUrlStateService handles all URL params
             // including `gs` when forces exist, avoiding race conditions between the two services
-            const hasForces = this.forceBuilderService.hasForces();
+            const hasForces = this.forceWorkspace.hasForces();
             if (hasForces) {
                 return;
             }
-            this.urlService.setQueryParams({ gs });
+            const params = this.queryParams();
+            const urlGameSystem = MEANINGFUL_URL_PARAMS.some(key => !!params[key]) ? gs : null;
+            if ((params['gs'] ?? null) !== urlGameSystem) {
+                this.urlService.setQueryParams({ gs: urlGameSystem });
+            }
         });
-    }
-
-    setOverride(gameSystem: GameSystem | null): void {
-        this.gameSystemOverride.set(gameSystem);
     }
 
     setMode(gameSystem: GameSystem): void {
@@ -100,7 +108,7 @@ export class GameService {
     }
 
     isAlphaStrike = computed(() => {
-        return this.currentGameSystem() === GameSystem.ALPHA_STRIKE;
+        return this.currentGameSystem() === GameSystem.AS;
     });
 
 }

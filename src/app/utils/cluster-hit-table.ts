@@ -22,6 +22,24 @@ const CLUSTER_HIT_TABLE: readonly (readonly number[])[] = [
     [40, 12, 12, 18, 24, 24, 24, 24, 32, 32, 40, 40],
 ];
 
+/** TW p. 218: roll the fewest printed columns, balanced as in the 54-missile example (27 + 27). */
+export function battleArmorMissileColumns(missiles: number): number[] {
+    if (!Number.isSafeInteger(missiles) || missiles < 1) return [];
+    // The table prints columns 1 through 30 and 40. Try the fewest 40s for each candidate roll count.
+    for (let rolls = Math.ceil(missiles / 40); ; rolls++) {
+        for (let forties = 0; forties <= rolls; forties++) {
+            const other = rolls - forties;
+            const remaining = missiles - 40 * forties;
+            if (remaining < other || remaining > 30 * other) continue;
+            return [
+                ...Array<number>(forties).fill(40),
+                ...Array.from({ length: other }, (_, index) =>
+                    Math.floor(remaining / other) + Number(index < remaining % other)),
+            ];
+        }
+    }
+}
+
 /** Returns the Java Compute cluster-hit value for a 2d6 roll and rack size. */
 export function clusterHits(roll: number, rackSize: number): number {
     if (!Number.isInteger(roll) || roll < 2 || roll > 12) {
@@ -29,5 +47,9 @@ export function clusterHits(roll: number, rackSize: number): number {
     }
     if (!Number.isInteger(rackSize) || rackSize <= 0) return 0;
     const row = CLUSTER_HIT_TABLE.find(candidate => candidate[0] === rackSize);
-    return row?.[roll - 1] ?? 0;
+    if (row) return row[roll - 1]!;
+    // A size the table lacks splits at its largest smaller row, as MegaMek Compute.missilesHit does; the rules give no
+    // column for it. Unlike MegaMek, which rolls the remainder again, one roll serves both parts.
+    const largest = [...CLUSTER_HIT_TABLE].reverse().find(candidate => candidate[0]! < rackSize)!;
+    return largest[roll - 1]! + clusterHits(roll, rackSize - largest[0]!);
 }

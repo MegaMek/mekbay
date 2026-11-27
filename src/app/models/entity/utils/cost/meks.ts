@@ -6,12 +6,16 @@ import type { MekEntity, MekWithArmsEntity } from '../../entities/mek/mek-entity
 import { calculateArmorCost } from './common';
 import { amount, buildCostReport, multiplier } from './cost-report';
 import type { EntityCostEntry, EntityCostReport } from './cost-report';
+import { calculateMekGyroWeight } from '../weight/mek-weight';
+import {
+  isImprovedJumpJetEquipment,
+  jumpJetKind,
+  isJumpJetEquipment,
+  isAnyJumpBoosterEquipment,
+  isPrototypeImprovedJumpJetEquipment,
+} from '../../../jump-equipment.model';
 
 /** Mirrors MegaMek's MekCostCalculator for common Mek construction systems. */
-export function calculateMekCost(entity: MekEntity, equipmentCost: number): number {
-  return calculateMekCostReport(entity, [amount('Equipment', equipmentCost)]).total;
-}
-
 export function calculateMekCostReport(
   entity: MekEntity,
   equipmentEntries: readonly EntityCostEntry[],
@@ -21,18 +25,19 @@ export function calculateMekCostReport(
   const structureCostPerTon = getMekStructureCostPerTon(entity);
   const structureCost = structureCostPerTon * tonnage * (entity.motiveType() === 'Tripod' ? 1.2 : 1);
   const gyro = entity.mountedGyro();
-  const gyroTonnage = Math.ceil(entity.originalWalkMP() * tonnage / 100);
   const myomerCost = getMekMyomerCost(entity) * tonnage;
-  const jumpJets = entity.installedJumpJetMP();
-  const improvedJumpJets = entity.equipment().some(mount =>
-    mount.equipment?.hasFlag('F_JUMP_JET')
-    && mount.equipment.hasFlag('S_IMPROVED')
-    && !mount.equipment.hasFlag('S_PROTOTYPE'));
-  const primaryJumpMP = entity.installedUmuMP() > 0 ? entity.installedUmuMP() : jumpJets;
+  const jumpJets = entity.equipment().filter(mount => isJumpJetEquipment(mount.equipment));
+  const improvedJumpJets = jumpJets.some(mount =>
+    isImprovedJumpJetEquipment(mount.equipment)
+    && !isPrototypeImprovedJumpJetEquipment(mount.equipment));
+  // TechManual prices jump jets by how many are installed (TM p. 278); primitive prototype jets by the Jump MP they give
+  // (IO:AE p. 181), which a FrankenMek's lighter jets can make lower than their count (CO p. 213).
+  const primitivePrototype = jumpJets.some(mount => jumpJetKind(mount.equipment) === 'primitive-prototype');
+  const primaryJumpUnits = entity.installedUmuMP() || (primitivePrototype ? entity.installedJumpJetMP() : jumpJets.length);
   const mechanicalJumpBoosterMP = Math.round(entity.equipment().find(
-    mount => mount.equipment?.hasAnyFlag(['F_JUMP_BOOSTER', 'F_MECHANICAL_JUMP_BOOSTER']),
+    mount => isAnyJumpBoosterEquipment(mount.equipment),
   )?.size ?? 0);
-  const jumpCost = primaryJumpMP ** 2 * tonnage * (improvedJumpJets ? 500 : 200)
+  const jumpCost = primaryJumpUnits ** 2 * tonnage * (improvedJumpJets ? 500 : 200)
     + mechanicalJumpBoosterMP ** 2 * tonnage * 150;
   const heatSinkCost = (entity.heatSinkType() === 'Single' ? 2000 : 6000)
     * (entity.totalHeatSinks() - (entity.heatSinkType() === 'Single' ? 10 : 0));
@@ -45,7 +50,8 @@ export function calculateMekCostReport(
     amount('Structure', structureCost),
     amount('Actuators', calculateMekActuatorCost(entity)),
     amount('Engine', engine.installed ? (engine.baseCost * engine.rating * tonnage) / 75 : 0),
-    amount('Gyro', gyro.baseCost * gyroTonnage * gyro.costMultiplier),
+    // Each gyro type costs per ton of the gyro itself (TM p. 278), whose weight comes from the engine rating (TM p. 50).
+    amount('Gyro', gyro.baseCost * calculateMekGyroWeight(entity, engine.rating)),
     amount('Jump Jets', jumpCost),
     amount('Heatsinks', heatSinkCost),
     amount('Full Head Ejection System', entity.hasFullHeadEjectionSystem() ? 1725000 : 0),
@@ -63,7 +69,7 @@ export function calculateMekCostReport(
     conversionCost = (structureCost + equipmentCost) * 0.5;
   }
   entries.push(amount('Conversion Equipment', conversionCost));
-  const quirks = new Set(entity.quirks().map(({ quirk }) => quirk.key));
+  const quirks = new Set(entity.applicableQuirks().map(({ quirk }) => quirk.key));
   const quirkMultiplier = quirks.has('good_rep_1')
     ? Math.fround(1.1)
     : quirks.has('good_rep_2') ? Math.fround(1.25) : 1;
@@ -76,8 +82,6 @@ export function calculateMekCostReport(
 }
 
 function getMekStructureCostPerTon(entity: MekEntity): number {
-  // MegaMek retains the default Standard aggregate structure type when MTF
-  // declares a location-specific Hybrid structure.
   if (entity.hasMixedStructureMaterials()) return entity.isSuperHeavy() ? 4000 : 400;
   const name = entity.structureAt('CT').structure.name.toLowerCase();
   const superHeavyMultiplier = entity.isSuperHeavy() ? 2 : 1;
@@ -91,12 +95,13 @@ function getMekStructureCostPerTon(entity: MekEntity): number {
 }
 
 function getMekMyomerCost(entity: MekEntity): number {
-  const type = entity.myomerType().toLowerCase();
-  if (type.includes('super-cooled')) return 10000;
-  if (type.includes('industrial triple')) return 12000;
-  if (type.includes('triple') && type.includes('prototype')) return 32000;
-  if (type.includes('triple')) return 16000;
-  return entity.isSuperHeavy() ? 12000 : 2000;
+  switch (entity.myomerType()) {
+    case 'Super-Cooled': return 10000;
+    case 'Industrial Triple-Strength': return 12000;
+    case 'Prototype Triple-Strength': return 32000;
+    case 'Triple-Strength': return 16000;
+    case 'Standard': return entity.isSuperHeavy() ? 12000 : 2000;
+  }
 }
 
 function calculateMekActuatorCost(entity: MekEntity): number {

@@ -144,6 +144,28 @@
     margin-top: 8px;
 }
 
+.random-button {
+    width: 24px;
+    min-width: 24px;
+    height: 32px;
+    padding: 0;
+    border: none;
+    background: transparent url('/images/random.svg') center / 20px 20px no-repeat;
+    cursor: pointer;
+    opacity: 0.8;
+    transition: opacity 0.2s ease-in-out;
+}
+
+.random-button:hover,
+.random-button:focus-visible {
+    opacity: 1;
+}
+
+.random-button:disabled {
+    cursor: not-allowed;
+    opacity: 0.35;
+}
+
 .psr-automatic-failure,
 .psr-cascade-failure {
     margin-top: 8px;

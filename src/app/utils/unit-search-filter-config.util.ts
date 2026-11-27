@@ -96,11 +96,6 @@ export function usesIndexedDropdownAvailability(config: AdvFilterConfig | undefi
     return getDropdownAvailabilitySource(config) === 'indexed';
 }
 
-export function isArrayBackedDropdown(config: AdvFilterConfig | undefined): boolean {
-    const shape = getDropdownPropertyShape(config);
-    return shape === 'array' || shape === 'component' || shape === 'countable';
-}
-
 export function isComponentBackedDropdown(config: AdvFilterConfig | undefined): boolean {
     return getDropdownPropertyShape(config) === 'component';
 }

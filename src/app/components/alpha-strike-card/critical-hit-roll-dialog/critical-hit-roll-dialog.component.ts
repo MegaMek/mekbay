@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 // Author: Drake
 
+import { UnitNameService } from '../../../services/unit-name.service';
 import { ChangeDetectionStrategy, Component, inject, signal, viewChild, type AfterViewInit, computed } from '@angular/core';
 import { DialogRef, DIALOG_DATA } from '@angular/cdk/dialog';
 import { DiceRollerComponent } from '../../dice-roller/dice-roller.component';
@@ -385,6 +386,7 @@ const CRIT_TABLE_DROPSHIP: Record<number, CritTableEntry> = {
     `]
 })
 export class CriticalHitRollDialogComponent implements AfterViewInit {
+    readonly unitNames = inject(UnitNameService);
     private readonly dialogRef = inject(DialogRef);
     private readonly data = inject<CriticalHitRollDialogData>(DIALOG_DATA);
     private readonly optionsService = inject(OptionsService);
@@ -414,7 +416,7 @@ export class CriticalHitRollDialogComponent implements AfterViewInit {
         const res = this.result();
         if (!res || res.critType !== 'Ammo Hit' || !this.forceUnit) return 'none';
 
-        const specials = this.forceUnit.getUnit().as.specials;
+        const specials = this.forceUnit.getSummary().as.specials;
         if (!specials) return 'none';
 
         // CASEII or ENE = complete immunity
@@ -429,8 +431,8 @@ export class CriticalHitRollDialogComponent implements AfterViewInit {
     /** Display name combining chassis, model, and optional alias */
     readonly unitDisplayName = computed(() => {
         if (!this.forceUnit) return null;
-        const unit = this.forceUnit.getUnit();
-        const chassisModel = `${unit.chassis} ${unit.model}`;
+        const unit = this.forceUnit.getSummary();
+        const chassisModel = this.unitNames.name(unit);
         const alias = this.forceUnit.alias();
         return alias ? `${chassisModel} (${alias})` : chassisModel;
     });

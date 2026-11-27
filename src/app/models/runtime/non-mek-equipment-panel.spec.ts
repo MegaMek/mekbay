@@ -1,0 +1,1173 @@
+// Copyright (C) 2026 The MegaMek Team
+// SPDX-License-Identifier: GPL-3.0-or-later
+
+import type { WeaponAttackContext } from './equipment-panel';
+import { createDirectMekRuntimeFixture } from './testing/direct-mek-runtime-fixture';
+import { createMekUnit, restoreMekUnit } from './cbt-mek-unit';
+import { asUnitUuid } from '../../services/unit-catalog/unit-catalog.types';
+import { CORE_2026_RULESET,TOTAL_WARFARE_RULESET } from '../cbt-ruleset.model';
+import { asComponentId } from '../entity/entity-identifiers';
+import {
+TestAeroSpaceFighterEntity,
+TestDropShipEntity,
+TestInfantryEntity,
+TestJumpShipEntity,
+TestProtoMekEntity,
+TestTankEntity,
+} from '../entity/testing/test-entities';
+import { createTestEquipmentRegistry } from '../entity/testing/test-equipment-registry';
+import { addTestEquipment, addTestEquipmentWithFlags } from '../entity/testing/test-mounted-equipment';
+import { AmmoEquipment,createEquipment,WeaponEquipment } from '../equipment.model';
+import {
+physicalAttackTargetNumber,
+physicalRowTargetIssue,
+projectTargetingTarget,
+projectWeaponTargetPresentation,
+} from './equipment-panel';
+import { projectNonMekEquipmentPanel } from './non-mek-equipment-panel';
+import { projectNonMekEquipmentInteractions, selectNonMekEquipmentChoice } from './cbt-equipment-interactions';
+
+import { systemDamageId } from '../rules/system-damage-rules';
+import { asEncounterTargetId } from './encounter-runtime';
+import { type InstanceBaselineRef } from './runtime-state';
+
+const UUID = asUnitUuid('019f6767-0dcb-7bb8-992f-aef08202f5e1');
+
+describe('Entity equipment panel projection', () => {
+    it('names a vehicle flamer declared for heat, and drops its heat type when it declares damage', () => {
+        const flamer = new WeaponEquipment({
+            id: 'Flamer', name: 'Flamer', type: 'weapon', flags: ['F_FLAMER'],
+            weapon: { heat: 3, damage: 2, ranges: [1, 2, 3, 4], ammoType: 'NA' },
+        });
+        const entity = new TestTankEntity(createTestEquipmentRegistry({ [flamer.id]: flamer }));
+        entity.uuid.set(UUID);
+        const id = asComponentId(addTestEquipment(entity, flamer, { location: entity.locationOrder[0] }).mountId);
+        const runtime = createNonMekRuntimeForTest('unit:tank-flamer', { ...baseline(), ruleset: TOTAL_WARFARE_RULESET },
+            entity, TOTAL_WARFARE_RULESET);
+        const row = (optionalRules = {}) => {
+            const projected = projectNonMekEquipmentPanel(entity, runtime.getIndex(), TOTAL_WARFARE_RULESET,
+                runtime.snapshot(), runtime.query(), { revision: 0, targets: [] }, optionalRules)
+                .components.find(component => component.componentId === id)!;
+            return [projected.label, projected.weapon!.effectiveWeaponTypes?.includes('H') === true];
+        };
+
+        const declare = (label: 'Heat' | 'Damage') => {
+            const choice = projectNonMekEquipmentInteractions(runtime, {}, false)
+                .find(interaction => interaction.componentId === id)!.choices.find(choice => choice.label === label)!;
+            expect(selectNonMekEquipmentChoice(runtime, choice.command, {}, {} as never)).toBeTrue();
+        };
+
+        expect(row()).toEqual(['Flamer', false]);
+        declare('Heat');
+        expect(row()).toEqual(['Flamer (Heat)', true]);
+        // Enhanced Flamers deal heat and damage both, so the stored mode declares nothing.
+        expect(row({ enhancedFlamers: true })).toEqual(['Flamer', true]);
+        declare('Damage');
+        expect(row()).toEqual(['Flamer', false]);
+    });
+
+    for (const ruleset of [TOTAL_WARFARE_RULESET, CORE_2026_RULESET]) {
+        it(`applies a vehicle spotter's weapon and charge modifiers under ${ruleset}`, () => {
+            const laser = new WeaponEquipment({
+                id: 'TestLaser', name: 'Test Laser', type: 'weapon', weapon: { damage: 5, ranges: [3, 6, 9, 12] },
+            });
+            const entity = new TestTankEntity(createTestEquipmentRegistry({ [laser.id]: laser }));
+            entity.uuid.set(UUID);
+            const mount = addTestEquipment(entity, laser, { location: entity.locationOrder[0] });
+            const runtime = createNonMekRuntimeForTest('unit:tank-spotter', { ...baseline(), ruleset }, entity, ruleset);
+            const spottingPenalty = (spotting: true | 'tag') => {
+                expect(runtime.dispatch({ type: 'set-spotting', spotting }).accepted).toBeTrue();
+                const panel = projectNonMekEquipmentPanel(entity, runtime.getIndex(), ruleset,
+                    runtime.snapshot(), runtime.query(), { revision: 0, targets: [] }, {});
+                const gun = panel.components.find(row => row.componentId === asComponentId(mount.mountId))!.weapon!;
+                const charge = panel.physicalAttacks.find(row => row.kind === 'charge')!;
+                return [gun.hitModifierBreakdown, charge.hitModifierBreakdown].map(
+                    entries => entries?.find(entry => entry.label === 'Spotting')?.modifier ?? 0,
+                );
+            };
+            expect(spottingPenalty(true)).toEqual([1, 1]);
+            expect(spottingPenalty('tag')).toEqual([0, 0]);
+            const targetId = asEncounterTargetId('target:vehicle-tag-spot');
+            const registry = { revision: 0, targets: [{ id: targetId, letter: 'A', name: 'Target', color: '#123456' }] };
+            expect(runtime.dispatchAttackerTargeting({
+                type: 'edit-attacker-targeting',
+                edit: { kind: 'set-target-facts', targetId, facts: { calculator: {
+                    indirectFire: true, spotterDeclaredAttacks: 'tag',
+                } } },
+            }, registry, false).changed).toBeTrue();
+            expect(runtime.dispatch({ type: 'end-turn', policy: 'manual' }).accepted).toBeTrue();
+            expect(runtime.snapshot().turn.spotting).toBeFalse();
+            expect(runtime.snapshot().attackerTargeting.targets.get(targetId)?.calculator).toEqual({
+                indirectFire: true, spotterDeclaredAttacks: true,
+            });
+        });
+    }
+
+    it('lets a Core Mek spend its laser AMS twice and generates heat for both interceptions', async () => {
+        const fixture = createDirectMekRuntimeFixture();
+        const laser = new WeaponEquipment({ id: 'test-lams', name: 'Laser AMS', type: 'weapon', flags: ['F_ENERGY', 'F_AMS'],
+            weapon: { heat: 7, damage: 3, ammoType: 'NA' } });
+        const id = asComponentId(addTestEquipment(fixture.entity, laser, { location: 'CT' }).mountId);
+        const options = { profileId: 'pristine', deployment: { id: 'default' }, scenario: { id: 'megamek', ruleset: CORE_2026_RULESET } };
+        const unit = await createMekUnit({ uuid: fixture.identity, instanceId: 'core-ams' }, fixture.entity, fixture.identity, options);
+        const engage = () => unit.dispatch({ type: 'engage-ams', componentId: id, arc: 'front' }).changed;
+        expect(engage()).toBeTrue();
+        expect(engage()).toBeTrue();
+        expect(engage()).toBeFalse();
+        expect(unit.snapshot().turn.weaponsHeat).toBe(14);
+        expect(unit.snapshot().turn.amsEngagements).toEqual([id, id]);
+        expect(unit.snapshot().turn.firedWeapons).toBeUndefined();
+        const restored = await restoreMekUnit(unit.serialize(), fixture.entity, fixture.identity, options);
+        expect(restored.dispatch({ type: 'engage-ams', componentId: id, arc: 'front' }).changed).toBeFalse();
+        unit.dispatch({ type: 'end-turn', policy: 'manual' });
+        expect(engage()).toBeTrue();
+    });
+
+    it('charges an in-arc AMS one shot and prevents another engagement until the next turn in Total Warfare', () => {
+        const system = new WeaponEquipment({ id: 'ams', name: 'AMS', type: 'weapon', flags: ['F_AMS', 'F_BALLISTIC'],
+            weapon: { heat: 1, rackSize: 2, ammoType: 'AMS' } });
+        const ammo = new AmmoEquipment({ id: 'bin', name: 'AMS Ammo', type: 'ammo', ammo: { type: 'AMS', rackSize: 2, shots: 12 } });
+        const entity = new TestTankEntity(createTestEquipmentRegistry({ ams: system, bin: ammo }));
+        entity.uuid.set(UUID);
+        entity.setTonnage(40);
+        const id = asComponentId(addTestEquipment(entity, system, { location: 'Front' }).mountId);
+        const bin = asComponentId(addTestEquipment(entity, ammo, { location: 'Rear', shotsCount: 12 }).mountId);
+        const unit = createNonMekRuntimeForTest('ams-tank', { ...baseline(), ruleset: TOTAL_WARFARE_RULESET }, entity, TOTAL_WARFARE_RULESET);
+        const engage = (arc: 'front' | 'rear') => unit.dispatch({ type: 'engage-ams', componentId: id, arc }).changed;
+        expect(engage('rear')).toBeFalse();
+        expect(engage('front')).toBeTrue();
+        expect(engage('front')).toBeFalse();
+        expect(unit.query().remainingAmmo(bin)).toBe(11);
+        const restored = restoreNonMekRuntimeForTest(unit.serialize(), entity, TOTAL_WARFARE_RULESET);
+        expect(restored.dispatch({ type: 'engage-ams', componentId: id, arc: 'front' }).changed).toBeFalse();
+        unit.dispatch({ type: 'end-turn', policy: 'manual' });
+        expect(engage('front')).toBeTrue();
+        expect(unit.query().remainingAmmo(bin)).toBe(10);
+    });
+
+    it('interlocks the main gun and arm weapons for either firing order and rejects long range after head loss', () => {
+        const gun = new WeaponEquipment({ id: 'gun', name: 'Laser', type: 'weapon', flags: ['F_ENERGY'],
+            weapon: { damage: 5, ammoType: 'NA', ranges: [5, 10, 15, 20] } });
+        for (const mainFirst of [true, false]) {
+            const entity = new TestProtoMekEntity(createTestEquipmentRegistry({ gun }));
+            entity.uuid.set(UUID);
+            entity.setTonnage(8);
+            const main = asComponentId(addTestEquipment(entity, gun, { location: 'Main Gun' }).mountId);
+            const arm = asComponentId(addTestEquipment(entity, gun, { location: 'Right Arm' }).mountId);
+            const unit = createNonMekRuntimeForTest('proto', { ...baseline(), ruleset: TOTAL_WARFARE_RULESET }, entity, TOTAL_WARFARE_RULESET);
+            const targetId = asEncounterTargetId('target');
+            const targets = { revision: 0, targets: [{ id: targetId, letter: 'A', name: 'Target', color: '#abc' }] };
+            const select = (componentId: typeof main, selection: import('./attacker-targeting-state').AttackerSelection | null) =>
+                unit.dispatchAttackerTargeting({ type: 'edit-attacker-targeting',
+                    edit: { kind: 'set-component-selection', componentId, selection } }, targets, false).changed;
+            const first = mainFirst ? main : arm;
+            const other = mainFirst ? arm : main;
+            expect(unit.dispatchAttackerTargeting({ type: 'edit-attacker-targeting', edit: { kind: 'set-component-selections',
+                componentIds: [main, arm], selection: { kind: 'selected' } } }, targets, false).changed).toBeFalse();
+            unit.dispatch({ type: 'set-system-damage-level', system: 'head', level: 2, target: 'committed', timestamp: 1 });
+            expect(select(first, { kind: 'manual-range', range: 'long' })).toBeFalse();
+            unit.dispatchAttackerTargeting({ type: 'edit-attacker-targeting', edit: { kind: 'set-target-facts',
+                targetId, facts: { distance: 11 } } }, targets, false);
+            expect(select(first, { kind: 'target', targetId })).toBeFalse();
+            expect(select(first, { kind: 'manual-range', range: 'medium' })).toBeTrue();
+            expect(select(other, { kind: 'selected' })).toBeFalse();
+            expect(unit.dispatchSelectedWeaponFire({ type: 'fire-selected-weapons' }, targets, false, false).changed).toBeTrue();
+            select(first, null);
+            expect(select(other, { kind: 'selected' })).toBeFalse();
+            unit.dispatch({ type: 'end-turn', policy: 'manual' });
+            expect(select(other, { kind: 'selected' })).toBeTrue();
+        }
+    });
+
+    it('applies fighter FCS and sensor damage and stops a previously selected weapon at the third FCS hit', () => {
+        const gun = new WeaponEquipment({ id: 'gun', name: 'Laser', type: 'weapon', flags: ['F_ENERGY'],
+            weapon: { damage: 5, ammoType: 'NA', av: [5, 5, 0, 0], ranges: [3, 6, 9, 12] } });
+        const entity = new TestAeroSpaceFighterEntity(createTestEquipmentRegistry({ gun }));
+        entity.uuid.set(UUID);
+        entity.structuralIntegrity.set(10);
+        const id = asComponentId(addTestEquipment(entity, gun, { location: 'Nose' }).mountId);
+        const unit = createNonMekRuntimeForTest('fighter', { ...baseline(), ruleset: TOTAL_WARFARE_RULESET }, entity, TOTAL_WARFARE_RULESET);
+        const targets = { revision: 0, targets: [] };
+        const select = () => unit.dispatchAttackerTargeting({ type: 'edit-attacker-targeting',
+            edit: { kind: 'set-component-selection', componentId: id, selection: { kind: 'selected' } } }, targets, false);
+        expect(select().changed).toBeTrue();
+        for (const level of [1, 2, 3]) {
+            for (const system of ['fire-control', 'sensors'] as const) unit.dispatch({ type: 'set-system-damage-level',
+                system, level, target: 'committed', timestamp: level });
+            const row = projectNonMekEquipmentPanel(entity, unit.getIndex(), TOTAL_WARFARE_RULESET,
+                unit.snapshot(), unit.query(), targets, {}).components.find(row => row.componentId === id)!;
+            const modifier = (label: string) => row.weapon?.hitModifierBreakdown?.find(entry => entry.label === label)?.modifier;
+            expect(modifier('Fire control damage')).toBe(level === 1 ? 2 : 4);
+            expect(modifier('Sensor damage')).toBe(level === 3 ? 5 : level);
+            expect(row.weapon?.selectable).toBe(level < 3);
+        }
+        expect(unit.dispatchSelectedWeaponFire({ type: 'fire-selected-weapons' }, targets, false, false).changed).toBeFalse();
+    });
+
+    it('requires TAG for aerospace spotters except a grounded spheroid DropShip', () => {
+        const fighter = new TestAeroSpaceFighterEntity();
+        const dropship = new TestDropShipEntity();
+        dropship.motiveType.set('Spheroid');
+        for (const entity of [fighter, dropship]) {
+            entity.uuid.set(UUID);
+            addTestEquipmentWithFlags(entity, 'F_TAG', { location: entity.locationOrder[0] });
+            entity.structuralIntegrity.set(8);
+            const runtime = createNonMekRuntimeForTest('unit:aero-spotter',
+                { ...baseline(), ruleset: TOTAL_WARFARE_RULESET }, entity, TOTAL_WARFARE_RULESET);
+            expect(runtime.dispatch({ type: 'set-airborne', airborne: false }).accepted).toBeTrue();
+            expect(runtime.dispatch({ type: 'set-spotting', spotting: true }).changed).toBe(entity === dropship);
+            expect(runtime.dispatch({ type: 'set-airborne', airborne: true }).accepted).toBeTrue();
+            expect(runtime.snapshot().turn.spotting).toBeFalse();
+            expect(runtime.dispatch({ type: 'set-spotting', spotting: true }).changed).toBeFalse();
+            expect(runtime.dispatch({ type: 'set-spotting', spotting: 'tag' }).changed).toBeTrue();
+        }
+    });
+
+    it('passes linked Artemis support to vehicle ammo selection', () => {
+        const weapon = new WeaponEquipment({
+            id: 'LRM 15', name: 'LRM 15', type: 'weapon', flags: ['F_ARTEMIS_COMPATIBLE'],
+            weapon: { ammoType: 'LRM', rackSize: 15 },
+        });
+        const ammo = new AmmoEquipment({
+            id: 'LRM 15 Artemis-capable Ammo', name: 'Artemis ammo', type: 'ammo',
+            ammo: { type: 'LRM', rackSize: 15, shots: 8, munitionType: ['M_ARTEMIS_CAPABLE'] },
+        });
+        const entity = new TestTankEntity(createTestEquipmentRegistry({
+            [weapon.id]: weapon, [ammo.id]: ammo,
+        }));
+        entity.uuid.set(UUID);
+        const location = entity.locationOrder[0];
+        const weaponMount = addTestEquipment(entity, weapon, { location });
+        const enhancement = addTestEquipmentWithFlags(entity, 'F_ARTEMIS', { location });
+        entity.linkEquipment(enhancement, weaponMount);
+        const ammoMount = addTestEquipment(entity, ammo, { location, shotsCount: 8 });
+        const runtime = createNonMekRuntimeForTest(
+            'unit:tank-artemis-ammo', baseline(), entity, CORE_2026_RULESET,
+        );
+
+        const panel = projectNonMekEquipmentPanel(
+            entity, runtime.getIndex(), CORE_2026_RULESET,
+            runtime.snapshot(), runtime.query(), { revision: 0, targets: [] }, {},
+        );
+        const ammoRow = panel.components.find(row => row.componentId === asComponentId(ammoMount.mountId));
+
+        expect(ammoRow?.ammo?.compatibilityFacts).toEqual({
+            artemisIV: [ammo.internalName], artemisV: [],
+        });
+    });
+
+    it('adds linked Artemis IV to an aerospace launcher\'s attack values, as the sheet prints them', () => {
+        const weapon = new WeaponEquipment({
+            id: 'AeroLRM20', name: 'LRM 20', type: 'weapon', flags: ['F_ARTEMIS_COMPATIBLE', 'F_MISSILE'],
+            weapon: { ammoType: 'LRM', rackSize: 20, damage: 'cluster', ranges: [7, 14, 21, 28], av: [12, 12, 12] },
+        });
+        const ammo = new AmmoEquipment({
+            id: 'AeroLRM20ArtemisAmmo', name: 'Artemis ammo', type: 'ammo',
+            ammo: { type: 'LRM', rackSize: 20, shots: 6, munitionType: ['M_ARTEMIS_CAPABLE'] },
+        });
+        const entity = new TestAeroSpaceFighterEntity(createTestEquipmentRegistry({ [weapon.id]: weapon, [ammo.id]: ammo }));
+        entity.uuid.set(UUID);
+        const location = entity.locationOrder[0];
+        const mount = addTestEquipment(entity, weapon, { location });
+        entity.linkEquipment(addTestEquipmentWithFlags(entity, 'F_ARTEMIS', { location }), mount);
+        addTestEquipment(entity, ammo, { location, shotsCount: 6 });
+        const runtime = createNonMekRuntimeForTest('unit:fighter-artemis-iv', baseline(), entity, CORE_2026_RULESET);
+
+        const row = projectNonMekEquipmentPanel(entity, runtime.getIndex(), CORE_2026_RULESET, runtime.snapshot(),
+            runtime.query(), { revision: 0, targets: [] }, {}).components.find(component => component.weapon !== undefined)!;
+        // TW p. 303: an LRM 20 is 12, or 16 with Artemis IV
+        expect(row.weapon?.aerospace?.attackValues).toEqual([16, 16, 16, 0]);
+    });
+
+    for (const ruleset of [CORE_2026_RULESET, TOTAL_WARFARE_RULESET]) {
+        it(`uses linked vehicle Artemis V only for operational direct fire with matching ammo in ${ruleset}`, () => {
+            const weapon = new WeaponEquipment({
+                id: 'GuidedLRM15', name: 'LRM 15', type: 'weapon',
+                flags: ['F_ARTEMIS_COMPATIBLE', 'F_MISSILE'],
+                weapon: { ammoType: 'LRM', rackSize: 15, damage: 'cluster', ranges: [7, 14, 21, 28] },
+            });
+            const guided = new AmmoEquipment({
+                id: 'GuidedLRM15Ammo', name: 'Artemis V ammo', type: 'ammo',
+                ammo: { type: 'LRM', rackSize: 15, shots: 8, munitionType: ['M_ARTEMIS_V_CAPABLE'] },
+            });
+            const standard = new AmmoEquipment({
+                id: 'StandardLRM15Ammo', name: 'Standard ammo', type: 'ammo',
+                ammo: { type: 'LRM', rackSize: 15, shots: 8 },
+            });
+            const entity = new TestTankEntity(createTestEquipmentRegistry({
+                [weapon.id]: weapon, [guided.id]: guided, [standard.id]: standard,
+            }));
+            entity.uuid.set(UUID);
+            const mount = addTestEquipment(entity, weapon, { location: 'Front' });
+            const enhancement = addTestEquipmentWithFlags(entity, 'F_ARTEMIS_V', { location: 'Front' });
+            entity.linkEquipment(enhancement, mount);
+            const ammoMount = addTestEquipment(entity, guided, { location: 'Front', shotsCount: 8 });
+            const runtime = createNonMekRuntimeForTest(
+                'unit:tank-artemis-v', { ...baseline(), ruleset }, entity, ruleset,
+            );
+            const weaponId = asComponentId(mount.mountId);
+            const enhancementId = asComponentId(enhancement.mountId);
+            const ammoId = asComponentId(ammoMount.mountId);
+            const registry = { revision: 0, targets: [] };
+            expect(runtime.dispatchAttackerTargeting({
+                type: 'edit-attacker-targeting',
+                edit: { kind: 'set-component-ammo', componentId: weaponId,
+                    ammo: { munitionKey: guided.id, preferredSourceId: ammoId } },
+            }, registry, false).accepted).toBeTrue();
+            const row = () => projectNonMekEquipmentPanel(
+                entity, runtime.getIndex(), ruleset, runtime.snapshot(), runtime.query(), registry, {},
+            ).components.find(component => component.componentId === weaponId)!;
+
+            expect(row().weapon?.hit.default.value).toBe(-1);
+            expect(row().weapon?.artemisVModifier).toBe(-1);
+            expect(row().weapon?.hit.indirectByRange.short.value).toBe(0);
+            runtime.dispatch({ type: 'set-component-status', componentId: enhancementId, status: 'disabled', target: 'committed' });
+            expect(row().weapon?.hit.default.value).toBe(0);
+            expect(row().weapon?.hit.default.weakened).toBeTrue();
+            runtime.dispatch({ type: 'set-component-status', componentId: enhancementId, status: 'available', target: 'committed' });
+            runtime.dispatch({ type: 'set-condition', condition: 'jammed', active: true });
+            expect(row().weapon?.hit.default.value).toBe(0);
+            expect(row().weapon?.hit.default.weakened).toBeTrue();
+            runtime.dispatch({ type: 'set-condition', condition: 'jammed', active: false });
+            runtime.dispatch({ type: 'configure-ammo-source', componentId: ammoId, munitionKey: standard.id, remaining: 8 });
+            expect(runtime.dispatchAttackerTargeting({
+                type: 'edit-attacker-targeting',
+                edit: { kind: 'set-component-ammo', componentId: weaponId,
+                    ammo: { munitionKey: standard.id, preferredSourceId: ammoId } },
+            }, registry, false).accepted).toBeTrue();
+            expect(row().weapon?.hit.default.value).toBe(0);
+            expect(row().weapon?.hit.default.modifierBreakdown).toContain(jasmine.objectContaining({
+                label: 'Incompatible Ammo (Standard ammo)', modifier: 0, weakened: true,
+            }));
+        });
+
+        it(`uses the linked vehicle Apollo passive bonus only in Total Warfare (${ruleset})`, () => {
+            const weapon = new WeaponEquipment({
+                id: 'GuidedMRM20', name: 'MRM 20', type: 'weapon',
+                flags: ['F_MISSILE'], stats: { toHitModifier: 1 },
+                weapon: { ammoType: 'MRM', rackSize: 20, damage: 'cluster', ranges: [3, 8, 15, 22] },
+            });
+            const entity = new TestTankEntity(createTestEquipmentRegistry({ [weapon.id]: weapon }));
+            entity.uuid.set(UUID);
+            const mount = addTestEquipment(entity, weapon, { location: 'Front' });
+            const enhancement = addTestEquipmentWithFlags(entity, ['F_APOLLO', 'F_WEAPON_ENHANCEMENT'], { location: 'Front' });
+            entity.linkEquipment(enhancement, mount);
+            const runtime = createNonMekRuntimeForTest(
+                'unit:tank-apollo', { ...baseline(), ruleset }, entity, ruleset,
+            );
+            const row = () => projectNonMekEquipmentPanel(
+                entity, runtime.getIndex(), ruleset, runtime.snapshot(), runtime.query(), { revision: 0, targets: [] }, {},
+            ).components.find(component => component.componentId === asComponentId(mount.mountId))!;
+            expect(row().weapon?.hit.default.value).toBe(ruleset === TOTAL_WARFARE_RULESET ? 0 : 1);
+            runtime.dispatch({ type: 'set-component-status', componentId: asComponentId(enhancement.mountId),
+                status: 'destroyed', target: 'committed' });
+            expect(row().weapon?.hit.default.value).toBe(1);
+            expect(row().weapon?.hit.default.weakened).toBe(ruleset === TOTAL_WARFARE_RULESET);
+        });
+    }
+
+    it('omits VTOL and WiGE charges under both rulesets (TW p.149; Core does not address them)', () => {
+        for (const ruleset of ['total-warfare', 'core-2026'] as const) {
+            for (const motive of ['Tracked', 'VTOL', 'WiGE'] as const) {
+                const entity = new TestTankEntity();
+                entity.uuid.set(UUID);
+                entity.motiveType.set(motive);
+                const runtime = createNonMekRuntimeForTest('unit:charge-eligibility',
+                    { ...baseline(), ruleset }, entity, ruleset);
+                const panel = projectNonMekEquipmentPanel(entity, runtime.getIndex(), ruleset,
+                    runtime.snapshot(),
+                    runtime.query(),
+                    { revision: 0, targets: [] }, {});
+                expect(panel.physicalAttacks).withContext(`${ruleset} ${motive}`)
+                    .toHaveSize(motive === 'Tracked' ? 1 : 0);
+            }
+        }
+    });
+
+    it('applies the shared Flak modifier to airborne Aero and VTOL/WiGE targets', () => {
+        const weapon = new WeaponEquipment({
+            id: 'FlakWeapon',
+            name: 'Flak Weapon',
+            type: 'weapon',
+            flags: ['F_ARTILLERY'],
+            weapon: { damage: 5, heat: 1, ranges: [6, 12, 18, 24] },
+        });
+        const row = {
+            componentId: asComponentId('component:flak'),
+            label: weapon.name,
+            equipment: weapon,
+            locations: [],
+            status: 'available',
+            previewStatus: 'available',
+            modes: [],
+            jammed: false,
+            weapon: {
+                heat: 1,
+                firingHeat: 1,
+                selectable: true,
+                damage: 5,
+                damageText: '5 [F]',
+                damageTextByRange: {
+                    short: '5 [F]', medium: '5 [F]', long: '5 [F]', extreme: '5 [F]',
+                },
+                hit: {
+                    default: { profile: [0], value: 0, changed: false, weakened: false, modifierBreakdown: [] },
+                    byRange: {
+                        short: { profile: [0], value: 0, changed: false, weakened: false, modifierBreakdown: [] },
+                        medium: { profile: [0], value: 0, changed: false, weakened: false, modifierBreakdown: [] },
+                        long: { profile: [0], value: 0, changed: false, weakened: false, modifierBreakdown: [] },
+                        extreme: { profile: [0], value: 0, changed: false, weakened: false, modifierBreakdown: [] },
+                    },
+                    indirectByRange: {
+                        short: { profile: [0], value: 0, changed: false, weakened: false, modifierBreakdown: [] },
+                        medium: { profile: [0], value: 0, changed: false, weakened: false, modifierBreakdown: [] },
+                        long: { profile: [0], value: 0, changed: false, weakened: false, modifierBreakdown: [] },
+                        extreme: { profile: [0], value: 0, changed: false, weakened: false, modifierBreakdown: [] },
+                    },
+                },
+                toHitModifier: 0,
+                hitModifierBreakdown: [],
+                ranges: [6, 12, 18, 24],
+                minimumRange: 0,
+                ammoSources: [],
+                underwater: false,
+                attackerSubmerged: false,
+                disabledTargetReasons: {},
+                effectiveWeaponTypes: ['F'],
+            },
+        } as const;
+        const target = {
+            id: asEncounterTargetId('target:airborne-vtol'),
+            letter: 'A',
+            name: 'Airborne VTOL',
+            color: '#fff',
+            unitType: 'vtol-wige' as const,
+            distance: 6,
+            tnModifier: 1,
+            tnCalculator: { isAirborne: true },
+        };
+
+        const presentation = projectWeaponTargetPresentation(
+            row,
+            target,
+            stationaryAttack(4),
+            CORE_2026_RULESET,
+        );
+        expect(presentation.targetModifier).toBe(-1);
+        expect(presentation.targetModifierBreakdown).toEqual([
+            jasmine.objectContaining({ id: 'airborne', modifier: 1 }),
+            { id: 'flak', label: 'Flak', modifier: -2 },
+        ]);
+    });
+
+    it('projects vehicle weapons, compatible ammo, and committed/pending status from one runtime', () => {
+        const weapon = new WeaponEquipment({
+            id: 'AC_10',
+            name: 'AC/10',
+            type: 'weapon',
+            tech: { base: 'All' },
+            flags: ['F_AC', 'F_BALLISTIC', 'F_DIRECT_FIRE'],
+            weapon: {
+                ammoType: 'AC',
+                rackSize: 10,
+                heat: 3,
+                damage: 10,
+                ranges: [5, 10, 15, 20],
+            },
+        });
+        const standard = new AmmoEquipment({
+            id: 'Ammo_AC_10',
+            name: 'AC/10 Ammo',
+            type: 'ammo',
+            tech: { base: 'IS' },
+            ammo: { type: 'AC', rackSize: 10, shots: 10 },
+        });
+        const precision = new AmmoEquipment({
+            id: 'Ammo_AC_10_Precision',
+            name: 'AC/10 Precision Ammo',
+            type: 'ammo',
+            tech: { base: 'Clan' },
+            ammo: { type: 'AC', rackSize: 10, shots: 10, munitionType: ['M_PRECISION'] },
+        });
+        const entity = new TestTankEntity(createTestEquipmentRegistry({
+            [weapon.id]: weapon,
+            [standard.id]: standard,
+            [precision.id]: precision,
+        }));
+        entity.uuid.set(UUID);
+        entity.techBase.set('IS');
+        entity.mixedTech.set(false);
+        const location = entity.locationOrder[0];
+        const weaponMount = addTestEquipment(entity, weapon, { location });
+        const ammoMount = addTestEquipment(entity, standard, { location, shotsCount: 10 });
+        const runtime = createNonMekRuntimeForTest(
+            'unit:tank-equipment-panel',
+            baseline(),
+            entity,
+            CORE_2026_RULESET,
+        );
+        const weaponId = [...runtime.getIndex().components.keys()]
+            .find(id => String(id) === String(weaponMount.mountId))!;
+        const ammoId = [...runtime.getIndex().components.keys()]
+            .find(id => String(id) === String(ammoMount.mountId))!;
+        const targetId = asEncounterTargetId('target:vehicle');
+        const registry = Object.freeze({
+            revision: 0,
+            targets: Object.freeze([Object.freeze({
+                id: targetId,
+                letter: 'A',
+                name: 'Target A',
+                color: '#ff0000',
+                source: 'manual' as const,
+                readOnly: false,
+                unitType: 'vehicle' as const,
+                tnCalculator: Object.freeze({ targetMovementBracket: '7-9' as const }),
+            })]),
+        });
+
+        runtime.dispatch({
+            type: 'configure-ammo-source',
+
+            componentId: ammoId,
+            munitionKey: precision.id,
+            remaining: 4,
+        });
+        runtime.dispatchAttackerTargeting({
+            type: 'edit-attacker-targeting',
+
+            edit: {
+                kind: 'set-component-selection',
+                componentId: weaponId,
+                selection: { kind: 'target', targetId },
+            },
+        }, registry, false);
+        runtime.dispatchAttackerTargeting({
+            type: 'edit-attacker-targeting',
+
+            edit: {
+                kind: 'set-target-facts',
+                targetId,
+                facts: { distance: 6 },
+            },
+        }, registry, false);
+        runtime.dispatchAttackerTargeting({
+            type: 'edit-attacker-targeting',
+
+            edit: {
+                kind: 'set-component-ammo',
+                componentId: weaponId,
+                ammo: { munitionKey: precision.id, preferredSourceId: ammoId },
+            },
+        }, registry, false);
+        runtime.dispatch({
+            type: 'set-component-status',
+
+            componentId: weaponId,
+            status: 'destroyed',
+            target: 'pending',
+        });
+        runtime.dispatch({
+            type: 'set-component-status',
+
+            componentId: ammoId,
+            status: 'destroyed',
+            target: 'pending',
+        });
+
+        const snapshot = projectNonMekEquipmentPanel(
+            entity,
+            runtime.getIndex(),
+            CORE_2026_RULESET,
+            runtime.snapshot(),
+            runtime.query(),
+            registry, {},
+        );
+        const weaponRow = snapshot.components.find(row => row.componentId === weaponId)!;
+        const ammoRow = snapshot.components.find(row => row.componentId === ammoId)!;
+
+        expect(snapshot.unitType).toBe('Tank');
+        expect(snapshot.tracksHeat).toBeFalse();
+        expect(weaponRow.status).toBe('available');
+        expect(weaponRow.previewStatus).toBe('destroyed');
+        expect(weaponRow.mode).toBeUndefined();
+        expect(weaponRow.weapon?.damage).toBe(10);
+        expect(weaponRow.weapon?.selectable).toBeTrue();
+        expect(weaponRow.weapon?.selection).toEqual({ kind: 'target', targetId });
+        expect(weaponRow.weapon?.ammoSelection).toEqual({
+            munitionKey: precision.id,
+            preferredSourceId: ammoId,
+        });
+        expect(weaponRow.weapon?.ammoSources.map(source => source.componentId)).toEqual([ammoId]);
+        expect(weaponRow.weapon?.ammoSources[0]?.munitionKey).toBe(precision.id);
+        expect(weaponRow.weapon?.ammoSources[0]?.remaining).toBe(4);
+        expect(weaponRow.weapon?.ammoSources[0]).toEqual(jasmine.objectContaining({
+            location,
+            status: 'available',
+        }));
+        expect(ammoRow.status).toBe('available');
+        expect(ammoRow.previewStatus).toBe('destroyed');
+        expect(ammoRow.ammo?.loadouts.map(loadout => loadout.munitionKey))
+            .toEqual([standard.id, precision.id]);
+        expect(ammoRow.ammo?.weaponTechBases).toEqual(['IS']);
+        expect(ammoRow.ammo?.remaining).toBe(4);
+        expect(snapshot.targets.map(target => target.targetId)).toEqual([targetId]);
+        const target = projectTargetingTarget(snapshot.targets[0], snapshot.ruleset);
+        expect(target.tnModifier).toBe(3);
+        const presentation = projectWeaponTargetPresentation(
+            weaponRow,
+            target,
+            stationaryAttack(snapshot.crew.gunnery),
+            snapshot.ruleset,
+        );
+        expect(presentation.targetModifier).toBe(1);
+        expect(presentation.targetModifierBreakdown).toEqual([
+            jasmine.objectContaining({ id: 'target-movement', modifier: 3 }),
+            { id: 'precision', label: 'Precision', modifier: -2 },
+        ]);
+
+        runtime.dispatch({ type: 'end-phase'});
+        const committed = projectNonMekEquipmentPanel(
+            entity,
+            runtime.getIndex(),
+            CORE_2026_RULESET,
+            runtime.snapshot(),
+            runtime.query(),
+            registry, {},
+        );
+        const committedWeapon = committed.components.find(row => row.componentId === weaponId)!;
+        expect(committedWeapon.weapon?.ammoSources[0]).toEqual(jasmine.objectContaining({
+            status: 'destroyed',
+            remaining: 0,
+        }));
+    });
+
+    it('clears the ATM minimum range and its penalty for HE ammo and restores them for Standard', () => {
+        const atm = new WeaponEquipment({
+            id: 'CLATM6', name: 'ATM 6', type: 'weapon', tech: { base: 'Clan' }, flags: ['F_MISSILE'],
+            weapon: { ammoType: 'ATM', rackSize: 6, minRange: 4, ranges: [5, 10, 15, 20] },
+        });
+        const standard = new AmmoEquipment({
+            id: 'CLATM6Ammo', name: 'ATM 6 Ammo', type: 'ammo', tech: { base: 'Clan' },
+            ammo: { type: 'ATM', rackSize: 6, shots: 10, munitionType: ['M_STANDARD'] },
+        });
+        const highExplosive = new AmmoEquipment({
+            id: 'CLATM6HEAmmo', name: 'ATM 6 HE Ammo', type: 'ammo', tech: { base: 'Clan' },
+            ammo: { type: 'ATM', rackSize: 6, shots: 10, munitionType: ['M_HIGH_EXPLOSIVE'] },
+        });
+        const entity = new TestTankEntity(createTestEquipmentRegistry({
+            [atm.id]: atm, [standard.id]: standard, [highExplosive.id]: highExplosive,
+        }));
+        entity.uuid.set(UUID);
+        entity.techBase.set('Clan');
+        const location = entity.locationOrder[0];
+        const weaponMount = addTestEquipment(entity, atm, { location });
+        addTestEquipment(entity, standard, { location, shotsCount: 10 });
+        addTestEquipment(entity, highExplosive, { location, shotsCount: 10 });
+        const runtime = createNonMekRuntimeForTest('unit:atm-he', baseline(), entity, CORE_2026_RULESET);
+        const weaponId = [...runtime.getIndex().components.keys()]
+            .find(id => String(id) === String(weaponMount.mountId))!;
+        const targetId = asEncounterTargetId('target:atm');
+        const registry = Object.freeze({
+            revision: 0,
+            targets: Object.freeze([Object.freeze({
+                id: targetId, letter: 'A', name: 'Target A', color: '#ff0000', source: 'manual' as const,
+                readOnly: false, unitType: 'vehicle' as const,
+                tnCalculator: Object.freeze({ targetMovementBracket: '0-2' as const }),
+            })]),
+        });
+        runtime.dispatchAttackerTargeting({ type: 'edit-attacker-targeting', edit: {
+            kind: 'set-component-selection', componentId: weaponId, selection: { kind: 'target', targetId },
+        } }, registry, false);
+        runtime.dispatchAttackerTargeting({ type: 'edit-attacker-targeting', edit: {
+            kind: 'set-target-facts', targetId, facts: { distance: 3 },
+        } }, registry, false);
+        const selectMode = (mode: string) => {
+            runtime.dispatch({ type: 'set-component-mode', componentId: weaponId, mode });
+            const snapshot = projectNonMekEquipmentPanel(entity, runtime.getIndex(), CORE_2026_RULESET,
+                runtime.snapshot(),
+                runtime.query(), registry, {});
+            const row = snapshot.components.find(candidate => candidate.componentId === weaponId)!;
+            const presentation = projectWeaponTargetPresentation(row,
+                projectTargetingTarget(snapshot.targets[0], snapshot.ruleset), stationaryAttack(snapshot.crew.gunnery),
+                snapshot.ruleset);
+            return { weapon: row.weapon!, presentation };
+        };
+
+        const standardShot = selectMode('Standard');
+        expect(standardShot.weapon.minimumRange).toBe(4);
+        expect(standardShot.presentation.minimumRangeModifier).toBe(2);
+
+        const highExplosiveShot = selectMode('High Explosive');
+        expect(highExplosiveShot.weapon.minimumRange).toBe(0);
+        expect(highExplosiveShot.weapon.ranges.slice(0, 3)).toEqual([3, 6, 9]);
+        expect(highExplosiveShot.presentation.minimumRangeModifier).toBe(0);
+        expect(Number(standardShot.presentation.targetNumberText) - Number(highExplosiveShot.presentation.targetNumberText))
+            .toBe(2);
+
+        const restored = selectMode('Standard');
+        expect(restored.weapon.minimumRange).toBe(4);
+        expect(restored.presentation.minimumRangeModifier).toBe(2);
+        expect(restored.presentation.targetNumberText).toBe(standardShot.presentation.targetNumberText);
+    });
+
+    it('applies direct vehicle system rules to weapon status, firing, and to-hit display', () => {
+        const laser = new WeaponEquipment({
+            id: 'VehicleLaser',
+            name: 'Vehicle Laser',
+            type: 'weapon',
+            flags: ['F_DIRECT_FIRE', 'F_ENERGY'],
+            weapon: { damage: 5, ranges: [3, 6, 9, 12] },
+        });
+        const targetingComputer = createEquipment({
+            id: 'VehicleTargetingComputer',
+            name: 'Targeting Computer',
+            type: 'misc',
+            flags: ['F_TARGETING_COMPUTER'],
+        });
+        const entity = new TestTankEntity(createTestEquipmentRegistry({
+            [laser.id]: laser,
+            [targetingComputer.id]: targetingComputer,
+        }));
+        entity.uuid.set(UUID);
+        const mount = addTestEquipment(entity, laser, { location: 'Front' });
+        addTestEquipment(entity, targetingComputer, { location: 'Body' });
+        const runtime = createNonMekRuntimeForTest(
+            'unit:tank-system-rules',
+            baseline(),
+            entity,
+            CORE_2026_RULESET,
+        );
+        runtime.dispatch({
+            type: 'damage-track',
+
+            damageTrackId: systemDamageId('engine', 1),
+            amount: 1,
+            target: 'committed',
+            timestamp: 1,
+        });
+        runtime.dispatch({
+            type: 'set-system-damage-level',
+            system: 'sensors',
+            level: 4,
+            target: 'committed',
+            timestamp: 2,
+        });
+
+        const snapshot = projectNonMekEquipmentPanel(
+            entity,
+            runtime.getIndex(),
+            CORE_2026_RULESET,
+            runtime.snapshot(),
+            runtime.query(),
+            Object.freeze({ revision: 0, targets: Object.freeze([]) }), {},
+        );
+        const row = snapshot.components.find(component =>
+            component.componentId === asComponentId(mount.mountId))!;
+
+        expect(row.status).toBe('disabled');
+        expect(row.previewStatus).toBe('disabled');
+        expect(row.weapon?.selectable).toBeFalse();
+        expect(row.weapon?.toHitModifier).toBe(3);
+        expect(row.weapon?.hitModifierBreakdown).toEqual([
+            { label: 'Targeting Computer', modifier: -1, kind: 'targeting-computer' },
+            { label: 'Sensor hits', modifier: 4, weakened: true },
+        ]);
+    });
+
+    it('projects non-Mek vehicle Charge and exact stabilizer movement modifiers', () => {
+        const weapon = new WeaponEquipment({
+            id: 'StabilizedVehicleWeapon',
+            name: 'Stabilized Vehicle Weapon',
+            type: 'weapon',
+            weapon: { damage: 5, ranges: [3, 6, 9, 12] },
+        });
+        const entity = new TestTankEntity(createTestEquipmentRegistry({ [weapon.id]: weapon }));
+        entity.uuid.set(UUID);
+        entity.setTonnage(60);
+        entity.originalWalkMP.set(8);
+        const mount = addTestEquipment(entity, weapon, { location: 'Front' });
+        const runtime = createNonMekRuntimeForTest(
+            'unit:tank-charge-panel',
+            baseline(),
+            entity,
+            CORE_2026_RULESET,
+        );
+        runtime.dispatch({
+            type: 'damage-track',
+
+            damageTrackId: systemDamageId('stabilizer', undefined, 'Front'),
+            amount: 1,
+            target: 'committed',
+            timestamp: 1,
+        });
+        runtime.dispatch({
+            type: 'set-movement',
+
+            movement: { mode: 'run', distance: 5, boosterComponentIds: [] },
+        });
+        const registry = Object.freeze({ revision: 0, targets: Object.freeze([]) });
+        runtime.dispatchAttackerTargeting({
+            type: 'edit-attacker-targeting',
+
+            edit: {
+                kind: 'set-action-selection',
+                target: { kind: 'intrinsic', actionId: 'intrinsic:charge' },
+                selection: { kind: 'selected' },
+            },
+        }, registry, false);
+
+        const snapshot = projectNonMekEquipmentPanel(
+            entity,
+            runtime.getIndex(),
+            CORE_2026_RULESET,
+            runtime.snapshot(),
+            runtime.query(),
+            registry, {},
+        );
+        const row = snapshot.components.find(component =>
+            component.componentId === asComponentId(mount.mountId))!;
+        expect(row.weapon?.hitModifierBreakdown).toContain({
+            label: 'Stabilizer Hit',
+            modifier: 2,
+            weakened: true,
+        });
+        expect(snapshot.physicalAttacks).toHaveSize(1);
+        expect(snapshot.physicalAttacks[0]).toEqual(jasmine.objectContaining({
+            label: 'Charge',
+            available: true,
+            selectable: true,
+            selection: { kind: 'selected' },
+            effect: jasmine.objectContaining({
+                kind: 'damage',
+                damage: 36,
+                maximumDamage: 60,
+            }),
+        }));
+    });
+
+    it('projects real aerospace heat and its named ranged-fire modifier', () => {
+        const weapon = new WeaponEquipment({
+            id: 'ISMediumPulseLaserPrototype',
+            name: 'Prototype Medium Pulse Laser',
+            type: 'weapon',
+            weapon: { damage: 6, heat: 4, ranges: [2, 4, 6, 8], av: [6, 0, 0, 0] },
+        });
+        const entity = new TestAeroSpaceFighterEntity(createTestEquipmentRegistry({
+            [weapon.id]: weapon,
+        }));
+        entity.uuid.set(UUID);
+        entity.heatSinkCount.set(10);
+        const mount = addTestEquipment(entity, weapon, { location: 'Nose' });
+        const runtime = createNonMekRuntimeForTest(
+            'unit:aero-heat-panel',
+            baseline(),
+            entity,
+            CORE_2026_RULESET,
+        );
+        runtime.dispatch({
+            type: 'set-heat',
+
+            heat: 24,
+
+        });
+        const snapshot = projectNonMekEquipmentPanel(
+            entity,
+            runtime.getIndex(),
+            CORE_2026_RULESET,
+            runtime.snapshot(),
+            runtime.query(),
+            Object.freeze({ revision: 0, targets: Object.freeze([]) }), {},
+        );
+        const row = snapshot.components.find(component =>
+            component.componentId === asComponentId(mount.mountId))!;
+
+        expect(snapshot.tracksHeat).toBeTrue();
+        expect(snapshot.heat).toEqual({ current: 24, pending: null, sinksOff: 0 });
+        expect(row.weapon).toEqual(jasmine.objectContaining({
+            heat: 10,
+            firingHeat: 10,
+        }));
+        expect(row.weapon?.heatSuffix).toBeUndefined();
+        expect(row.weapon?.hitModifierBreakdown).toContain({
+            label: 'Heat - Fire Modifier',
+            modifier: 4,
+            weakened: true,
+            kind: 'heat',
+        });
+    });
+
+    it('projects the non-Mek ProtoMek Frenzy action and crew availability', () => {
+        const entity = new TestProtoMekEntity();
+        entity.uuid.set(UUID);
+        entity.setTonnage(10);
+        entity.originalWalkMP.set(5);
+        const runtime = createNonMekRuntimeForTest(
+            'unit:proto-frenzy',
+            baseline(),
+            entity,
+            CORE_2026_RULESET,
+        );
+        const registry = Object.freeze({ revision: 0, targets: Object.freeze([]) });
+        const snapshot = () => projectNonMekEquipmentPanel(
+            entity,
+            runtime.getIndex(),
+            CORE_2026_RULESET,
+            runtime.snapshot(),
+            runtime.query(),
+            registry, {},
+        );
+
+        expect(snapshot().physicalAttacks).toEqual([jasmine.objectContaining({
+            label: 'Frenzy',
+            available: true,
+            selectable: true,
+            hitModifiers: [0],
+            effect: jasmine.objectContaining({
+                kind: 'damage',
+                damage: 3,
+                maximumDamage: 3,
+            }),
+        })]);
+
+        // A ProtoMek in Depth 1 water is underwater, so its frenzy deals half, rounding down.
+        expect(runtime.dispatch({ type: 'set-cover', cover: 'underwater-depth-1' }).accepted).toBeTrue();
+        expect(snapshot().physicalAttacks[0]?.effect).toEqual(jasmine.objectContaining({
+            damage: 1, maximumDamage: 1, weakened: true,
+        }));
+        expect(runtime.dispatch({ type: 'set-cover', cover: null }).accepted).toBeTrue();
+
+        const crewId = [...runtime.getIndex().crewPositions.keys()][0]!;
+        runtime.dispatch({
+            type: 'set-crew-state',
+
+            positionId: crewId,
+            wounds: 0,
+            unconscious: true,
+            ejected: false,
+        });
+        expect(snapshot().physicalAttacks[0]).toEqual(jasmine.objectContaining({
+            label: 'Frenzy',
+            available: false,
+            selectable: false,
+        }));
+    });
+
+    it("declares a platoon's anti-'Mech attacks by its troopers, and a swarming platoon's damage and release", () => {
+        const entity = new TestInfantryEntity();
+        entity.uuid.set(UUID);
+        entity.squadSize.set(7);
+        entity.squadCount.set(4);
+        const runtime = createNonMekRuntimeForTest(
+            'unit:infantry-anti-mek', { ...baseline(), ruleset: TOTAL_WARFARE_RULESET }, entity, TOTAL_WARFARE_RULESET);
+        const troopLocation = [...runtime.getIndex().locations.values()][0]!;
+        const targetId = asEncounterTargetId('target:swarmed-mek');
+        // The target is another player's unit, open here: its own sheet says whether it is swarmed.
+        const rows = (swarmed: boolean) => projectNonMekEquipmentPanel(
+            entity, runtime.getIndex(), TOTAL_WARFARE_RULESET, runtime.snapshot(), runtime.query(),
+            Object.freeze({ revision: 0, targets: Object.freeze([Object.freeze({
+                id: targetId, letter: 'A', name: 'Mek', color: '#123456', unitType: 'mek-biped' as const, readOnly: true,
+                tnCalculator: Object.freeze(swarmed ? { swarmed: true } : {}),
+            })]) }), {},
+        ).physicalAttacks;
+        const summary = (swarmed = false) => rows(swarmed).map(row =>
+            [row.label, row.kind, row.hitModifiers[0], row.available]);
+
+        // 28 troopers: the Leg Attacks and Swarm Attacks tables' best rows.
+        expect(summary()).toEqual([['Leg Attack', 'leg-attack', 0, true], ['Swarm Attack', 'swarm', 2, true]]);
+        expect(rows(false)[0]).toEqual(jasmine.objectContaining({
+            reach: 'legs-in-hex', hitTable: 'kick', critical: true, effect: jasmine.objectContaining({ damage: 4 }),
+        }));
+        runtime.dispatch({ type: 'set-internal-damage', locationId: troopLocation.id, damage: 12 });
+        expect(summary()).toEqual([['Leg Attack', 'leg-attack', 2, true], ['Swarm Attack', 'swarm', 5, true]]);
+        // 15 troopers can no longer swarm.
+        runtime.dispatch({ type: 'set-internal-damage', locationId: troopLocation.id, damage: 13 });
+        expect(summary()).toEqual([['Leg Attack', 'leg-attack', 5, true], ['Swarm Attack', 'swarm', 0, false]]);
+
+        // The platoon takes hold; the swarm counts once the target's owner has accepted it.
+        expect(runtime.dispatch({ type: 'set-swarming', target: targetId }).changed).toBeTrue();
+        expect(summary().map(row => row[1])).toEqual(['leg-attack', 'swarm']);
+        expect(summary(true)).toEqual([['Swarm Damage', 'swarm-damage', 0, true], ['End Swarm', 'end-swarm', 0, true]]);
+        expect(rows(true)[0]).toEqual(jasmine.objectContaining({
+            onlyTarget: targetId, hitTable: 'swarm', damageGroupSize: 2,
+        }));
+        expect(rows(true)[0]!.critical).toBeUndefined();
+        expect(physicalRowTargetIssue(rows(true)[0]!, { id: 'target:other', unitType: 'mek-biped', distance: 0 })).toBe('invalid');
+        expect(physicalRowTargetIssue(rows(true)[0]!, { id: targetId, unitType: 'mek-biped', distance: 0 })).toBeNull();
+        // Letting go brings the attacks back.
+        expect(runtime.dispatch({ type: 'set-swarming', target: null }).changed).toBeTrue();
+        expect(summary(true).map(row => row[1])).toEqual(['leg-attack', 'swarm']);
+
+        // The Anti-'Mech Skill takes the target's modifiers and a vehicle's -2, never the attacker's movement.
+        const moving = { ...stationaryAttack(4), attackModifierBreakdown: [{ label: 'Ran', modifier: 2 }] };
+        expect(physicalAttackTargetNumber({ hitModifiers: [2], kind: 'swarm' }, 5, moving, { tnModifier: 1, unitType: 'vehicle' }))
+            .toBe(5 + 2 + 1 - 2);
+    });
+
+    it('keeps uncrewed Infantry field guns intact but prevents firing them', () => {
+        const gun = new WeaponEquipment({
+            id: 'InfantryFieldGun',
+            name: 'Field Gun',
+            type: 'weapon',
+            stats: { tonnage: 6 },
+            weapon: { damage: 2, ranges: [8, 16, 24, 32] },
+        });
+        const entity = new TestInfantryEntity(createTestEquipmentRegistry({ [gun.id]: gun }));
+        entity.uuid.set(UUID);
+        entity.squadSize.set(5);
+        entity.squadCount.set(4);
+        const mounts = Array.from({ length: 3 }, () =>
+            addTestEquipment(entity, gun, { location: 'Field Guns' }));
+        const runtime = createNonMekRuntimeForTest(
+            'unit:infantry-field-gun-panel',
+            baseline(),
+            entity,
+            CORE_2026_RULESET,
+        );
+        const troopLocation = [...runtime.getIndex().locations.values()][0]!;
+        runtime.dispatch({
+            type: 'set-internal-damage',
+
+            locationId: troopLocation.id,
+            damage: 7,
+        });
+
+        const snapshot = projectNonMekEquipmentPanel(
+            entity,
+            runtime.getIndex(),
+            CORE_2026_RULESET,
+            runtime.snapshot(),
+            runtime.query(),
+            Object.freeze({ revision: 0, targets: Object.freeze([]) }), {},
+        );
+        const rows = mounts.map(mount => snapshot.components.find(row =>
+            row.componentId === asComponentId(mount.mountId))!);
+
+        expect(rows.map(row => row.status)).toEqual(['available', 'available', 'available']);
+        expect(rows.map(row => row.weapon?.selectable)).toEqual([true, true, false]);
+    });
+
+    it('projects one aggregate attack row per authored capital bay', () => {
+        const laser = new WeaponEquipment({
+            id: 'CapitalBayLaser',
+            name: 'Capital Bay Laser',
+            type: 'weapon',
+            weapon: {
+                atClass: 'CAPITAL_LASER',
+                capital: true,
+                damage: 1,
+                heat: 10,
+                ranges: [12, 24, 40, 50],
+                av: [1, 1, 1, 0],
+            },
+        });
+        const entity = new TestJumpShipEntity(createTestEquipmentRegistry({ [laser.id]: laser }));
+        entity.uuid.set(UUID);
+        const mounts = Array.from({ length: 4 }, () =>
+            addTestEquipment(entity, laser, { location: entity.locationOrder[0] }));
+        entity.addEquipmentBay('weapon-bay', { mounts });
+        const runtime = createNonMekRuntimeForTest(
+            'unit:jumpship-bay-panel',
+            baseline(),
+            entity,
+            CORE_2026_RULESET,
+        );
+
+        const snapshot = projectNonMekEquipmentPanel(
+            entity,
+            runtime.getIndex(),
+            CORE_2026_RULESET,
+            runtime.snapshot(),
+            runtime.query(),
+            Object.freeze({ revision: 0, targets: Object.freeze([]) }), {},
+        );
+        const weapons = snapshot.components.filter(row => row.weapon !== undefined);
+
+        expect(weapons).toHaveSize(1);
+        expect(weapons[0].attack?.source).toBe('authored-bay');
+        expect(weapons[0].attack?.members.map(member => member.componentId))
+            .toEqual(mounts.map(mount => asComponentId(mount.mountId)));
+        expect(weapons[0].weapon?.firingHeat).toBe(40);
+        expect(weapons[0].weapon?.aerospace?.attackValues).toEqual([4, 4, 4, 0]);
+    });
+
+    for (const ruleset of ['core-2026', 'total-warfare'] as const) {
+        it(`rounds fractional capital damage after aggregating operational bay members (${ruleset})`, () => {
+            const laser = new WeaponEquipment({
+                id: 'NL55', name: 'Naval Laser 55', type: 'weapon',
+                weapon: { atClass: 'CAPITAL_LASER', capital: true, damage: 5.5, heat: 85,
+                    ranges: [12, 24, 40, 50], av: [5.5, 5.5, 5.5, 5.5] },
+            });
+            const entity = new TestJumpShipEntity(createTestEquipmentRegistry({ [laser.id]: laser }));
+            entity.uuid.set(UUID);
+            const mounts = Array.from({ length: 3 }, () => addTestEquipment(entity, laser, { location: entity.locationOrder[0] }));
+            entity.addEquipmentBay('weapon-bay', { mounts });
+            const runtime = createNonMekRuntimeForTest('unit:naval-laser-rounding', { ...baseline(), ruleset }, entity, ruleset);
+            const project = () => projectNonMekEquipmentPanel(entity, runtime.getIndex(), ruleset, runtime.snapshot(), runtime.query(),
+                Object.freeze({ revision: 0, targets: Object.freeze([]) }), {}).components.find(row => row.weapon !== undefined)!;
+            expect(project().weapon?.aerospace?.attackValues).toEqual([17, 17, 17, 17]);
+            runtime.dispatch({ type: 'set-component-status', componentId: asComponentId(mounts[0].mountId), status: 'destroyed', target: 'committed' });
+            expect(project().weapon?.aerospace?.attackValues).toEqual([11, 11, 11, 11]);
+        });
+    }
+
+    it('switches a DropShip projection between bay and grounded individual attacks', () => {
+        const laser = new WeaponEquipment({
+            id: 'DropShipBayLaser',
+            name: 'DropShip Bay Laser',
+            type: 'weapon',
+            weapon: { damage: 5, heat: 5, ranges: [6, 12, 20, 25], av: [5, 5, 0, 0] },
+        });
+        const entity = new TestDropShipEntity(createTestEquipmentRegistry({ [laser.id]: laser }));
+        entity.uuid.set(UUID);
+        const mounts = Array.from({ length: 3 }, () =>
+            addTestEquipment(entity, laser, { location: entity.locationOrder[0] }));
+        entity.addEquipmentBay('weapon-bay', { mounts });
+        const runtime = createNonMekRuntimeForTest(
+            'unit:dropship-bay-panel',
+            baseline(),
+            entity,
+            CORE_2026_RULESET,
+        );
+        const registry = Object.freeze({ revision: 0, targets: Object.freeze([]) });
+        const weaponRows = () => projectNonMekEquipmentPanel(
+            entity,
+            runtime.getIndex(),
+            CORE_2026_RULESET,
+            runtime.snapshot(),
+            runtime.query(),
+            registry, {},
+        ).components.filter(row => row.weapon !== undefined);
+
+        expect(weaponRows()).toHaveSize(1);
+        runtime.dispatch({ type: 'set-airborne', airborne: false });
+        expect(weaponRows()).toHaveSize(3);
+        runtime.dispatch({ type: 'set-airborne', airborne: true });
+        expect(weaponRows()).toHaveSize(1);
+    });
+});
+
+function baseline(): InstanceBaselineRef {
+    return Object.freeze({
+        entity: UUID,
+        ruleset: CORE_2026_RULESET,
+        initialStateProfile: Object.freeze({
+            profileId: 'pristine-non-mek',
+        }),
+    });
+}
+
+import { createNonMekRuntimeForTest, restoreNonMekRuntimeForTest } from './testing/unit-runtime-owner-fixture';
+
+/** An attacker with no declared movement, standard piloting, and an available C3 link. */
+function stationaryAttack(gunnery: number): WeaponAttackContext {
+    return Object.freeze({
+        gunnery,
+        pilotingSkill: 5,
+        movementMode: null,
+        allowExtremeRange: false,
+        missingMovementModifier: false,
+        attackModifierBreakdown: Object.freeze([]),
+        c3DegradationSource: 'none',
+        c3Available: true,
+    });
+}

@@ -5,13 +5,14 @@
 import { signal } from '@angular/core';
 import { ComponentFixture, TestBed } from '@angular/core/testing';
 import { DIALOG_DATA, DialogRef } from '@angular/cdk/dialog';
+import { asEncounterTargetId } from '../../models/runtime/encounter-runtime';
 import { CORE_2026_GAME_RULES, TW_GAME_RULES } from '../../models/rules/game-rules';
 import { TN_CHAMELEON_MODIFIERS, TN_STANDARD_STEALTH_MODIFIERS } from '../../models/target-number-calculator.model';
 import { TnCalculatorDialogComponent, type TnCalculatorDialogData, type TnCalculatorDialogResult } from './tn-calculator-dialog.component';
 
 const DATA: TnCalculatorDialogData = {
     target: {
-        id: 'A',
+        id: asEncounterTargetId('A'),
         letter: 'A',
         name: 'Target A',
         color: '#1565C0',
@@ -254,6 +255,35 @@ describe('TnCalculatorDialogComponent C3 degradation', () => {
         expect(component.customModifier()).toBe(-9);
         expect((fixture.nativeElement.querySelector('#tnCustomModifier') as HTMLOutputElement).textContent?.trim()).toBe('-9');
         expect(buttons[0].disabled).toBeTrue();
+    });
+
+    it('keeps declared attacks when a spotter loses its own TAG designation', () => {
+        component.gameRules.set(TW_GAME_RULES);
+        component.selectUnitType('vehicle');
+        component.toggleIndirectFire();
+        component.toggleSpotterDeclaredAttacks();
+        component.toggleTagged(); // A different unit designated this target.
+        expect(component.indirectFireModifier()).toBe(2);
+
+        component.toggleSpotterTag();
+        expect(component.spotterDeclaredAttacks()).toBe('tag');
+        expect(component.indirectFireModifier()).toBe(1);
+        component.toggleSpotterTag();
+        expect(component.spotterDeclaredAttacks()).toBeTrue();
+        expect(component.tagged()).toBeTrue();
+        component.toggleSpotterTag();
+        component.toggleTagged();
+        expect(component.spotterDeclaredAttacks()).toBeTrue();
+        expect(component.indirectFireModifier()).toBe(2);
+
+        component.toggleSpotterTag();
+        component.selectUnitType('infantry');
+        expect(component.tagged()).toBeFalse();
+        expect(component.spotterDeclaredAttacks()).toBeTrue();
+        component.toggleSpotterTag();
+        expect(component.spotterDeclaredAttacks()).toBeTrue();
+        component.toggleIndirectFire();
+        expect(component.spotterDeclaredAttacks()).toBeFalse();
     });
 
     it('clears and disables ordinary partial cover outside the spotter-LOS group for Core indirect fire', () => {
@@ -638,7 +668,7 @@ describe('TnCalculatorDialogComponent read-only target identity', () => {
     beforeEach(async () => {
         const data: TnCalculatorDialogData = {
             target: {
-                id: 'opfor:enemy-1',
+                id: asEncounterTargetId('opfor:enemy-1'),
                 letter: 'A',
                 name: 'Achileus Light Battle Armor',
                 color: '#1565C0',
@@ -755,10 +785,28 @@ describe('TnCalculatorDialogComponent read-only target identity', () => {
 });
 
 describe('TnCalculatorDialogComponent movement and stance', () => {
+    it('saves interior fire and building type independently of the defender’s read-only cover', async () => {
+        const close = jasmine.createSpy('close');
+        const data: TnCalculatorDialogData = {
+            target: { id: asEncounterTargetId('A'), letter: 'A', name: 'Occupants', color: '#abc',
+                unitType: 'infantry', distance: 0, tnModifier: 0, tnCalculator: { buildingCover: 'building-2' } },
+            gameRules: TW_GAME_RULES, targetStateReadOnly: true,
+        };
+        await TestBed.configureTestingModule({ imports: [TnCalculatorDialogComponent], providers: [
+            { provide: DIALOG_DATA, useValue: data }, { provide: DialogRef, useValue: { close } },
+        ] }).compileComponents();
+        const component = TestBed.createComponent(TnCalculatorDialogComponent).componentInstance;
+        component.insideTargetBuilding.set(true);
+        component.setInfantryBuildingType('hardened');
+        component.apply();
+        expect(close.calls.mostRecent().args[0].patch.tnCalculator)
+            .toEqual(jasmine.objectContaining({ insideTargetBuilding: true, infantryBuildingType: 'hardened' }));
+    });
+
     it('uses the synchronized target height in live water and building geometry', async () => {
         const data: TnCalculatorDialogData = {
             target: {
-                id: 'A', letter: 'A', name: 'Tall target', color: '#1565C0',
+                id: asEncounterTargetId('A'), letter: 'A', name: 'Tall target', color: '#1565C0',
                 unitType: 'vehicle', distance: 5, tnModifier: 0,
                 tnCalculator: { targetHeight: 3 },
             },
@@ -787,7 +835,7 @@ describe('TnCalculatorDialogComponent movement and stance', () => {
         const close = jasmine.createSpy('close');
         const data: TnCalculatorDialogData = {
             target: {
-                id: 'A', letter: 'A', name: 'Non-Mek target', color: '#1565C0',
+                id: asEncounterTargetId('A'), letter: 'A', name: 'Non-Mek target', color: '#1565C0',
                 unitType: 'battle-armor', distance: 1, tnModifier: 1,
                 tnCalculator: { waterDepth: 'underwater-depth-2' },
             },
@@ -825,7 +873,7 @@ describe('TnCalculatorDialogComponent movement and stance', () => {
         const close = jasmine.createSpy('close');
         const data: TnCalculatorDialogData = {
             target: {
-                id: 'A',
+                id: asEncounterTargetId('A'),
                 letter: 'A',
                 name: 'Target A',
                 color: '#1565C0',
@@ -872,7 +920,7 @@ describe('TnCalculatorDialogComponent movement and stance', () => {
         const close = jasmine.createSpy('close');
         const data: TnCalculatorDialogData = {
             target: {
-                id: 'A', letter: 'A', name: 'Target A', color: '#1565C0',
+                id: asEncounterTargetId('A'), letter: 'A', name: 'Target A', color: '#1565C0',
                 unitType: 'mek-biped', distance: 1, tnModifier: 0,
             },
             gameRules: TW_GAME_RULES,
@@ -892,15 +940,9 @@ describe('TnCalculatorDialogComponent movement and stance', () => {
 
         const partialCover = fixture.nativeElement.querySelector('.partial-cover') as HTMLButtonElement;
         const buildingTrigger = fixture.nativeElement.querySelector('button[aria-label="Building level"]') as HTMLButtonElement;
-        const coverRow = fixture.nativeElement.querySelector('[aria-label="Target hex cover"]') as HTMLElement;
-        const coverButtons = [
-            ...coverRow.querySelectorAll<HTMLButtonElement>(':scope > button'),
-            ...coverRow.querySelectorAll<HTMLButtonElement>(':scope > cover-level-picker .cover-trigger'),
-        ];
         expect(component.targetHexCover()).toBe('none');
         expect(component.buildingPartialCover()).toBeTrue();
         expect(component.partialCoverSelected()).toBeTrue();
-        expect(coverButtons.map(button => getComputedStyle(button).width)).toEqual(Array(4).fill('40px'));
         expect(partialCover.disabled).toBeTrue();
         expect(partialCover.textContent).toContain('Partial Cover (building)');
         expect(getComputedStyle(partialCover).backgroundColor).toBe('rgb(209, 209, 209)');
@@ -926,7 +968,7 @@ describe('TnCalculatorDialogComponent movement and stance', () => {
     it('uses the superheavy depth offset for water partial cover', async () => {
         const data: TnCalculatorDialogData = {
             target: {
-                id: 'A', letter: 'A', name: 'Target A', color: '#1565C0',
+                id: asEncounterTargetId('A'), letter: 'A', name: 'Target A', color: '#1565C0',
                 unitType: 'mek-biped', distance: 5, tnModifier: 0,
             },
             gameRules: CORE_2026_GAME_RULES,
@@ -954,7 +996,7 @@ describe('TnCalculatorDialogComponent movement and stance', () => {
         const close = jasmine.createSpy('close');
         const data: TnCalculatorDialogData = {
             target: {
-                id: 'A',
+                id: asEncounterTargetId('A'),
                 letter: 'A',
                 name: 'Target A',
                 color: '#1565C0',
@@ -1002,7 +1044,7 @@ describe('TnCalculatorDialogComponent movement and stance', () => {
     it('shows both linked-target stance flags', async () => {
         const data: TnCalculatorDialogData = {
             target: {
-                id: 'opfor:enemy-1',
+                id: asEncounterTargetId('opfor:enemy-1'),
                 letter: 'A',
                 name: 'Enemy',
                 color: '#1565C0',

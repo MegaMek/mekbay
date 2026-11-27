@@ -1,231 +1,292 @@
 // Copyright (C) 2026 The MegaMek Team
 // SPDX-License-Identifier: GPL-3.0-or-later
-// Author: Drake
 
-import { getEffectivePilotingSkill } from "../utils/cbt-common.util";
-import type { CBTForceUnit } from "./cbt-force-unit.model";
-import type { SerializedCrewMember } from './force-serialization';
+import type { CBTUnitSnapshot } from './cbt-unit-snapshot';
+import type { CrewPositionId } from './entity/entity-identifiers';
+import { ImmutableIndex } from './entity/immutable-collections';
 
+export const MAX_CREW_WOUNDS = 6;
+export const CRIPPLED_CREW_WOUND_THRESHOLD = 4;
 export const DEFAULT_GUNNERY_SKILL = 4;
 export const DEFAULT_PILOTING_SKILL = 5;
-export const DEAD_CREW_HIT_THRESHOLD = 6;
-export const CRIPPLED_CREW_HIT_THRESHOLD = 4;
-const CONSCIOUSNESS_SCALE = [3, 5, 7, 10, 11];
 
-function normalizeCrewHits(hits: number): number {
-    if (!Number.isFinite(hits)) return 0;
-    return Math.min(DEAD_CREW_HIT_THRESHOLD, Math.max(0, Math.trunc(hits)));
-}
-
-export function getConsciousnessTarget(hits: number): number | null {
-    return CONSCIOUSNESS_SCALE[Math.trunc(hits) - 1] ?? null;
-}
-
-export function getConsciousnessHitCount(target: number): number | null {
-    const hitIndex = CONSCIOUSNESS_SCALE.indexOf(Math.trunc(target));
-    return hitIndex < 0 ? null : hitIndex + 1;
-}
-
-export type SkillType = 'gunnery' | 'piloting';
-export type CrewMemberState = 'healthy' | 'ejected' | 'unconscious' | 'dead' | 'killed' | 'stunned';
-type StoredCrewMemberState = CrewMemberState;
-
-/** Crew who can currently operate the unit or make a skill check. */
-export function isCrewMemberAvailable(state: CrewMemberState): boolean {
-    return state === 'healthy';
-}
-
-/** Crew still present in the unit and affected by unit-wide damage or fall checks. */
-export function isCrewMemberAboard(state: CrewMemberState): boolean {
-    return state !== 'ejected' && state !== 'dead' && state !== 'killed';
-}
-
+/** Detached crew row used by force previews and import/export DTOs. */
 export interface CrewMemberDetails {
-    id: number;
-    name: string;
-    gunnery: number;
-    piloting: number;
-    asfGunnery?: number;
-    asfPiloting?: number;
+    readonly id: number;
+    readonly name: string;
+    readonly gunnery: number;
+    readonly piloting: number;
+    readonly aeroGunnery?: number;
+    readonly aeroPiloting?: number;
 }
 
-export class CrewMember {
-    private unit: CBTForceUnit;
-    private id: number;
-    private name: string;
-    private gunnerySkill: number;
-    private pilotingSkill: number;
-    private asfGunnerySkill?: number; // Optional ASF gunnery skill for ASF
-    private asfPilotingSkill?: number; // Optional ASF piloting skill for ASF units
-    private hits: number;
-    private state: StoredCrewMemberState = 'healthy';
+export type CrewMemberEffectiveState = 'healthy' | 'ejected' | 'unconscious' | 'dead' | 'vacant';
+export type CrewMemberState = CrewMemberEffectiveState | 'killed' | 'stunned';
 
-    constructor(id: number, unit: CBTForceUnit) {
-        this.unit = unit;
-        this.id = id;
-        this.name = '';
-        this.gunnerySkill = 4;
-        this.pilotingSkill = 5;
-        this.hits = 0;
-    }
+/** Sparse combat facts stored by every CBT unit runtime. */
+export interface CrewMemberRuntimeState {
+    readonly wounds: number;
+    readonly unconscious: boolean;
+    readonly ejected: boolean;
+    /** One stored fact, presented as Dead for wound tracks or Killed for manual switches. */
+    readonly dead?: true;
+    /** Earliest turn for an automated recovery roll; null means no queued recovery. */
+    readonly recoveryReadyTurn?: number | null;
+}
 
-    getId(): number {
-        return this.id;
-    }
+interface CrewMemberStatusUpdate {
+    readonly unconscious: boolean;
+    readonly ejected: boolean;
+    /** Omitted preserves a pending schedule; null explicitly means none. */
+    readonly recoveryReadyTurn?: number | null;
+}
 
-    getConsciousnessTarget() {
-        return getConsciousnessTarget(this.getHits());
-    }
+export interface CrewMemberStateUpdate extends CrewMemberStatusUpdate {
+    readonly wounds: number;
+}
 
-    toggleUnconscious() {
-        const newState = this.state === 'unconscious' ? 'healthy' : 'unconscious';
-        this.unit.setCrewState(this.id, newState);
-    }
+export interface ManualCrewDeathUpdate extends CrewMemberStatusUpdate {
+    readonly dead: boolean;
+}
 
-    isDead(): boolean {
-        return this.state === 'dead' || this.unit.rules.isCrewCockpitDestroyed(this.getId());
-    }
+const HEALTHY_CREW_STATE: CrewMemberRuntimeState = Object.freeze({
+    wounds: 0,
+    unconscious: false,
+    ejected: false,
+});
 
-    isCrippled(): boolean {
-        if (this.isDead()) return false; // is already dead...
-        if (this.state === 'ejected') return false; // the pilot is already gone!
-        return (this.hits >= CRIPPLED_CREW_HIT_THRESHOLD);
-    }
+/**
+ * Immutable view of one crew member's combat state.
+ *
+ * Runtime snapshots continue to store plain frozen facts. Use `from` while
+ * evaluating or changing one member and `toRuntimeState` at the state boundary.
+ */
+export class CrewMember implements CrewMemberRuntimeState {
+    static readonly healthy = new CrewMember(HEALTHY_CREW_STATE);
+    /** A query-only view of an unoccupied station; vacancy is an assignment fact. */
+    static readonly vacant = new CrewMember(HEALTHY_CREW_STATE);
 
-    getState(): CrewMemberState {
-        if (this.isDead()) return 'dead';
-        return this.state;
-    }
+    readonly wounds: number;
+    readonly unconscious: boolean;
+    readonly ejected: boolean;
+    readonly dead?: true;
+    readonly recoveryReadyTurn?: number | null;
 
-    setState(state: StoredCrewMemberState) {
-        if (this.isDead() && state !== 'dead') return;
-        if (this.state === state) return;
-        this.state = state;
-        this.unit.setCrewMember(this.id, this);
-        this.unit.setModified();
-    }
-
-    setSkill(skillType: SkillType, skillValue: number, asf: boolean = false) {
-        if (asf) {
-            if (skillType === 'piloting') {
-                this.asfPilotingSkill = skillValue;
-            } else {
-                this.asfGunnerySkill = skillValue;
-            }
-        } else {
-            if (skillType === 'piloting') {
-                this.pilotingSkill = skillValue;
-            } else {
-                this.gunnerySkill = skillValue;
-            }
+    private constructor(state: CrewMemberRuntimeState) {
+        this.wounds = state.wounds;
+        this.unconscious = state.unconscious;
+        this.ejected = state.ejected;
+        if (state.dead === true) this.dead = true;
+        if (state.recoveryReadyTurn !== undefined) {
+            this.recoveryReadyTurn = state.recoveryReadyTurn;
         }
-        this.unit.setCrewMember(this.id, this);
-        this.unit.setModified();
+        Object.freeze(this);
     }
 
-    getSkill(skillType: SkillType, asf: boolean = false): number {
-        if (skillType === 'gunnery') {
-            const value = asf ? this.asfGunnerySkill : this.gunnerySkill;
-            if (value === undefined || value === null) {
-                return DEFAULT_GUNNERY_SKILL;
-            }
-            return value;
-        }
-        const value = asf ? this.asfPilotingSkill : this.pilotingSkill;
-        if (value === undefined || value === null) {
-            return DEFAULT_PILOTING_SKILL;
-        }
-        return value;
+    static from(state?: CrewMemberRuntimeState): CrewMember {
+        if (state === undefined) return CrewMember.healthy;
+        return state instanceof CrewMember ? state : new CrewMember(state);
     }
 
-    getName(): string {
-        return this.name || '';
-    }
-
-    setName(name: string) {
-        if (name === this.name) return;
-        this.name = name;
-        this.unit.setCrewMember(this.id, this);
-        this.unit.setModified();
-    }
-
-    getHits(): number {
-        return this.hits;
-    }
-
-    setHits(hits: number) {
-        const normalized = normalizeCrewHits(hits);
-        if (normalized === this.hits) return;
-        this.hits = normalized;
-        if (normalized < DEAD_CREW_HIT_THRESHOLD && this.state === 'dead') this.state = 'healthy';
-        this.unit.setCrewMember(this.id, this);
-        this.unit.setModified();
-    }
-
-    /** Serialize this CrewMember instance to a plain object */
-    public serialize(): SerializedCrewMember {
-        const isLandAirMek = this.unit.getUnit().subtype === 'Land-Air BattleMek';
-        return {
-            id: this.getId(),
-            name: this.getName(),
-            gunnerySkill: this.getSkill('gunnery'),
-            pilotingSkill: this.getSkill('piloting'),
-            ...(isLandAirMek ? {
-                asfGunnerySkill: this.getSkill('gunnery', true),
-                asfPilotingSkill: this.getSkill('piloting', true),
-            } : {}),
-            hits: this.getHits(),
-            state: this.serializeState()
-        };
-    }
-
-    /** Deserialize a plain object to a CrewMember instance */
-    public static deserialize(data: SerializedCrewMember, unit: CBTForceUnit): CrewMember {
-        const crew = new CrewMember(data.id, unit);
-        crew.setName(data.name);
-        crew.setSkill('gunnery', data.gunnerySkill);
-        const baseUnit = unit.getUnit();
-        crew.setSkill('piloting', getEffectivePilotingSkill(baseUnit, data.pilotingSkill));
-        if (data.asfGunnerySkill !== undefined)
-            crew.setSkill('gunnery', data.asfGunnerySkill, true);
-        if (data.asfPilotingSkill !== undefined)
-            crew.setSkill('piloting', data.asfPilotingSkill, true);
-        crew.setHits(data.hits);
-        crew.setState(CrewMember.deserializeStoredState(data.state, unit));
-        return crew;
-    }
-
-    public update(data: SerializedCrewMember) {
-        if (data.name !== this.name) this.name = data.name;
-        if (data.gunnerySkill !== this.gunnerySkill) this.gunnerySkill = data.gunnerySkill;
-        if (data.pilotingSkill !== this.pilotingSkill) this.pilotingSkill = data.pilotingSkill;
-        if (data.asfGunnerySkill !== this.asfGunnerySkill) this.asfGunnerySkill = data.asfGunnerySkill;
-        if (data.asfPilotingSkill !== this.asfPilotingSkill) this.asfPilotingSkill = data.asfPilotingSkill;
-        const hits = normalizeCrewHits(data.hits);
-        if (hits !== this.hits) {
-            this.hits = hits;
-            if (hits < DEAD_CREW_HIT_THRESHOLD && this.state === 'dead') this.state = 'healthy';
-        }
-
-        const newState = CrewMember.deserializeStoredState(data.state, this.unit);
-        if ((!this.isDead() || newState === 'dead') && newState !== this.state) this.state = newState;
-    }
-
-    private static deserializeStoredState(state: number, unit: CBTForceUnit): StoredCrewMemberState {
-        if (state === 1) return 'unconscious';
-        if (state === 2) return 'dead';
-        if (state === 3) return 'ejected';
-        if (state === 4) return 'killed';
-        if (state === 5) return 'stunned';
+    effectiveState(derivedDead = false): CrewMemberEffectiveState {
+        if (this === CrewMember.vacant) return 'vacant';
+        if (derivedDead || this.dead === true) return 'dead';
+        if (this.ejected) return 'ejected';
+        if (this.unconscious) return 'unconscious';
         return 'healthy';
     }
 
-    private serializeState(): number {
-        if (this.state === 'unconscious') return 1;
-        if (this.state === 'dead') return 2;
-        if (this.state === 'ejected') return 3;
-        if (this.state === 'killed') return 4;
-        if (this.state === 'stunned') return 5;
-        return 0;
+    hasState(state: CrewMemberState, derivedDead = false): boolean {
+        if (this === CrewMember.vacant) return state === 'vacant';
+        switch (state) {
+            case 'vacant': return false;
+            case 'dead':
+            case 'killed': return derivedDead || this.dead === true;
+            case 'ejected': return this.ejected;
+            case 'unconscious':
+            case 'stunned': return this.unconscious;
+            case 'healthy': return this.effectiveState(derivedDead) === 'healthy';
+        }
     }
+
+    isAvailable(derivedDead = false): boolean {
+        return !this.isFatallyWounded()
+            && this.effectiveState(derivedDead) === 'healthy';
+    }
+
+    isAboard(derivedDead = false): boolean {
+        const state = this.effectiveState(derivedDead);
+        return state !== 'vacant' && state !== 'dead' && state !== 'ejected';
+    }
+
+    /** Aboard and not fatally wounded: still takes hits and rolls, even while unconscious. */
+    isAliveAboard(): boolean {
+        return this.isAboard() && !this.isFatallyWounded();
+    }
+
+    isCrippled(derivedDead = false): boolean {
+        return this.isAboard(derivedDead)
+            && this.wounds >= CRIPPLED_CREW_WOUND_THRESHOLD;
+    }
+
+    isFatallyWounded(): boolean {
+        return this.wounds >= MAX_CREW_WOUNDS;
+    }
+
+    isDeathCommitted(): boolean {
+        return this.dead === true;
+    }
+
+    /** Updates crew whose death follows the six-wound track. */
+    withWoundTrackedState(update: CrewMemberStateUpdate): CrewMember {
+        const correctingAutomaticDeath = this.isFatallyWounded()
+            && update.wounds < MAX_CREW_WOUNDS;
+        return this.updated(update, this.dead === true && !correctingAutomaticDeath);
+    }
+
+    /** A manual Killed switch uses the same canonical facts as six-wound death. */
+    withManualDeath(update: ManualCrewDeathUpdate): CrewMember {
+        return this.updated({
+            ...update,
+            wounds: update.dead ? MAX_CREW_WOUNDS : 0,
+        }, update.dead);
+    }
+
+    private updated(update: CrewMemberStateUpdate, dead: boolean): CrewMember {
+        const recoveryReadyTurn = !update.unconscious
+            ? undefined
+            : update.recoveryReadyTurn !== undefined
+                ? update.recoveryReadyTurn
+                : this.recoveryReadyTurn;
+        return new CrewMember({
+            wounds: update.wounds,
+            unconscious: update.unconscious,
+            ejected: update.ejected,
+            ...(dead ? { dead: true } : {}),
+            ...(recoveryReadyTurn === undefined ? {} : { recoveryReadyTurn }),
+        });
+    }
+
+    commitDeath(): CrewMember {
+        if (!this.isFatallyWounded() || this.isDeathCommitted()) return this;
+        return new CrewMember({ ...this.toRuntimeState(), dead: true });
+    }
+
+    equals(other: CrewMember): boolean {
+        return (this === CrewMember.vacant) === (other === CrewMember.vacant)
+            && this.wounds === other.wounds
+            && this.unconscious === other.unconscious
+            && this.ejected === other.ejected
+            && this.dead === other.dead
+            && this.recoveryReadyTurn === other.recoveryReadyTurn;
+    }
+
+    isPristine(): boolean {
+        return this.wounds === 0
+            && !this.unconscious
+            && !this.ejected
+            && this.dead !== true
+            && this.recoveryReadyTurn === undefined;
+    }
+
+    toRuntimeState(): CrewMemberRuntimeState {
+        return Object.freeze({
+            wounds: this.wounds,
+            unconscious: this.unconscious,
+            ejected: this.ejected,
+            ...(this.dead === true ? { dead: true as const } : {}),
+            ...(this.recoveryReadyTurn === undefined
+                ? {}
+                : { recoveryReadyTurn: this.recoveryReadyTurn }),
+        });
+    }
+}
+
+/** One crew edit for every unit family; `dead` is the manual Killed switch. */
+export interface CrewStateEdit extends CrewMemberStateUpdate {
+    readonly dead?: boolean;
+}
+
+/** The sparse crew invariant every runtime family and the save codec enforce. */
+export function isSparseCrewMemberState(crew: CrewMemberRuntimeState): boolean {
+    return Number.isSafeInteger(crew.wounds) && crew.wounds >= 0 && crew.wounds <= MAX_CREW_WOUNDS
+        && typeof crew.unconscious === 'boolean'
+        && typeof crew.ejected === 'boolean'
+        && (crew.dead === undefined || (crew.dead === true && crew.wounds === MAX_CREW_WOUNDS))
+        && validRecoveryReadyTurn(crew.recoveryReadyTurn, crew.unconscious)
+        && (crew.wounds > 0 || crew.unconscious || crew.ejected);
+}
+
+/** Applies one crew edit to the sparse crew map; null when the edit is invalid or changes nothing. */
+export function withCrewMemberState(
+    crew: ReadonlyMap<CrewPositionId, CrewMemberRuntimeState>,
+    positionId: CrewPositionId,
+    edit: CrewStateEdit,
+): ReadonlyMap<CrewPositionId, CrewMemberRuntimeState> | null {
+    if (!Number.isSafeInteger(edit.wounds) || edit.wounds < 0 || edit.wounds > MAX_CREW_WOUNDS
+        || typeof edit.unconscious !== 'boolean'
+        || typeof edit.ejected !== 'boolean'
+        || (edit.dead !== undefined && typeof edit.dead !== 'boolean')
+        || !validRecoveryReadyTurn(edit.recoveryReadyTurn, edit.unconscious)) {
+        return null;
+    }
+    const current = CrewMember.from(crew.get(positionId));
+    const next = edit.dead === undefined
+        ? current.withWoundTrackedState(edit)
+        : current.withManualDeath({
+            unconscious: edit.unconscious,
+            ejected: edit.ejected,
+            recoveryReadyTurn: edit.recoveryReadyTurn,
+            dead: edit.dead,
+        });
+    if (current.equals(next)) return null;
+    const result = new Map(crew);
+    if (next.isPristine()) result.delete(positionId);
+    else result.set(positionId, next.toRuntimeState());
+    return new ImmutableIndex(result);
+}
+
+/** A recovery turn is queued only for unconscious crew; null means none is queued. */
+function validRecoveryReadyTurn(value: number | null | undefined, unconscious: boolean): boolean {
+    return value === undefined
+        || (unconscious && (value === null || (Number.isSafeInteger(value) && value >= 0)));
+}
+
+export interface ActiveCrewController {
+    readonly positionId: CrewPositionId;
+    readonly occurrence: number;
+    readonly piloting: number;
+    readonly member: CrewMember;
+}
+
+/**
+ * The crew member who controls the unit: the primary station when able,
+ * otherwise the able member with the best skill. Vacant, ejected, dead, fatally
+ * wounded, and unconscious stations never control; `recoveredPositions` are
+ * unconscious crew whose pending recovery roll already succeeded.
+ */
+export function activeCrewController(
+    snapshot: CBTUnitSnapshot,
+    skill: 'piloting' | 'aeroPiloting',
+    recoveredPositions: ReadonlySet<CrewPositionId> = new Set<CrewPositionId>(),
+): ActiveCrewController | null {
+    const candidates = [...snapshot.index.crewPositions.values()].flatMap(position => {
+        const member = snapshot.query.crewState(position.id);
+        if (!member.isAliveAboard()
+            || member.unconscious && !recoveredPositions.has(position.id)) return [];
+        const assignment = snapshot.crewAssignment.positions.find(candidate =>
+            candidate.positionId === position.id);
+        return [Object.freeze({
+            positionId: position.id,
+            occurrence: position.occurrence,
+            piloting: assignment?.[skill] ?? DEFAULT_PILOTING_SKILL,
+            member,
+        })];
+    });
+    return candidates.find(candidate => candidate.occurrence === 0)
+        ?? candidates.sort((left, right) =>
+            left.piloting - right.piloting
+            || left.occurrence - right.occurrence
+            || left.positionId.localeCompare(right.positionId))[0]
+        ?? null;
 }

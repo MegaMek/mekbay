@@ -8,6 +8,8 @@ import { EntityMountedEquipment } from '../types';
  * Options for equipment line encoding.
  */
 export interface EncodeEquipmentOptions {
+  /** Building facings follow MegaMek's clockwise 0=N ordering. */
+  buildingFacing?: boolean;
   /**
    * When true, suppresses location-implied suffixes (`(T)`, `(R)`)
    * that are already conveyed by the BLK block structure.
@@ -24,6 +26,15 @@ export interface EncodeEquipmentOptions {
   includeOmniPod?: boolean;
 }
 
+export class UnrepresentableEquipmentConfigurationError extends Error {
+  readonly code = 'UNREPRESENTABLE_EQUIPMENT_CONFIGURATION' as const;
+
+  constructor(readonly mountId: string, message: string) {
+    super(message);
+    this.name = 'UnrepresentableEquipmentConfigurationError';
+  }
+}
+
 /**
  * Encodes an `EntityMountedEquipment` into an equipment line string.
  *
@@ -36,6 +47,7 @@ export interface EncodeEquipmentOptions {
  * @returns The encoded equipment line
  */
 export function encodeEquipmentLine(mount: EntityMountedEquipment, options?: EncodeEquipmentOptions): string {
+  validateEquipmentEncoding(mount, options);
   let name = mount.equipmentId;
   const blk = options?.blkMode ?? false;
 
@@ -51,7 +63,12 @@ export function encodeEquipmentLine(mount: EntityMountedEquipment, options?: Enc
 
   // Turret suffix - standard (T) is implied by the BLK location block,
   // but sponson (ST) and pintle (PT) appear in location blocks and need the suffix.
-  if (!blk) {
+  if (options?.buildingFacing) {
+    // BLKStructureFile uses BLKFile's suffix parser: facing, turret, OmniPod, shots, size.
+    if (mount.facing !== undefined) name += [' (F)', ' (FR)', ' (RR)', ' (R)', ' (RL)', ' (FL)'][mount.facing] ?? '';
+    if (mount.turretType) name += turretSuffix(mount.turretType);
+    else if (mount.turretMounted) name += '(T)';
+  } else if (!blk) {
     if (mount.turretType) {
       name += turretSuffix(mount.turretType);
     } else if (mount.turretMounted) {
@@ -89,17 +106,50 @@ export function encodeEquipmentLine(mount: EntityMountedEquipment, options?: Enc
       case 'large-craft': name += `:${mount.shotsCount}`; break;
       case 'protomek': name += ` (${mount.shotsCount})`; break;
     }
-  } else if (mount.size !== undefined) {
+  }
+  if (mount.size !== undefined) {
     const sizeVal = Number.isInteger(mount.size) ? mount.size.toFixed(1) : String(mount.size);
     name += `:SIZE:${sizeVal}`;
   }
 
   // VGL facing
-  if (mount.facing !== undefined) {
+  if (mount.facing !== undefined && !options?.buildingFacing) {
     name += facingSuffix(mount.facing);
   }
 
   return name;
+}
+
+function validateEquipmentEncoding(
+  mount: EntityMountedEquipment,
+  options: EncodeEquipmentOptions | undefined,
+): void {
+  if (mount.shotsCount !== undefined) {
+    if (!Number.isSafeInteger(mount.shotsCount) || mount.shotsCount < 0) {
+      throw new UnrepresentableEquipmentConfigurationError(
+        mount.mountId,
+        `Invalid shot count for ${mount.mountId}: ${mount.shotsCount}`,
+      );
+    }
+    if ((options?.shotsFormat ?? 'none') === 'none') {
+      throw new UnrepresentableEquipmentConfigurationError(
+        mount.mountId,
+        `No native shot-count grammar selected for ${mount.mountId}`,
+      );
+    }
+  }
+  if (mount.size !== undefined && (!Number.isFinite(mount.size) || mount.size < 0)) {
+    throw new UnrepresentableEquipmentConfigurationError(
+      mount.mountId,
+      `Invalid variable size for ${mount.mountId}: ${mount.size}`,
+    );
+  }
+  if (mount.shotsCount !== undefined && mount.size !== undefined) {
+    throw new UnrepresentableEquipmentConfigurationError(
+      mount.mountId,
+      `Native equipment syntax cannot encode both shots and variable size for ${mount.mountId}`,
+    );
+  }
 }
 
 /**
@@ -125,6 +175,6 @@ function facingSuffix(facing: number): string {
     case 3: return '(R)';
     case 4: return '(RL)';
     case 5: return '(RR)';
-    default: return '';
+    default: throw new Error(`Invalid equipment facing: ${facing}`);
   }
 }

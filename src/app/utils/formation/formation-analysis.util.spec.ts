@@ -1,0 +1,421 @@
+// Copyright (C) 2026 The MegaMek Team
+// SPDX-License-Identifier: GPL-3.0-or-later
+// Author: Drake
+
+import { GameSystem } from '../../models/common.model';
+import { type Faction } from '../../models/factions.model';
+import { MULFACTION_MERCENARY, type FactionAffinity } from '../../models/mulfactions.model';
+import type { ForceUnit } from '../../models/force-unit.model';
+import type { UnitGroup } from '../../models/force.model';
+import type { UnitSummary, UnitSubtype } from '../../models/unit-summary.model';
+import { createEmptyUnit, type TestUnitOverrides } from '../../testing/unit-test-helpers';
+import type { FormationTypeDefinition } from './formation-type.model';
+import { FormationAnalyzer } from './formation-analysis.util';
+import { FormationSolver } from './formation-solver.util';
+import type { GroupSizeResult } from '../org/org-types';
+
+const NOVA_REQUIREMENTS_FILTER_NOTICE = 'Battle Armor child groups are ignored for formation requirements. Mounted infantry in a Nova Formation may make weapon attacks. These mounted attacks use the attacker movement modifier of the transport along with an additional +2 Target Number modifier for being mounted.';
+
+function createUnit(
+    name: string,
+    unitType: UnitSummary['type'],
+    subtype: UnitSubtype,
+    tp: UnitSummary['as']['TP'],
+    overrides: TestUnitOverrides = {},
+): UnitSummary {
+    const { as: asOverrides, ...unitOverrides } = overrides;
+
+    return createEmptyUnit({
+        name,
+        chassis: name,
+        model: name,
+        year: 3050,
+        weightClass: 'Heavy',
+        tons: 70,
+        techBase: 'Clan',
+        type: unitType,
+        subtype,
+        role: 'Brawler',
+        moveType: unitType === 'Aero' ? 'Aerodyne' : 'Tracked',
+        ...unitOverrides,
+        as: {
+            TP: tp,
+            SZ: tp === 'AF' ? 2 : tp === 'BA' ? 1 : 3,
+            ...asOverrides,
+        },
+    });
+}
+
+function createForceUnit(unit: UnitSummary, gameSystem = GameSystem.AS): ForceUnit {
+    const force = {
+        faction: () => createFaction('Mercenary', 'Mercenary'),
+        era: () => null,
+        techBase: () => 'Inner Sphere',
+        gameSystem,
+    };
+
+    return {
+        force,
+        getSummary: () => unit,
+        getFormationSummary: () => unit,
+        getBv: () => 0,
+        pilotSkill: () => 4,
+        gunnerySkill: () => 4,
+    } as unknown as ForceUnit;
+}
+
+function createFaction(name: string, group: FactionAffinity): Faction {
+    return {
+        id: group === 'Mercenary' ? MULFACTION_MERCENARY : 1,
+        name,
+        group,
+        img: '',
+        eras: {},
+    };
+}
+
+function createResolvedGroup(overrides: Partial<GroupSizeResult>): GroupSizeResult {
+    return {
+        name: 'Group',
+        type: null,
+        modifierKey: '',
+        countsAsType: null,
+        tier: 0,
+        ...overrides,
+    };
+}
+
+function createTestGroup(
+    units: readonly UnitSummary[],
+    resolvedGroups: readonly GroupSizeResult[],
+    faction: Faction,
+): UnitGroup<ForceUnit> {
+    const force = {
+        faction: () => faction,
+        era: () => null,
+        techBase: () => (faction.group.includes('Clan') ? 'Clan' : 'Inner Sphere'),
+        gameSystem: GameSystem.AS,
+    };
+
+    const forceUnits = units.map((unit) => ({
+        force,
+        getSummary: () => unit,
+        getFormationSummary: () => unit,
+        getBv: () => 0,
+        pilotSkill: () => 4,
+        gunnerySkill: () => 4,
+    })) as unknown as ForceUnit[];
+
+    return {
+        force,
+        units: () => forceUnits,
+        organizationalResult: () => ({
+            name: resolvedGroups.map((group) => group.name).join(' + '),
+            tier: resolvedGroups[0]?.tier ?? 0,
+            groups: resolvedGroups,
+        }),
+        organizationalName: () => resolvedGroups.map((group) => group.name).join(' + '),
+        formationHistory: new Set<string>(),
+    } as unknown as UnitGroup<ForceUnit>;
+}
+
+function realFormation(id: string): FormationTypeDefinition {
+    const definition = FormationAnalyzer.getDefinitionById(id, GameSystem.AS);
+    expect(definition).not.toBeNull();
+    return definition!;
+}
+
+describe('FormationAnalyzer organization-aware requirement filtering', () => {
+    it('uses Nova org metadata to ignore only the Battle Armor child star', () => {
+        const faction = createFaction('Clan Test', 'HW Clan');
+        const bmUnits = Array.from({ length: 5 }, (_, index) => createUnit(`BM-${index + 1}`, 'Mek', 'BattleMek', 'BM'));
+        const baUnits = Array.from({ length: 5 }, (_, index) => createUnit(`BA-${index + 1}`, 'Infantry', 'Battle Armor', 'BA'));
+        const group = createTestGroup(
+            [...bmUnits, ...baUnits],
+            [createResolvedGroup({
+                name: 'Nova',
+                type: 'Nova',
+                countsAsType: 'Star',
+                tier: 1.9,
+                children: [
+                    createResolvedGroup({ name: 'Star', type: 'Star', tier: 1, units: baUnits }),
+                    createResolvedGroup({ name: 'Star', type: 'Star', tier: 1, units: bmUnits }),
+                ],
+            })],
+            faction,
+        );
+
+        const matches = FormationAnalyzer.analyzeFormationsForGroup(group);
+        const match = matches.find(candidate => candidate.definition.id === 'ranger-lance');
+
+        expect(match?.evaluation.valid).toBeTrue();
+        expect(match).toEqual(jasmine.objectContaining({
+            definition: realFormation('ranger-lance'),
+            requirementsFiltered: true,
+            requirementsFilterCompositionName: 'Nova',
+            requirementsFilterNotice: NOVA_REQUIREMENTS_FILTER_NOTICE,
+        }));
+    });
+
+    it('uses Air Lance org metadata to ignore the Flight child group', () => {
+        const faction = createFaction('Federated Suns', 'Inner Sphere');
+        const bmUnits = Array.from({ length: 4 }, (_, index) => createUnit(`BM-${index + 1}`, 'Mek', 'BattleMek', 'BM', { chassis: 'Panther' }));
+        const flightUnits = Array.from({ length: 2 }, (_, index) => createUnit(`AF-${index + 1}`, 'Aero', 'Aerospace Fighter', 'AF'));
+        const group = createTestGroup(
+            [...bmUnits, ...flightUnits],
+            [createResolvedGroup({
+                name: 'Air Lance',
+                type: 'Air Lance',
+                countsAsType: 'Lance',
+                tier: 1.5,
+                children: [
+                    createResolvedGroup({ name: 'Flight', type: 'Flight', tier: 1, units: flightUnits }),
+                    createResolvedGroup({ name: 'Lance', type: 'Lance', tier: 1, units: bmUnits }),
+                ],
+            })],
+            faction,
+        );
+
+        // This case isolates organizational exclusions from faction eligibility.
+        const definition = { ...realFormation('order-lance'), exclusiveFaction: undefined };
+        const match = FormationAnalyzer.analyzeFormationForGroup(definition, group);
+
+        expect(match?.evaluation.valid).toBeTrue();
+        expect(match).toEqual(jasmine.objectContaining({
+            definition,
+            requirementsFiltered: true,
+            requirementsFilterCompositionName: 'Air Lance',
+            requirementsFilterNotice: 'Flight child groups are ignored for formation requirements.',
+        }));
+    });
+
+    it('uses Draconis Combine Air Lance metadata to ignore only the AF Lance child group', () => {
+        const faction = createFaction('Draconis Combine', 'Inner Sphere');
+        const bmUnits = Array.from({ length: 4 }, (_, index) => createUnit(`BM-${index + 1}`, 'Mek', 'BattleMek', 'BM', { chassis: 'Panther' }));
+        const afUnits = Array.from({ length: 2 }, (_, index) => createUnit(`AF-${index + 1}`, 'Aero', 'Aerospace Fighter', 'AF'));
+        const group = createTestGroup(
+            [...bmUnits, ...afUnits],
+            [createResolvedGroup({
+                name: 'Air Lance',
+                type: 'Air Lance',
+                countsAsType: 'Lance',
+                tier: 1.5,
+                children: [
+                    createResolvedGroup({ name: 'Lance', type: 'Aero Lance', displayName: 'Lance', tier: 1, units: afUnits }),
+                    createResolvedGroup({ name: 'Lance', type: 'Lance', tier: 1, units: bmUnits }),
+                ],
+            })],
+            faction,
+        );
+
+        const definition = realFormation('order-lance');
+        const match = FormationAnalyzer.analyzeFormationForGroup(definition, group);
+
+        expect(match?.evaluation.valid).toBeTrue();
+        expect(match).toEqual(jasmine.objectContaining({
+            definition,
+            requirementsFiltered: true,
+            requirementsFilterCompositionName: 'Air Lance',
+            requirementsFilterNotice: 'Aerospace Lance child groups are ignored for formation requirements.',
+        }));
+    });
+
+    it('marks filtered matches even when the full Nova unit list also satisfies the requirements', () => {
+        const faction = createFaction('Clan Test', 'HW Clan');
+        const bmUnits = Array.from({ length: 5 }, (_, index) => createUnit(`BM-${index + 1}`, 'Mek', 'BattleMek', 'BM'));
+        const baUnits = Array.from({ length: 5 }, (_, index) => createUnit(`BA-${index + 1}`, 'Infantry', 'Battle Armor', 'BA'));
+        const group = createTestGroup(
+            [...bmUnits, ...baUnits],
+            [createResolvedGroup({
+                name: 'Nova',
+                type: 'Nova',
+                countsAsType: 'Star',
+                tier: 1.9,
+                children: [
+                    createResolvedGroup({ name: 'Star', type: 'Star', tier: 1, units: baUnits }),
+                    createResolvedGroup({ name: 'Star', type: 'Star', tier: 1, units: bmUnits }),
+                ],
+            })],
+            faction,
+        );
+
+        const definition = realFormation('ranger-lance');
+        const match = FormationAnalyzer.analyzeFormationForGroup(definition, group);
+
+        expect(match?.evaluation.valid).toBeTrue();
+        expect(match).toEqual(jasmine.objectContaining({
+            definition,
+            requirementsFiltered: true,
+            requirementsFilterCompositionName: 'Nova',
+            requirementsFilterNotice: NOVA_REQUIREMENTS_FILTER_NOTICE,
+        }));
+    });
+
+    it('uses Augmented Lance metadata to ignore solver-supplied transported units', () => {
+        const faction = createFaction('Capellan Confederation', 'Inner Sphere');
+        const bmUnits = Array.from({ length: 4 }, (_, index) => createUnit(`BM-${index + 1}`, 'Mek', 'BattleMek', 'BM', { chassis: 'Panther' }));
+        const baUnits = Array.from({ length: 2 }, (_, index) => createUnit(`BA-${index + 1}`, 'Infantry', 'Battle Armor', 'BA'));
+        const group = createTestGroup(
+            [...bmUnits, ...baUnits],
+            [createResolvedGroup({
+                name: 'Augmented Lance',
+                type: 'Augmented Lance',
+                countsAsType: 'Lance',
+                tier: 1.05,
+                units: [...bmUnits, ...baUnits],
+                formationMatchingIgnoredUnits: baUnits,
+            })],
+            faction,
+        );
+
+        // This case isolates organizational exclusions from faction eligibility.
+        const definition = { ...realFormation('order-lance'), exclusiveFaction: undefined };
+        const match = FormationAnalyzer.analyzeFormationForGroup(definition, group);
+
+        expect(match?.evaluation.valid).toBeTrue();
+        expect(match).toEqual(jasmine.objectContaining({
+            definition,
+            requirementsFiltered: true,
+            requirementsFilterCompositionName: 'Augmented Lance',
+            requirementsFilterNotice: 'Transported units are ignored for formation requirements.',
+        }));
+    });
+
+    it('does not apply requirement filtering when the group resolves to multiple top-level organizations', () => {
+        const faction = createFaction('Clan Test', 'HW Clan');
+        const bmUnits = Array.from({ length: 5 }, (_, index) => createUnit(`BM-${index + 1}`, 'Mek', 'BattleMek', 'BM', { chassis: 'Panther' }));
+        const baUnits = Array.from({ length: 5 }, (_, index) => createUnit(`BA-${index + 1}`, 'Infantry', 'Battle Armor', 'BA'));
+        const extraPointUnit = createUnit('PM-1', 'ProtoMek', 'ProtoMek', 'PM');
+        const group = createTestGroup(
+            [...bmUnits, ...baUnits, extraPointUnit],
+            [
+                createResolvedGroup({
+                    name: 'Nova',
+                    type: 'Nova',
+                    countsAsType: 'Star',
+                    tier: 1.9,
+                    children: [
+                        createResolvedGroup({ name: 'Star', type: 'Star', tier: 1, units: baUnits }),
+                        createResolvedGroup({ name: 'Star', type: 'Star', tier: 1, units: bmUnits }),
+                    ],
+                }),
+                createResolvedGroup({ name: 'Point', type: 'Point', tier: 0, units: [extraPointUnit] }),
+            ],
+            faction,
+        );
+
+        const definition = { ...realFormation('order-lance'), exclusiveFaction: undefined };
+        const match = FormationAnalyzer.analyzeFormationForGroup(definition, group);
+
+        expect(match?.evaluation.status).toBe('invalid');
+        expect(match?.requirementsFiltered).toBeFalse();
+        expect(match?.units).toBe(group.units());
+    });
+});
+
+describe('FormationAnalyzer CBT weight-class validation', () => {
+    it('uses direct formation members when the legacy group graph is empty', () => {
+        const definition = FormationAnalyzer.getDefinitionById('medium-battle-lance', GameSystem.CBT);
+        const units = [1, 2, 3].map(index => createForceUnit(createUnit(
+            `Medium-${index}`,
+            'Mek',
+            'BattleMek',
+            'BM',
+            { weightClass: 'Medium' },
+        ), GameSystem.CBT));
+        const group = {
+            force: units[0].force,
+            units: () => [],
+            formationUnits: () => units,
+            formationHistory: new Set<string>(),
+            organizationalResult: () => ({ name: '', tier: 0, groups: [] }),
+        } as unknown as UnitGroup<ForceUnit>;
+
+        expect(definition).not.toBeNull();
+        expect(FormationAnalyzer.analyzeFormationForGroup(definition!, group)?.evaluation.valid).toBeTrue();
+    });
+
+    it('matches medium battle lance for classic medium meks without requiring vehicles', () => {
+        const definition = FormationAnalyzer.getDefinitionById('medium-battle-lance', GameSystem.CBT);
+
+        expect(definition).not.toBeNull();
+
+        const units: ForceUnit[] = [
+            createForceUnit(createUnit('Medium-1', 'Mek', 'BattleMek', 'BM', { weightClass: 'Medium' }), GameSystem.CBT),
+            createForceUnit(createUnit('Medium-2', 'Mek', 'BattleMek', 'BM', { weightClass: 'Medium' }), GameSystem.CBT),
+            createForceUnit(createUnit('Medium-3', 'Mek', 'BattleMek', 'BM', { weightClass: 'Medium' }), GameSystem.CBT),
+        ];
+
+        expect(FormationSolver.evaluateDefinition(definition!, units, GameSystem.CBT)?.valid).toBeTrue();
+    });
+
+    it('matches light battle lance for classic light meks using the real CBT light class', () => {
+        const definition = FormationAnalyzer.getDefinitionById('light-battle-lance', GameSystem.CBT);
+
+        expect(definition).not.toBeNull();
+
+        const units: ForceUnit[] = [
+            createForceUnit(createUnit('Light-Scout', 'Mek', 'BattleMek', 'BM', { weightClass: 'Light', role: 'Scout' }), GameSystem.CBT),
+            createForceUnit(createUnit('Light-2', 'Mek', 'BattleMek', 'BM', { weightClass: 'Light' }), GameSystem.CBT),
+            createForceUnit(createUnit('Light-3', 'Mek', 'BattleMek', 'BM', { weightClass: 'Light' }), GameSystem.CBT),
+            createForceUnit(createUnit('Light-4', 'Mek', 'BattleMek', 'BM', { weightClass: 'Light' }), GameSystem.CBT),
+        ];
+
+        expect(FormationSolver.evaluateDefinition(definition!, units, GameSystem.CBT)?.valid).toBeTrue();
+    });
+});
+
+describe('formation analysis eligibility', () => {
+    it('reports partial formations and rejects faction-ineligible selected formations consistently', () => {
+        const unit = createUnit('Panther', 'Mek', 'BattleMek', 'BM', { chassis: 'Panther' });
+        const group = createTestGroup([unit], [], createFaction('Draconis Combine', 'Inner Sphere'));
+        const partial = FormationAnalyzer.analyzeFormationForGroup(realFormation('order-lance'), group);
+        expect(partial?.evaluation.status).toBe('partial');
+        const foreign = createTestGroup([unit, unit, unit], [], createFaction('Mercenary', 'Mercenary'));
+        expect(FormationAnalyzer.analyzeFormationForGroup(realFormation('order-lance'), foreign)?.evaluation.status).toBe('invalid');
+        expect(FormationAnalyzer.analyzeFormationForGroup(realFormation('order-lance'), foreign)?.evaluation.failedConstraintIds).toContain('eligibility');
+    });
+});
+
+describe('FormationAnalyzer formation priority weights', () => {
+    it('prefers higher-priority formations using the shared match weight rules', () => {
+        const battleFormation = {
+            id: 'battle-lance',
+            name: 'Battle',
+            description: 'Base line battle lance.',
+            minUnits: 4,
+        } as FormationTypeDefinition;
+        const parentFormation = {
+            id: 'elite-lance',
+            name: 'Elite',
+            description: 'Child formation used to test weighting.',
+            minUnits: 4,
+            parent: 'battle-lance',
+        } as FormationTypeDefinition;
+        const exclusiveFormation = {
+            id: 'faction-lance',
+            name: 'Faction',
+            description: 'Exclusive formation used to test weighting.',
+            minUnits: 4,
+            exclusiveFaction: ['Dragoons'],
+        } as FormationTypeDefinition;
+
+        expect(FormationAnalyzer.getFormationPriorityWeight(battleFormation, 'Wolf\'s Dragoons')).toBe(1);
+        expect(FormationAnalyzer.getFormationPriorityWeight(parentFormation, 'Wolf\'s Dragoons')).toBe(3);
+        expect(FormationAnalyzer.getFormationPriorityWeight(exclusiveFormation, 'Wolf\'s Dragoons')).toBe(5);
+    });
+
+    it('uses the same valid analysis for automatic selection and group diagnostics', () => {
+        const units = Array.from({ length: 3 }, (_, index) => createUnit(
+            `Panther-${index}`, 'Mek', 'BattleMek', 'BM', { chassis: 'Panther' },
+        ));
+        const group = createTestGroup(units, [], createFaction('Draconis Combine', 'Inner Sphere'));
+        const best = FormationAnalyzer.getBestMatchForGroup(group);
+        expect(best?.definition.id).toBe('order-lance');
+        const analysis = FormationAnalyzer.analyzeFormationsForGroup(group)
+            .find(match => match.definition.id === best?.definition.id);
+        expect(analysis?.evaluation.valid).toBeTrue();
+        expect(FormationAnalyzer.analyzeFormationForGroup(realFormation('order-lance'), group)).toEqual(analysis!);
+        expect(best).toEqual(analysis!);
+    });
+});

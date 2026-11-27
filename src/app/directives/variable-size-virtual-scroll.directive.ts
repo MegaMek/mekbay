@@ -11,9 +11,10 @@ import {
 import {
     Directive,
     ElementRef,
+    effect,
     forwardRef,
     inject,
-    Input,
+    input,
     NgZone,
     OnDestroy,
 } from '@angular/core';
@@ -266,7 +267,6 @@ function variableSizeVirtualScrollStrategyFactory(
 /** Measures rendered rows and feeds their heights into a variable-size strategy. */
 @Directive({
     selector: 'cdk-virtual-scroll-viewport[mbVariableSizeVirtualScroll]',
-    standalone: true,
     providers: [{
         provide: VIRTUAL_SCROLL_STRATEGY,
         useFactory: variableSizeVirtualScrollStrategyFactory,
@@ -278,40 +278,29 @@ export class VariableSizeVirtualScrollDirective implements OnDestroy {
 
     private readonly host = inject<ElementRef<HTMLElement>>(ElementRef);
     private readonly zone = inject(NgZone);
-    private readonly rowResizeObserver = new ResizeObserver(() => this.scheduleMeasurement());
+    private readonly measuredRowHeights = new WeakMap<HTMLElement, number>();
+    private readonly rowResizeObserver = new ResizeObserver(entries => this.onRowsResized(entries));
     private readonly viewportResizeObserver = new ResizeObserver(entries => this.onViewportResize(entries));
-    private readonly mutationObserver = new MutationObserver(() => this.scheduleMeasurement());
+    private readonly mutationObserver = new MutationObserver(records => this.onRowsMutated(records));
     private readonly observedRows = new Set<HTMLElement>();
     private measurementFrame: number | null = null;
-    private estimatedItemSizeValue = DEFAULT_ESTIMATED_ITEM_SIZE;
-    private minBufferPxValue = DEFAULT_MIN_BUFFER_PX;
-    private maxBufferPxValue = DEFAULT_MAX_BUFFER_PX;
     private viewportWidth = 0;
     private destroyed = false;
 
-    @Input({ required: true })
-    set mbVariableSizeVirtualScroll(keys: readonly unknown[]) {
-        this.scrollStrategy.setDataKeys(keys ?? []);
+    readonly mbVariableSizeVirtualScroll = input.required<readonly unknown[]>();
+    readonly estimatedItemSize = input(DEFAULT_ESTIMATED_ITEM_SIZE);
+    readonly minBufferPx = input(DEFAULT_MIN_BUFFER_PX);
+    readonly maxBufferPx = input(DEFAULT_MAX_BUFFER_PX);
+
+    private readonly synchronizeInputs = effect(() => {
+        this.scrollStrategy.setDataKeys(this.mbVariableSizeVirtualScroll());
+        this.scrollStrategy.updateConfig(
+            this.estimatedItemSize(),
+            this.minBufferPx(),
+            this.maxBufferPx(),
+        );
         this.scheduleMeasurement();
-    }
-
-    @Input()
-    set estimatedItemSize(value: number) {
-        this.estimatedItemSizeValue = value;
-        this.updateConfig();
-    }
-
-    @Input()
-    set minBufferPx(value: number) {
-        this.minBufferPxValue = value;
-        this.updateConfig();
-    }
-
-    @Input()
-    set maxBufferPx(value: number) {
-        this.maxBufferPxValue = value;
-        this.updateConfig();
-    }
+    });
 
     constructor() {
         this.zone.runOutsideAngular(() => {
@@ -331,15 +320,6 @@ export class VariableSizeVirtualScrollDirective implements OnDestroy {
         this.mutationObserver.disconnect();
     }
 
-    private updateConfig(): void {
-        this.scrollStrategy.updateConfig(
-            this.estimatedItemSizeValue,
-            this.minBufferPxValue,
-            this.maxBufferPxValue,
-        );
-        this.scheduleMeasurement();
-    }
-
     private onViewportResize(entries: ResizeObserverEntry[]): void {
         const width = entries[0]?.contentRect.width ?? this.host.nativeElement.clientWidth;
         if (width > 0 && this.viewportWidth > 0 && Math.abs(width - this.viewportWidth) >= SIZE_EPSILON_PX) {
@@ -347,6 +327,31 @@ export class VariableSizeVirtualScrollDirective implements OnDestroy {
         }
         if (width > 0) this.viewportWidth = width;
         this.scheduleMeasurement();
+    }
+
+    private onRowsResized(entries: ResizeObserverEntry[]): void {
+        let changed = false;
+        for (const entry of entries) {
+            const row = entry.target;
+            if (!(row instanceof HTMLElement) || !row.classList.contains('variable-virtual-scroll-item')) continue;
+            const height = row.getBoundingClientRect().height;
+            const previous = this.measuredRowHeights.get(row);
+            if (previous !== undefined && Math.abs(previous - height) < SIZE_EPSILON_PX) continue;
+            this.measuredRowHeights.set(row, height);
+            changed = true;
+        }
+        if (changed) this.scheduleMeasurement();
+    }
+
+    private onRowsMutated(records: MutationRecord[]): void {
+        const changesRenderedRows = records.some(record => (
+            [...record.addedNodes, ...record.removedNodes].some(node => (
+                node instanceof Element
+                && (node.classList.contains('variable-virtual-scroll-item')
+                    || node.querySelector('.variable-virtual-scroll-item') !== null)
+            ))
+        ));
+        if (changesRenderedRows) this.scheduleMeasurement();
     }
 
     private scheduleMeasurement(): void {
@@ -372,9 +377,10 @@ export class VariableSizeVirtualScrollDirective implements OnDestroy {
         }
 
         const rangeStart = this.scrollStrategy.getRenderedRange().start;
-        this.scrollStrategy.updateItemSizes(rows.map((row, localIndex) => ({
-            index: rangeStart + localIndex,
-            size: row.getBoundingClientRect().height,
-        })));
+        this.scrollStrategy.updateItemSizes(rows.map((row, localIndex) => {
+            const size = row.getBoundingClientRect().height;
+            this.measuredRowHeights.set(row, size);
+            return { index: rangeStart + localIndex, size };
+        }));
     }
 }

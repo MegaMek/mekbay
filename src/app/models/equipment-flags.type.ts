@@ -2,6 +2,19 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 // Author: Drake
 
+export interface EquipmentFlagsView {
+    readonly flags: ReadonlySet<EquipmentFlag>;
+}
+
+export interface EquipmentFlagPredicate {
+    hasFlag(flag: EquipmentFlag): boolean;
+}
+
+export type EquipmentFlagsSource =
+    | ReadonlySet<EquipmentFlag>
+    | EquipmentFlagsView
+    | EquipmentFlagPredicate;
+
 export type EquipmentFlag =
     // Extra flags specific for MekBay
     | "F_TEST_ONLY"
@@ -256,6 +269,7 @@ export type EquipmentFlag =
     | "F_PARTIAL_WING"
     | "F_PD_BAY"
     | "F_PEACEMAKER"
+    | "F_PHYSICAL_WEAPON"
     | "F_PINTLE_TURRET"
     | "F_PLASMA"
     | "F_PLASMA_MFUK"
@@ -282,6 +296,7 @@ export type EquipmentFlag =
     | "F_REMOTE_DRONE_COMMAND_CONSOLE"
     | "F_REPEATING"
     | "F_REUSABLE"
+    | "F_RISC_LASER_PULSE_COMPATIBLE"
     | "F_RISC_LASER_PULSE_MODULE"
     | "F_SALVAGE_ARM"
     | "F_SANTA_ANNA"

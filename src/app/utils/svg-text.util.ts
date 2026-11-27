@@ -1,7 +1,6 @@
 // Copyright (C) 2026 The MegaMek Team
 // SPDX-License-Identifier: GPL-3.0-or-later
 // Author: Drake
-// 
 
 export interface SvgTextLineWriterOptions {
     readonly maxWidth?: number | null;
@@ -41,10 +40,18 @@ export function getSvgTextLines(container: Element | null | undefined): SVGTextC
 export function writeSvgTextLines(
     container: Element | null | undefined,
     text: string,
-    options: SvgTextLineWriterOptions = {}
+    options: SvgTextLineWriterOptions = {},
 ): void {
     const lines = getSvgTextLines(container);
     if (lines.length === 0) return;
+
+    // Generated sheet labels may have been compressed with textLength. Once a
+    // runtime value replaces that label, retaining the old constraint stretches
+    // short values (for example, writing "Kick" into a longer equipment row).
+    lines.forEach(line => {
+        line.removeAttribute('textLength');
+        line.removeAttribute('lengthAdjust');
+    });
 
     const normalizedText = text.trim();
     const maxWidth = Number.isFinite(options.maxWidth) ? options.maxWidth! : null;
@@ -64,15 +71,26 @@ export function writeSvgTextLines(
     });
 }
 
+/** Word-wraps `value` to `width` as `measure` reads it; a word wider than the width keeps a line of its own. */
+export function wrapWords(value: string, width: number, measure: (text: string) => number): string[] {
+    const lines: string[] = [];
+    for (const word of value.split(/\s+/u)) {
+        const current = lines.at(-1);
+        if (current !== undefined && measure(`${current} ${word}`) <= width) lines[lines.length - 1] = `${current} ${word}`;
+        else lines.push(word);
+    }
+    return lines;
+}
+
 export function measureSvgTextCanvas(line: SVGTextContentElement, text: string): number {
     const canvasDocument = line.ownerDocument.defaultView?.document ?? document;
     const cache = getSvgTextMetricsCache(canvasDocument);
     const computedStyle = line.ownerDocument.defaultView?.getComputedStyle(line) ?? null;
     const fontSize = Number.parseFloat(line.getAttribute('font-size') ?? computedStyle?.fontSize ?? '') || 8;
-    const fontWeight = line.getAttribute('font-weight') ?? computedStyle?.fontWeight ?? 'normal';
-    const rawFontStyle = line.getAttribute('font-style') ?? computedStyle?.fontStyle ?? 'normal';
+    const fontWeight = line.getAttribute('font-weight') || computedStyle?.fontWeight || 'normal';
+    const rawFontStyle = line.getAttribute('font-style') || computedStyle?.fontStyle || 'normal';
     const fontStyle = ['normal', 'italic', 'oblique'].includes(rawFontStyle) ? rawFontStyle : 'normal';
-    const fontFamily = line.getAttribute('font-family') ?? computedStyle?.fontFamily ?? 'Roboto';
+    const fontFamily = line.getAttribute('font-family') || computedStyle?.fontFamily || 'Roboto, Arial, sans-serif';
     const font = `${fontStyle} ${fontWeight} ${fontSize}px ${fontFamily}`;
     const fontStatus = canvasDocument.fonts?.status ?? 'unknown';
     const cacheKey = `${fontStatus}\u0000${font}\u0000${text}`;
@@ -108,10 +126,10 @@ function getSvgTextMetricsCache(canvasDocument: Document): SvgTextMetricsCache {
     const existing = svgTextMetricsCaches.get(canvasDocument);
     if (existing) return existing;
 
-    const cache: SvgTextMetricsCache = {
+    const cache = {
         context: canvasDocument.createElement('canvas').getContext('2d'),
         font: '',
-        widths: new Map(),
+        widths: new Map<string, number>(),
     };
     svgTextMetricsCaches.set(canvasDocument, cache);
     return cache;
@@ -131,7 +149,7 @@ function wrapSvgText(
     maxWidth: number | null,
     ellipsis: string,
     allowFinalLineOverflow: boolean,
-    measure: (line: SVGTextContentElement, text: string) => number
+    measure: (line: SVGTextContentElement, text: string) => number,
 ): string[] {
     const renderedLines = lines.map(() => '');
     if (!text) return renderedLines;
@@ -185,7 +203,7 @@ function truncateSvgText(
     text: string,
     maxWidth: number,
     ellipsis: string,
-    measure: (line: SVGTextContentElement, text: string) => number
+    measure: (line: SVGTextContentElement, text: string) => number,
 ): string {
     if (fitsSvgText(line, text, maxWidth, measure)) return text;
     if (!fitsSvgText(line, ellipsis, maxWidth, measure)) return ellipsis;
@@ -210,7 +228,7 @@ function fitsSvgText(
     line: SVGTextContentElement,
     text: string,
     maxWidth: number,
-    measure: (line: SVGTextContentElement, text: string) => number
+    measure: (line: SVGTextContentElement, text: string) => number,
 ): boolean {
     return measure(line, text) <= maxWidth;
 }

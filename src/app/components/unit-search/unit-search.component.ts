@@ -2,8 +2,10 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 // Author: Drake
 
-import { CommonModule } from '@angular/common';
-import { Component, signal, type ElementRef, computed, effect, afterNextRender, Injector, inject, ChangeDetectionStrategy, viewChild, ChangeDetectorRef, DestroyRef, untracked, type ComponentRef, type TemplateRef } from '@angular/core';
+import { UnitNameService } from '../../services/unit-name.service';
+import { DecimalPipe, NgTemplateOutlet } from '@angular/common';
+import { Component, signal, input, output, type ElementRef, computed, effect, afterNextRender, Injector, inject, ChangeDetectionStrategy, viewChild, ChangeDetectorRef, DestroyRef, untracked, type ComponentRef, type TemplateRef } from '@angular/core';
+import { Dialog, DialogRef } from '@angular/cdk/dialog';
 import { outputToObservable, takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import { ScrollingModule, CdkVirtualScrollViewport } from '@angular/cdk/scrolling';
 import { UnitSearchAdvancedFiltersComponent } from '../unit-search-advanced-filters/unit-search-advanced-filters.component';
@@ -18,10 +20,12 @@ import { type HighlightToken, tokenizeForHighlight } from '../../utils/semantic-
 import { isFilterAvailableForAvailabilitySource } from '../../utils/unit-search-filter-config.util';
 import type { UnitSummary } from '../../models/unit-summary.model';
 import { DEFAULT_CLASSIC_BV_NORMALIZATION_MAX, DEFAULT_ALPHA_STRIKE_PV_NORMALIZATION_MAX, getNormalizationGunnery, getNormalizationPiloting, type UnitSearchNormalizationMatch, type UnitSearchBudgetMode } from '../../models/unit-search-result.model';
-import { ForceBuilderService } from '../../services/force-builder.service';
-import { Overlay, OverlayModule, type ConnectedPosition, type OverlayRef } from '@angular/cdk/overlay';
+import { ForceWorkspaceStateService } from '../../services/force-workspace-state.service';
+import { ForceWorkspaceCommandsService } from '../../services/force-workspace-commands.service';
+import { ForceImportService } from '../../services/force-import.service';
+import { Overlay, OverlayModule, type ConnectedPosition } from '@angular/cdk/overlay';
 import { ComponentPortal } from '@angular/cdk/portal';
-import { UnitDetailsDialogComponent, type UnitDetailsDialogData } from '../unit-details-dialog/unit-details-dialog.component';
+import type { UnitDetailsDialogData } from '../unit-details-dialog/unit-details-dialog.component';
 import { firstValueFrom } from 'rxjs';
 import { LayoutService } from '../../services/layout.service';
 import { DataService } from '../../services/data.service';
@@ -31,8 +35,6 @@ import { LongPressDirective } from '../../directives/long-press.directive';
 import { TooltipDirective } from '../../directives/tooltip.directive';
 import { SearchFavoritesMenuComponent } from '../search-favorites-menu/search-favorites-menu.component';
 import { OverlayManagerService } from '../../services/overlay-manager.service';
-import { ShareSearchDialogComponent } from './share-search.component';
-import { SemanticGuideDialogComponent } from '../semantic-guide-dialog/semantic-guide-dialog.component';
 import { highlightMatches } from '../../utils/search.util';
 import { UnitIconComponent } from '../unit-icon/unit-icon.component';
 import { UnitTagsComponent, type TagClickEvent } from '../unit-tags/unit-tags.component';
@@ -46,13 +48,14 @@ import { SyntaxInputComponent } from '../syntax-input/syntax-input.component';
 import { formatASDamageValue, isASDamageFilterKey } from '../../utils/as-damage.util';
 import { SavedSearchesService } from '../../services/saved-searches.service';
 import { GameSystem } from '../../models/common.model';
-import { AS_TYPE_DISPLAY_NAMES, DROPDOWN_FILTERS, RANGE_FILTERS } from '../../services/unit-search-filters.model';
+import { AS_TYPE_DISPLAY_NAMES, DROPDOWN_FILTERS, RANGE_FILTERS, FORMATION_TARGET_FILTER_KEY } from '../../services/unit-search-filters.model';
 import { KeyboardShortcutService } from '../../services/keyboard-shortcut.service';
 import { UnitDetailsPanelComponent } from '../unit-details-panel/unit-details-panel.component';
 import { UnitCardExpandedComponent } from '../unit-card-expanded/unit-card-expanded.component';
 import { AlphaStrikeCardComponent } from '../alpha-strike-card/alpha-strike-card.component';
+import { formatMovement } from '../../utils/as-common.util';
 import type { UnitType } from '../../models/unit-summary.model';
-import { BVCalculatorUtil } from '../../utils/bv-calculator.util';
+import { calculateAdjustedBV } from '../../utils/cbt-common.util';
 import { updateNumericRangeBound } from '../../utils/unit-search-normalization-range.util';
 import { DataTableComponent, type DataTableCellContext, type DataTableColumn, type DataTableRowClickEvent, type DataTableRowLongPressEvent, type DataTableRowPointerEnterEvent, type DataTableRowPointerMoveEvent, type DataTableSortEvent } from '../data-table/data-table.component';
 import { UnitSearchFiltersService } from '../../services/unit-search-filters.service';
@@ -67,14 +70,11 @@ import type { UnitSearchViewMode } from '../../models/options.model';
 import { RangeSliderComponent } from '../range-slider/range-slider.component';
 import { SimpleSliderComponent } from '../simple-slider/simple-slider.component';
 import { normalizeBoundedInteger, normalizeBoundedIntegerInput } from '../../utils/bounded-integer-input.util';
-import {
-    buildUnitDataTableColumns,
-    formatAlphaStrikeUnitMovement,
-    formatClassicUnitMovement,
-    formatUnitDataTableSortSlotValue,
-    getUnitDataTableSortSlotHeader,
-    isUnitDataTableSortActive,
-} from '../../utils/unit-data-table.util';
+import { LoadingSpinnerComponent } from '../loading-spinner/loading-spinner.component';
+import type { UnitUuid } from '../../services/unit-catalog/unit-catalog.types';
+import { FormationDiagnosticsComponent } from '../formation-info/formation-diagnostics.component';
+import { isCBTForceMember } from '../../models/force-member.model';
+import { FormationAnalyzer } from '../../utils/formation/formation-analysis.util';
 
 /** Grouped chassis entry for compact view */
 export interface ChassisGroup extends UnitVariantGroupIdentity {
@@ -86,6 +86,7 @@ export interface ChassisGroup extends UnitVariantGroupIdentity {
     /** A representative unit (first encountered) for icon display */
     representativeUnit: UnitSummary;
     variantCount: number;
+    customVariantCount: number;
     minBV: number;
     maxBV: number;
     minPV: number;
@@ -115,7 +116,7 @@ interface ActiveVariantGroupFilter extends UnitVariantGroupIdentity {
 @Component({
     selector: 'unit-search',
     changeDetection: ChangeDetectionStrategy.OnPush,
-    imports: [CommonModule, ScrollingModule, OverlayModule, LongPressDirective, TooltipDirective, UnitIconComponent, UnitTagsComponent, SyntaxInputComponent, UnitSearchAdvancedFiltersComponent, UnitDetailsPanelComponent, UnitCardExpandedComponent, AlphaStrikeCardComponent, DataTableComponent, VariableSizeVirtualScrollDirective, RangeSliderComponent, SimpleSliderComponent],
+    imports: [DecimalPipe, NgTemplateOutlet, ScrollingModule, OverlayModule, LongPressDirective, LoadingSpinnerComponent, TooltipDirective, UnitIconComponent, UnitTagsComponent, SyntaxInputComponent, UnitSearchAdvancedFiltersComponent, UnitDetailsPanelComponent, UnitCardExpandedComponent, AlphaStrikeCardComponent, DataTableComponent, VariableSizeVirtualScrollDirective, RangeSliderComponent, SimpleSliderComponent, FormationDiagnosticsComponent],
     templateUrl: './unit-search.component.html',
     styleUrls: [
         './unit-search.component.scss',
@@ -128,6 +129,13 @@ interface ActiveVariantGroupFilter extends UnitVariantGroupIdentity {
     }
 })
 export class UnitSearchComponent {
+    /** Reuses the complete search experience for choosing one catalog unit. */
+    readonly selectionMode = input(false);
+    readonly unitSelected = output<UnitSummary>();
+    readonly selectionCanceled = output<void>();
+    private readonly containingDialog = inject(DialogRef, { optional: true });
+    private readonly dialog = inject(Dialog);
+    readonly unitNames = inject(UnitNameService);
     readonly maximumNormalizedPv = DEFAULT_ALPHA_STRIKE_PV_NORMALIZATION_MAX;
     readonly forceBvLimitTooltip = [
         { value: 'Filters search results to units whose adjusted BV or PV fits within the remaining force budget.' },
@@ -167,7 +175,7 @@ export class UnitSearchComponent {
 
     private static readonly VIEW_MODE_OPTIONS: readonly ViewModeOptionConfig[] = [
         { mode: 'list', label: 'List View', caption: 'Result cards' },
-        { mode: 'card', label: 'Card View', caption: 'Alpha Strike cards', gameSystem: GameSystem.ALPHA_STRIKE },
+        { mode: 'card', label: 'Card View', caption: 'Alpha Strike cards', gameSystem: GameSystem.AS },
         { mode: 'chassis', label: 'Chassis View', caption: 'Grouped chassis' },
         { mode: 'table', label: 'Table View', caption: 'Expanded table', requiresExpanded: true },
     ];
@@ -176,7 +184,10 @@ export class UnitSearchComponent {
     layoutService = inject(LayoutService);
     filtersService = inject(UnitSearchFiltersService);
     dataService = inject(DataService);
-    forceBuilderService = inject(ForceBuilderService);
+    protected readonly forceWorkspace = inject(ForceWorkspaceStateService);
+
+    private readonly forceCommands = inject(ForceWorkspaceCommandsService);
+    private readonly forceImport = inject(ForceImportService);
     gameService = inject(GameService);
     overlayManager = inject(OverlayManagerService);
 
@@ -249,7 +260,7 @@ export class UnitSearchComponent {
         { key: '1', filterKey: 'as.dmg._dmgS' },
         { key: '2', filterKey: 'as.dmg._dmgM' },
         { key: '3', filterKey: 'as.dmg._dmgL' },
-        // Classic
+        // CBT
         { key: 'b', filterKey: 'bv' },
         { key: 't', filterKey: 'tons' },
         { key: 'a', filterKey: 'armor' },
@@ -277,14 +288,13 @@ export class UnitSearchComponent {
 
     readonly filterChordActive = signal(false);
     private filterChordTimer?: ReturnType<typeof setTimeout>;
+    readonly budgetModeSwitchTransitionsEnabled = signal(false);
     /** Reference to the favorites overlay component for in-place updates. */
     private favoritesCompRef: ComponentRef<SearchFavoritesMenuComponent> | null = null;
     /** Flag to track when a favorites dialog (rename/delete) is in progress. */
     private favoritesDialogActive = false;
     /** Immediate input value for instant highlighting (not debounced). */
     readonly immediateSearchText = signal('');
-    private readonly searchCommitPending = signal(false);
-    private readonly pendingResultOpenRequest = signal(false);
 
     syntaxInput = viewChild<SyntaxInputComponent>('syntaxInput');
     private readonly searchbarContainer = viewChild<ElementRef<HTMLElement>>('searchbarContainer');
@@ -300,7 +310,7 @@ export class UnitSearchComponent {
     private readonly tableBvCell = viewChild<TemplateRef<DataTableCellContext<UnitSummary>>>('tableBvCell');
     private readonly tablePvCell = viewChild<TemplateRef<DataTableCellContext<UnitSummary>>>('tablePvCell');
     private readonly tableMovementCell = viewChild<TemplateRef<DataTableCellContext<UnitSummary>>>('tableMovementCell');
-    private readonly tableClassicMovementCell = viewChild<TemplateRef<DataTableCellContext<UnitSummary>>>('tableClassicMovementCell');
+    private readonly tableCBTMovementCell = viewChild<TemplateRef<DataTableCellContext<UnitSummary>>>('tableCBTMovementCell');
     private readonly tableSpecialsCell = viewChild<TemplateRef<DataTableCellContext<UnitSummary>>>('tableSpecialsCell');
     private readonly tableTagsCell = viewChild<TemplateRef<DataTableCellContext<UnitSummary>>>('tableTagsCell');
 
@@ -322,8 +332,8 @@ export class UnitSearchComponent {
     viewModeMenuOpen = signal(false);
     activeIndex = signal<number | null>(null);
     /** UUIDs of the selected search results. */
-    selectedUnits = signal<Set<string>>(new Set());
-    private readonly selectedUnitContexts = new Map<string, UnitSearchNormalizationMatch>();
+    selectedUnits = signal<Set<UnitUuid>>(new Set());
+    private readonly selectedUnitContexts = new Map<UnitUuid, UnitSearchNormalizationMatch>();
     readonly activeVariantGroupFilter = signal<ActiveVariantGroupFilter | null>(null);
     private unitDetailsDialogOpen = signal(false);
 
@@ -344,9 +354,16 @@ export class UnitSearchComponent {
     /** Minimum window width to show the inline details panel */
     private readonly INLINE_PANEL_MIN_WIDTH = 2100;
 
+    /** Expanded deep links keep their full layout visible while the first worker result is prepared. */
+    readonly resultsLoading = computed(() => {
+        return this.expandedView() && !this.filtersService.isInteractionReady();
+    });
+
     /** Whether to show the inline details panel (expanded view + sufficient screen width) */
     showInlinePanel = computed(() => {
-        return this.expandedView() && this.layoutService.windowWidth() >= this.INLINE_PANEL_MIN_WIDTH;
+        return !this.selectionMode() && !this.resultsLoading()
+            && this.expandedView()
+            && this.layoutService.windowWidth() >= this.INLINE_PANEL_MIN_WIDTH;
     });
 
     readonly isTableMode = computed(() => this.viewMode() === 'table');
@@ -435,11 +452,12 @@ export class UnitSearchComponent {
                     key,
                     ...identity,
                     type: unit.type,
-                    displayType: unit._displayType,
+                    displayType: unit._displayType ?? unit.type,
                     icon: unit.icon,
                     /** Store a representative unit for the icon component */
                     representativeUnit: unit,
                     variantCount: 0,
+                    customVariantCount: 0,
                     minBV: Infinity,
                     maxBV: -Infinity,
                     minPV: Infinity,
@@ -449,6 +467,7 @@ export class UnitSearchComponent {
                 map.set(key, group);
             }
             group.variantCount++;
+            if (unit.isCustom) group.customVariantCount++;
             group.units.push(unit);
             if (unit.bv < group.minBV) group.minBV = unit.bv;
             if (unit.bv > group.maxBV) group.maxBV = unit.bv;
@@ -470,7 +489,7 @@ export class UnitSearchComponent {
                 : adjustPointValueForSkill(unit.as.PV, gunnery)
             : this.filtersService.activeBvNormalization()
                 ? this.getSearchResultContext(unit).adjustedValue
-                : BVCalculatorUtil.calculateAdjustedBV(unit, unit.bv, gunnery, piloting));
+                : calculateAdjustedBV(unit, unit.bv, gunnery, piloting));
         const formatRange = (values: number[]) => {
             const min = Math.min(...values);
             const max = Math.max(...values);
@@ -488,7 +507,7 @@ export class UnitSearchComponent {
     private inlinePanelIndex = computed(() => {
         const unit = this.inlinePanelUnit();
         if (!unit) return -1;
-        return this.displayedUnits().findIndex(u => u.uuid === unit.uuid);
+        return this.displayedUnits().findIndex(candidate => candidate.uuid === unit.uuid);
     });
 
     /** Whether there is a previous unit to navigate to in the inline panel */
@@ -537,12 +556,42 @@ export class UnitSearchComponent {
         return opt?.slotLabel || opt?.label || key;
     });
 
-    /** Label for a selected sort that is not represented by a standard table column. */
-    readonly unitTableSortSlotHeader = computed(() => getUnitDataTableSortSlotHeader(
-        this.gameService.currentGameSystem(),
-        this.filtersService.selectedSort(),
-        this.SORT_OPTIONS,
-    ));
+    /**
+     * For AS table view: returns the sort slot header label if the current sort
+     * is not already visible in the table columns, otherwise null.
+     */
+    readonly asTableSortSlotHeader = computed((): string | null => {
+        const key = this.filtersService.selectedSort();
+        if (!key) return null;
+
+        // Check if key is directly in table columns
+        if (UnitSearchComponent.AS_TABLE_VISIBLE_KEYS.includes(key)) return null;
+
+        // Check if key is in a group that's in table columns
+        for (const groupName of UnitSearchComponent.AS_TABLE_VISIBLE_GROUPS) {
+            const group = UnitSearchComponent.SORT_KEY_GROUPS[groupName];
+            if (group && group.includes(key)) return null;
+        }
+
+        // Key is not displayed in table - return the label
+        const opt: SortOption | undefined = this.SORT_OPTIONS.find(o => o.key === key);
+        return opt?.slotLabel || opt?.label || key;
+    });
+
+    readonly cbtTableSortSlotHeader = computed((): string | null => {
+        const key = this.filtersService.selectedSort();
+        if (!key) return null;
+
+        if (UnitSearchComponent.CBT_TABLE_VISIBLE_KEYS.includes(key)) return null;
+
+        for (const groupName of UnitSearchComponent.CBT_TABLE_VISIBLE_GROUPS) {
+            const group = UnitSearchComponent.SORT_KEY_GROUPS[groupName];
+            if (group && group.includes(key)) return null;
+        }
+
+        const opt: SortOption | undefined = this.SORT_OPTIONS.find(o => o.key === key);
+        return opt?.slotLabel || opt?.label || key;
+    });
 
     readonly unitSearchTableColumns = computed<readonly DataTableColumn<UnitSummary>[]>(() => {
         const iconCell = this.tableIconCell();
@@ -552,65 +601,208 @@ export class UnitSearchComponent {
         const bvCell = this.tableBvCell();
         const pvCell = this.tablePvCell();
         const movementCell = this.tableMovementCell();
-        const classicMovementCell = this.tableClassicMovementCell();
+        const classicMovementCell = this.tableCBTMovementCell();
         const specialsCell = this.tableSpecialsCell();
         const tagsCell = this.tableTagsCell();
-        const gameSystem = this.gameService.currentGameSystem();
-        const isAlphaStrike = gameSystem === GameSystem.ALPHA_STRIKE;
-        const valueCell = isAlphaStrike ? pvCell : bvCell;
-        const selectedMovementCell = isAlphaStrike ? movementCell : classicMovementCell;
 
-        if (!iconCell || !nameCell || !yearCell || !valueCell || !selectedMovementCell || !tagsCell) {
-            return [];
-        }
-        if (isAlphaStrike && (!typeCell || !specialsCell)) {
+        if (!iconCell || !nameCell || !yearCell || !tagsCell) {
             return [];
         }
 
-        const afterValueColumns: DataTableColumn<UnitSummary>[] = [];
-        if (isAlphaStrike && this.filtersService.activePvNormalization()) {
-            afterValueColumns.push({
-                id: 'normalized-skill',
-                header: 'Skill',
-                track: 45,
-                value: unit => getNormalizationGunnery(this.getSearchResultContext(unit)),
-                cellTone: 'focus',
-                align: 'center',
-            });
-        } else if (!isAlphaStrike && this.filtersService.activeBvNormalization()) {
-            afterValueColumns.push({
-                id: 'normalized-skills',
-                header: 'G/P',
-                track: 56,
-                value: unit => this.formatNormalizedSkills(unit),
-                cellTone: 'focus',
-                align: 'center',
-            });
-        }
+        if (!this.gameService.isAlphaStrike()) {
+            if (!bvCell || !classicMovementCell) {
+                return [];
+            }
 
-        const sortSlotHeader = this.unitTableSortSlotHeader();
-        return buildUnitDataTableColumns({
-            gameSystem,
-            getUnit: unit => unit,
-            isSortActive: keyOrGroup => this.isSortActive(keyOrGroup),
-            templates: {
-                icon: iconCell,
-                name: nameCell,
-                year: yearCell,
-                value: valueCell,
-                movement: selectedMovementCell,
-                type: typeCell,
-                specials: specialsCell,
-            },
-            valueTrack: isAlphaStrike
-                ? (this.filtersService.activePvNormalization() ? 82 : 45)
-                : (this.filtersService.activeBvNormalization() ? 128 : 78),
-            afterValueColumns,
-            sortSlot: sortSlotHeader ? {
-                header: sortSlotHeader,
-                value: unit => this.getUnitTableSortSlot(unit) ?? '',
-            } : null,
-            trailingColumns: [{
+            const columns: DataTableColumn<UnitSummary>[] = [
+                {
+                    id: 'icon',
+                    header: '',
+                    track: 40,
+                    cellTemplate: iconCell,
+                    align: 'center',
+                },
+                {
+                    id: 'name',
+                    header: 'Name',
+                    track: { minPx: 320, flex: 1.35 },
+                    cellTemplate: nameCell,
+                    sortKey: 'name',
+                    sortActive: this.isSortActive('name'),
+                },
+                {
+                    id: 'type',
+                    header: 'Type',
+                    track: 100,
+                    value: unit => unit.type,
+                    sortKey: 'type',
+                    sortActive: this.isSortActive('type'),
+                    cellClass: this.tableCellClass('cbt-td-type', this.isSortActive('type')),
+                },
+                {
+                    id: 'subtype',
+                    header: 'Subtype',
+                    track: 130,
+                    value: unit => this.formatCBTSubtype(unit),
+                    sortKey: 'subtype',
+                    sortActive: this.isSortActive('subtype'),
+                    cellClass: this.tableCellClass('cbt-td-subtype', this.isSortActive('subtype')),
+                },
+                {
+                    id: 'role',
+                    header: 'Role',
+                    track: 130,
+                    value: unit => unit.role !== 'None' ? unit.role : '',
+                    sortKey: 'role',
+                    sortActive: this.isSortActive('role'),
+                    cellClass: this.tableCellClass('as-td-role', this.isSortActive('role')),
+                },
+                {
+                    id: 'bv',
+                    header: 'BV',
+                    track: this.filtersService.activeBvNormalization() ? 128 : 78,
+                    cellTemplate: bvCell,
+                    sortKey: 'bv',
+                    sortActive: this.isSortActive('bv'),
+                    cellClass: this.tableCellClass('cbt-td-bv is-bold', this.isSortActive('bv')),
+                    align: 'right',
+                },
+            ];
+
+            if (this.filtersService.activeBvNormalization()) {
+                columns.push({
+                    id: 'normalized-skills',
+                    header: 'G/P',
+                    track: 56,
+                    value: unit => this.formatNormalizedSkills(unit),
+                    cellTone: 'focus',
+                    align: 'center',
+                });
+            }
+
+            columns.push(
+                {
+                    id: 'tons',
+                    header: 'Tons',
+                    track: 64,
+                    value: unit => this.formatTons(unit.tons),
+                    sortKey: 'tons',
+                    sortActive: this.isSortActive('tons'),
+                    cellClass: this.tableCellClass('cbt-td-tons', this.isSortActive('tons')),
+                    align: 'right',
+                },
+                {
+                    id: 'year',
+                    header: 'Year',
+                    track: 72,
+                    cellTemplate: yearCell,
+                    sortKey: 'year',
+                    sortActive: this.isSortActive('year'),
+                    cellClass: this.tableCellClass('as-td-year', this.isSortActive('year')),
+                    align: 'center',
+                },
+                {
+                    id: 'rules',
+                    header: 'Rules',
+                    track: 108,
+                    value: unit => unit.level,
+                    sortKey: 'level',
+                    sortActive: this.isSortActive('level'),
+                    cellClass: this.tableCellClass('cbt-td-rules', this.isSortActive('level')),
+                },
+                {
+                    id: 'tech',
+                    header: 'Tech',
+                    track: 100,
+                    value: unit => unit._techBaseDisplay,
+                    sortKey: '_techBaseDisplay',
+                    sortActive: this.isSortActive('_techBaseDisplay'),
+                    cellClass: this.tableCellClass('cbt-td-tech', this.isSortActive('_techBaseDisplay')),
+                },
+                {
+                    id: 'movement',
+                    header: 'Move',
+                    track: 96,
+                    cellTemplate: classicMovementCell,
+                    sortKey: 'walk',
+                    sortGroupKey: 'movement',
+                    sortActive: this.isSortActive('movement'),
+                    cellClass: this.tableCellClass('cbt-td-mv', this.isSortActive('movement')),
+                },
+                {
+                    id: 'armor',
+                    header: 'Armor',
+                    track: 72,
+                    value: unit => unit.armor,
+                    sortKey: 'armor',
+                    sortActive: this.isSortActive('armor'),
+                    cellClass: this.tableCellClass('cbt-td-armor', this.isSortActive('armor')),
+                    align: 'right',
+                },
+                {
+                    id: 'structure',
+                    header: 'Structure',
+                    track: 86,
+                    value: unit => unit.internal,
+                    sortKey: 'internal',
+                    sortActive: this.isSortActive('internal'),
+                    cellClass: this.tableCellClass('cbt-td-structure', this.isSortActive('internal')),
+                    align: 'right',
+                },
+                {
+                    id: 'firepower',
+                    header: 'Firepower',
+                    track: 88,
+                    value: unit => this.formatCBTStat(unit._mdSumNoPhysical),
+                    sortKey: '_mdSumNoPhysical',
+                    sortActive: this.isSortActive('_mdSumNoPhysical'),
+                    cellClass: this.tableCellClass('cbt-td-firepower', this.isSortActive('_mdSumNoPhysical')),
+                    align: 'right',
+                },
+                {
+                    id: 'damage-per-turn',
+                    header: 'Dmg/Turn',
+                    track: 92,
+                    value: unit => this.formatCBTStat(unit.dpt),
+                    sortKey: 'dpt',
+                    sortActive: this.isSortActive('dpt'),
+                    cellClass: this.tableCellClass('cbt-td-dpt', this.isSortActive('dpt')),
+                    align: 'right',
+                },
+                {
+                    id: 'network',
+                    header: 'Network',
+                    track: 96,
+                    value: unit => unit.c3 ?? '',
+                    sortKey: 'c3',
+                    sortActive: this.isSortActive('c3'),
+                    cellClass: this.tableCellClass('cbt-td-network', this.isSortActive('c3')),
+                },
+                {
+                    id: 'cost',
+                    header: 'Cost',
+                    track: 110,
+                    value: unit => unit.cost ? FormatNumberPipe.formatValue(unit.cost, true, false) : '',
+                    sortKey: 'cost',
+                    sortActive: this.isSortActive('cost'),
+                    cellClass: this.tableCellClass('cbt-td-cost', this.isSortActive('cost')),
+                    align: 'right',
+                },
+            );
+
+            if (this.cbtTableSortSlotHeader()) {
+                columns.push({
+                    id: 'sort-slot',
+                    header: this.cbtTableSortSlotHeader() ?? '',
+                    track: 100,
+                    value: unit => this.getCBTTableSortSlot(unit) ?? '',
+                    headerClass: 'as-th-sort-slot',
+                    cellClass: 'as-td-sort-slot sort-slot',
+                    align: 'center',
+                });
+            }
+
+            columns.push({
                 id: 'tags',
                 header: 'Tags',
                 track: 230,
@@ -618,8 +810,182 @@ export class UnitSearchComponent {
                 headerClass: 'as-th-tags',
                 cellClass: 'as-td-tags',
                 align: 'right',
-            }],
-        });
+            });
+
+            return columns;
+        }
+
+        if (!typeCell || !pvCell || !movementCell || !specialsCell) {
+            return [];
+        }
+
+        const columns: DataTableColumn<UnitSummary>[] = [
+            {
+                id: 'icon',
+                header: '',
+                track: 40,
+                cellTemplate: iconCell,
+                align: 'center',
+            },
+            {
+                id: 'name',
+                header: 'Name',
+                track: { minPx: 320, flex: 1.35 },
+                cellTemplate: nameCell,
+                sortKey: 'name',
+                sortActive: this.isSortActive('name'),
+            },
+            {
+                id: 'year',
+                header: 'Year',
+                track: 72,
+                cellTemplate: yearCell,
+                sortKey: 'year',
+                sortActive: this.isSortActive('year'),
+                cellClass: this.tableCellClass('as-td-year', this.isSortActive('year')),
+                align: 'center',
+            },
+            {
+                id: 'type',
+                header: 'Type',
+                track: 50,
+                cellTemplate: typeCell,
+                sortKey: 'as.TP',
+                sortActive: this.isSortActive('as.TP'),
+                cellClass: this.tableCellClass('as-td-type', this.isSortActive('as.TP')),
+                align: 'center',
+            },
+            {
+                id: 'role',
+                header: 'Role',
+                track: 130,
+                value: unit => unit.role !== 'None' ? unit.role : '',
+                sortKey: 'role',
+                sortActive: this.isSortActive('role'),
+                cellClass: this.tableCellClass('as-td-role', this.isSortActive('role')),
+            },
+            {
+                id: 'pv',
+                header: 'PV',
+                track: this.filtersService.activePvNormalization() ? 82 : 45,
+                cellTemplate: pvCell,
+                sortKey: 'as.PV',
+                sortActive: this.isSortActive('as.PV'),
+                cellClass: this.tableCellClass('as-td-pv is-bold', this.isSortActive('as.PV')),
+                align: 'right',
+            },
+            ...(this.filtersService.activePvNormalization() ? [{
+                id: 'normalized-skill',
+                header: 'Skill',
+                track: 45,
+                value: (unit: UnitSummary) => getNormalizationGunnery(this.getSearchResultContext(unit)),
+                cellTone: 'focus' as const,
+                align: 'center' as const,
+            }] : []),
+            {
+                id: 'sz',
+                header: 'SZ',
+                track: 30,
+                value: unit => unit.as.SZ,
+                sortKey: 'as.SZ',
+                sortActive: this.isSortActive('as.SZ'),
+                cellClass: this.tableCellClass('as-td-sz', this.isSortActive('as.SZ')),
+                align: 'center',
+            },
+            {
+                id: 'mv',
+                header: 'MV',
+                track: 65,
+                cellTemplate: movementCell,
+                sortKey: 'as._mv',
+                sortActive: this.isSortActive('as._mv'),
+                cellClass: this.tableCellClass('as-td-mv', this.isSortActive('as._mv')),
+                align: 'center',
+            },
+            {
+                id: 'tmm',
+                header: 'TMM',
+                track: 40,
+                value: unit => unit.as.TMM ?? '—',
+                sortKey: 'as.TMM',
+                sortActive: this.isSortActive('as.TMM'),
+                cellClass: this.tableCellClass('as-td-tmm', this.isSortActive('as.TMM')),
+                align: 'center',
+            },
+            {
+                id: 'damage',
+                header: 'S/M/L',
+                track: 60,
+                value: unit => !unit.as.usesArcs ? `${unit.as.dmg.dmgS}/${unit.as.dmg.dmgM}/${unit.as.dmg.dmgL}` : '',
+                sortKey: 'as.dmg._dmgS',
+                sortGroupKey: 'as.damage',
+                sortActive: this.isSortActive('as.damage'),
+                cellClass: this.tableCellClass('as-td-dmg', this.isSortActive('as.damage')),
+                align: 'center',
+            },
+            {
+                id: 'arm',
+                header: 'A',
+                track: 40,
+                value: unit => unit.as.Arm,
+                sortKey: 'as.Arm',
+                sortActive: this.isSortActive('as.Arm'),
+                cellClass: this.tableCellClass('as-td-arm', this.isSortActive('as.Arm')),
+                align: 'center',
+            },
+            {
+                id: 'str',
+                header: 'S',
+                track: 40,
+                value: unit => unit.as.Str,
+                sortKey: 'as.Str',
+                sortActive: this.isSortActive('as.Str'),
+                cellClass: this.tableCellClass('as-td-str', this.isSortActive('as.Str')),
+                align: 'center',
+            },
+            {
+                id: 'ov',
+                header: 'OV',
+                track: 30,
+                value: unit => unit.as.usesOV ? unit.as.OV : '',
+                sortKey: 'as.OV',
+                sortActive: this.isSortActive('as.OV'),
+                cellClass: this.tableCellClass('as-td-ov', this.isSortActive('as.OV')),
+                align: 'center',
+            },
+        ];
+
+        if (this.asTableSortSlotHeader()) {
+            columns.push({
+                id: 'sort-slot',
+                header: this.asTableSortSlotHeader() ?? '',
+                track: 80,
+                value: unit => this.getAsTableSortSlot(unit) ?? '',
+                headerClass: 'as-th-sort-slot',
+                cellClass: 'as-td-sort-slot sort-slot',
+                align: 'center',
+            });
+        }
+
+        columns.push(
+            {
+                id: 'specials',
+                header: 'Special',
+                track: { minPx: 220, flex: 1 },
+                cellTemplate: specialsCell,
+            },
+            {
+                id: 'tags',
+                header: 'Tags',
+                track: 230,
+                cellTemplate: tagsCell,
+                headerClass: 'as-th-tags',
+                cellClass: 'as-td-tags',
+                align: 'right',
+            },
+        );
+
+        return columns;
     });
 
     /** Current sort key for expanded card highlighting */
@@ -649,7 +1015,7 @@ export class UnitSearchComponent {
 
     /** Style for the expanded results wrapper when advanced panel is docked */
     expandedWrapperStyle = computed(() => {
-        const { top: safeTop, bottom: safeBottom, right: safeRight } = this.layoutService.getSafeAreaInsets();
+        const { top: safeTop, bottom: safeBottom } = this.layoutService.getSafeAreaInsets();
         const gap = 4;
         const top = safeTop + 4 + 40 + gap; // top margin + searchbar height + gap
         const bottom = Math.max(4, safeBottom);
@@ -679,24 +1045,16 @@ export class UnitSearchComponent {
         return this.advOpen() || this.resultsVisible();
     });
 
-    /**
-     * Non-reactive flag tracking whether the results panel was visible on the last check.
-     * Used to avoid flickering: when the panel is already visible, we keep showing
-     * (possibly stale) results while the worker processes instead of hiding/showing.
-     */
-    private wasResultsVisible = false;
-
     public readonly resultsVisible = computed(() => {
         if (this.expandedView()) {
             return true;
         }
+        if (!this.filtersService.isInteractionReady()) {
+            return false;
+        }
         const wantsVisible = (this.focused() || this.advOpen() || this.unitDetailsDialogOpen()) &&
             (this.filtersService.searchText() || this.isAdvActive() || this.activeVariantGroupFilter());
-        if (!wantsVisible) return false;
-        // If search results are current, show immediately
-        if (this.filtersService.isSearchSettled()) return true;
-        // Search pending: only show if panel was already visible (avoid flash on first show)
-        return this.wasResultsVisible;
+        return !!wantsVisible;
     });
 
     /**
@@ -749,17 +1107,26 @@ export class UnitSearchComponent {
     private advPanelDragStartWidth = 0;
 
     constructor() {
+        // Formation search must follow the group even while the advanced panel is closed.
+        effect(() => {
+            const active = this.filtersService.filterState()[FORMATION_TARGET_FILTER_KEY]?.interactedWith
+                || this.filtersService.semanticFilterKeys().has(FORMATION_TARGET_FILTER_KEY);
+            const selected = active ? this.forceWorkspace.selectedUnit() : null;
+            const group = selected && (isCBTForceMember(selected)
+                ? selected.force.groups().find(group => group.id === selected.rosterGroupId)
+                : selected.getGroup());
+            const units = group
+                ? FormationAnalyzer.getRequirementsFilterContextForGroup(group).filteredUnits ?? group.formationUnits()
+                : [];
+            untracked(() => this.filtersService.setFormationTargetExistingUnits(units));
+        });
         this.keyboardShortcutService.register({
             id: 'unit-search-results',
+            dialogRef: this.containingDialog ?? undefined,
             active: () => this.resultsVisible() && this.displayedUnits().length > 0,
             handle: (event) => this.handleSearchResultsShortcutKeyDown(event),
         }, this.destroyRef);
 
-        // Track panel visibility for flicker prevention (must be a plain boolean, not a signal,
-        // so the computed reads it as a snapshot without creating a reactive dependency)
-        effect(() => {
-            this.wasResultsVisible = this.resultsVisible();
-        });
         effect(() => {
             const currentGameSystem = this.gameSystem();
             untracked(() => this.advPanelFilterGameSystem.set(currentGameSystem));
@@ -771,7 +1138,6 @@ export class UnitSearchComponent {
             untracked(() => {
                 if (this.pendingSearchText !== null) {
                     this.cancelPendingSearchCommit();
-                    this.pendingResultOpenRequest.set(false);
                 }
                 if (this.immediateSearchText() !== text) {
                     this.immediateSearchText.set(text);
@@ -779,15 +1145,15 @@ export class UnitSearchComponent {
             });
         });
         effect(() => {
-            const filteredUuids = new Set(this.filtersService.filteredUnits().map(unit => unit.uuid));
-            const displayedUuids = new Set(this.displayedUnits().map(unit => unit.uuid));
+            const filteredIdentities = new Set(this.filtersService.filteredUnits().map(unit => unit.uuid));
+            const displayedIdentities = new Set(this.displayedUnits().map(unit => unit.uuid));
             untracked(() => {
                 const selected = this.selectedUnits();
-                if (![...selected].every(uuid => filteredUuids.has(uuid))) {
-                    this.selectedUnits.set(new Set([...selected].filter(uuid => filteredUuids.has(uuid))));
+                if (![...selected].every(identity => filteredIdentities.has(identity))) {
+                    this.selectedUnits.set(new Set([...selected].filter(identity => filteredIdentities.has(identity))));
                 }
                 const inlineUnit = this.inlinePanelUnit();
-                if (inlineUnit && !displayedUuids.has(inlineUnit.uuid)) {
+                if (inlineUnit && !displayedIdentities.has(inlineUnit.uuid)) {
                     this.inlinePanelUnit.set(null);
                 }
             });
@@ -809,19 +1175,9 @@ export class UnitSearchComponent {
                 }
             });
         });
-        effect(() => {
-            if (!this.pendingResultOpenRequest()) return;
-            if (this.isResultOpenBlockedByPendingSearch()) return;
-
-            const items = this.displayedUnits();
-            untracked(() => {
-                this.pendingResultOpenRequest.set(false);
-                this.openCurrentSearchResult(items);
-            });
-        });
         // Keep the filters service in sync with the current force total BV/PV
         effect(() => {
-            const force = this.forceBuilderService.smartCurrentForce();
+            const force = this.forceWorkspace.smartCurrentForce();
             const total = force ? force.totalBv() : 0;
             untracked(() => this.filtersService.forceTotalBvPv.set(total));
         });
@@ -845,6 +1201,11 @@ export class UnitSearchComponent {
                 this.advPanelUserColumns();
                 this.updateAdvPanelPosition();
                 this.updateResultsDropdownPosition();
+            }
+        });
+        effect(() => {
+            if (!this.advOpen()) {
+                untracked(() => this.budgetModeSwitchTransitionsEnabled.set(false));
             }
         });
         effect(() => {
@@ -930,7 +1291,7 @@ export class UnitSearchComponent {
         });
     }
 
-    trackCardRow = (index: number, row: UnitSummary[]) => row[0]?.name ?? index;
+    trackCardRow = (index: number, row: UnitSummary[]) => row[0]?.uuid ?? index;
 
     getCardUnitIndex(rowIndex: number, columnIndex: number): number {
         return rowIndex * this.cardViewColumnCount() + columnIndex;
@@ -1060,7 +1421,6 @@ export class UnitSearchComponent {
     }
 
     public closeAllPanels() {
-        this.pendingResultOpenRequest.set(false);
         this.focused.set(false);
         this.advOpen.set(false);
         this.viewModeMenuOpen.set(false);
@@ -1073,9 +1433,8 @@ export class UnitSearchComponent {
         this.closeAllPanels();
     }
 
-    trackByUnitId(index: number, unit: UnitSummary) {
+    trackByUnitId(index: number) {
         // Track by index to force position-based recycling in virtual scroll
-        // Tracking by unit.name causes orphaned DOM nodes for who knows what reason...
         return index;
     }
 
@@ -1099,13 +1458,11 @@ export class UnitSearchComponent {
         // Update immediately for instant highlighting
         this.immediateSearchText.set(val);
         this.activeIndex.set(null);
-        this.pendingResultOpenRequest.set(false);
         // Debounce the actual search/filtering
         if (this.searchDebounceTimer) {
             clearTimeout(this.searchDebounceTimer);
         }
         this.pendingSearchText = val;
-        this.searchCommitPending.set(true);
         this.searchDebounceTimer = setTimeout(() => this.flushPendingSearch(), this.SEARCH_DEBOUNCE_MS);
     }
 
@@ -1115,7 +1472,6 @@ export class UnitSearchComponent {
             this.searchDebounceTimer = undefined;
         }
         this.pendingSearchText = null;
-        this.searchCommitPending.set(false);
     }
 
     private flushPendingSearch() {
@@ -1125,7 +1481,6 @@ export class UnitSearchComponent {
         }
 
         if (this.pendingSearchText === null) {
-            this.searchCommitPending.set(false);
             return;
         }
 
@@ -1133,7 +1488,6 @@ export class UnitSearchComponent {
         this.pendingSearchText = null;
         this.filtersService.setSearchText(nextSearchText);
         this.activeIndex.set(null);
-        this.searchCommitPending.set(false);
     }
 
     closeAdvPanel() {
@@ -1275,7 +1629,7 @@ export class UnitSearchComponent {
     }
 
     advPanelFilterGameSystemToggleTitle() {
-        return this.otherAdvPanelFilterGameSystem() === GameSystem.CLASSIC
+        return this.otherAdvPanelFilterGameSystem() === GameSystem.CBT
             ? 'Show BattleTech filters'
             : 'Show Alpha Strike filters';
     }
@@ -1294,12 +1648,22 @@ export class UnitSearchComponent {
     }
 
     private getOtherGameSystem(gameSystem: GameSystem): GameSystem {
-        return gameSystem === GameSystem.CLASSIC
-            ? GameSystem.ALPHA_STRIKE
-            : GameSystem.CLASSIC;
+        return gameSystem === GameSystem.CBT
+            ? GameSystem.AS
+            : GameSystem.CBT;
     }
 
     onDocumentKeydown(event: KeyboardEvent) {
+        // CDK may already have closed the top dialog or menu with this Escape.
+        if (event.defaultPrevented) return;
+        const topDialog = this.dialog.openDialogs.at(-1);
+        if (topDialog && topDialog !== this.containingDialog) return;
+        if (event.key === 'Escape') {
+            if (this.expandedView() || this.advOpen() || this.focused() || this.viewModeMenuOpen()) {
+                this.onKeydown(event);
+            }
+            return;
+        }
         // FILTER Chord
         if ((event.ctrlKey || event.metaKey) && event.shiftKey && event.key.toLowerCase() === UnitSearchComponent.CHORD_ACTIVATE_KEY) {
             event.preventDefault();
@@ -1341,8 +1705,11 @@ export class UnitSearchComponent {
             }
         }
         if (event.key === 'Escape') {
+            if (event.defaultPrevented) return;
+            const topDialog = this.dialog.openDialogs.at(-1);
+            if (topDialog && topDialog !== this.containingDialog) return;
+            event.preventDefault();
             event.stopPropagation();
-            this.pendingResultOpenRequest.set(false);
             if (this.viewModeMenuOpen()) {
                 this.closeViewModeMenu();
                 return;
@@ -1351,8 +1718,12 @@ export class UnitSearchComponent {
                 this.focusInput();
                 return;
             } else {
+                if (this.selectionMode()) {
+                    this.selectionCanceled.emit();
+                    return;
+                }
                 if (this.expandedView()) {
-                    this.expandedView.set(false);
+                    this.toggleExpandedView();
                     return;
                 }
                 this.focused.set(false);
@@ -1362,7 +1733,8 @@ export class UnitSearchComponent {
         }
         if (event.key === 'Enter') {
             if (this.isResultNavigationBlockedForTarget(event.target)) return;
-            if (this.requestOpenCurrentSearchResult()) {
+            this.flushPendingSearch();
+            if (this.openCurrentSearchResult()) {
                 event.preventDefault();
             }
             return;
@@ -1391,21 +1763,6 @@ export class UnitSearchComponent {
         if (!interactiveElement) return false;
 
         return !(interactiveElement.matches('input.syntax-input') && interactiveElement.closest('syntax-input'));
-    }
-
-    private isResultOpenBlockedByPendingSearch(): boolean {
-        return this.searchCommitPending() || !this.filtersService.isSearchSettled();
-    }
-
-    private requestOpenCurrentSearchResult(): boolean {
-        this.flushPendingSearch();
-
-        if (this.isResultOpenBlockedByPendingSearch()) {
-            this.pendingResultOpenRequest.set(true);
-            return true;
-        }
-
-        return this.openCurrentSearchResult();
     }
 
     private openCurrentSearchResult(items = this.displayedUnits()): boolean {
@@ -1572,12 +1929,14 @@ export class UnitSearchComponent {
         this.setAdvFilter(filterKey, normalizeUnitSearchRange(newValues, totalRange));
     }
 
-    showUnitDetails(unit: UnitSummary) {
+    async showUnitDetails(unit: UnitSummary): Promise<void> {
+        if (this.selectionMode()) { this.unitSelected.emit(unit); return; }
         const filteredUnits = this.displayedUnits();
-        const filteredUnitIndex = filteredUnits.findIndex(u => u.uuid === unit.uuid);
+        const filteredUnitIndex = filteredUnits.findIndex(candidate => candidate.uuid === unit.uuid);
         const searchResultContexts = new Map(
             filteredUnits.map(resultUnit => [resultUnit.uuid, this.getSearchResultContext(resultUnit)]),
         );
+        const { UnitDetailsDialogComponent } = await import('../unit-details-dialog/unit-details-dialog.component');
         const ref = this.dialogsService.createDialog(UnitDetailsDialogComponent, {
             data: <UnitDetailsDialogData>{
                 unitList: filteredUnits,
@@ -1595,7 +1954,8 @@ export class UnitSearchComponent {
         });
 
         const addSub = ref.componentInstance?.add.subscribe(() => {
-            if (this.forceBuilderService.smartCurrentForce()?.units().length === 1) {
+            const force = this.forceWorkspace.smartCurrentForce();
+            if (force && force.members().length === 1) {
                 this.expandedView.set(false);
                 queueMicrotask(() => {
                     this.closeAllPanels();
@@ -1619,6 +1979,18 @@ export class UnitSearchComponent {
             (document.activeElement as HTMLElement)?.blur();
         } catch { /* ignore */ }
     }
+
+    /**
+     * Keys that are grouped together in the UI display.
+     * When any key in a group is displayed, sorting by any other key in the group
+     * should highlight that display (not create a separate sort slot).
+     */
+    private static readonly SORT_KEY_GROUPS: Record<string, readonly string[]> = {
+        // AS damage displayed as S/M/L composite
+        'as.damage': ['as.dmg._dmgS', 'as.dmg._dmgM', 'as.dmg._dmgL', 'as.dmg._dmgE'],
+        // CBT movement displayed as "walk / run / jump / umu"
+        'movement': ['walk', 'run', 'jump', 'umu'],
+    };
 
     /**
      * Check if the current sort key matches any of the provided keys or groups.
@@ -1673,13 +2045,59 @@ export class UnitSearchComponent {
     }
 
     isSortActive(...keysOrGroups: string[]): boolean {
-        return isUnitDataTableSortActive(this.filtersService.selectedSort(), ...keysOrGroups);
+        const currentSort = this.filtersService.selectedSort();
+        if (!currentSort) return false;
+
+        for (const keyOrGroup of keysOrGroups) {
+            // Check if it's a group name
+            const group = UnitSearchComponent.SORT_KEY_GROUPS[keyOrGroup];
+            if (group) {
+                if (group.includes(currentSort)) return true;
+            } else if (keyOrGroup === currentSort) {
+                return true;
+            }
+        }
+        return false;
     }
 
-    getUnitTableSortSlot(unit: UnitSummary): string | null {
+    /**
+     * Keys always visible in the AS table row.
+     * Used by both asTableSortSlotHeader and getAsTableSortSlot.
+     */
+    private static readonly AS_TABLE_VISIBLE_KEYS = ['name', 'year', 'as.TP', 'role', 'as.PV', 'as.SZ', 'as._mv', 'as.TMM', 'as.Arm', 'as.Str', 'as.OV'];
+    private static readonly AS_TABLE_VISIBLE_GROUPS = ['as.damage'];
+    private static readonly CBT_TABLE_VISIBLE_KEYS = ['name', 'type', 'subtype', 'role', 'bv', 'tons', 'year', 'level', '_techBaseDisplay', 'moveType', 'armor', 'internal', '_mdSumNoPhysical', 'dpt', 'c3', 'cost'];
+    private static readonly CBT_TABLE_VISIBLE_GROUPS = ['movement'];
+
+    /**
+     * Get the sort slot value for AS table row view.
+     * Returns null if the sort key is already visible in the table columns.
+     */
+    getAsTableSortSlot(unit: UnitSummary): string | null {
         const key = this.filtersService.selectedSort();
-        if (!key || !this.unitTableSortSlotHeader()) {
-            return null;
+        if (!key) return null;
+
+        // Check if key is directly in table columns
+        if (UnitSearchComponent.AS_TABLE_VISIBLE_KEYS.includes(key)) return null;
+
+        // Check if key is in a group that's in table columns
+        for (const groupName of UnitSearchComponent.AS_TABLE_VISIBLE_GROUPS) {
+            const group = UnitSearchComponent.SORT_KEY_GROUPS[groupName];
+            if (group && group.includes(key)) return null;
+        }
+
+        return this.formatTableSortSlotValue(unit, key);
+    }
+
+    getCBTTableSortSlot(unit: UnitSummary): string | null {
+        const key = this.filtersService.selectedSort();
+        if (!key) return null;
+
+        if (UnitSearchComponent.CBT_TABLE_VISIBLE_KEYS.includes(key)) return null;
+
+        for (const groupName of UnitSearchComponent.CBT_TABLE_VISIBLE_GROUPS) {
+            const group = UnitSearchComponent.SORT_KEY_GROUPS[groupName];
+            if (group && group.includes(key)) return null;
         }
 
         return this.formatTableSortSlotValue(unit, key);
@@ -1737,8 +2155,25 @@ export class UnitSearchComponent {
         return cur;
     }
 
-    formatClassicMovement(unit: UnitSummary): string {
-        return formatClassicUnitMovement(unit);
+    formatCBTMovement(unit: UnitSummary): string {
+        if (!unit.walk) return '';
+
+        let movement = `${unit.walk} / ${unit.run}`;
+        if (unit.run2 && unit.run2 !== unit.run) {
+            movement += ` [${unit.run2}]`;
+        }
+        if (unit.jump) {
+            movement += ` / ${unit.jump}`;
+        }
+        if (unit.umu) {
+            movement += ` / ${unit.umu}`;
+        }
+
+        return movement;
+    }
+
+    formatCBTSubtype(unit: UnitSummary): string {
+        return unit.subtype && unit.subtype !== unit.type ? unit.subtype : '';
     }
 
     formatArmorType(armorType: string | undefined): string {
@@ -1752,13 +2187,26 @@ export class UnitSearchComponent {
     }
 
     private formatTableSortSlotValue(unit: UnitSummary, key: string): string {
+        if (UnitSearchComponent.SORT_KEY_GROUPS['movement'].includes(key)) {
+            return this.formatCBTMovement(unit) || '—';
+        }
+
+        if (key === 'subtype') {
+            return this.formatCBTSubtype(unit) || '—';
+        }
+
         if (isMegaMekRaritySortKey(key)) {
             return this.formatMegaMekRaritySortScore(this.filtersService.getMegaMekRaritySortScore(unit));
         }
 
-        return formatUnitDataTableSortSlotValue(unit, key, (candidate, sortKey) =>
-            this.getUnitSortRawValue(candidate, sortKey)
-        );
+        const raw = this.getUnitSortRawValue(unit, key);
+        if (raw == null) return '—';
+
+        if (typeof raw === 'number' && isASDamageFilterKey(key)) {
+            return formatASDamageValue(raw);
+        }
+
+        return typeof raw === 'number' ? FormatNumberPipe.formatValue(raw, true, false) : String(raw);
     }
 
     getSearchResultMegaMekRarity(unit: UnitSummary): string {
@@ -1796,7 +2244,14 @@ export class UnitSearchComponent {
         return this.getNestedProperty(unit, key);
     }
 
-    formatClassicBv(unit: UnitSummary, gunnery: number, piloting: number): string {
+    formatCBTStat(value: number | undefined): string {
+        if (value === undefined || value === null) {
+            return '—';
+        }
+        return FormatNumberPipe.formatValue(value, true, false);
+    }
+
+    formatCBTBv(unit: UnitSummary, gunnery: number, piloting: number): string {
         if (this.filtersService.activeBvNormalization()) {
             return formatBvPv(
                 this.getSearchResultContext(unit).adjustedValue,
@@ -1805,7 +2260,7 @@ export class UnitSearchComponent {
             );
         }
         return formatBvPv(
-            BVCalculatorUtil.calculateAdjustedBV(unit, unit.bv, gunnery, piloting),
+            calculateAdjustedBV(unit, unit.bv, gunnery, piloting),
             unit.bv,
             'both',
         );
@@ -1826,18 +2281,31 @@ export class UnitSearchComponent {
         );
     }
 
+    formatTons(tons: number | undefined): string {
+        if (tons === undefined) return '';
+
+        const format = (value: number) => Math.round(value * 100) / 100;
+        if (tons < 1000) {
+            return `${format(tons)}`;
+        }
+        if (tons < 1000000) {
+            return `${format(tons / 1000)}k`;
+        }
+        return `${format(tons / 1000000)}M`;
+    }
+
     async onAddTag({ unit, event }: TagClickEvent) {
         event.stopPropagation();
 
         // Determine which units to tag: selected units if any.
-        const selectedUuids = this.selectedUnits();
+        const selectedIdentities = this.selectedUnits();
         const allUnits = this.displayedUnits();
         let unitsToTag: UnitSummary[];
-        if (selectedUuids.size > 0) {
+        if (selectedIdentities.size > 0) {
             // Always include the clicked unit, even if not in the selection
-            const selectedSet = new Set(selectedUuids);
+            const selectedSet = new Set(selectedIdentities);
             selectedSet.add(unit.uuid);
-            unitsToTag = allUnits.filter(u => selectedSet.has(u.uuid));
+            unitsToTag = allUnits.filter(candidate => selectedSet.has(candidate.uuid));
         } else {
             unitsToTag = [unit];
         }
@@ -1882,6 +2350,9 @@ export class UnitSearchComponent {
     }
 
     toggleSearchBudgetMode(mode: Exclude<UnitSearchBudgetMode, null>): void {
+        if (this.advOpen()) {
+            this.budgetModeSwitchTransitionsEnabled.set(true);
+        }
         this.setSearchBudgetMode(this.filtersService.budgetMode() === mode ? null : mode);
     }
 
@@ -2024,19 +2495,22 @@ export class UnitSearchComponent {
 
     multiSelectUnit(unit: UnitSummary, event?: Event) {
         event?.stopPropagation();
+        if (this.selectionMode()) { this.unitSelected.emit(unit); return; }
         const selected = new Set(this.selectedUnits());
-        if (selected.has(unit.uuid)) {
-            selected.delete(unit.uuid);
-            this.selectedUnitContexts.delete(unit.uuid);
+        const identity = unit.uuid;
+        if (selected.has(identity)) {
+            selected.delete(identity);
+            this.selectedUnitContexts.delete(identity);
         } else {
-            selected.add(unit.uuid);
-            this.selectedUnitContexts.set(unit.uuid, this.getSearchResultContext(unit));
+            selected.add(identity);
+            this.selectedUnitContexts.set(identity, this.getSearchResultContext(unit));
         }
         this.selectedUnits.set(selected);
     }
 
     // Multi-select logic: click with Ctrl/Cmd or Shift to select multiple units
     onUnitCardClick(unit: UnitSummary, event?: MouseEvent) {
+        if (this.selectionMode()) { this.unitSelected.emit(unit); return; }
         const multiSelect = event ? (event.ctrlKey || event.metaKey || event.shiftKey) : false;
         if (event && multiSelect) {
             // Multi-select logic
@@ -2048,7 +2522,7 @@ export class UnitSearchComponent {
         if (this.showInlinePanel()) {
             // Update activeIndex to match clicked unit
             const filteredUnits = this.displayedUnits();
-            const index = filteredUnits.findIndex(u => u.uuid === unit.uuid);
+            const index = filteredUnits.findIndex(candidate => candidate.uuid === unit.uuid);
             if (index >= 0) {
                 this.activeIndex.set(index);
             }
@@ -2063,7 +2537,8 @@ export class UnitSearchComponent {
 
     /** Handle unit added from inline panel */
     onInlinePanelAdd(): void {
-        if (this.forceBuilderService.smartCurrentForce()?.units().length === 1) {
+        const force = this.forceWorkspace.smartCurrentForce();
+        if (force && force.members().length === 1) {
             // If this is the first unit being added, close the search panel
             this.closeAllPanels();
             this.expandedView.set(false);
@@ -2100,9 +2575,10 @@ export class UnitSearchComponent {
     }
 
     selectAll() {
+        if (this.selectionMode()) return;
         const allUnits = this.displayedUnits();
-        const allUuids = new Set(allUnits.map(u => u.uuid));
-        this.selectedUnits.set(allUuids);
+        const allIdentities = new Set(allUnits.map(unit => unit.uuid));
+        this.selectedUnits.set(allIdentities);
         this.selectedUnitContexts.clear();
         for (const unit of allUnits) {
             this.selectedUnitContexts.set(unit.uuid, this.getSearchResultContext(unit));
@@ -2110,13 +2586,14 @@ export class UnitSearchComponent {
     }
 
     async addSelectedUnits() {
+        if (this.selectionMode()) return;
         const selectedUnits = this.selectedUnits();
         for (const selectedUnitUuid of selectedUnits) {
             const unit = this.dataService.getUnitByUuid(selectedUnitUuid);
             if (unit) {
                 const context = this.selectedUnitContexts.get(selectedUnitUuid)
                     ?? this.getSearchResultContext(unit);
-                if (!await this.forceBuilderService.addUnit(
+                if (!await this.forceCommands.addUnit(
                     unit,
                     getNormalizationGunnery(context),
                     getNormalizationPiloting(context),
@@ -2142,7 +2619,7 @@ export class UnitSearchComponent {
     }
 
     showGenerateForceDialog(): void {
-        void this.forceBuilderService.showSearchForceGeneratorDialog();
+        void this.forceImport.showSearchForceGeneratorDialog();
     }
 
     /**
@@ -2162,7 +2639,26 @@ export class UnitSearchComponent {
      * Handles different movement modes (j for jump, etc.)
      */
     formatASMovement(unit: UnitSummary): string {
-        return formatAlphaStrikeUnitMovement(unit, this.optionsService.options().ASUseHex);
+        const mvm = unit.as.MVm;
+        if (!mvm) return unit.as.MV ?? '';
+
+        const entries = Object.entries(mvm)
+            .filter(([, value]) => typeof value === 'number' && value > 0) as Array<[string, number]>;
+
+        if (entries.length === 0) return unit.as.MV ?? '';
+
+        return entries
+            .sort((a, b) => {
+                if (a[0] === '') return -1;
+                if (b[0] === '') return 1;
+                return 0;
+            })
+            .map(([mode, inches]) => formatMovement(inches, mode, this.optionsService.options().ASUseHex))
+            .join('/');
+    }
+
+    private tableCellClass(base: string, active: boolean): string {
+        return active ? `${base} sort-slot` : base;
     }
 
     private currentViewport(): CdkVirtualScrollViewport | undefined {
@@ -2224,11 +2720,12 @@ export class UnitSearchComponent {
         }
     }
 
-    toggleExpandedView(): void {
+    toggleExpandedView() {
+        if (this.selectionMode()) { this.selectionCanceled.emit(); return; }
         const isExpanded = this.expandedView();
 
         if (isExpanded) {
-            if (this.forceBuilderService.hasForces()) {
+            if (this.forceWorkspace.hasForces()) {
                 this.closeAllPanels();
                 this.blurInput();
             }
@@ -2243,7 +2740,6 @@ export class UnitSearchComponent {
 
     clearSearch() {
         this.cancelPendingSearchCommit();
-        this.pendingResultOpenRequest.set(false);
         this.immediateSearchText.set('');
         this.filtersService.setSearchText('');
         this.activeIndex.set(null);
@@ -2253,8 +2749,9 @@ export class UnitSearchComponent {
         return AS_TYPE_DISPLAY_NAMES[group.asType] ?? group.asType;
     }
 
-    formatVariantGroupTitle(group: UnitVariantGroupIdentity): string {
-        return group.chassis;
+    formatVariantGroupTitle(group: UnitVariantGroupIdentity & { representativeUnit?: UnitSummary }): string {
+        const unit = group.representativeUnit;
+        return unit && group.chassis === unit.chassis ? this.unitNames.chassis(unit) : group.chassis;
     }
 
     formatVariantGroupMeta(group: UnitVariantGroupIdentity, variantCount: number): string {
@@ -2302,13 +2799,15 @@ export class UnitSearchComponent {
         }, { injector: this.injector });
     }
 
-    openShareSearch(event: MouseEvent) {
+    async openShareSearch(event: MouseEvent): Promise<void> {
         event.stopPropagation();
+        const { ShareSearchDialogComponent } = await import('./share-search.component');
         this.dialogsService.createDialog(ShareSearchDialogComponent);
     }
 
-    openSemanticGuide(event: MouseEvent) {
+    async openSemanticGuide(event: MouseEvent): Promise<void> {
         event.stopPropagation();
+        const { SemanticGuideDialogComponent } = await import('../semantic-guide-dialog/semantic-guide-dialog.component');
         this.dialogsService.createDialog(SemanticGuideDialogComponent);
     }
 
@@ -2336,7 +2835,7 @@ export class UnitSearchComponent {
         this.favoritesCompRef = componentRef;
 
         // Get favorites - filter by game system only if a force is loaded
-        const hasForces = this.forceBuilderService.hasForces();
+        const hasForces = this.forceWorkspace.hasForces();
         const favorites = hasForces
             ? this.savedSearchesService.getSearchesForGameSystem(this.gameService.currentGameSystem())
             : this.savedSearchesService.getAllSearches();
@@ -2400,7 +2899,7 @@ export class UnitSearchComponent {
             if (!trimmed) return;
 
             const gameSystem = this.gameService.currentGameSystem();
-            const gsKey = gameSystem === GameSystem.ALPHA_STRIKE ? 'as' : 'cbt';
+            const gsKey = gameSystem === GameSystem.AS ? 'as' : 'cbt';
             const id = uuidv7();
             const filter = this.filtersService.serializeCurrentSearchFilter(id, trimmed, gsKey);
 
@@ -2464,7 +2963,7 @@ export class UnitSearchComponent {
         // Update favorites data in-place without closing overlay
         if (this.favoritesCompRef && this.overlayManager.has('favorites')) {
             // Get favorites - filter by game system only if a force is loaded
-            const hasForces = this.forceBuilderService.hasForces();
+            const hasForces = this.forceWorkspace.hasForces();
             const favorites = hasForces
                 ? this.savedSearchesService.getSearchesForGameSystem(this.gameService.currentGameSystem())
                 : this.savedSearchesService.getAllSearches();
@@ -2479,7 +2978,7 @@ export class UnitSearchComponent {
         // Game-agnostic searches (no gameSystem) don't switch the mode
         if (fav.gameSystem) {
             const currentGs = this.gameService.currentGameSystem();
-            const favGs = fav.gameSystem === 'as' ? GameSystem.ALPHA_STRIKE : GameSystem.CLASSIC;
+            const favGs = fav.gameSystem === 'as' ? GameSystem.AS : GameSystem.CBT;
             if (favGs !== currentGs) {
                 this.gameService.setMode(favGs);
             }

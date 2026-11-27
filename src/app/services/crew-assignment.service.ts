@@ -1,0 +1,109 @@
+// Copyright (C) 2026 The MegaMek Team
+// SPDX-License-Identifier: GPL-3.0-or-later
+
+import { Injectable, inject, signal } from '@angular/core';
+import { GameSystem } from '../models/common.model';
+import type { Force } from '../models/force.model';
+import type { ForcePerson } from '../models/force-personnel';
+import { ForcePilotEditorService } from './force-pilot-editor.service';
+import { ToastService } from './toast.service';
+
+export interface CrewDragData {
+    readonly kind: 'force-person';
+    readonly force: Force;
+    readonly personId: string;
+}
+
+/** UI actions delegate ownership and eligibility to Force; no crew rules live here. */
+@Injectable({ providedIn: 'root' })
+export class CrewAssignmentService {
+    private readonly editor = inject(ForcePilotEditorService);
+    private readonly toast = inject(ToastService);
+    private readonly dropLists = signal<ReadonlyMap<Force, readonly string[]>>(new Map());
+
+    /** Component lifetimes own registration; crew drops never connect to unit/group lists. */
+    registerDropList(force: Force, id: string): () => void {
+        this.dropLists.update(current => new Map(current).set(force, [...(current.get(force) ?? []), id]));
+        return () => this.dropLists.update(current => {
+            const next = new Map(current);
+            const ids = (next.get(force) ?? []).filter(candidate => candidate !== id);
+            if (ids.length) next.set(force, ids);
+            else next.delete(force);
+            return next;
+        });
+    }
+
+    connectedDropLists(): readonly string[] {
+        return [...this.dropLists()].flatMap(([force, ids]) => force.canEditPersonnel() ? ids : []);
+    }
+
+    canDropPerson(data: CrewDragData | undefined, target: Force): boolean {
+        return data?.kind === 'force-person' && target.canEditPersonnel() && data.force.canEditPersonnel()
+            && data.force.personnel().people.some(person => person.id === data.personId)
+            && (data.force === target || !data.force.personnel().assignments.some(assignment => assignment.personId === data.personId));
+    }
+
+    /** A drop on the unit fills its first vacant station; a full unit replaces its first occupant. */
+    unitDropPosition(force: Force, unitId: string): string | undefined {
+        const policy = force.getUnitCrewPolicy(unitId);
+        if (!policy.canEdit || policy.kind !== 'swappable') return undefined;
+        return (policy.positions.find(position => !force.getAssignedPerson(unitId, position.positionId))
+            ?? policy.positions[0])?.positionId;
+    }
+
+    /** Force ownership swaps two assigned people and sends a replaced occupant to reserve. */
+    async dropOnUnit(force: Force, data: CrewDragData, unitId: string, positionId = this.unitDropPosition(force, unitId)): Promise<void> {
+        if (positionId === undefined || !this.canDropPerson(data, force)) return;
+        if (data.force === force) return this.assign(force, data.personId, unitId, positionId);
+        if (!data.force.transferReservePersonTo(force, data.personId)) return this.report(false);
+        const assigned = await force.assignPersonToUnit(data.personId, unitId, positionId);
+        if (!assigned) force.transferReservePersonTo(data.force, data.personId);
+        this.report(assigned);
+    }
+
+    async dropInReserves(force: Force, data: CrewDragData, index: number): Promise<void> {
+        if (!this.canDropPerson(data, force)) return;
+        if (data.force !== force) {
+            if (!data.force.transferReservePersonTo(force, data.personId)) return this.report(false);
+        } else {
+            const assignment = force.personnel().assignments.find(candidate => candidate.personId === data.personId);
+            if (assignment && !await force.unassignPerson(assignment.unitId, assignment.positionId)) return this.report(false);
+        }
+        this.report(await force.reorderReservePerson(data.personId, index));
+    }
+
+    reserves(force: Force): readonly ForcePerson[] {
+        const personnel = force.personnel();
+        const assigned = new Set(personnel.assignments.map(assignment => assignment.personId));
+        return personnel.people.filter(person => !assigned.has(person.id));
+    }
+
+    /** A reserve's own wounds; Alpha Strike pilots have no wound track. */
+    reserveWounds(force: Force, person: ForcePerson): number | undefined {
+        return force.gameSystem === GameSystem.AS ? undefined : person.health?.wounds ?? 0;
+    }
+
+    async edit(force: Force, personId: string): Promise<void> {
+        await this.editor.editPerson(force, personId);
+    }
+
+    async assign(force: Force, personId: string, unitId: string, positionId: string): Promise<void> {
+        if (force.getAssignedPerson(unitId, positionId)?.id === personId) return;
+        this.report(await force.assignPersonToUnit(personId, unitId, positionId));
+    }
+
+    async create(force: Force, unitId?: string, positionId?: string): Promise<void> {
+        const person = unitId !== undefined && positionId !== undefined
+            ? await force.createPersonForUnit(unitId, positionId)
+            : force.addUnassignedPerson({ gunnery: 4, piloting: 5 });
+        this.report(person !== null);
+    }
+
+    async delete(force: Force, personId: string): Promise<void> {
+        this.report(await force.deletePerson(personId));
+    }
+
+    private report(success: boolean): void {
+        if (!success) this.toast.showToast('The crew change could not be applied. Please try again.', 'error');
+    }
+}

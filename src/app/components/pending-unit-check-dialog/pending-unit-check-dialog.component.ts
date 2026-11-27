@@ -1,167 +1,166 @@
-// Copyright (C) 2026 The MegaMek Team
 // SPDX-License-Identifier: GPL-3.0-or-later
-// Author: Drake
 
-import { ChangeDetectionStrategy, Component, computed, inject, viewChildren } from '@angular/core';
+import { ChangeDetectionStrategy, Component, computed, inject, signal, viewChildren } from '@angular/core';
 import { DIALOG_DATA, DialogRef } from '@angular/cdk/dialog';
-import type { CBTForceUnit } from '../../models/cbt-force-unit.model';
-import { isFallPSRCheck } from '../../models/rules/unit-type-rules';
-import {
-    isConsciousnessCheck,
-    isPendingUnitCheckEntry,
-    pendingCheckReviewEntryKey,
-    pendingCheckReviewGroupList,
-    pendingPsrCommittedOutcome,
-    pendingUnitCheckIsResolved,
-    pendingUnitCheckDialogTitle,
-    pendingUnitCheckOutcome,
-    type PendingCheckReviewEntry,
-} from '../../utils/unit-check.util';
-import { PendingUnitCheckRowComponent } from './pending-unit-check-row.component';
 
-export interface PendingUnitCheckDialogData {
-    readonly units: readonly CBTForceUnit[];
-    readonly atPhaseEnd?: boolean;
-    readonly manualResolution?: boolean;
-    readonly applyResolved: (
-        entries: readonly PendingCheckReviewEntry[],
-        forcedPsrFailures: ReadonlySet<string>,
-    ) => void;
-}
+import type {
+    AutomationCheckDialogData,
+    AutomationCheckOutcome,
+    AutomationCheckResolution,
+    AutomationCheckSelection,
+} from '../../models/automation-check.model';
+import {
+    PendingUnitCheckRowComponent,
+    type AutomationCheckDisplayResolution,
+} from './pending-unit-check-row.component';
 
 @Component({
     selector: 'pending-unit-check-dialog',
-    standalone: true,
     imports: [PendingUnitCheckRowComponent],
     changeDetection: ChangeDetectionStrategy.OnPush,
-    template: `
-        <div class="panel glass preventZoomReset framed-borders has-shadow" (click)="$event.stopPropagation()">
-            <div class="header unit-check-dialog-header">
-                @if (showRollAll()) {
-                    <button
-                        type="button"
-                        class="random-button unit-check-roll-all"
-                        [disabled]="isAnyRolling()"
-                        aria-label="Roll all checks"
-                        title="Roll all checks"
-                        (click)="rollAll()">
-                    </button>
-                }
-                <span>{{ checkTitle() }}</span>
-                @if (commonUnitName(); as unitName) {
-                    <span>{{ unitName }}</span>
-                }
-            </div>
-            <div class="body unit-check-dialog-body">
-                <div class="unit-check-list">
-                    @for (entry of entries(); track entryKey(entry)) {
-                        <pending-unit-check-row
-                            [entry]="entry"
-                            [showUnitName]="commonUnitName() === null"
-                            [forcedPsrFailure]="forcedPsrFailures().has(entryKey(entry))" />
-                    }
-                </div>
-            </div>
-            <div class="actions unit-check-dialog-actions">
-                <button type="button" class="bt-button primary" [disabled]="!allResolved()" (click)="apply()">APPLY</button>
-                <button type="button" class="bt-button" (click)="close()">CLOSE</button>
-            </div>
-        </div>
-    `,
+    templateUrl: './pending-unit-check-dialog.component.html',
     styleUrls: [
         '../page-viewer/overlay/page-psr-warning-panel.component.scss',
         './pending-unit-check-dialog.component.scss',
     ],
 })
 export class PendingUnitCheckDialogComponent {
-    readonly data = inject<PendingUnitCheckDialogData>(DIALOG_DATA);
-    private readonly dialogRef = inject<DialogRef<boolean>>(DialogRef);
+    readonly data = inject<AutomationCheckDialogData>(DIALOG_DATA);
+    private readonly dialogRef = inject<DialogRef<readonly AutomationCheckResolution[]>>(DialogRef);
+    private readonly selectedOutcomes = signal<Readonly<Record<string, AutomationCheckOutcome>>>(
+        Object.fromEntries((this.data.initialSelections ?? []).map(selection => [
+            selection.id,
+            selection.outcome,
+        ])),
+    );
+    private readonly selectedDice = signal<Readonly<Record<string, readonly [number, number]>>>(
+        Object.fromEntries((this.data.initialSelections ?? []).flatMap(selection =>
+            selection.dice ? [[selection.id, selection.dice] as const] : [])),
+    );
+    private readonly selectedChoices = signal<Readonly<Record<string, string>>>(
+        Object.fromEntries((this.data.initialSelections ?? []).flatMap(selection =>
+            selection.selectionId ? [[selection.id, selection.selectionId] as const] : [])),
+    );
     readonly rows = viewChildren(PendingUnitCheckRowComponent);
-    readonly entries = computed<readonly PendingCheckReviewEntry[]>(() =>
-        pendingCheckReviewGroupList(this.data.units, this.data.atPhaseEnd, this.data.manualResolution));
-    readonly commonUnitName = computed(() => {
-        const entries = this.entries();
-        const firstUnit = entries[0]?.unit;
-        return firstUnit && entries.every(entry => entry.unit.id === firstUnit.id)
-            ? firstUnit.getNotificationDisplayName()
-            : null;
+    readonly commonSubject = computed(() => {
+        const first = this.data.checks[0]?.subject;
+        return first && this.data.checks.every(check => check.subject === first) ? first : null;
     });
-    readonly forcedPsrFailures = computed<ReadonlySet<string>>(() => {
-        const failedControllers = new Set<string>();
-        const failedFallChecks = new Set<string>();
-        const forced = new Set<string>();
-
-        for (const entry of this.entries()) {
-            if (isPendingUnitCheckEntry(entry)) {
-                if (isConsciousnessCheck(entry.check)
-                    && pendingUnitCheckOutcome(
-                        entry.unit.turnState().getPendingUnitCheck(entry.check.id) ?? entry.check,
-                    ) === 'failed'
-                    && entry.unit.rules.getActivePilotCrewId() === entry.check.crewId) {
-                    failedControllers.add(entry.unit.id);
-                }
-                continue;
+    readonly resolutions = computed<ReadonlyMap<string, AutomationCheckDisplayResolution>>(() => {
+        const resolutions = new Map<string, AutomationCheckDisplayResolution>();
+        const failedGroups = new Set(this.data.initiallyFailedGroups);
+        const selected = this.selectedOutcomes();
+        const dice = this.selectedDice();
+        const choices = this.selectedChoices();
+        for (const check of this.data.checks) {
+            let resolution: AutomationCheckDisplayResolution | undefined;
+            if (check.automaticOutcome) {
+                resolution = {
+                    outcome: check.automaticOutcome,
+                    source: 'automatic',
+                    dice: null,
+                };
+            } else if (check.failureGroup && failedGroups.has(check.failureGroup)) {
+                resolution = { outcome: 'failed', source: 'cascade', dice: null };
+            } else if (selected[check.id]) {
+                resolution = {
+                    outcome: selected[check.id],
+                    source: 'selected',
+                    dice: dice[check.id] ?? null,
+                };
             }
-
-            const entryKey = pendingCheckReviewEntryKey(entry);
-            const checkId = entry.check.id;
-            const isForced = failedControllers.has(entry.unit.id)
-                || entry.unit.turnState().isPSRCheckAutomaticFailure(entry.check)
-                || (entry.unit.turnState().autoFall() && isFallPSRCheck(entry.check))
-                || (failedFallChecks.has(entry.unit.id) && isFallPSRCheck(entry.check));
-            if (isForced) forced.add(entryKey);
-            const outcome = isForced
-                ? 'failed'
-                : pendingPsrCommittedOutcome(entry.unit, entry.check)
-                    ?? (checkId ? entry.unit.psrOutcomeSelections()[checkId] : undefined);
-            if (outcome === 'failed' && isFallPSRCheck(entry.check)) {
-                failedFallChecks.add(entry.unit.id);
+            if (!resolution) continue;
+            const selectionId = choices[check.id]
+                ?? (check.failureChoices?.length === 1 ? check.failureChoices[0]!.id : undefined);
+            resolutions.set(check.id, selectionId === undefined
+                ? resolution
+                : { ...resolution, selectionId });
+            if (resolution.outcome === 'failed' && check.failureGroup) {
+                failedGroups.add(check.failureGroup);
             }
         }
-        return forced;
+        return resolutions;
     });
-    readonly checkTitle = computed(() => {
-        const entries = this.entries();
-        const unitChecks = entries.flatMap(entry => isPendingUnitCheckEntry(entry) ? [entry.check] : []);
-        if (unitChecks.length === entries.length && unitChecks.length > 0) {
-            const title = pendingUnitCheckDialogTitle(unitChecks[0]);
-            if (title && unitChecks.every(check => pendingUnitCheckDialogTitle(check) === title)) return title;
-        }
-        if (entries.length > 0 && entries.every(entry => !isPendingUnitCheckEntry(entry))) {
-            return 'Piloting Skill Rolls';
-        }
-        return 'Resolve Pending Checks';
-    });
-    readonly allResolved = computed(() => this.entries().length > 0
-        && this.entries().every(entry => {
-            if (isPendingUnitCheckEntry(entry)) {
-                return pendingUnitCheckIsResolved(entry.unit, entry.check);
-            }
-            return this.forcedPsrFailures().has(pendingCheckReviewEntryKey(entry))
-                || pendingPsrCommittedOutcome(entry.unit, entry.check) !== undefined
-                || (!!entry.check.id && entry.unit.psrOutcomeSelections()[entry.check.id] !== undefined);
+    readonly allResolved = computed(() => this.data.checks.length > 0
+        && this.data.checks.every(check => {
+            const resolution = this.resolutions().get(check.id);
+            return resolution !== undefined
+                && (resolution.outcome !== 'failed'
+                    || !check.failureChoices?.length
+                    || resolution.selectionId !== undefined);
         }));
-    readonly rollableRows = computed(() => this.rows().filter(row => row.isPresent() && !row.isAutomatic()));
+    readonly rollableRows = computed(() => this.rows().filter(row => !row.isAutomatic()));
     readonly showRollAll = computed(() => this.rollableRows().length > 1);
     readonly isAnyRolling = computed(() => this.rollableRows().some(row => row.isRolling()));
 
+    resolution(checkId: string): AutomationCheckDisplayResolution | undefined {
+        return this.resolutions().get(checkId);
+    }
+
+    select(
+        checkId: string,
+        selection: Readonly<{ outcome: AutomationCheckOutcome; dice: readonly [number, number] | null }>,
+    ): void {
+        this.selectedOutcomes.update(current => ({ ...current, [checkId]: selection.outcome }));
+        this.selectedDice.update(current => {
+            if (selection.dice) return { ...current, [checkId]: selection.dice };
+            const { [checkId]: _removed, ...remaining } = current;
+            return remaining;
+        });
+        this.publishSelections();
+    }
+
+    selectChoice(checkId: string, selectionId: string): void {
+        const check = this.data.checks.find(candidate => candidate.id === checkId);
+        if (!check?.failureChoices?.some(choice => choice.id === selectionId)) return;
+        this.selectedChoices.update(current => ({ ...current, [checkId]: selectionId }));
+        this.publishSelections();
+    }
+
     rollAll(): void {
-        if (this.isAnyRolling()) return;
-        this.rollableRows().forEach(row => row.roll());
+        if (!this.isAnyRolling()) this.rollableRows().forEach(row => row.roll());
     }
 
     apply(): void {
-        const entries = this.entries();
-        if (!entries.length || !this.allResolved()) return;
-        this.data.applyResolved(entries, this.forcedPsrFailures());
-        if (this.entries().length === 0) this.dialogRef.close(true);
+        if (!this.allResolved()) return;
+        const resolutions = this.resolutions();
+        this.dialogRef.close(Object.freeze(this.data.checks.map(check => {
+            const resolution = resolutions.get(check.id)!;
+            return Object.freeze({
+                id: check.id,
+                outcome: resolution.outcome,
+                dice: resolution.dice,
+                automatic: resolution.source !== 'selected',
+                ...(resolution.selectionId === undefined
+                    ? {}
+                    : { selectionId: resolution.selectionId }),
+            });
+        })));
     }
 
     close(): void {
-        this.dialogRef.close(false);
+        this.publishSelections();
+        this.dialogRef.close();
     }
 
-    entryKey(entry: PendingCheckReviewEntry): string {
-        return pendingCheckReviewEntryKey(entry);
+    private publishSelections(): void {
+        this.data.selectionsChanged?.(this.currentSelections());
+    }
+
+    private currentSelections(): readonly AutomationCheckSelection[] {
+        const outcomes = this.selectedOutcomes();
+        const dice = this.selectedDice();
+        const choices = this.selectedChoices();
+        return Object.freeze(this.data.checks.flatMap(check => {
+            const outcome = outcomes[check.id];
+            return outcome === undefined ? [] : [Object.freeze({
+                id: check.id,
+                outcome,
+                dice: dice[check.id] ?? null,
+                ...(choices[check.id] === undefined
+                    ? {}
+                    : { selectionId: choices[check.id] }),
+            } satisfies AutomationCheckSelection)];
+        }));
     }
 }

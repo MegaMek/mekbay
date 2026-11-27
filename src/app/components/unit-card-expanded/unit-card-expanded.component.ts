@@ -2,11 +2,11 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 // Author: Drake
 
-import { ChangeDetectionStrategy, Component, inject, input, output, computed } from '@angular/core';
-import { CommonModule } from '@angular/common';
-import type { UnitSummary, UnitComponent } from '../../models/unit-summary.model';
-import { ForceUnit } from '../../models/force-unit.model';
-import { CBTForceUnit } from '../../models/cbt-force-unit.model';
+import { UnitNameService } from '../../services/unit-name.service';
+import { ChangeDetectionStrategy, Component, inject, input, output, computed, type TemplateRef } from '@angular/core';
+import { NgTemplateOutlet } from '@angular/common';
+import { hasAcceptedIssues, type UnitSummary, type UnitComponent } from '../../models/unit-summary.model';
+import type { ForceUnit } from '../../models/force-unit.model';
 import { ASForceUnit } from '../../models/as-force-unit.model';
 import { UnitIconComponent } from '../unit-icon/unit-icon.component';
 import { UnitTagsComponent, type TagClickEvent } from '../unit-tags/unit-tags.component';
@@ -42,13 +42,18 @@ import {
 } from '../../services/unit-search-filters.model';
 import { DEFAULT_GUNNERY_SKILL, DEFAULT_PILOTING_SKILL } from '../../models/crew-member.model';
 import { getNormalizationGunnery, getNormalizationPiloting, type UnitSearchNormalizationMatch } from '../../models/unit-search-result.model';
+import { caseRecordSheetLabel } from '../../models/case-equipment.model';
 import { formatMovement, isAerospace } from '../../utils/as-common.util';
 import { AlphaStrikeCardComponent } from '../alpha-strike-card/alpha-strike-card.component';
 import type { MegaMekUnitAvailabilityDetail } from '../../services/unit-availability-source.service';
 import { OptionsService } from '../../services/options.service';
 import { formatBvPv } from '../../utils/force-viewer-bv-pv-display.util';
-import { BVCalculatorUtil } from '../../utils/bv-calculator.util';
+import { calculateAdjustedBV } from '../../utils/cbt-common.util';
 import { adjustPointValueForSkill } from '../../utils/pv-skill-adjustment.util';
+import { DataService } from '../../services/data.service';
+import { getProperty } from '../../utils/unit-search-shared.util';
+import { UnitDataBadgesComponent } from '../unit-data-badges/unit-data-badges.component';
+import { CustomUnitsService } from '../../services/custom-units.service';
 
 /**
  * An unit card component for displaying detailed unit information.
@@ -58,9 +63,10 @@ import { adjustPointValueForSkill } from '../../utils/pv-skill-adjustment.util';
     selector: 'unit-card-expanded',
     changeDetection: ChangeDetectionStrategy.OnPush,
     imports: [
-        CommonModule,
+        NgTemplateOutlet,
         UnitIconComponent,
         UnitTagsComponent,
+        UnitDataBadgesComponent,
         UnitComponentItemComponent,
         AlphaStrikeCardComponent,
         AdjustedBV,
@@ -75,12 +81,15 @@ import { adjustPointValueForSkill } from '../../utils/pv-skill-adjustment.util';
     styleUrl: './unit-card-expanded.component.scss'
 })
 export class UnitCardExpandedComponent {
+    readonly unitNames = inject(UnitNameService);
     readonly megaMekAvailabilityUnknown = MEGAMEK_AVAILABILITY_UNKNOWN;
 
     gameService = inject(GameService);
     private dialogsService = inject(DialogsService);
     private abilityLookup = inject(AsAbilityLookupService);
     private optionsService = inject(OptionsService);
+    private dataService = inject(DataService);
+    private readonly customUnits = inject(CustomUnitsService);
     private expandedComponentsPipe = new ExpandedComponentsPipe();
     readonly unitTypeDisplayNames = AS_TYPE_DISPLAY_NAMES;
     readonly megaMekRequisitionIconPath = MEGAMEK_PRODUCTION_ICON_PATH;
@@ -106,8 +115,17 @@ export class UnitCardExpandedComponent {
     /** To force view of pilot skills even when we don't have a ForceUnit (e.g., force generator) */
     forceShowPilotInfo = input(false);
 
+    /** False when the host presents the crew itself, for example through `headerExtra`. */
+    showPilotInfo = input(true);
+
+    /** Host content for the expanded header, between the title and the subtitle. */
+    headerExtra = input<TemplateRef<unknown> | null>(null);
+
     /** Show adjusted and base BV/PV for a plain search-result Unit. */
     useBvPvDisplayOption = input(false);
+
+    /** Force-projected BV/PV display when the card receives a catalog unit. */
+    bvPvDisplay = input<string | null>(null);
 
     /** Forcibly override game system detection */
     gameSystemOverride = input<GameSystem | null>(null);
@@ -119,14 +137,22 @@ export class UnitCardExpandedComponent {
 
     /** Check if the input is a ForceUnit */
     protected isForceUnit(u: UnitSummary | ForceUnit): u is ForceUnit {
-        return u instanceof ForceUnit;
+        return u instanceof ASForceUnit;
     }
 
     /** Resolved Unit - extracts the Unit from ForceUnit if needed */
     readonly resolvedUnit = computed<UnitSummary>(() => {
         const u = this.unit();
-        return this.isForceUnit(u) ? u.getUnit() : u;
+        return this.isForceUnit(u) ? u.getSummary() : u;
     });
+
+    readonly updateAvailable = computed(() => {
+        const unit = this.resolvedUnit();
+        return !!unit.isCustom && this.customUnits.hasUpdate(unit.uuid, unit.hash);
+    });
+
+    readonly issuesAccepted = computed(() =>
+        hasAcceptedIssues(this.resolvedUnit().quirks.map(name => this.dataService.getQuirkByName(name))));
 
     /** Resolved alias - from ForceUnit */
     readonly alias = computed<string | undefined>(() => {
@@ -141,11 +167,7 @@ export class UnitCardExpandedComponent {
     readonly gunnery = computed<number>(() => {
         const u = this.unit();
         if (this.isForceUnit(u)) {
-            if (u instanceof CBTForceUnit) {
-                const crewMembers = u.getCrewMembers();
-                const pilot = crewMembers[0];
-                return pilot?.getSkill?.('gunnery') ?? DEFAULT_GUNNERY_SKILL;
-            } else if (u instanceof ASForceUnit) {
+            if (u instanceof ASForceUnit) {
                 return u.pilotSkill();
             }
             return DEFAULT_GUNNERY_SKILL;
@@ -158,11 +180,7 @@ export class UnitCardExpandedComponent {
     readonly piloting = computed<number>(() => {
         const u = this.unit();
         if (this.isForceUnit(u)) {
-            if (u instanceof CBTForceUnit) {
-                const crewMembers = u.getCrewMembers();
-                const pilot = crewMembers[0];
-                return pilot?.getSkill?.('piloting') ?? DEFAULT_PILOTING_SKILL;
-            } else if (u instanceof ASForceUnit) {
+            if (u instanceof ASForceUnit) {
                 // AS uses same skill for both
                 return u.pilotSkill();
             }
@@ -179,9 +197,10 @@ export class UnitCardExpandedComponent {
 
     /** Pilot stats string from ForceUnit (e.g., "4/5") */
     readonly pilotStats = computed<string | null>(() => {
+        if (!this.showPilotInfo()) return null;
         const u = this.unit();
         if (this.isForceUnit(u)) {
-            return u.getPilotStats?.() ?? null;
+            return `${u.getPilotStats()}`;
         }
         if (this.forceShowPilotInfo() || this.searchResultContext()) {
             if (this.isAlphaStrike()) {
@@ -201,17 +220,20 @@ export class UnitCardExpandedComponent {
         const base = this.isAlphaStrike() ? unit.as.PV : unit.bv;
         const adjusted = this.searchResultContext()?.adjustedValue ?? (this.isAlphaStrike()
             ? adjustPointValueForSkill(base, this.gunnery())
-            : BVCalculatorUtil.calculateAdjustedBV(unit, base, this.gunnery(), this.piloting()));
+            : calculateAdjustedBV(unit, base, this.gunnery(), this.piloting()));
         return formatBvPv(adjusted, base, 'both');
     });
 
     /** Resolved BV/PV display for a live ForceUnit or standalone search result. */
     readonly resolvedBv = computed<string | null>(() => {
+        const display = this.bvPvDisplay();
+        if (display !== null) return display;
+
         const unit = this.unit();
         if (this.isForceUnit(unit)) {
             return formatBvPv(
                 unit.getBv(),
-                unit.baseAdjustedBv(),
+                unit.getPreSkillBv(),
                 this.optionsService.options().forceViewerBVPVDisplay,
             );
         }
@@ -225,17 +247,20 @@ export class UnitCardExpandedComponent {
     });
 
     readonly expandedComponents = computed<UnitComponent[]>(() => {
-        return this.expandedComponentsPipe.transform(this.resolvedUnit().comp ?? []);
+        return this.expandedComponentsPipe.transform(
+            this.resolvedUnit().comp ?? [],
+            internalName => this.dataService.findEquipment(internalName),
+        );
     });
     
     /** Derives Alpha Strike status from the ForceUnit's force when available, falls back to global game mode. */
     isAlphaStrike = computed<boolean>(() => {
         const u = this.unit();
         if (this.isForceUnit(u)) {
-            return u.force.gameSystem === GameSystem.ALPHA_STRIKE;
+            return u.force.gameSystem === GameSystem.AS;
         }
         if (this.gameSystemOverride()) {
-            return this.gameSystemOverride() === GameSystem.ALPHA_STRIKE;
+            return this.gameSystemOverride() === GameSystem.AS;
         }
         return this.gameService.isAlphaStrike();
     });
@@ -396,7 +421,7 @@ export class UnitCardExpandedComponent {
         }
 
         // Use nested property access for dotted keys like 'as.PV'
-        const raw = this.getNestedProperty(unit, key);
+        const raw = getProperty(unit, key);
         let value: string;
 
         if (raw == null) {
@@ -527,7 +552,7 @@ export class UnitCardExpandedComponent {
             };
         }
 
-        const raw = this.getNestedProperty(unit, sortKey);
+        const raw = getProperty(unit, sortKey);
         let value: string;
         let numeric = false;
 
@@ -579,29 +604,15 @@ export class UnitCardExpandedComponent {
         return false;
     }
 
-    /** Get a nested property value using dot notation (e.g., 'as.PV') */
-    private getNestedProperty(obj: any, key: string): any {
-        if (!obj || !key) return undefined;
-        if (!key.includes('.')) return obj[key];
-        const parts = key.split('.');
-        let cur: any = obj;
-        for (const p of parts) {
-            if (cur == null) return undefined;
-            cur = cur[p];
-        }
-        return cur;
-    }
-
     /** Map of normalized location code -> '[CASE]' or '[CASE II]' for locations that have CASE equipment */
     private caseByLocation = computed<Map<string, string>>(() => {
         const u = this.resolvedUnit();
         const result = new Map<string, string>();
         if (!u?.comp) return result;
         for (const comp of u.comp) {
-            if (!comp.eq || !comp.l) continue;
-            let label: string | undefined;
-            if (comp.eq.hasFlag('F_CASE_II')) label = '[CASE II]';
-            else if (comp.eq.hasFlag('F_CASE') || comp.eq.hasFlag('F_CASE_P')) label = '[CASE]';
+            const equipment = comp.eq ?? this.dataService.findEquipment(comp.id);
+            if (!equipment || !comp.l) continue;
+            const label = caseRecordSheetLabel(equipment) ?? undefined;
             if (label) result.set(this.normalizeLoc(comp.l), label);
         }
         return result;

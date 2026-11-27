@@ -1,0 +1,697 @@
+// Copyright (C) 2026 The MegaMek Team
+// SPDX-License-Identifier: GPL-3.0-or-later
+
+import { computed,signal,type Signal,type WritableSignal } from '@angular/core';
+import { merge,type Subscription } from 'rxjs';
+import type { CBTUnitCommand } from '../../models/runtime/unit-command';
+import type { UnitEditContext } from '../../models/runtime/unit-edit-context';
+import { formatUnitName } from '../../utils/unit-display-name.util';
+
+import type {
+CBTEquipmentChoice,
+CBTEquipmentInteraction,
+} from '../../models/cbt-force.types';
+import type { ComponentId } from '../../models/entity/entity-identifiers';
+import {
+isCBTMekForceMember,
+type CBTForceMember,
+} from '../../models/force-member.model';
+import type {
+AttackerAmmoSelection,
+AttackerSelection,
+} from '../../models/runtime/attacker-targeting-state';
+import type { EncounterTargetId } from '../../models/runtime/encounter-runtime';
+import type {
+EquipmentPanelBombs,
+EquipmentPanelComponent,
+EquipmentPanelSnapshot,
+MekPhysicalAttackRow,
+} from '../../models/runtime/equipment-panel';
+import type { BombLoad, BombLoadChoice } from '../../models/aerospace-bomb.model';
+import { equipmentPanelWeapons, selectedWeaponHeat, selectedWeaponRows } from '../../models/runtime/equipment-panel';
+import { projectTurnHeatIfFired, type TurnHeatBasis } from '../../models/runtime/turn-heat-ledger';
+
+import { isAntiMekAttack } from '../../models/rules/anti-mek-attack-rules';
+import { isBoobyTrapEquipment } from '../../models/aerospace-support-equipment.model';
+import { hasNonMekRuntime } from '../../models/cbt-unit-snapshot';
+import {
+prototypeLaserMaximumExtraHeat,
+type PrototypeLaserHeatResult,
+type PrototypeLaserHeatRoll,
+} from '../../models/prototype-laser-heat.model';
+import {
+BOOBY_TRAP_DETONATED_MODE,
+isBoobyTrapDetonated,
+} from '../../models/runtime/component-booby-trap';
+import type { WeaponAttackContext } from '../../models/runtime/equipment-panel';
+import type { EquipmentRowOrderGroup } from '../../models/runtime/equipment-row-order';
+import type { AttackResolutionService } from '../../services/attack-resolution.service';
+import type { TargetingTarget } from '../../models/runtime/targeting-target';
+
+/** What the panel needs of attack resolution; aimed shots exist only where the app can show their picker. */
+export type AttackResolutionPort =
+    Pick<AttackResolutionService, 'resolveFired' | 'rollAttacks' | 'settleAttacks' | 'resolvesAttacks' | 'inPhysicalPhase'>
+    & Partial<Pick<AttackResolutionService, 'declaresAimedShots' | 'pickAim' | 'allowsAttackDeclaration'>>;
+import type { DialogsService } from '../../services/dialogs.service';
+import type { OptionsService } from '../../services/options.service';
+import { nonMekTurnHeatBasis } from '../../models/runtime/non-mek-unit-instance';
+import type { ToastService } from '../../services/toast.service';
+import { formatEquipmentLocationCodes } from '../../utils/equipment-location-display.util';
+
+/**
+ * Runtime adapter for the established equipment-dialog panels. It owns no
+ * presentation and exposes only detached Entity + runtime rows and
+ * typed force commands.
+ */
+export class EquipmentDialogRuntimeController {
+    public readonly busy = signal(false);
+    public readonly member: CBTForceMember;
+    public readonly snapshot: WritableSignal<EquipmentPanelSnapshot>;
+    public readonly weapons: Signal<readonly EquipmentPanelComponent[]>;
+    public readonly equipment: Signal<readonly EquipmentPanelComponent[]>;
+    public readonly ammo: Signal<readonly EquipmentPanelComponent[]>;
+    public readonly bombs: Signal<EquipmentPanelBombs | null>;
+    public readonly interactions: WritableSignal<readonly CBTEquipmentInteraction[]>;
+    /** The attacker facts every target number of this unit shares, the same ones its record sheet uses. */
+    public readonly attackContext: Signal<WeaponAttackContext | null>;
+
+    private readonly options: OptionsService;
+    private readonly toast: ToastService;
+    private readonly dialogs?: Pick<DialogsService, 'requestConfirmation' | 'showNoticeHtml'>;
+    private readonly attacks?: AttackResolutionPort;
+    private readonly forceChanges: Subscription;
+
+    public hasSelections(): boolean {
+        return this.weapons().some(row => row.weapon?.selection !== undefined)
+            || this.snapshot().physicalAttacks.some(row => row.selection !== undefined);
+    }
+
+    public selectedHeatProjection(): Readonly<{
+        current: number;
+        sources: number;
+        selection: number;
+        pending: number;
+        dissipation: number;
+        final: number;
+        pendingWidth: number;
+        dissipationWidth: number;
+        retainedWidth: number;
+    }> | null {
+        if (!this.snapshot().tracksHeat) return null;
+        // From the committed heat, like PROJECTED: the turn's heat already counts here, so starting from the player's
+        // arrow would count it twice.
+        const basis = this.turnHeatBasis();
+        if (!basis) return null;
+        const selection = selectedWeaponHeat(this.snapshot()).value;
+        const fired = projectTurnHeatIfFired(basis, selection,
+            new Set(selectedWeaponRows(this.snapshot().components).map(row => row.componentId)));
+        const current = basis.current;
+        const sources = fired.generated - selection;
+        const dissipation = fired.dissipated;
+        const final = fired.projected;
+        const percent = (value: number): number => Math.max(0, Math.min(100, value / 30 * 100));
+        return Object.freeze({
+            current,
+            sources,
+            selection,
+            pending: current + sources + selection,
+            dissipation,
+            final,
+            pendingWidth: percent(current + sources + selection),
+            dissipationWidth: percent(dissipation),
+            retainedWidth: percent(final),
+        });
+    }
+
+    public constructor(
+        member: CBTForceMember,
+        options: OptionsService,
+        toast: ToastService,
+        dialogs?: Pick<DialogsService, 'requestConfirmation' | 'showNoticeHtml'>,
+        attacks?: AttackResolutionPort,
+    ) {
+        this.member = member;
+        this.options = options;
+        this.toast = toast;
+        this.dialogs = dialogs;
+        this.attacks = attacks;
+        this.snapshot = signal(this.requiredSnapshot());
+        this.interactions = signal(this.interactionRows());
+        this.weapons = computed(() => equipmentPanelWeapons(this.snapshot()));
+        this.equipment = computed(() => {
+            const actionable = new Set(this.interactions().map(row => row.componentId));
+            return this.snapshot().components.filter(row => row.weapon === undefined
+                && row.ammo === undefined
+                && row.equipment !== undefined
+                && actionable.has(row.componentId));
+        });
+        this.ammo = computed(() => this.snapshot().components.filter(row => row.ammo !== undefined));
+        this.bombs = computed(() => this.snapshot().bombs ?? null);
+        this.attackContext = computed(() => this.member.force.getWeaponAttackContext(this.member.id, this.snapshot()));
+        this.forceChanges = merge(member.force.changed, member.force.sessionChanged)
+            .subscribe(() => this.refresh());
+    }
+
+    /** Releases the one force subscription owned by this dialog adapter. */
+    public dispose(): void {
+        this.forceChanges.unsubscribe();
+    }
+
+    public locations(row: EquipmentPanelComponent): string {
+        return formatEquipmentLocationCodes(
+            row.locations.map(location => location.code),
+            ', ',
+            'Unallocated',
+        );
+    }
+
+    public weaponDamage(row: EquipmentPanelComponent): string {
+        const damage = row.weapon?.damage;
+        return Array.isArray(damage) ? damage.join('/') : String(damage ?? '—');
+    }
+
+    public physicalDamage(row: MekPhysicalAttackRow): string {
+        const effect = row.effect;
+        if (effect.kind === 'none') return '—';
+        if (effect.kind === 'modifier') {
+            return `${effect.modifier >= 0 ? '+' : ''}${effect.modifier}`;
+        }
+        if (effect.displayFormula !== undefined) return effect.displayFormula;
+        if (effect.alternateDamage !== undefined) {
+            return `${effect.damage} [${effect.alternateDamage}]`;
+        }
+        return effect.damage === effect.maximumDamage
+            ? `${effect.damage}`
+            : `${effect.damage} [${effect.maximumDamage}]`;
+    }
+
+    public rangeValue(row: EquipmentPanelComponent, index: number): string {
+        return row.weapon?.ranges[index]?.toString() ?? '—';
+    }
+
+    public selectedTarget(row: EquipmentPanelComponent): string {
+        const selection = row.weapon?.selection;
+        if (!selection) return '';
+        if (selection.kind === 'selected') return 'selected';
+        if (selection.kind === 'target') return selection.targetId;
+        return `range:${selection.range}`;
+    }
+
+    public selectedAmmo(row: EquipmentPanelComponent): string {
+        const selection = row.weapon?.ammoSelection;
+        return selection
+            ? `${selection.preferredSourceId ?? ''}\u0000${selection.munitionKey}`
+            : '';
+    }
+
+    public interaction(row: EquipmentPanelComponent): CBTEquipmentInteraction | undefined {
+        return this.interactions().find(candidate => candidate.componentId === row.componentId);
+    }
+
+    public async chooseInteraction(
+        interaction: CBTEquipmentInteraction,
+        command: CBTEquipmentChoice['command'],
+    ): Promise<void> {
+        if (this.busy()) return;
+        if (command.componentId !== interaction.componentId) {
+            this.reject('CHOICE_UNAVAILABLE');
+            return;
+        }
+        this.busy.set(true);
+        try {
+            const result = await this.member.force.dispatchEquipmentChoice(command);
+            if (!result.accepted) this.rejectCommand();
+        } finally {
+            this.busy.set(false);
+            this.refresh();
+        }
+    }
+
+    /** Whether the unit may declare aimed shots now (`AttackResolutionService.declaresAimedShots`). */
+    public declaresAimedShots(): boolean {
+        return this.attacks?.declaresAimedShots?.(this.member) === true;
+    }
+
+    /** Lets the player pick, on the target's paperdoll, the location a weapon aims at, or take the aim back. */
+    public async aimWeapon(row: EquipmentPanelComponent, target: TargetingTarget): Promise<void> {
+        const attack = this.attackContext();
+        const selection = row.weapon?.selection;
+        if (this.attacks?.allowsAttackDeclaration?.(this.member, 'weapons') === false || !this.attacks?.pickAim || attack === null || selection?.kind !== 'target' || this.busy()) return;
+        const aim = await this.attacks.pickAim(row, target, attack, this.snapshot().ruleset);
+        if (aim === undefined) return;
+        await this.dispatchComponentSelections([row.componentId], {
+            kind: 'target',
+            targetId: selection.targetId,
+            ...(aim === null ? {} : { aim }),
+        });
+    }
+
+    /** Applies one selection to every attack member of the rows as a single targeting batch. */
+    public async selectTarget(rows: readonly EquipmentPanelComponent[], value: string): Promise<void> {
+        if (this.busy() || this.attacks?.allowsAttackDeclaration?.(this.member, 'weapons') === false) return;
+        const allMembers = rows.filter(row => row.weapon).flatMap(attackMembers);
+        const members = value === '' ? allMembers : allMembers.filter(member => member.selectable);
+        if (members.length === 0) return;
+        if (value !== '') {
+            const reservations = new Map<ComponentId, number>();
+            const updates = members.flatMap(member => {
+                if (member.ammoSources.length === 0 || member.ammoSelection !== undefined) return [];
+                const available = member.ammoSources
+                    .filter(candidate => candidate.status === 'available')
+                    .sort((left, right) =>
+                        (right.remaining - (reservations.get(right.componentId) ?? 0))
+                        - (left.remaining - (reservations.get(left.componentId) ?? 0)));
+                const source = available.find(candidate =>
+                    candidate.remaining > (reservations.get(candidate.componentId) ?? 0))
+                    ?? available[0];
+                if (!source) return [];
+                reservations.set(source.componentId, (reservations.get(source.componentId) ?? 0) + 1);
+                return [Object.freeze({
+                    componentId: member.componentId,
+                    ammo: Object.freeze({
+                        preferredSourceId: source.componentId,
+                        munitionKey: source.munitionKey,
+                    }),
+                })];
+            });
+            if (updates.length > 0) await this.dispatchAmmoUpdates(updates);
+        }
+        const selection = value === ''
+            ? null
+            : value === 'selected'
+                ? { kind: 'selected' as const }
+                : value.startsWith('range:')
+                    ? { kind: 'manual-range' as const, range: value.slice(6) as 'short' | 'medium' | 'long' | 'extreme' }
+                    : { kind: 'target' as const, targetId: value as EncounterTargetId };
+        await this.dispatchComponentSelections(
+            members.map(member => member.componentId),
+            selection,
+        );
+    }
+
+    public async selectPhysicalTarget(row: MekPhysicalAttackRow, value: string): Promise<void> {
+        if (this.attacks?.allowsAttackDeclaration?.(this.member, isAntiMekAttack(row.kind) ? 'weapons' : 'physical') === false) return;
+        if (!row.available || !row.selectable || this.busy()) return;
+        const selection = value === ''
+            ? null
+            : value === 'selected'
+                ? { kind: 'selected' as const }
+                : { kind: 'target' as const, targetId: value as EncounterTargetId };
+        await this.dispatchTargeting({
+            kind: 'set-action-selection',
+            target: row.target,
+            selection,
+        });
+    }
+
+    public async selectWeaponAmmo(row: EquipmentPanelComponent, value: string): Promise<void> {
+        if (!row.weapon || this.busy() || this.attacks?.allowsAttackDeclaration?.(this.member, 'weapons') === false) return;
+        const separator = value.indexOf('\u0000');
+        const preferredSourceId = separator < 0 ? null : value.slice(0, separator) as ComponentId;
+        const munitionKey = separator < 0 ? null : value.slice(separator + 1);
+        if (row.attack === undefined) {
+            await this.dispatchTargeting({
+                kind: 'set-component-ammo',
+                componentId: row.componentId,
+                ammo: preferredSourceId === null || munitionKey === null || value === ''
+                    ? null
+                    : { preferredSourceId, munitionKey },
+            });
+            return;
+        }
+        const updates: Array<Readonly<{
+            readonly componentId: ComponentId;
+            readonly ammo: AttackerAmmoSelection | null;
+        }>> = [];
+        for (const member of attackMembers(row)) {
+            if (munitionKey === null || value === '') {
+                updates.push(Object.freeze({ componentId: member.componentId, ammo: null }));
+                continue;
+            }
+            const source = member.ammoSources.find(candidate =>
+                candidate.componentId === preferredSourceId
+                && candidate.loadouts.some(loadout => loadout.munitionKey === munitionKey))
+                ?? member.ammoSources.find(candidate =>
+                    candidate.loadouts.some(loadout => loadout.munitionKey === munitionKey));
+            if (!source) continue;
+            updates.push(Object.freeze({
+                componentId: member.componentId,
+                ammo: Object.freeze({ preferredSourceId: source.componentId, munitionKey }),
+            }));
+        }
+        if (updates.length > 0) await this.dispatchAmmoUpdates(updates);
+    }
+
+    public async selectAmmoLoadout(row: EquipmentPanelComponent, munitionKey: string): Promise<void> {
+        const loadout = row.ammo?.loadouts.find(candidate => candidate.munitionKey === munitionKey);
+        if (loadout) await this.configureAmmo(row, munitionKey, loadout.capacity);
+    }
+
+    public async changeAmmo(row: EquipmentPanelComponent, delta: number): Promise<void> {
+        if (!row.ammo) return;
+        await this.configureAmmo(row, row.ammo.munitionKey, row.ammo.remaining + delta);
+    }
+
+    public async changeStatus(row: EquipmentPanelComponent): Promise<void> {
+        if (this.supportsMekTurnTools()) return;
+        const target = this.options.options().trackPhaseAndTurn ? 'pending' : 'committed';
+        const componentIds = row.attack?.members.map(member => member.componentId) ?? [row.componentId];
+        await this.dispatchUnit(row.previewStatus === 'destroyed'
+            ? { type: 'set-component-statuses', componentIds, status: 'available', target }
+            : { type: 'hit-components', componentIds, target });
+    }
+
+    public async changeMode(row: EquipmentPanelComponent, mode: string): Promise<void> {
+        if (!row.modes.includes(mode)) return;
+        if (isBoobyTrapEquipment(row.equipment) && mode === BOOBY_TRAP_DETONATED_MODE) {
+            await this.detonateBoobyTrap(row);
+            return;
+        }
+        await this.dispatchUnit({ type: 'set-component-mode', componentId: row.componentId, mode });
+    }
+
+    private async detonateBoobyTrap(row: EquipmentPanelComponent): Promise<void> {
+        if (!this.dialogs
+            || this.busy() || this.member.force.readOnly()
+            || !isBoobyTrapEquipment(row.equipment)
+            || isBoobyTrapDetonated(row.mode)
+            || row.status !== 'available') return;
+        const context = this.member.force.getUnitSnapshot(this.member.id)?.editContext;
+        if (!context) return;
+        this.busy.set(true);
+        let confirmed: boolean;
+        try {
+            confirmed = await this.dialogs.requestConfirmation(
+                `Detonate ${formatUnitName(this.member.entity, this.options.options().displayUnitNameFormat)}'s Booby Trap? `
+                    + 'The unit will be completely destroyed. Ejection and blast damage must be resolved on the battlefield.',
+                'Detonate Booby Trap',
+                'danger',
+            );
+        } finally {
+            this.busy.set(false);
+        }
+        if (!confirmed) return;
+        const accepted = await this.dispatchUnit({
+            type: 'detonate-booby-trap',
+            componentId: row.componentId,
+        }, context);
+        if (!accepted) return;
+        await this.dialogs.showNoticeHtml(
+            '<p>The unit has been destroyed.</p>'
+                + '<p>Resolve the Booby Trap blast, any +4 ejection modifier, and resulting fire manually on the battlefield.</p>',
+            'Booby Trap Detonated',
+        );
+    }
+
+    public async fire(): Promise<void> {
+        if (this.busy()) return;
+        const current = this.snapshot();
+        const attack = this.attacks ? this.attackContext() : null;
+        // Physical attacks are only resolved, except a Spot Welder, which makes heat. Under the full phase system
+        // each phase fires its own attacks, so the weapons still selected from the Weapon Attack Phase do not fire
+        // again in the Physical Attack Phase.
+        if (!selectedWeaponHeat(current).hasSelection) {
+            await this.attacks?.resolveFired(this.member, current, attack);
+            return;
+        }
+        const phaseAttacks = !this.options.options().realPhases ? undefined
+            : this.attacks?.inPhysicalPhase(this.member) === true ? 'physical' as const : 'weapons' as const;
+        // The attacks are rolled before they fire: a Streak or iATM that fails to lock fires nothing (TW p. 138).
+        // Dismissing the dialog takes the attack back: nothing fires, spends ammo or makes heat.
+        const resolution = await this.attacks?.rollAttacks(this.member, current, attack) ?? null;
+        if (resolution === 'dismissed') return;
+        this.busy.set(true);
+        let fired = false;
+        try {
+            const prototypeHeatRolls = this.prototypeHeatRolls(current);
+            const result = await this.member.force.fireSelectedWeapons(this.member.id, {
+                type: 'fire-selected-weapons',
+                ...(phaseAttacks === undefined ? {} : { attacks: phaseAttacks }),
+                ...(prototypeHeatRolls.length === 0 ? {} : { prototypeHeatRolls }),
+                ...(resolution?.noLock.length ? { noLock: resolution.noLock } : {}),
+            });
+            // Only what the unit recorded is resolved: a fire the rules refuse changes nothing.
+            fired = result.accepted && result.changed;
+            if (!result.accepted) this.rejectCommand();
+            else this.reportPrototypeHeat(current, result.prototypeHeat ?? Object.freeze([]));
+        } finally {
+            this.busy.set(false);
+            this.refresh();
+        }
+        if (fired && resolution) await this.attacks?.settleAttacks(this.member, resolution);
+    }
+
+    private prototypeHeatRolls(snapshot: EquipmentPanelSnapshot): readonly PrototypeLaserHeatRoll[] {
+        if (!snapshot.tracksHeat || snapshot.unitType === 'Aero') return Object.freeze([]);
+        return Object.freeze(snapshot.components
+            .filter(row => row.equipment !== undefined
+                && prototypeLaserMaximumExtraHeat(row.equipment.internalName) > 0)
+            .sort((left, right) => left.componentId.localeCompare(right.componentId))
+            .map(row => Object.freeze({
+                weaponId: row.componentId,
+                roll: Math.floor(Math.random() * 6) + 1,
+            })));
+    }
+
+    private reportPrototypeHeat(
+        snapshot: EquipmentPanelSnapshot,
+        results: readonly PrototypeLaserHeatResult[],
+    ): void {
+        if (results.length === 0) return;
+        const labels = new Map(snapshot.components.map(row => [row.componentId, row.label]));
+        this.toast.showToast(results.map(result =>
+            `${labels.get(result.weaponId) ?? result.weaponId}: +${result.additionalHeat} heat (${result.detail})`)
+            .join('; '), 'info');
+    }
+
+    public async resetSelections(): Promise<void> {
+        if (this.busy()) return;
+        if (this.attacks?.allowsAttackDeclaration?.(this.member, 'weapons') !== false) {
+            await this.dispatchComponentSelections(
+                this.weapons().filter(row => row.weapon?.selection !== undefined)
+                    .flatMap(row => attackMembers(row).map(member => member.componentId)),
+                null,
+            );
+        }
+        for (const row of this.snapshot().physicalAttacks.filter(attack => attack.selection !== undefined)) {
+            if (this.attacks?.allowsAttackDeclaration?.(this.member, isAntiMekAttack(row.kind) ? 'weapons' : 'physical') === false) continue;
+            await this.dispatchTargeting({
+                kind: 'set-action-selection',
+                target: row.target,
+                selection: null,
+            });
+        }
+    }
+
+    /** Persists presentation order without creating a gameplay history entry. */
+    public async reorderEquipmentRows(
+        group: EquipmentRowOrderGroup,
+        permutation: readonly number[],
+    ): Promise<void> {
+        if (this.busy()) return;
+        this.busy.set(true);
+        try {
+            const result = await this.member.force.dispatchEquipmentRowOrder(this.member.id, {
+                group,
+                permutation,
+            });
+            if (!result.accepted) this.rejectCommand();
+        } finally {
+            this.busy.set(false);
+            this.refresh();
+        }
+    }
+
+    public refresh(): void {
+        const snapshot = this.member.force.getEquipmentPanelSnapshot(this.member.id);
+        if (snapshot) this.snapshot.set(snapshot);
+        this.interactions.set(this.interactionRows());
+    }
+
+    public hasAmmoLoadoutChanges(): boolean {
+        return this.ammo().some(row => {
+            const ammo = row.ammo!;
+            const defaultLoadout = ammo.loadouts.find(loadout =>
+                loadout.munitionKey === ammo.defaultMunitionKey);
+            return defaultLoadout !== undefined && (ammo.munitionKey !== ammo.defaultMunitionKey
+                || ammo.remaining !== defaultLoadout.capacity);
+        });
+    }
+
+    public async resetAmmoLoadout(): Promise<void> {
+        if (!this.dialogs || this.busy() || this.member.force.readOnly()
+            || !this.hasAmmoLoadoutChanges()) return;
+        const context = this.member.force.getUnitSnapshot(this.member.id)?.editContext;
+        if (!context) return;
+        this.busy.set(true);
+        let confirmed: boolean;
+        try {
+            confirmed = await this.dialogs.requestConfirmation(
+                `Reset ${formatUnitName(this.member.entity, this.options.options().displayUnitNameFormat)}'s ammo loadout `
+                    + 'to its default ammunition and full quantities?',
+                'Reset Ammo Loadout',
+                'warning',
+            );
+        } finally {
+            this.busy.set(false);
+        }
+        if (!confirmed || this.member.force.readOnly()) return;
+        await this.dispatchUnit({ type: 'reset-ammo-loadout' }, context);
+    }
+
+    public async configureAmmo(
+        row: EquipmentPanelComponent,
+        munitionKey: string,
+        remaining: number,
+        hotLoaded?: boolean,
+    ): Promise<void> {
+        const loadout = row.ammo?.loadouts.find(candidate => candidate.munitionKey === munitionKey);
+        if (!row.ammo || !loadout || this.busy()) return;
+        const boundedRemaining = Math.max(0, Math.min(loadout.capacity, remaining));
+        await this.dispatchUnit({
+            type: 'configure-ammo-source',
+            componentId: row.componentId,
+            munitionKey,
+            remaining: boundedRemaining,
+            ...(hotLoaded === undefined ? {} : { hotLoaded }),
+        });
+    }
+
+    public async configureBombs(loads: readonly BombLoadChoice[]): Promise<void> {
+        if (this.busy()) return;
+        await this.dispatchUnit({ type: 'configure-bombs', loads });
+    }
+
+    public async setBombsSpent(load: BombLoad, spent: number): Promise<void> {
+        if (this.busy()) return;
+        await this.dispatchUnit({
+            type: 'set-bombs-spent',
+            section: load.section,
+            bombId: load.bombId,
+            spent: Math.max(0, Math.min(load.count, spent)),
+        });
+    }
+
+    private turnHeatBasis(): TurnHeatBasis | null {
+        if (isCBTMekForceMember(this.member)) {
+            const turn = this.member.force.getMekTurnPanelSnapshot(this.member.id);
+            return turn?.heatProjection.kind === 'supported' ? turn.heatProjection.projection : null;
+        }
+        const unit = this.entityRuntime();
+        return unit && nonMekTurnHeatBasis(unit.entity, unit.index, unit.state, unit.ruleset);
+    }
+
+    private entityRuntime() {
+        const snapshot = this.member.force.getUnitSnapshot(this.member.id);
+        return snapshot && hasNonMekRuntime(snapshot) ? snapshot : null;
+    }
+
+    public supportsMekTurnTools(): boolean {
+        return isCBTMekForceMember(this.member);
+    }
+
+    public supportsTargetingTools(): boolean {
+        return this.member.force.getAttackerTargeting(this.member.id) !== null;
+    }
+
+    /** What the button does: FIRE rolls and resolves the attacks; FIRED only books the heat and ammunition spent. */
+    public fireLabel(): 'FIRE' | 'FIRED' {
+        return this.attacks?.resolvesAttacks() === true ? 'FIRE' : 'FIRED';
+    }
+
+    public canFireSelectedWeapons(): boolean {
+        const snapshot = this.snapshot();
+        return selectedWeaponHeat(snapshot).hasSelection
+            || (this.attacks?.resolvesAttacks() === true
+                // A swarming unit's attacks are at the unit it clings to, whatever its row is selected with.
+                && snapshot.physicalAttacks.some(row => row.available && row.selectable
+                    && (row.selection?.kind === 'target' || (row.selection !== undefined && row.onlyTarget !== undefined))));
+    }
+
+    private async dispatchTargeting(
+        edit: Parameters<CBTForceMember['force']['dispatchAttackerTargeting']>[1]['edit'],
+    ): Promise<void> {
+        this.busy.set(true);
+        try {
+            const result = await this.member.force.dispatchAttackerTargeting(this.member.id, {
+                type: 'edit-attacker-targeting',
+                edit,
+            });
+            if (!result.accepted) this.rejectCommand();
+        } finally {
+            this.busy.set(false);
+            this.refresh();
+        }
+    }
+
+    private async dispatchComponentSelections(
+        componentIds: readonly ComponentId[],
+        selection: AttackerSelection | null,
+    ): Promise<void> {
+        const uniqueIds = [...new Set(componentIds)];
+        if (uniqueIds.length === 0) return;
+        await this.dispatchTargeting(uniqueIds.length === 1
+            ? { kind: 'set-component-selection', componentId: uniqueIds[0], selection }
+            : { kind: 'set-component-selections', componentIds: uniqueIds, selection });
+    }
+
+    private async dispatchAmmoUpdates(
+        updates: readonly Readonly<{
+            readonly componentId: ComponentId;
+            readonly ammo: AttackerAmmoSelection | null;
+        }>[],
+    ): Promise<void> {
+        if (updates.length === 0) return;
+        await this.dispatchTargeting(updates.length === 1
+            ? { kind: 'set-component-ammo', ...updates[0] }
+            : { kind: 'set-component-ammos', updates });
+    }
+
+    private async dispatchUnit(command: CBTUnitCommand, context?: UnitEditContext): Promise<boolean> {
+        if (this.busy()) return false;
+        this.busy.set(true);
+        try {
+            const result = await this.member.force.dispatchUnitCommand(this.member.id, command, context);
+            if (!result.accepted) this.rejectCommand();
+            return result.accepted;
+        } finally {
+            this.busy.set(false);
+            this.refresh();
+        }
+    }
+
+    private requiredSnapshot(): EquipmentPanelSnapshot {
+        const snapshot = this.member.force.getEquipmentPanelSnapshot(this.member.id);
+        if (!snapshot) throw new Error('The selected CBT unit is no longer admitted');
+        return snapshot;
+    }
+
+    private interactionRows(): readonly CBTEquipmentInteraction[] {
+        return this.member.force.getEquipmentInteractions(this.member.id, 'inventory');
+    }
+
+    private reject(reason: string): void {
+        this.toast.showToast(`Equipment action rejected: ${reason}`, 'error');
+    }
+
+    private rejectCommand(): void {
+        this.toast.showToast('Equipment action rejected: the unit changed or this force is read-only.', 'error');
+    }
+}
+
+function attackMembers(row: EquipmentPanelComponent): readonly Readonly<{
+    readonly componentId: ComponentId;
+    readonly selectable: boolean;
+    readonly selection?: AttackerSelection;
+    readonly ammoSelection?: NonNullable<EquipmentPanelComponent['weapon']>['ammoSelection'];
+    readonly ammoSources: NonNullable<EquipmentPanelComponent['weapon']>['ammoSources'];
+}>[] {
+    if (row.attack) return row.attack.members;
+    return Object.freeze([Object.freeze({
+        componentId: row.componentId,
+        selectable: row.weapon?.selectable === true,
+        ...(row.weapon?.selection === undefined ? {} : { selection: row.weapon.selection }),
+        ...(row.weapon?.ammoSelection === undefined ? {} : { ammoSelection: row.weapon.ammoSelection }),
+        ammoSources: row.weapon?.ammoSources ?? Object.freeze([]),
+    })]);
+}

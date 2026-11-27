@@ -1,0 +1,274 @@
+.mekbay-sheet {
+  background-color: #fff;
+  display: block;
+  box-sizing: content-box;
+  -webkit-user-select: none;
+  user-select: none;
+  -webkit-touch-callout: none;
+
+  text.disabled-text {
+    fill: #aaa;
+  }
+
+  .inventoryEntry > text,
+  .inventoryEntry > g:not(.alternativeMode) text,
+  .hitMod-rect,
+  .hitMod-text,
+  .targetTn-rect,
+  .targetTn-text {
+    pointer-events: none;
+  }
+
+  .inventoryEntry > *:not(.inventoryEntryButton):not(.inventoryEntry):not(.alternativeMode) {
+    pointer-events: none;
+  }
+
+  .inventoryEntry > .alternativeMode > *:not(.inventoryEntryButton):not(.alternativeModeButton) {
+    pointer-events: none;
+  }
+
+  .inventoryEntryButton,
+  .alternativeModeButton {
+    fill: transparent;
+  }
+
+  // The live sheet's FIRED and aim stamps: shown on screen only (see _screen.scss).
+  .firedStamp,
+  .aimStamp {
+    display: none;
+  }
+
+  .firedStamp {
+    pointer-events: none;
+  }
+
+  .inventoryEntry:not(.interactive) {
+    pointer-events: none;
+  }
+
+  .inventoryEntry.disabledInventory {
+    .hitMod-rect,
+    .hitMod-text {
+      display: none;
+    }
+  }
+
+  #fluff-image-fo {
+    transform: none;
+    pointer-events: none;
+    overflow: hidden;
+  }
+
+  .crewStateBanner,
+  .unitConditionBanner {
+    pointer-events: none;
+  }
+
+  .critGroup.locationDestroyed text {
+    fill: var(--damage-color) !important;
+    pointer-events: none;
+  }
+
+  .damaged {
+    fill: var(--damage-color) !important;
+
+    path {
+      fill: var(--damage-color) !important;
+    }
+
+    text {
+      fill: var(--damage-color) !important;
+    }
+  }
+
+  .flooded,
+  .flooded > path,
+  .flooded path {
+    fill: #66f;
+  }
+
+  .unitLocation.disabledLocation {
+    fill: silver !important;
+  }
+
+  .unitLocation.flooded {
+    fill: #66f !important;
+  }
+
+  .pip.flooded {
+    stroke: #00d;
+  }
+
+  .critGroup.flooded text {
+    fill: #00d !important;
+    pointer-events: none;
+  }
+
+  path.detached,
+  .detached > path {
+    fill: #888 !important;
+    pointer-events: none;
+  }
+
+  .pip.detached {
+    stroke: silver;
+  }
+
+  .detached path {
+    fill: #888 !important;
+    pointer-events: none;
+  }
+
+  .critGroup.detached text.locationConditionText {
+    fill: #888;
+  }
+
+  .critGroup.detached text:not(.locationConditionText) {
+    fill: #888 !important;
+    pointer-events: none;
+  }
+
+  .critGroup.flooded .critSlot-bg-rect {
+    fill: #66f;
+  }
+
+  .critGroup .critical-equipment-bracket {
+    fill: none !important;
+  }
+
+  .critGroup.detached .critSlot text,
+  .critGroup.flooded .critSlot text,
+  .critGroup.disabledLocation .critSlot text {
+    text-decoration: line-through;
+  }
+
+  .pip {
+    stroke-linecap: square;
+
+    &.damaged {
+      fill: var(--damage-color) !important;
+    }
+  }
+
+  .capital-pip-state-damaged {
+    fill: var(--damage-color) !important;
+  }
+
+  .capital-pip-state-pending-damage {
+    fill: var(--pip-pending-damage-color) !important;
+  }
+
+  .capital-pip-state-fresh-damage {
+    fill: var(--pip-fresh-damage-color) !important;
+  }
+
+  .capital-pip-state-pending-repair {
+    fill: var(--pip-pending-repair-color) !important;
+  }
+
+  .capital-pip-state-fresh-repair {
+    fill: var(--pip-fresh-repair-color) !important;
+  }
+
+  .capital-pip-interaction {
+    fill: transparent !important;
+    stroke: transparent !important;
+  }
+
+  .soldierPip.damaged {
+    filter: opacity(0.3) !important;
+  }
+
+  // Many contours are plain rectangles clipped to the hull, so only a fill follows the location's visible shape;
+  // an outline would show just their inner edges. Opaque contours are their location's paper and stay opaque,
+  // as in the paperdoll hover highlight (_interaction.scss).
+  .unitLocation.random-hit-location-highlight {
+    fill: color-mix(in srgb, var(--bt-yellow) var(--random-hit-tint, 45%), transparent) !important;
+    animation: random-hit-location-pulse 650ms ease-in-out infinite alternate;
+
+    &.opaque-location {
+      fill: color-mix(in srgb, var(--bt-yellow) var(--random-hit-tint, 45%), var(--svg-fg-color-inv, #fff)) !important;
+    }
+  }
+
+  .mek-random-hit-result {
+    pointer-events: none;
+
+    .mek-random-hit-result-background {
+      fill: #111e;
+      stroke: var(--bt-yellow);
+      stroke-width: 2;
+    }
+
+    text {
+      fill: #fff;
+      font-weight: 700;
+      text-anchor: middle;
+    }
+
+    .mek-random-hit-result-location {
+      font-size: 12px;
+    }
+
+    .mek-random-hit-result-transferred-from {
+      fill: #ccc;
+      font-size: 5px;
+    }
+
+    .mek-random-hit-result-through-armor {
+      fill: var(--damage-color);
+      font-family: 'Roboto Condensed', serif;
+      font-size: 25px;
+      stroke: #000;
+      stroke-width: 4;
+      paint-order: stroke fill;
+    }
+  }
+
+  .disabledInventory,
+  .disabledInventory text {
+    fill: var(--disabled-color) !important;
+  }
+
+  // A movement mode the unit is built without, muted on screen and on paper like an unused one.
+  .unavailableMoveMode {
+    opacity: 0.5;
+  }
+
+  .critSlot.damaged {
+    fill: var(--damage-color) !important;
+    text-decoration: line-through;
+  }
+
+  .critSlot.damaged.willRepair text {
+    fill: var(--pip-pending-repair-color) !important;
+  }
+
+  .critLoc.damaged {
+    fill: var(--damage-color) !important;
+  }
+
+}
+
+// Registered so the pulse interpolates the tint; without @property support it alternates between the two
+// keyframes and the highlight falls back to the same initial tint.
+@property --random-hit-tint {
+  syntax: '<percentage>';
+  inherits: false;
+  initial-value: 45%;
+}
+
+@keyframes random-hit-location-pulse {
+  from {
+    --random-hit-tint: 30%;
+  }
+  to {
+    --random-hit-tint: 65%;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .mekbay-sheet .unitLocation.random-hit-location-highlight {
+    animation: none;
+  }
+}

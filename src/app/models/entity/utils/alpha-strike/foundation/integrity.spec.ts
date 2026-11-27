@@ -3,13 +3,14 @@
 // Author: Drake
 
 import { ArmorEquipment } from '../../../../equipment.model';
-import { MountedArmor, MountedEngine } from '../../../components';
+import { MountedArmor } from '../../../components';
 import {
   TestAeroSpaceFighterEntity as AeroSpaceFighterEntity,
   TestBattleArmorEntity as BattleArmorEntity,
-  TestBipedMekEntity as BipedMekEntity,
   TestHandheldWeaponEntity as HandheldWeaponEntity,
+  TestProtoMekEntity as ProtoMekEntity,
   TestSupportNavalEntity as SupportNavalEntity,
+  TestTankEntity as TankEntity,
   TestWarShipEntity as WarShipEntity,
 } from '../../../testing/test-entities';
 import { locationArmor } from '../../../types';
@@ -22,7 +23,7 @@ import {
 
 describe('Alpha Strike integrity conversion', () => {
   it('applies armor material modifiers before normal rounding', () => {
-    const entity = new BipedMekEntity();
+    const entity = new TankEntity();
     entity.setUniformArmor(new MountedArmor({
       armor: new ArmorEquipment({
         id: 'hardened', name: 'Hardened Armor', type: 'armor', armor: { type: 'HARDENED' },
@@ -41,14 +42,8 @@ describe('Alpha Strike integrity conversion', () => {
     expect(alphaStrikeArmor(entity)).toBe(198);
   });
 
-  it('uses Mek engine and weight structure tables', () => {
-    const entity = new BipedMekEntity();
-    entity.setTonnage(100);
-    entity.mountedEngine.set(new MountedEngine({
-      type: 'Fusion', rating: 300, techBase: 'IS', installed: true,
-    }));
-
-    expect(alphaStrikeStructure(entity)).toBe(8);
+  it('preserves ProtoMek structure conversion', () => {
+    expect(alphaStrikeStructure(new ProtoMekEntity())).toBe(1);
   });
 
   it('converts Battle Armor and aerospace structure', () => {

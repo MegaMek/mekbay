@@ -8,7 +8,7 @@ export type WeaponDamageRange = 'short' | 'medium' | 'long' | 'extreme';
 
 export interface WeaponDamageFormat {
     readonly showZero?: boolean;
-    readonly shotSuffix?: '/Sht';
+    readonly shotSuffix?: '/Sht' | '/Shot';
 }
 
 /** Formats resolved damage without adding weapon classification labels. */

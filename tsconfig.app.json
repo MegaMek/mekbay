@@ -7,12 +7,18 @@
     "rootDir": "./src",
     "types": []
   },
+  "angularCompilerOptions": {
+    "strictTemplates": true,
+    "strictNgTemplateTypes": true,
+    "strictUnknownElements": true
+  },
   "include": [
     "src/**/*.ts",
     "src/**/*.d.ts"
   ],
   "exclude": [
     "src/**/*.spec.ts",
+    "src/**/testing/**",
     "src/sw.ts"
   ]
 }

@@ -1,0 +1,491 @@
+// Copyright (C) 2026 The MegaMek Team
+// SPDX-License-Identifier: GPL-3.0-or-later
+import type { CBTNonMekUnit } from '../runtime/cbt-unit';
+import { componentIdForMount } from '../runtime/unit-runtime-index';
+
+import {
+asUnitUuid,
+} from '../../services/unit-catalog/unit-catalog.types';
+import {
+CORE_2026_RULESET,
+TOTAL_WARFARE_RULESET,
+type CBTRuleset,
+} from '../cbt-ruleset.model';
+import {
+TestLargeSupportTankEntity,
+TestSupportNavalEntity,
+TestTankEntity,
+TestVtolEntity,
+} from '../entity/testing/test-entities';
+import {
+addTestEquipment,
+addTestEquipmentWithFlags,
+} from '../entity/testing/test-mounted-equipment';
+import { createEquipment } from '../equipment.model';
+import { buildNonMekRuntimeIndex } from '../runtime/non-mek-runtime-index';
+
+import { type InstanceBaselineRef } from '../runtime/runtime-state';
+import { navalBreachThreshold } from './vehicle-runtime-rules';
+import { entityTargetRosterRow } from '../runtime/cbt-force-target-roster';
+import { readInternalBayLoads } from '../runtime/internal-bay-loads';
+import { restoreNonMekRuntimeForTest } from '../runtime/testing/unit-runtime-owner-fixture';
+import { systemDamageId } from './system-damage-rules';
+
+describe('projectVehicleRuntimeRules', () => {
+    it('publishes only damage tracks supported by the Entity topology', () => {
+        const turretless = new TestTankEntity();
+        const turreted = new TestTankEntity();
+        turreted.hasTurret.set(true);
+        const vtol = new TestVtolEntity();
+        const naval = new TestSupportNavalEntity();
+        naval.hasDualTurret.set(true);
+        const targetIds = (entity: TestTankEntity | TestVtolEntity | TestSupportNavalEntity) =>
+            [...buildNonMekRuntimeIndex(entity).damageTracks.values()].map(track => track.id);
+
+        expect(targetIds(turretless)).not.toContain(systemDamageId('turret-lock', undefined, 'Turret'));
+        expect(targetIds(turretless)).not.toContain(systemDamageId('stabilizer', undefined, 'Turret'));
+        expect(targetIds(turreted)).toContain(systemDamageId('turret-lock', undefined, 'Turret'));
+        expect(targetIds(turreted)).toContain(systemDamageId('stabilizer', undefined, 'Turret'));
+        expect(targetIds(vtol)).toContain(systemDamageId('flight-stabilizer'));
+        expect(targetIds(vtol)).not.toContain(systemDamageId('turret-lock', undefined, 'Turret'));
+        expect(targetIds(naval)).toContain(systemDamageId('turret-lock', undefined, 'Front Turret'));
+        expect(targetIds(naval)).toContain(systemDamageId('turret-lock', undefined, 'Rear Turret'));
+        expect(targetIds(naval)).not.toContain(systemDamageId('turret-lock', undefined, 'Turret'));
+    });
+
+    it('uses the same direct vehicle rules owner for Tank, VTOL, and naval families', () => {
+        const entities = [
+            new TestTankEntity(),
+            new TestVtolEntity(),
+            new TestSupportNavalEntity(),
+        ];
+
+        entities.forEach((entity, index) => {
+            prepare(entity);
+            expect(project(instance(entity, `unit:vehicle-family-${index}`)).movement)
+                .toEqual(jasmine.objectContaining({ walk: 8, run: 12 }));
+        });
+    });
+
+    it('derives normal and boosted movement from the Entity and working equipment', () => {
+        const entity = tank();
+        addTestEquipmentWithFlags(entity, ['F_MASC', 'S_SUPERCHARGER']);
+        const runtime = instance(entity, 'unit:vehicle-movement');
+
+        expect(project(runtime).movement).toEqual({
+            moveImpaired: false,
+            walk: 8,
+            maxWalk: 8,
+            run: 12,
+            maxRun: 16,
+        });
+    });
+
+    it('uses the direct turn declaration for Core/TW Charge damage', () => {
+        const coreEntity = tank();
+        coreEntity.setTonnage(60);
+        const core = instance(coreEntity, 'unit:vehicle-core-charge');
+        expect(core.dispatch({
+            type: 'set-movement',
+            
+            movement: { mode: 'walk', distance: 5, boosterComponentIds: [] },
+        }).accepted).toBeTrue();
+        expect(project(core).chargeDamage).toEqual(jasmine.objectContaining({
+            damage: 36,
+            maximumDamage: 60,
+            baseDamage: 36,
+        }));
+
+        const twEntity = tank();
+        twEntity.setTonnage(60);
+        const tw = instance(twEntity, 'unit:vehicle-tw-charge', TOTAL_WARFARE_RULESET);
+        expect(tw.dispatch({
+            type: 'set-movement',
+            
+            movement: { mode: 'walk', distance: 5, boosterComponentIds: [] },
+        }).accepted).toBeTrue();
+        expect(project(tw).chargeDamage).toEqual(jasmine.objectContaining({
+            damage: 24,
+            maximumDamage: 66,
+            baseDamage: 24,
+        }));
+    });
+
+    it('reapplies the selected attacker movement modifier to stabilizer-hit weapons', () => {
+        const entity = tank();
+        spyOn(entity, 'componentLocationLabel').and.returnValue('Repeated translated caption');
+        const weapon = addTestEquipment(entity, createEquipment({
+            id: 'Front Stabilizer Weapon',
+            name: 'Front Stabilizer Weapon',
+            type: 'weapon',
+            weapon: { damage: 5, ranges: [3, 6, 9, 12] },
+        }), { location: 'Front' });
+        const runtime = instance(entity, 'unit:vehicle-stabilizer');
+        hit(runtime, systemDamageId('stabilizer', undefined, 'Front'), 10);
+        expect(runtime.dispatch({
+            type: 'set-movement',
+            
+            movement: { mode: 'run', distance: 5, boosterComponentIds: [] },
+        }).accepted).toBeTrue();
+
+        const rules = project(runtime);
+        expect(rules.attackMovementModifier).toBe(2);
+        expect(rules.stabilizerAffectedComponentIds).toContain(componentIdForMount(weapon));
+    });
+
+    it('keeps split-facing stabilizer damage independent for large support vehicles', () => {
+        const entity = new TestLargeSupportTankEntity();
+        prepare(entity);
+        spyOn(entity, 'componentLocationLabel').and.returnValue('Repeated caption');
+        const weapon = createEquipment({ id: 'Split-Facing Weapon', name: 'Split-Facing Weapon', type: 'weapon',
+            weapon: { damage: 5, ranges: [3, 6, 9, 12] } });
+        const left = addTestEquipment(entity, weapon, { location: 'Front Left' });
+        const right = addTestEquipment(entity, weapon, { location: 'Front Right' });
+        const rear = addTestEquipment(entity, weapon, { location: 'Rear Left' });
+        const runtime = instance(entity, 'unit:large-support-stabilizer');
+        hit(runtime, systemDamageId('stabilizer', undefined, 'Front Left'), 10);
+        const affected = project(runtime).stabilizerAffectedComponentIds;
+        expect(affected).toContain(componentIdForMount(left));
+        expect(affected).not.toContain(componentIdForMount(right));
+        expect(affected).not.toContain(componentIdForMount(rear));
+        expect(runtime.getIndex().damageTracks.has(systemDamageId('stabilizer', undefined, 'Left'))).toBeFalse();
+    });
+
+    it('applies repeatable motive hits in timestamp order', () => {
+        const runtime = instance(tank(), 'unit:vehicle-motive');
+        hit(runtime, systemDamageId('motive', 3), 10);
+        hit(runtime, systemDamageId('motive', 2), 20);
+
+        expect(project(runtime).movement).toEqual(jasmine.objectContaining({
+            walk: 3,
+            run: 5,
+            maxRun: 5,
+            moveImpaired: true,
+        }));
+        expect(project(runtime).modifiers.psr.filter(row => row.label === 'Motive system hit'))
+            .toEqual([
+                { label: 'Motive system hit', modifier: 3, weakened: true },
+                { label: 'Motive system hit', modifier: 2, weakened: true },
+            ]);
+    });
+
+    it('marks killed crews abandoned and immobile but only blocks run for stunned crews', () => {
+        const killed = instance(tank(), 'unit:vehicle-killed');
+        setCrewState(killed, 'killed');
+
+        expect(project(killed).computedConditions).toEqual(['abandoned', 'immobile']);
+        expect(project(killed).movement).toEqual(jasmine.objectContaining({ walk: 0, run: 0 }));
+
+        const stunned = instance(tank(), 'unit:vehicle-stunned');
+        setCrewState(stunned, 'stunned');
+
+        expect(project(stunned).computedConditions).toEqual([]);
+        expect(project(stunned).movement).toEqual(jasmine.objectContaining({
+            walk: 8,
+            run: 0,
+            maxRun: 0,
+            moveImpaired: true,
+        }));
+    });
+
+    it('stacks critical stuns in the following turns, keeps cruising, and expires without wound rolls', () => {
+        const entity = tank();
+        const original = instance(entity, 'unit:stun-clock');
+        for (let i = 0; i < 2; i++) expect(original.dispatch({ type: 'stun-vehicle-crew' }).accepted).toBeTrue();
+        const runtime = restoreNonMekRuntimeForTest(original.serialize(), entity, CORE_2026_RULESET);
+        expect(project(runtime).systems.crewStunned).toBeFalse();
+        for (let turn = 1; turn <= 3; turn++) {
+            expect(runtime.dispatch({ type: 'end-turn', policy: 'manual' }).accepted).toBeTrue();
+            expect(project(runtime).systems.crewStunned).toBe(turn <= 2);
+            if (turn <= 2) expect(project(runtime).movement).toEqual(jasmine.objectContaining({ walk: 8, run: 0 }));
+        }
+    });
+
+    it('treats an unattached trailer as immobile until hitched to a mobile tractor', () => {
+        const entity = tank();
+        entity.isTrailer.set(true);
+        const runtime = instance(entity, 'unit:trailer');
+        expect(project(runtime).computedConditions).toContain('immobile');
+        expect(runtime.dispatch({ type: 'set-condition', condition: 'hitched', active: true }).accepted).toBeTrue();
+        expect(project(runtime).computedConditions).not.toContain('immobile');
+        runtime.dispatch({ type: 'set-condition', condition: 'hitched', active: false });
+        expect(project(runtime).computedConditions).toContain('immobile');
+    });
+
+    it('follows a linked trailer chain to the tractor for target movement and disconnects it at a broken link', () => {
+        const tractor = instance(tank(), 'tractor');
+        const trailerEntity = tank();
+        trailerEntity.isTrailer.set(true);
+        const middle = instance(trailerEntity, 'middle');
+        const last = instance(trailerEntity, 'last');
+        const units = new Map([tractor, middle, last].map(u => [u.instanceId, u]));
+        middle.dispatch({ type: 'set-tractor', unitId: tractor.instanceId });
+        last.dispatch({ type: 'set-tractor', unitId: middle.instanceId });
+        tractor.dispatch({ type: 'set-movement', movement: { mode: 'walk', distance: 6, boosterComponentIds: [] } });
+        const target = () => entityTargetRosterRow('force', last, id => units.get(id) ?? null).tnCalculator;
+        expect(target().immobile).toBeFalse();
+        expect(target().targetMovementDistance).toBe(6);
+        middle.dispatch({ type: 'set-destroyed', destroyed: true });
+        expect(target().immobile).toBeTrue();
+        expect(target().targetMovementDistance).toBeNull();
+        units.delete(middle.instanceId);
+        expect(target().immobile).toBeTrue();
+    });
+
+    it('records the weapon phase spent clearing one turret and retains its jam history on reload', () => {
+        const entity = tank();
+        entity.hasDualTurret.set(true);
+        const runtime = instance(entity, 'unit:jam');
+        const jam = systemDamageId('turret-jam', undefined, 'Front Turret');
+        hit(runtime, jam, 1);
+        expect(project(runtime).conditionControlKeys).toContain('clear-front-turret-jam');
+        expect(project(runtime).conditionControlKeys).not.toContain('clear-rear-turret-jam');
+        expect(runtime.dispatch({ type: 'set-condition', condition: 'clear-front-turret-jam', active: true }).accepted).toBeTrue();
+        runtime.dispatch({ type: 'end-turn', policy: 'manual' });
+        const loaded = restoreNonMekRuntimeForTest(runtime.serialize(), entity, CORE_2026_RULESET);
+        expect(loaded.snapshot().damageTracks.get(jam)?.hits).toBe(1);
+        expect(project(loaded).conditionControlKeys).not.toContain('clear-front-turret-jam');
+    });
+
+    it('takes the threshold from the vessel, location and attacking unit for hull breaches', () => {
+        expect(navalBreachThreshold('Naval', 'Rear Right', false, false)).toBe(12);
+        expect(navalBreachThreshold('Hydrofoil', 'Left', false, true)).toBe(10);
+        expect(navalBreachThreshold('Naval', 'Rear Turret', false, true)).toBeNull();
+        expect(navalBreachThreshold('Submarine', 'Turret', true, false)).toBe(10);
+        expect(navalBreachThreshold('Submarine', 'Turret', false, false)).toBeNull();
+    });
+
+    it('round trips loaded cargo and rejects a passenger recorded twice', () => {
+        const entity = tank();
+        entity.transporters.set([{ id: 'hold', kind: 'bay', doors: 1, capacity: 10, bayNumber: 1,
+            configuration: { type: 'cargo' }, omni: false }]);
+        const runtime = instance(entity, 'unit:loaded');
+        const loads = [{ bay: 'hold', cargo: 'spares', tons: 2 }, { bay: 'hold', unitId: 'platoon', tons: 3 }];
+        expect(runtime.dispatch({ type: 'set-internal-bay-loads', loads }).changed).toBeTrue();
+        expect(restoreNonMekRuntimeForTest(runtime.serialize(), entity, CORE_2026_RULESET).snapshot().internalBayLoads).toEqual(loads);
+        expect(() => readInternalBayLoads([...loads, loads[1]])).toThrow();
+    });
+
+    it('applies engine and sensor critical effects to movement and equipment', () => {
+        const entity = tank();
+        const laser = addTestEquipment(entity, createEquipment({
+            id: 'Test Laser',
+            name: 'Test Laser',
+            type: 'weapon',
+            flags: ['F_ENERGY'],
+            weapon: { damage: 5, ranges: [3, 6, 9, 12] },
+        }), { location: 'Front' });
+        const cannon = addTestEquipment(entity, createEquipment({
+            id: 'Test Cannon',
+            name: 'Test Cannon',
+            type: 'weapon',
+            flags: ['F_BALLISTIC'],
+            weapon: { damage: 5, ranges: [3, 6, 9, 12] },
+        }), { location: 'Front' });
+        const runtime = instance(entity, 'unit:vehicle-systems');
+        hit(runtime, systemDamageId('engine', 1), 10);
+        expect(project(runtime).computedConditions).toContain('immobile');
+        expect(runtime.dispatch({
+            type: 'set-system-damage-level',
+            system: 'sensors',
+            level: 4,
+            target: 'committed',
+            timestamp: 20,
+        }).accepted).toBeTrue();
+
+        const rules = project(runtime);
+        expect(rules.movement.walk).toBe(0);
+        expect(rules.componentStatuses.get(componentIdForMount(laser))).toBe('disabled');
+        expect(rules.componentStatuses.get(componentIdForMount(cannon))).toBe('available');
+        expect(rules.fireBlockedComponentIds).toContain(componentIdForMount(laser));
+        expect(rules.fireBlockedComponentIds).toContain(componentIdForMount(cannon));
+        expect(rules.modifiers.ranged).toContain(jasmine.objectContaining({
+            label: 'Sensor hits',
+            modifier: 4,
+        }));
+    });
+
+    it('previews a pending engine hit without applying its rules early', () => {
+        const entity = tank();
+        const laser = addTestEquipment(entity, createEquipment({
+            id: 'Preview Laser',
+            name: 'Preview Laser',
+            type: 'weapon',
+            flags: ['F_ENERGY'],
+            weapon: { damage: 5, ranges: [3, 6, 9, 12] },
+        }), { location: 'Front' });
+        const runtime = instance(entity, 'unit:vehicle-preview');
+        hit(runtime, systemDamageId('engine', 1), 10, 'pending');
+
+        const preview = project(runtime);
+        expect(preview.systems.engineHit).toBeFalse();
+        expect(preview.movement.walk).toBe(8);
+        expect(preview.componentStatuses.get(componentIdForMount(laser))).toBe('available');
+        expect(preview.previewComponentStatuses.get(componentIdForMount(laser))).toBe('disabled');
+    });
+
+    it('applies rotor and flight-stabilizer damage to VTOL movement', () => {
+        const entity = new TestVtolEntity();
+        prepare(entity);
+        const runtime = instance(entity, 'unit:vehicle-vtol');
+        hit(runtime, systemDamageId('rotor'), 10, 'committed', 3);
+        hit(runtime, systemDamageId('flight-stabilizer'), 20);
+
+        expect(project(runtime).movement).toEqual(jasmine.objectContaining({
+            walk: 5,
+            run: 0,
+            maxRun: 0,
+            moveImpaired: true,
+        }));
+    });
+
+    it('derives disconnected and immobile for an unavailable drone operating system', () => {
+        const entity = tank();
+        const drone = addTestEquipmentWithFlags(entity, 'F_DRONE_OPERATING_SYSTEM');
+        const runtime = instance(entity, 'unit:vehicle-drone');
+        expect(runtime.dispatch({
+            type: 'set-component-status',
+            
+            componentId: componentIdForMount(drone),
+            status: 'destroyed',
+            target: 'committed',
+        }).accepted).toBeTrue();
+
+        expect(project(runtime).computedConditions).toEqual(['disconnected', 'immobile']);
+        expect(project(runtime).movement.walk).toBe(0);
+    });
+
+    it('exposes only rules-valid vehicle condition and crew controls', () => {
+        const core = instance(tank(), 'unit:vehicle-core-controls');
+        expect(project(core).conditionControlKeys).toEqual([
+            'swarmed', 'tagged', 'ecm-shielded', 'jammed',
+        ]);
+        expect(project(core).crewStateControlKeys).toEqual(['killed', 'stunned']);
+
+        const tw = instance(tank(), 'unit:vehicle-tw-controls', TOTAL_WARFARE_RULESET);
+        expect(project(tw).conditionControlKeys).toEqual([
+            'swarmed', 'tagged', 'ecm-shielded', 'skidding', 'jammed',
+        ]);
+
+        const droneEntity = tank();
+        addTestEquipmentWithFlags(droneEntity, 'F_DRONE_OPERATING_SYSTEM');
+        const drone = instance(droneEntity, 'unit:vehicle-drone-controls');
+        expect(project(drone).conditionControlKeys).toContain('disconnected');
+        expect(project(drone).crewStateControlKeys).toEqual([]);
+    });
+
+    it('derives destruction and mounted-component loss from committed internal damage', () => {
+        const entity = tank();
+        const cannon = addTestEquipment(entity, createEquipment({
+            id: 'Location Cannon',
+            name: 'Location Cannon',
+            type: 'weapon',
+            flags: ['F_BALLISTIC'],
+            weapon: { damage: 5, ranges: [3, 6, 9, 12] },
+        }), { location: 'Front' });
+        const runtime = instance(entity, 'unit:vehicle-location');
+        const front = [...runtime.getIndex().locations.values()]
+            .find(location => location.code === 'Front')!;
+        expect(runtime.dispatch({
+            type: 'set-internal-damage',
+            
+            locationId: front.id,
+            damage: front.internalPoints,
+        }).accepted).toBeTrue();
+
+        const rules = project(runtime);
+        expect(rules.destroyed).toBeTrue();
+        expect(rules.componentStatuses.get(componentIdForMount(cannon))).toBe('destroyed');
+    });
+
+    it('destroys the vehicle when a fuel tank critical is committed, not while it is pending', () => {
+        const runtime = instance(tank(), 'unit:vehicle-fuel-tank');
+        const fuelTank = systemDamageId('fuel-tank', 1);
+        expect(runtime.dispatch({
+            type: 'damage-track', damageTrackId: fuelTank, amount: 1, target: 'pending', timestamp: 1,
+        }).accepted).toBeTrue();
+        expect(project(runtime).destroyed).toBeFalse();
+        runtime.dispatch({ type: 'end-phase' });
+        expect(project(runtime).destroyed).toBeTrue();
+    });
+});
+
+const UUID = asUnitUuid('019f6767-0dcb-7bb8-992f-aef08202f5e1');
+
+function tank(): TestTankEntity {
+    const entity = new TestTankEntity();
+    prepare(entity);
+    return entity;
+}
+
+function prepare(entity: VehicleTestEntity): void {
+    entity.uuid.set(UUID);
+    entity.setTonnage(20);
+    entity.originalWalkMP.set(8);
+}
+
+function instance(
+    entity: VehicleTestEntity,
+    id: string,
+    ruleset: CBTRuleset = CORE_2026_RULESET,
+): CBTNonMekUnit {
+    return createNonMekRuntimeForTest(
+        id,
+        baseline(ruleset),
+        entity,
+        ruleset,
+    );
+}
+
+type VehicleTestEntity = TestTankEntity | TestVtolEntity | TestSupportNavalEntity | TestLargeSupportTankEntity;
+
+function project(runtime: CBTNonMekUnit) {
+    const rules = vehicleRuntimeRulesForTest(runtime);
+    if (!rules) throw new Error('Expected vehicle rules');
+    return rules;
+}
+
+function hit(
+    runtime: CBTNonMekUnit,
+    damageTrackId: ReturnType<typeof systemDamageId>,
+    timestamp: number,
+    target: 'committed' | 'pending' = 'committed',
+    amount = 1,
+): void {
+    const result = runtime.dispatch({
+        type: 'damage-track',
+        
+        damageTrackId,
+        amount,
+        target,
+        timestamp,
+    });
+    expect(result.accepted).toBeTrue();
+    expect(result.changed).toBeTrue();
+}
+
+function setCrewState(runtime: CBTNonMekUnit, state: 'killed' | 'stunned'): void {
+    const positionId = [...runtime.getIndex().crewPositions.keys()][0]!;
+    const result = runtime.dispatch({
+        type: 'set-crew-state',
+        
+        positionId,
+        wounds: 0,
+        unconscious: state === 'stunned',
+        ejected: false,
+        dead: state === 'killed',
+    });
+    expect(result.accepted).toBeTrue();
+}
+
+function baseline(ruleset: CBTRuleset = CORE_2026_RULESET): InstanceBaselineRef {
+    return Object.freeze({
+        entity: UUID,
+        ruleset,
+        initialStateProfile: Object.freeze({
+            profileId: 'pristine-non-mek',
+        }),
+    });
+}
+
+import { createNonMekRuntimeForTest,vehicleRuntimeRulesForTest } from '../runtime/testing/unit-runtime-owner-fixture';

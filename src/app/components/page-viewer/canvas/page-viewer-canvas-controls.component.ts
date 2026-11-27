@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 // Author: Drake
 
+import { UnitNameService } from '../../../services/unit-name.service';
 import {
     Component,
     ChangeDetectionStrategy,
@@ -12,7 +13,8 @@ import {
 } from '@angular/core';
 import { PageViewerCanvasService } from './page-viewer-canvas.service';
 import { DialogsService } from '../../../services/dialogs.service';
-import type { ForceUnit } from '../../../models/force-unit.model';
+import { isCBTForceMember } from '../../../models/force-member.model';
+import type { PageCanvasMember } from '../internal/types';
 
 /*
  * 
@@ -111,11 +113,12 @@ import type { ForceUnit } from '../../../models/force-unit.model';
     styleUrl: './page-viewer-canvas-controls.component.scss'
 })
 export class PageViewerCanvasControlsComponent {
+    readonly unitNames = inject(UnitNameService);
     canvasService = inject(PageViewerCanvasService);
     private dialogsService = inject(DialogsService);
 
     // Input for current unit
-    unit = input<ForceUnit | null>(null);
+    unit = input<PageCanvasMember | null>(null);
 
     clearRequested = output<'unit' | 'force'>();
     printRequested = output<void>();
@@ -145,7 +148,7 @@ export class PageViewerCanvasControlsComponent {
         const currentForce = currentUnit.force;
         const choice = await this.dialogsService.choose<'unit' | 'force' | 'dismiss'>(
             'Clear Canvas',
-            `Delete the canvas for "${currentUnit.getDisplayName()}", or delete all canvases for "${currentForce.displayName()}"? This cannot be undone.`,
+            `Delete the canvas for "${isCBTForceMember(currentUnit) ? this.unitNames.name(currentUnit.entity) : this.unitNames.name(currentUnit.getSummary())}", or delete all canvases for "${currentForce.displayName()}"? This cannot be undone.`,
             [
                 { label: 'UNIT', value: 'unit', class: 'danger' },
                 { label: 'FORCE', value: 'force', class: 'danger' },

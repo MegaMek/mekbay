@@ -6,11 +6,7 @@ import { inject, Injectable } from '@angular/core';
 import { AS_SPECIAL_ABILITIES, type ASSpecialAbility } from '../models/as-abilities.model';
 import { type AlternateMunition, getAlternateMunitionsForAbility } from '../models/as-alternate-munitions.model';
 import type { UnitSummary } from '../models/unit-summary.model';
-import {
-    isASSpecialDamageValue,
-    parseASSpecialAbility,
-    type ASSpecialAbilityNode,
-} from '../utils/as-special-filter.util';
+import { formatUnitName } from '../utils/unit-display-name.util';
 import { LoggerService } from './logger.service';
 
 /**
@@ -42,9 +38,8 @@ export class AsAbilityLookupService {
 
     /** Index for fast lookup by normalized tag patterns */
     private readonly abilityIndex: Map<string, ASSpecialAbility>;
-
-    /** Cache for ability lookups */
     private readonly lookupCache = new Map<string, ASSpecialAbility | null>();
+    private static readonly LOOKUP_CACHE_LIMIT = 4_096;
 
     constructor() {
         this.abilityIndex = this.buildAbilityIndex();
@@ -204,17 +199,28 @@ export class AsAbilityLookupService {
 
     /**
      * Looks up a single ability by its text representation.
-     * Uses caching for performance.
+     * The bounded result cache avoids repeating pattern scans while retaining
+     * enough headroom for the expected 15K-unit catalog.
      */
     lookupAbility(abilityText: string): ASSpecialAbility | null {
-        // Check cache first
-        if (this.lookupCache.has(abilityText)) {
-            return this.lookupCache.get(abilityText) ?? null;
-        }
+        const cached = this.lookupCache.get(abilityText);
+        if (cached !== undefined || this.lookupCache.has(abilityText)) return cached ?? null;
 
         const result = this.findAbilityByPattern(abilityText);
+        if (this.lookupCache.size >= AsAbilityLookupService.LOOKUP_CACHE_LIMIT) {
+            const oldest = this.lookupCache.keys().next().value;
+            if (oldest !== undefined) this.lookupCache.delete(oldest);
+        }
         this.lookupCache.set(abilityText, result);
         return result;
+    }
+
+    /**
+     * Checks if the content represents a damage pattern (#/#/# or similar)
+     */
+    private isDamagePattern(content: string): boolean {
+        // Damage patterns are like 0*/1/1 or 2/2/- (numbers/dashes separated by /)
+        return /^[\d*]+(?:\/[\d*-]+)+$/.test(content.replace(/\s+/g, ''));
     }
 
     /**
@@ -242,40 +248,105 @@ export class AsAbilityLookupService {
      * Returns the main ability and any sub-abilities.
      */
     parseCompositeAbility(abilityText: string): ParsedAbility {
-        const node = parseASSpecialAbility(abilityText);
-        if (!node) {
-            return {
-                originalText: abilityText,
-                ability: null,
-                subAbilities: [],
-            };
-        }
-
-        return this.toParsedAbility(node);
-    }
-
-    /** Project the shared structural specials AST into lookup metadata. */
-    private toParsedAbility(node: ASSpecialAbilityNode): ParsedAbility {
-        const ability = this.lookupAbility(node.lookupText);
         const result: ParsedAbility = {
-            originalText: node.rawText,
-            ability,
-            subAbilities: [],
-            ...(node.turretDamage ? { turretDamage: node.turretDamage } : {}),
+            originalText: abilityText,
+            ability: null,
+            subAbilities: []
         };
 
-        if (ability?.consumable) {
-            result.consumableMax = this.extractConsumableMax(node.rawText);
-        }
-        if (ability) {
-            result.alternateMunitions = getAlternateMunitionsForAbility(ability);
+        // Check for parentheses
+        const parenMatch = abilityText.match(/^([A-Z]+[\dA-Z]*)\s*\((.+)\)$/i);
+        
+        if (!parenMatch) {
+            // Not a composite ability, just look it up directly
+            result.ability = this.lookupAbility(abilityText);
+            // Extract consumable max if this is a consumable ability
+            if (result.ability?.consumable) {
+                result.consumableMax = this.extractConsumableMax(abilityText);
+            }
+            if (result.ability) {
+                result.alternateMunitions = getAlternateMunitionsForAbility(result.ability);
+            }
+            return result;
         }
 
-        for (const child of node.children) {
-            const subAbility = this.toParsedAbility(child);
+        const mainAbilityName = parenMatch[1];
+        const innerContent = parenMatch[2];
+
+        // Look up the main ability (e.g., TUR -> TUR#)
+        result.ability = this.lookupAbility(mainAbilityName);
+        if (result.ability) {
+            result.alternateMunitions = getAlternateMunitionsForAbility(result.ability);
+        }
+
+        // Only TUR has true composite sub-abilities
+        // Other abilities with parentheses (BIM, LAM, etc.) just have parameters
+        if (mainAbilityName.toUpperCase() !== 'TUR') {
+            return result;
+        }
+
+        // Parse inner content for TUR composite abilities
+        // Split by comma, but handle nested abilities carefully
+        const parts = this.splitPreservingParentheses(innerContent);
+
+        for (const part of parts) {
+            const trimmedPart = part.trim();
+            
+            // Check if this part is a damage pattern
+            if (this.isDamagePattern(trimmedPart)) {
+                result.turretDamage = trimmedPart;
+                continue;
+            }
+
+            // Try to parse as an ability
+            const subAbility = this.parseCompositeAbility(trimmedPart);
             if (subAbility.ability || subAbility.subAbilities?.length) {
                 result.subAbilities!.push(subAbility);
+            } else {
+                // If we couldn't find an ability, check if it's an ability without a number
+                // e.g., SNARC, TAG (implicitly SNARC1, but shown without the 1)
+                const implicitAbility = this.lookupAbility(trimmedPart + '1') || 
+                                        this.lookupAbility(trimmedPart);
+                if (implicitAbility) {
+                    result.subAbilities!.push({
+                        originalText: trimmedPart,
+                        ability: implicitAbility,
+                        alternateMunitions: getAlternateMunitionsForAbility(implicitAbility)
+                    });
+                }
             }
+        }
+
+        return result;
+    }
+
+    /**
+     * Splits a string by commas but preserves content within parentheses.
+     */
+    private splitPreservingParentheses(content: string): string[] {
+        const result: string[] = [];
+        let current = '';
+        let depth = 0;
+
+        for (const char of content) {
+            if (char === '(') {
+                depth++;
+                current += char;
+            } else if (char === ')') {
+                depth--;
+                current += char;
+            } else if (char === ',' && depth === 0) {
+                if (current.trim()) {
+                    result.push(current.trim());
+                }
+                current = '';
+            } else {
+                current += char;
+            }
+        }
+
+        if (current.trim()) {
+            result.push(current.trim());
         }
 
         return result;
@@ -327,7 +398,7 @@ export class AsAbilityLookupService {
                 // Check if main ability was matched
                 if (!parsed.ability) {
                     const existing = unmatchedAbilities.get(abilityText) || [];
-                    existing.push(unit.name);
+                    existing.push(formatUnitName(unit));
                     unmatchedAbilities.set(abilityText, existing);
                 } else {
                     matchedAbilities++;
@@ -338,10 +409,10 @@ export class AsAbilityLookupService {
                     for (const sub of parsed.subAbilities) {
                         if (!sub.ability && sub.originalText) {
                             // Only log if it's not a damage pattern
-                            if (!isASSpecialDamageValue(sub.originalText)) {
+                            if (!this.isDamagePattern(sub.originalText)) {
                                 const key = `${abilityText} -> ${sub.originalText}`;
                                 const existing = unmatchedAbilities.get(key) || [];
-                                existing.push(unit.name);
+                                existing.push(formatUnitName(unit));
                                 unmatchedAbilities.set(key, existing);
                             }
                         }

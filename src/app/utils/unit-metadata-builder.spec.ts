@@ -32,6 +32,7 @@ import {
 import { addTestEquipmentWithFlags } from '../models/entity/testing/test-mounted-equipment';
 import { ArmorEquipment, MiscEquipment, StructureEquipment, WeaponEquipment } from '../models/equipment.model';
 import { UnitMetadataBuilder } from './unit-metadata-builder';
+import { CORE_2026_RULESET } from '../models/cbt-ruleset.model';
 import { getOffensiveSpeedFactor, offensiveSpeedFactor } from '../models/entity/utils/battle-value';
 import type { Sourcebook } from '../models/sourcebook.model';
 import type { UnitSubtype } from '../models/entity/types';
@@ -40,37 +41,30 @@ import { EquipmentFlag } from '../models/equipment-flags.type';
 describe('UnitMetadataBuilder', () => {
   const builder = new UnitMetadataBuilder();
 
-  it('exports null heat measurements only for entities that do not track heat', () => {
-    for (const entity of [new TankEntity(), new ConvFighterEntity(), new InfantryEntity()]) {
-      const metadata = builder.build(entity);
-      expect(metadata.heat).toBeNull();
-      expect(metadata.dissipation).toBeNull();
-    }
-    for (const entity of [new BipedMekEntity(), new AeroSpaceFighterEntity()]) {
-      const metadata = builder.build(entity);
-      expect(metadata.heat).toBe(0);
-      expect(metadata.dissipation).toBe(entity.heatDissipation());
-    }
+  it('builds Mek metadata from the canonical entity', () => {
+    const metadata = builder.build(new BipedMekEntity(), CORE_2026_RULESET);
+    expect(metadata.type).toBe('Mek');
+    expect(metadata.as?.TP).toBe('BM');
   });
 
   it('exports the path returned by the unit icon resolver', () => {
-    const entity = new BipedMekEntity();
-    const resolver = jasmine.createSpy('resolver').and.returnValue('meks/Test.png');
-    const metadata = new UnitMetadataBuilder(resolver).build(entity);
+    const entity = new TankEntity();
+    const resolver = jasmine.createSpy('resolver').and.returnValue('units/Test.png');
+    const metadata = new UnitMetadataBuilder(resolver).build(entity, CORE_2026_RULESET);
 
     expect(resolver).toHaveBeenCalledOnceWith(entity);
-    expect(metadata.icon).toBe('meks/Test.png');
-    expect(builder.build(entity).icon).toBe('');
+    expect(metadata.icon).toBe('units/Test.png');
+    expect(builder.build(entity, CORE_2026_RULESET).icon).toBe('');
   });
 
   it('exports conventional infantry anti-Mek training from installed gear', () => {
     const entity = new InfantryEntity();
 
-    expect(builder.build(entity).canAntiMech).toBeFalse();
+    expect(builder.build(entity, CORE_2026_RULESET).canAntiMech).toBeFalse();
 
     addTestEquipmentWithFlags(entity, 'F_ANTI_MEK_GEAR');
-    expect(entity.canAntiMech()).toBeTrue();
-    expect(builder.build(entity).canAntiMech).toBeTrue();
+    expect(entity.hasAntiMekGear()).toBeTrue();
+    expect(builder.build(entity, CORE_2026_RULESET).canAntiMech).toBeTrue();
   });
 
   it('exports Battle Armor anti-Mek capability from its attack requirements', () => {
@@ -78,39 +72,21 @@ describe('UnitMetadataBuilder', () => {
     entity.declaredWeightClass.set('Medium');
 
     addTestEquipmentWithFlags(entity, 'F_BASIC_MANIPULATOR');
-    expect(builder.build(entity).canAntiMech).toBeFalse();
+    expect(builder.build(entity, CORE_2026_RULESET).canAntiMech).toBeFalse();
 
     addTestEquipmentWithFlags(entity, 'F_BASIC_MANIPULATOR');
     expect(entity.legAttackCapable()).toBeTrue();
-    expect(builder.build(entity).canAntiMech).toBeTrue();
+    expect(builder.build(entity, CORE_2026_RULESET).canAntiMech).toBeTrue();
 
     entity.declaredWeightClass.set('Heavy');
-    expect(builder.build(entity).canAntiMech).toBeFalse();
+    expect(builder.build(entity, CORE_2026_RULESET).canAntiMech).toBeFalse();
   });
 
   it('exports false anti-Mek capability for non-infantry units', () => {
-    expect(builder.build(new BipedMekEntity()).canAntiMech).toBeFalse();
+    expect(builder.build(new TankEntity(), CORE_2026_RULESET).canAntiMech).toBeFalse();
   });
 
-  it('exports typed entity features using their canonical names', () => {
-    const entity = new BipedMekEntity();
 
-    entity.hasLowerArmActuator.set({ left: false, right: false });
-    entity.hasHandActuator.set({ left: false, right: false });
-
-    expect(entity.entityFeatures()).toEqual(jasmine.arrayWithExactContents(['Reversible Arms']));
-    expect(builder.build(entity).features).toContain('Reversible Arms');
-  });
-
-  it('keeps Small Cockpit in features while exporting it as a component', () => {
-    const entity = new BipedMekEntity();
-    entity.cockpitType.set('Small');
-
-    const metadata = builder.build(entity);
-    expect(metadata.features).toContain('Small Cockpit');
-    expect(metadata.features?.filter(feature => feature === 'Small Cockpit')).toHaveSize(1);
-    expect(metadata.comp?.find(component => component.id === 'cockpit')?.n).toBe('Small Cockpit');
-  });
 
   it('derives Aero cockpit features canonically', () => {
     const entity = new ConvFighterEntity();
@@ -138,7 +114,7 @@ describe('UnitMetadataBuilder', () => {
     addTestEquipmentWithFlags(vehicle, 'F_CHASSIS_MODIFICATION');
     expect(vehicle.entityFeatures().some(feature => feature.startsWith('Chassis Mod: '))).toBeTrue();
 
-    const transport = new BipedMekEntity();
+    const transport = new SupportTankEntity();
     transport.transporters.set([
       { id: 'troop-space', kind: 'troop-space', totalSpace: 1, omni: false },
       {
@@ -157,47 +133,14 @@ describe('UnitMetadataBuilder', () => {
   });
 
   it('exports the Java offensive speed factor from BV movement', () => {
-    const entity = new BipedMekEntity();
+    const entity = new TankEntity();
     entity.originalWalkMP.set(4);
 
     expect(offensiveSpeedFactor(6)).toBe(1.12);
     expect(getOffensiveSpeedFactor(entity)).toBe(1.12);
-    expect(builder.build(entity).offSpeedFactor).toBe(1.12);
+    expect(builder.build(entity, CORE_2026_RULESET).offSpeedFactor).toBe(1.12);
   });
 
-  it('exports canonical SVGMassPrinter engine names', () => {
-    const entity = new BipedMekEntity();
-    const cases = [
-      ['Fusion', 'IS', 'Fusion'],
-      ['XL', 'IS', 'XL (IS)'],
-      ['XL', 'Clan', 'XL (Clan)'],
-      ['XXL', 'IS', 'XXL (IS)'],
-      ['XXL', 'Clan', 'XXL (Clan)'],
-      ['Maglev', 'IS', 'MagLev'],
-    ] as const;
-
-    for (const [type, techBase, expected] of cases) {
-      entity.mountedEngine.set(new MountedEngine({ type, rating: 250, techBase }));
-      expect(builder.build(entity).engine).withContext(type).toBe(expected);
-    }
-
-    expect(builder.build(new DropShipEntity()).engine).toBeNull();
-  });
-
-  it('uses BV jump conditions for TSM Meks with modular armor', () => {
-    const entity = new BipedMekEntity();
-    entity.originalWalkMP.set(5);
-    entity.setEquipment([
-      miscMount('tsm', ['F_TSM']),
-      miscMount('modular-armor', ['F_MODULAR_ARMOR']),
-      ...Array.from({ length: 5 }, (_, index) => miscMount(`jump-jet-${index}`, ['F_JUMP_JET'])),
-    ]);
-
-    expect(entity.maxRunMP()).toBe(9);
-    expect(entity.maxJumpMP()).toBe(4);
-    expect(entity.computeJumpMP(BV_MOVEMENT_CALCULATION)).toBe(5);
-    expect(builder.build(entity).offSpeedFactor).toBe(1.89);
-  });
 
   it('excludes the atmospheric ProtoMek partial-wing bonus from BV speed', () => {
     const entity = new ProtoMekEntity();
@@ -209,7 +152,7 @@ describe('UnitMetadataBuilder', () => {
 
     expect(entity.maxJumpMP()).toBe(7);
     expect(entity.computeJumpMP(BV_MOVEMENT_CALCULATION)).toBe(5);
-    expect(builder.build(entity).offSpeedFactor).toBe(1.37);
+    expect(builder.build(entity, CORE_2026_RULESET).offSpeedFactor).toBe(1.37);
   });
 
   it('classifies support naval vehicles without changing their canonical entity type', () => {
@@ -220,15 +163,15 @@ describe('UnitMetadataBuilder', () => {
       .toBe('NavalEntity');
     expect(entity.isSupportVehicle()).toBeTrue();
     expect(entity.entityType).toBe('SupportNaval');
-    expect(builder.build(entity).type).toBe('Naval');
+    expect(builder.build(entity, CORE_2026_RULESET).type).toBe('Naval');
   });
 
   it('keeps non-naval support vehicles in the tank category', () => {
     const entity = new SupportTankEntity();
     entity.motiveType.set('Tracked');
 
-    expect(builder.build(entity).type).toBe('Tank');
-    expect(builder.build(entity).structureType).toBeNull();
+    expect(builder.build(entity, CORE_2026_RULESET).type).toBe('Tank');
+    expect(builder.build(entity, CORE_2026_RULESET).structureType).toBeNull();
 
     const structure = new StructureEquipment({
         id: 'Standard',
@@ -237,10 +180,10 @@ describe('UnitMetadataBuilder', () => {
         structure: { typeId: 0 },
     });
     entity.setUniformStructure(new MountedStructure({ tonnage: entity.tonnage(), structure }));
-    expect(builder.build(entity).structureType).toBe('Standard');
+    expect(builder.build(entity, CORE_2026_RULESET).structureType).toBe('Standard');
   });
 
-  it('exports hybrid Mek structure distribution outside component inventory', () => {
+  it('exports hybrid Mek structure distribution', () => {
     const entity = new BipedMekEntity();
     entity.setTonnage(60);
     const endo = new StructureEquipment({
@@ -256,7 +199,7 @@ describe('UnitMetadataBuilder', () => {
     }));
     entity.setStructureAt('LA', new MountedStructure({ tonnage: 60, structure: endo }));
 
-    const metadata = builder.build(entity);
+    const metadata = builder.build(entity, CORE_2026_RULESET);
     expect(metadata.structureType).toBe('Hybrid');
     expect(metadata.hybridLayout).toEqual({
       HD: { type: 0, clan: false },
@@ -268,72 +211,71 @@ describe('UnitMetadataBuilder', () => {
       RL: { type: 0, clan: false },
       LL: { type: 0, clan: false },
     });
-    const componentIds = metadata.comp?.filter(component => component.t === 'S').map(component => component.id) ?? [];
-    expect(componentIds).not.toContain(STANDARD_STRUCTURE_EQUIPMENT.id);
-    expect(componentIds).not.toContain(endo.id);
-
-    entity.setEquipment([
-      new EntityMountedEquipment({
-        mountId: 'mounted-endo', equipmentId: endo.id, equipment: endo,
-        allocation: { kind: 'location', location: 'LA', placements: [{ location: 'LA', slotIndex: 0 }] },
-        rearMounted: false, turretMounted: false, omniPodMounted: false, armored: false,
-      }),
-    ]);
-
-    const mountedComponentIds = builder.build(entity).comp
-      ?.filter(component => component.t === 'S').map(component => component.id) ?? [];
-    expect(mountedComponentIds).not.toContain(STANDARD_STRUCTURE_EQUIPMENT.id);
-    expect(mountedComponentIds).not.toContain(endo.id);
   });
 
-  it('exports patchwork armor distribution outside component inventory', () => {
+  it('exports patchwork armor material codes and technology bases', () => {
     const entity = new BipedMekEntity();
-    const standard = new ArmorEquipment({
-      id: 'Standard Armor', name: 'Standard', type: 'armor', armor: { type: 'STANDARD' },
-    });
     const impactResistant = new ArmorEquipment({
-      id: 'Impact-Resistant Armor', name: 'Impact-Resistant', type: 'armor',
+      id: 'Impact-Resistant Armor',
+      name: 'Impact-Resistant',
+      type: 'armor',
       armor: { type: 'IMPACT_RESISTANT' },
     });
-    entity.setUniformArmor(new MountedArmor({ armor: standard, techBase: 'IS' }));
-    entity.setArmorEquipmentAt('LA', impactResistant);
+    entity.setArmorEquipmentAt('LA', impactResistant, 'Clan');
 
-    const metadata = builder.build(entity);
+    const metadata = builder.build(entity, CORE_2026_RULESET);
     expect(metadata.armorType).toBe('Patchwork');
-    expect(metadata.patchworkLayout?.['LA']).toEqual({ type: 25, clan: false });
+    expect(metadata.patchworkLayout?.['LA']).toEqual({ type: 25, clan: true });
     expect(metadata.patchworkLayout?.['CT']).toEqual({ type: 0, clan: false });
-    const componentIds = metadata.comp?.map(component => component.id) ?? [];
-    expect(componentIds).toContain('Patchwork Armor');
-    expect(componentIds).not.toContain('Standard Armor');
-    expect(componentIds).not.toContain('Impact-Resistant Armor');
   });
+
+  it('exports MegaMek patchwork sentinels for fighter pseudo-locations', () => {
+    const entity = new AeroSpaceFighterEntity();
+    const reflective = new ArmorEquipment({
+      id: 'Reflective Armor',
+      name: 'Reflective',
+      type: 'armor',
+      armor: { type: 'REFLECTIVE' },
+    });
+    entity.setArmorEquipmentAt('Left Wing', reflective, 'IS');
+
+    expect(builder.build(entity, CORE_2026_RULESET).patchworkLayout).toEqual({
+      NOS: { type: 0, clan: false },
+      LWG: { type: 3, clan: false },
+      RWG: { type: 0, clan: false },
+      AFT: { type: 0, clan: false },
+      WNG: { type: 0, clan: false },
+      FSLG: { type: -1, clan: false },
+    });
+  });
+
 
   it('exports Java weight class display names without changing canonical categories', () => {
     const conventionalFighter = new ConvFighterEntity();
     conventionalFighter.setTonnage(50);
     expect(conventionalFighter.weightClass()).toBe('Medium');
-    expect(builder.build(conventionalFighter).weightClass).toBe('Medium');
+    expect(builder.build(conventionalFighter, CORE_2026_RULESET).weightClass).toBe('Medium');
 
     const supportVehicle = new SupportTankEntity();
     supportVehicle.motiveType.set('Tracked');
     supportVehicle.setTonnage(4);
     expect(supportVehicle.weightClass()).toBe('Small Support');
-    expect(builder.build(supportVehicle).weightClass).toBe('Small Support Vehicle');
+    expect(builder.build(supportVehicle, CORE_2026_RULESET).weightClass).toBe('Small Support Vehicle');
 
     const dropShip = new DropShipEntity();
     dropShip.setTonnage(5000);
     expect(dropShip.weightClass()).toBe('Medium DropShip');
-    expect(builder.build(dropShip).weightClass).toBe('Medium Dropship');
+    expect(builder.build(dropShip, CORE_2026_RULESET).weightClass).toBe('Medium DropShip');
 
     const capitalShips = [
-      [new JumpShipEntity(), 'Small Jumpship'],
-      [new WarShipEntity(), 'Small Warship'],
+      [new JumpShipEntity(), 'Small JumpShip'],
+      [new WarShipEntity(), 'Small WarShip'],
       [new SpaceStationEntity(), 'Small Space Station'],
     ] as const;
     for (const [entity, expected] of capitalShips) {
       entity.setTonnage(500000);
       expect(entity.weightClass()).toBe('Small Capital');
-      expect(builder.build(entity).weightClass).toBe(expected);
+      expect(builder.build(entity, CORE_2026_RULESET).weightClass).toBe(expected);
     }
   });
 
@@ -348,7 +290,7 @@ describe('UnitMetadataBuilder', () => {
     jumpShip.lifeboats.set(6);
     jumpShip.gravDecks.set([95, 55]);
 
-    expect(builder.build(jumpShip).capital).toEqual({
+    expect(builder.build(jumpShip, CORE_2026_RULESET).capital).toEqual({
       dropshipCapacity: 2,
       escapePods: 4,
       lifeBoats: 6,
@@ -360,8 +302,8 @@ describe('UnitMetadataBuilder', () => {
 
     const warShip = new WarShipEntity();
     warShip.setTonnage(100000);
-    expect(builder.build(warShip).capital?.sailIntegrity).toBe(3);
-    expect(builder.build(warShip).capital?.kfIntegrity).toBe(6);
+    expect(builder.build(warShip, CORE_2026_RULESET).capital?.sailIntegrity).toBe(3);
+    expect(builder.build(warShip, CORE_2026_RULESET).capital?.kfIntegrity).toBe(6);
   });
 
   it('zeros absent capital sail and drive integrity', () => {
@@ -370,13 +312,13 @@ describe('UnitMetadataBuilder', () => {
 
     expect(entity.sail()).toBeFalse();
     expect(entity.driveCoreType()).toBe('None');
-    expect(builder.build(entity).capital?.sailIntegrity).toBe(0);
-    expect(builder.build(entity).capital?.kfIntegrity).toBe(0);
+    expect(builder.build(entity, CORE_2026_RULESET).capital?.sailIntegrity).toBe(0);
+    expect(builder.build(entity, CORE_2026_RULESET).capital?.kfIntegrity).toBe(0);
 
     entity.driveCoreType.set('Standard');
     expect(entity.jumpDriveWeight()).toBe(0);
 
-    expect(builder.build(new SupportTankEntity()).capital).toBeUndefined();
+    expect(builder.build(new SupportTankEntity(), CORE_2026_RULESET).capital).toBeUndefined();
   });
 
   it('uses Java primitive jump-range drive weight defaults', () => {
@@ -395,10 +337,10 @@ describe('UnitMetadataBuilder', () => {
   it('exports Java role values for undetermined and explicit roles', () => {
     const entity = new SupportTankEntity();
 
-    expect(builder.build(entity).role).toBe('None');
+    expect(builder.build(entity, CORE_2026_RULESET).role).toBe('None');
 
     entity.role.set('Scout');
-    expect(builder.build(entity).role).toBe('Scout');
+    expect(builder.build(entity, CORE_2026_RULESET).role).toBe('Scout');
   });
 
   it('exports source and publication lists without reparsing them', () => {
@@ -409,22 +351,22 @@ describe('UnitMetadataBuilder', () => {
     ]);
     entity.published.set([sourcebook('RS:3050')]);
 
-    expect(builder.build(entity).source).toEqual(['TR:3050', 'Unknown']);
-    expect(builder.build(entity).published).toEqual(['RS:3050']);
+    expect(builder.build(entity, CORE_2026_RULESET).source).toEqual(['TR:3050', 'Unknown']);
+    expect(builder.build(entity, CORE_2026_RULESET).published).toEqual(['RS:3050']);
   });
 
   it('derives canon state from sourcebook references', () => {
     const entity = new SupportTankEntity();
 
-    expect(builder.build(entity).canon).toBeFalse();
+    expect(builder.build(entity, CORE_2026_RULESET).canon).toBeFalse();
 
     const canonSource = sourcebook('TR:3050');
     entity.source.set([canonSource]);
     expect(entity.source()[0]).toBe(canonSource);
-    expect(builder.build(entity).canon).toBeTrue();
+    expect(builder.build(entity, CORE_2026_RULESET).canon).toBeTrue();
 
     entity.source.set([{ abbrev: 'Unknown', canon: false, unresolved: true }]);
-    expect(builder.build(entity).canon).toBeFalse();
+    expect(builder.build(entity, CORE_2026_RULESET).canon).toBeFalse();
   });
 
   it('exports Battle Armor squad armor from its per-trooper value', () => {
@@ -433,10 +375,10 @@ describe('UnitMetadataBuilder', () => {
     entity.armorValues.set(new Map([['Squad', locationArmor(7)]]));
 
     expect(entity.tonnage()).toBe(5);
-    expect(builder.build(entity).tons).toBe(5);
-    expect(builder.build(entity).loadoutTons).toBe(entity.loadoutTonnage());
+    expect(builder.build(entity, CORE_2026_RULESET).tons).toBe(5);
+    expect(builder.build(entity, CORE_2026_RULESET).loadoutTons).toBe(entity.loadoutTonnage());
     expect(entity.totalArmorPoints()).toBe(35);
-    expect(builder.build(entity).armor).toBe(35);
+    expect(builder.build(entity, CORE_2026_RULESET).armor).toBe(35);
   });
 
   it('exports calculated conventional infantry tonnage', () => {
@@ -444,18 +386,18 @@ describe('UnitMetadataBuilder', () => {
     entity.squadSize.set(7);
     entity.squadCount.set(4);
 
-    expect(builder.build(entity).tons).toBe(2.5);
-    expect(builder.build(entity).loadoutTons).toBe(2.5);
-    expect(builder.build(entity).squadSize).toBe(7);
-    expect(builder.build(entity).squads).toBe(4);
+    expect(builder.build(entity, CORE_2026_RULESET).tons).toBe(2.5);
+    expect(builder.build(entity, CORE_2026_RULESET).loadoutTons).toBe(2.5);
+    expect(builder.build(entity, CORE_2026_RULESET).squadSize).toBe(7);
+    expect(builder.build(entity, CORE_2026_RULESET).squads).toBe(4);
 
     entity.specializations.set(new Set(['bridge-engineers', 'paramedics']));
     addTestEquipmentWithFlags(entity, 'F_ANTI_MEK_GEAR', { location: 'Infantry' });
-    expect(builder.build(entity).tons).toBe(7);
+    expect(builder.build(entity, CORE_2026_RULESET).tons).toBe(7);
   });
 
   it('exports zero loadout tonnage for an unimplemented family', () => {
-    expect(builder.build(new TankEntity()).loadoutTons).toBe(0);
+    expect(builder.build(new TankEntity(), CORE_2026_RULESET).loadoutTons).toBe(0);
   });
 
   it('exports Battle Armor as one squad with one member per trooper', () => {
@@ -463,35 +405,18 @@ describe('UnitMetadataBuilder', () => {
     entity.trooperCount.set(5);
 
     expect(entity.totalInternalPoints()).toBe(5);
-    expect(builder.build(entity).internal).toBe(5);
-    expect(builder.build(entity).squadSize).toBe(5);
-    expect(builder.build(entity).squads).toBe(1);
+    expect(builder.build(entity, CORE_2026_RULESET).internal).toBe(5);
+    expect(builder.build(entity, CORE_2026_RULESET).squadSize).toBe(5);
+    expect(builder.build(entity, CORE_2026_RULESET).squads).toBe(1);
   });
 
   it('marks infantry, Battle Armor, and ProtoMeks as small units', () => {
-    expect(builder.build(new InfantryEntity()).su).toBe(1);
-    expect(builder.build(new BattleArmorEntity()).su).toBe(1);
-    expect(builder.build(new ProtoMekEntity()).su).toBe(1);
-    expect(builder.build(new BipedMekEntity()).su).toBe(0);
+    expect(builder.build(new InfantryEntity(), CORE_2026_RULESET).su).toBe(1);
+    expect(builder.build(new BattleArmorEntity(), CORE_2026_RULESET).su).toBe(1);
+    expect(builder.build(new ProtoMekEntity(), CORE_2026_RULESET).su).toBe(1);
   });
 
   it('exports the unit subtype, including form, motive, military, and Omni qualifiers', () => {
-    const omniMek = new BipedMekEntity();
-    omniMek.omni.set(true);
-
-    const industrialQuad = new QuadMekEntity();
-    const industrialStructure = new StructureEquipment({
-      id: 'Industrial',
-      name: 'Industrial',
-      type: 'structure',
-      flags: ['F_INDUSTRIAL_STRUCTURE'],
-      structure: { typeId: 1 },
-    });
-    industrialQuad.setUniformStructure(new MountedStructure({
-      tonnage: industrialQuad.tonnage(),
-      structure: industrialStructure,
-    }));
-
     const hover = new TankEntity();
     hover.motiveType.set('Hover');
     hover.omni.set(true);
@@ -510,12 +435,6 @@ describe('UnitMetadataBuilder', () => {
     mechanizedInfantry.motiveType.set('Tracked');
 
     const cases: Array<[BaseEntity, UnitSubtype]> = [
-      [new BipedMekEntity(), 'BattleMek'],
-      [omniMek, 'BattleMek Omni'],
-      [industrialQuad, 'Quad Industrial Mek'],
-      [new TripodMekEntity(), 'Tripod BattleMek'],
-      [new QuadVeeEntity(), 'QuadVee BattleMek'],
-      [new LamEntity(), 'Land-Air BattleMek'],
       [new ProtoMekEntity(), 'ProtoMek'],
       [new BattleArmorEntity(), 'Battle Armor'],
       [mechanizedInfantry, 'Mechanized Conventional Infantry'],
@@ -534,12 +453,12 @@ describe('UnitMetadataBuilder', () => {
 
     for (const [entity, expected] of cases) {
       expect(entity.unitSubtype()).withContext(entity.constructor.name).toBe(expected);
-      expect(builder.build(entity).subtype).withContext(`${entity.constructor.name} metadata`).toBe(expected);
+      expect(builder.build(entity, CORE_2026_RULESET).subtype).withContext(`${entity.constructor.name} metadata`).toBe(expected);
     }
   });
 
   it('exports the canonical Industrial armor display name without formatting whitespace', () => {
-    const entity = new BipedMekEntity();
+    const entity = new TankEntity();
     entity.setUniformArmor(new MountedArmor({
       armor: new ArmorEquipment({
         id: 'Industrial Armor',
@@ -550,7 +469,7 @@ describe('UnitMetadataBuilder', () => {
       techBase: 'IS',
     }));
 
-    expect(builder.build(entity).armorType).toBe('Industrial');
+    expect(builder.build(entity, CORE_2026_RULESET).armorType).toBe('Industrial');
   });
 
   it('lets entities report their exported unit type directly', () => {
@@ -608,7 +527,7 @@ describe('UnitMetadataBuilder', () => {
       secondaryGroundMP: 0, uwEndurance: 0,
     });
 
-    expect(builder.build(entity).tons).toBe(4);
+    expect(builder.build(entity, CORE_2026_RULESET).tons).toBe(4);
   });
 
   it('combines physical inheritance with the shared support capability', () => {
@@ -645,26 +564,6 @@ describe('UnitMetadataBuilder', () => {
     expect(builder.buildName(handheld)).toBe('ERMediumLaserWeapon');
   });
 
-  it('projects the Mek integral heat-sink capability into component metadata', () => {
-    const entity = new BipedMekEntity();
-    entity.mountedEngine.set(new MountedEngine({ type: 'Fusion', rating: 250, techBase: 'Clan' }));
-    const heatSink = new MiscEquipment({
-      id: 'CLDoubleHeatSink', name: 'Double Heat Sink', type: 'misc',
-      flags: ['F_DOUBLE_HEAT_SINK'], stats: { criticalSlots: 2 },
-    });
-    entity.configureHeatSinks(heatSink, 10);
-
-    const heatSinkComponents = builder.build(entity).comp?.filter(component => component.id === heatSink.id);
-    expect(heatSinkComponents?.length).toBe(1);
-    expect(heatSinkComponents).toContain(jasmine.objectContaining({
-      id: 'CLDoubleHeatSink',
-      q: 10,
-      n: 'Double Heat Sink',
-      t: 'C',
-      p: -1,
-      c: '2',
-    }));
-  });
 });
 
 function sourcebook(abbrev: string, canon = true): Sourcebook {

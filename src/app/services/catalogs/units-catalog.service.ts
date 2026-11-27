@@ -2,209 +2,368 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 // Author: Drake
 
-import { Injectable, inject } from '@angular/core';
-import { HttpErrorResponse } from '@angular/common/http';
-import { firstValueFrom } from 'rxjs';
-import { REMOTE_HOST, normalizeUnitServerUrl } from '../../models/common.model';
-import type { UnitSummary, Units } from '../../models/unit-summary.model';
-import { DbService } from '../db.service';
-import { OptionsService } from '../options.service';
-import { UnitRuntimeService } from '../unit-runtime.service';
-import { withServiceWorkerBypass } from '../../utils/service-worker-bypass.util';
-import { CatalogBaseService } from './catalog-base.service';
-import { uuidv7 } from '../../utils/uuid.util';
+import { DestroyRef, Injectable, computed, effect, inject, signal, untracked } from '@angular/core';
 
-function createCustomUnitUuid(server: string, nameKey: string, usedUuids: ReadonlySet<string>): string {
-    const baseUuid = `custom:${encodeURIComponent(server)}:${encodeURIComponent(nameKey)}`;
-    let uuid = baseUuid;
-    let suffix = 2;
+import type { UnitSummary } from '../../models/unit-summary.model';
+import { formatUnitName } from '../../utils/unit-display-name.util';
+import { materializeUnitSummaryView } from '../../utils/unit-summary-view';
+import { LoggerService } from '../logger.service';
+import { CustomUnitsService } from '../custom-units.service';
+import {
+    CoreUnitCatalogService,
+    type PreparedCoreCatalogActivation,
+    type CoreUnitCatalogState,
+} from '../unit-catalog/core-unit-catalog.service';
+import {
+    type CatalogActivationId,
+    type StoredCoreContent,
+    type UnitUuid,
+} from '../unit-catalog/unit-catalog.types';
 
-    while (usedUuids.has(uuid)) {
-        uuid = `${baseUuid}:${suffix++}`;
-    }
-
-    return uuid;
+export interface UnitsCatalogSnapshot {
+    readonly revision: number;
+    readonly coreRevision: number;
+    readonly coreActivationId?: CatalogActivationId;
+    readonly summaries: readonly UnitSummary[];
+    readonly coreSummaries: readonly UnitSummary[];
+    readonly customSummaries: readonly UnitSummary[];
+    readonly customSources: ReadonlyMap<UnitUuid, StoredCoreContent>;
+    readonly units: UnitSummary[];
 }
 
-@Injectable({
-    providedIn: 'root'
-})
-export class UnitsCatalogService extends CatalogBaseService<Units, Units> {
-    private readonly dbService = inject(DbService);
-    private readonly unitRuntimeService = inject(UnitRuntimeService);
-    private readonly optionsService = inject(OptionsService);
+export interface PreparedUnitsCatalogActivation {
+    readonly revision: number;
+    readonly coreRevision: number;
+    readonly core: PreparedCoreCatalogActivation;
+    readonly snapshot: UnitsCatalogSnapshot;
+    readonly customOnly?: boolean;
+    readonly showProgress: boolean;
+}
 
-    private units: UnitSummary[] = [];
+/**
+ * Joins native core and custom summaries into one atomically published search catalog.
+ *
+ * Native MTF/BLK content remains authoritative. UnitSummary exists only for
+ * catalog/search presentation, and no remote summary-only overlay is accepted.
+ */
+@Injectable({ providedIn: 'root' })
+export class UnitsCatalogService {
+    private readonly core = inject(CoreUnitCatalogService);
+    private readonly logger = inject(LoggerService);
+    private readonly custom = inject(CustomUnitsService);
 
-    protected override get catalogKey(): string {
-        return 'units';
+    private readonly summaryPreparationState = signal<CoreUnitCatalogState | undefined>(undefined);
+    public readonly coreState = computed(() => this.summaryPreparationState() ?? this.core.state());
+
+    private readonly snapshotValue = signal<UnitsCatalogSnapshot>(Object.freeze({
+        revision: 0,
+        coreRevision: 0,
+        summaries: Object.freeze([]),
+        coreSummaries: Object.freeze([]),
+        customSummaries: Object.freeze([]),
+        customSources: new Map(),
+        units: [],
+    }));
+    public readonly catalogSnapshot = this.snapshotValue.asReadonly();
+    public readonly catalogRevision = computed(() => this.snapshotValue().revision);
+
+    private readonly pendingActivationValue =
+        signal<PreparedUnitsCatalogActivation | undefined>(undefined);
+    public readonly pendingActivation = computed(() => {
+        const pending = this.pendingActivationValue();
+        const currentCore = this.core.pendingActivation() ?? this.activeCore;
+        return pending && currentCore?.revision === pending.core.revision
+            && this.lastPreparedKey === `${pending.core.revision}:${this.custom.revision()}`
+            ? pending : undefined;
+    });
+    private readonly liveCoreUpdatesEnabled = signal(false);
+    private readonly nativeSourceLoads = new Map<string, Promise<StoredCoreContent | undefined>>();
+    private nextPreparedRevision = 1;
+    private initialized = false;
+    private initialization?: Promise<void>;
+    private activeCore?: PreparedCoreCatalogActivation;
+    private lastPreparedKey = '';
+    private initialCustomRebuildPending = false;
+    private destroyed = false;
+    private preparation?: {
+        readonly key: string;
+        readonly controller: AbortController;
+        readonly promise: Promise<PreparedUnitsCatalogActivation | undefined>;
+    };
+
+    public constructor() {
+        inject(DestroyRef).onDestroy(() => {
+            this.destroyed = true;
+            this.preparation?.controller.abort();
+        });
+        effect(() => {
+            if (!this.liveCoreUpdatesEnabled()) return;
+            const pending = this.core.pendingActivation();
+            this.custom.revision();
+            untracked(() => {
+                const core = pending ?? this.activeCore;
+                if (!core) return;
+                void this.prepareLatestActivation().catch(() => undefined);
+            });
+        });
     }
 
-    protected override get remoteUrl(): string {
-        return `${REMOTE_HOST}/units.json`;
-    }
-
-    /**
-     * Loads the primary db.mekbay.com catalog through the base flow, then merges in units
-     * from any user-supplied additional unit servers. The primary source always wins on
-     * name collisions; additional servers may only contribute new-named units.
-     */
-    protected override async afterInitialize(): Promise<void> {
-        await this.loadCustomServers();
+    public initialize(): Promise<void> {
+        if (this.initialized) return Promise.resolve();
+        if (this.initialization) return this.initialization;
+        this.initialization = this.performInitialize()
+            .then(() => { this.initialized = true; })
+            .finally(() => { this.initialization = undefined; });
+        return this.initialization;
     }
 
     public getUnits(): UnitSummary[] {
-        return this.units;
+        return this.snapshotValue().units;
     }
 
-    protected override hasHydratedData(): boolean {
-        return this.units.length > 0;
+    public getCoreSummaries(): readonly UnitSummary[] {
+        return this.snapshotValue().coreSummaries;
     }
 
-    protected override async loadFromCache(): Promise<Units | undefined> {
-        return await this.dbService.getUnits() ?? undefined;
+    public getSummaries(): readonly UnitSummary[] {
+        return this.snapshotValue().summaries;
     }
 
-    protected override saveToCache(data: Units): Promise<void> {
-        return this.dbService.saveUnits(data);
+    public hasCustomUnit(uuid: UnitUuid): boolean {
+        return this.snapshotValue().customSources.has(uuid);
     }
 
-    protected override hydrate(data: Units): void {
-        this.units = [...data.units];
-        this.unitRuntimeService.preprocessUnits(this.units);
-        this.etag = data.etag || '';
+    /** Explicit save/delete callers can join publication before Angular's next effect turn. */
+    public async prepareCustomChanges(): Promise<number | undefined> {
+        return (await this.prepareLatestActivation())?.revision;
     }
 
-    protected override normalizeFetchedData(data: Units, etag: string): Units {
-        return {
-            ...data,
-            etag,
-        };
-    }
-
-    protected override getDatasetSize(data: Units): number {
-        return Array.isArray(data.units) ? data.units.length : 0;
-    }
-
-    protected override getMinimumDatasetSize(): number {
-        return 9000;
-    }
-
-    private async loadCustomServers(): Promise<void> {
-        const configured = this.optionsService.options().unitServers ?? [];
-        const primaryHost = normalizeUnitServerUrl(REMOTE_HOST);
-        const servers = Array.from(new Set(
-            configured
-                .map(normalizeUnitServerUrl)
-                .filter(server => server && server !== primaryHost)
-        ));
-
-        if (servers.length === 0) {
-            return;
+    public async readNativeUnitSource(uuid: UnitUuid): Promise<StoredCoreContent | undefined> {
+        const custom = this.snapshotValue().customSources.get(uuid);
+        if (custom) return cloneStoredCoreContent(custom);
+        const snapshot = this.core.catalogSnapshot();
+        const activationId = snapshot.generation?.activationId;
+        const loadKey = `${snapshot.revision}\0${activationId ?? ''}\0${uuid}`;
+        let loading = this.nativeSourceLoads.get(loadKey);
+        if (!loading) {
+            loading = this.loadNativeUnitSource(uuid, snapshot.revision, activationId)
+                .finally(() => this.nativeSourceLoads.delete(loadKey));
+            this.nativeSourceLoads.set(loadKey, loading);
         }
+        const source = await loading;
+        return source ? cloneStoredCoreContent(source) : undefined;
+    }
 
-        const usedNames = new Set(this.units.map(unit => unit.name.toLowerCase()));
-        const usedUuids = new Set(this.units.map(unit => unit.uuid));
+    /** DataService calls this only after every derived consumer has committed. */
+    public acknowledgeCatalogRevisionApplied(revision: number): Promise<void> {
+        const snapshot = this.snapshotValue();
+        if (revision !== snapshot.revision || snapshot.coreActivationId === undefined) {
+            return Promise.resolve();
+        }
+        return this.core.acknowledgeCatalogConsumersReady(
+            snapshot.coreRevision,
+            snapshot.coreActivationId,
+        );
+    }
 
-        const customUnits: UnitSummary[] = [];
-        for (const server of servers) {
-            let data: Units | null = null;
-            try {
-                data = await this.loadServerUnits(server);
-            } catch (error) {
-                this.logger.warn(`Failed to load units from additional server ${server}: ${this.describeServerError(error)}`);
-                continue;
+    /** Final no-build switch invoked in the same turn as Core/Data commits. */
+    public commitPendingActivation(revision: number): UnitsCatalogSnapshot | undefined {
+        const pending = this.pendingActivation();
+        if (!pending || pending.revision !== revision) return undefined;
+        if (!pending.customOnly && !this.core.commitPendingActivation(pending.core.revision)) return undefined;
+        this.activeCore = pending.core;
+        this.snapshotValue.set(pending.snapshot);
+        this.custom.commitSummaries(pending.core.dependencies, pending.snapshot.customSummaries);
+        this.pendingActivationValue.set(undefined);
+        if (!this.liveCoreUpdatesEnabled()) {
+            if (this.initialCustomRebuildPending) this.lastPreparedKey = '';
+            this.liveCoreUpdatesEnabled.set(true);
+        }
+        return pending.snapshot;
+    }
+
+    public async finalizePendingActivation(revision: number): Promise<boolean> {
+        const pending = this.pendingActivation();
+        if (!pending || pending.revision !== revision) return false;
+        return pending.customOnly || this.core.finalizePendingActivation(pending.core.revision);
+    }
+
+    public rejectPendingActivation(revision: number, error: unknown): void {
+        const pending = this.pendingActivation();
+        if (!pending || pending.revision !== revision) return;
+        this.pendingActivationValue.set(undefined);
+        // A caller may retry publishing already-saved custom bytes after an
+        // index build fails; the next attempt needs a fresh catalog revision.
+        this.lastPreparedKey = '';
+        if (!pending.customOnly) this.core.rejectPendingActivation(pending.core.revision, error);
+        else this.logger.error(`Custom unit search publication failed: ${String(error)}`);
+    }
+
+    private async performInitialize(): Promise<void> {
+        await Promise.all([this.core.initialize(), this.custom.initialize()]);
+        const pending = this.core.pendingActivation();
+        if (!pending) {
+            throw new Error('The core unit catalog prepared no complete activation');
+        }
+        // Publish core and compatible cached custom summaries before a cold custom rebuild.
+        // The first commit enables the normal background preparation observer.
+        await this.prepareLatestActivation(true);
+    }
+
+    /** Explicit refreshes and the reactive observer join the same current job. */
+    private async prepareLatestActivation(cachedOnly = false): Promise<PreparedUnitsCatalogActivation | undefined> {
+        while (!this.destroyed) {
+            const pending = this.core.pendingActivation();
+            const core = pending ?? this.activeCore;
+            if (!core) return undefined;
+            const customRevision = this.custom.revision();
+            const prepared = await this.prepareCoreActivation(core, customRevision, !pending, cachedOnly);
+            const current = this.core.pendingActivation() ?? this.activeCore;
+            if (current?.revision === core.revision && this.custom.revision() === customRevision) return prepared;
+        }
+        return undefined;
+    }
+
+    private prepareCoreActivation(
+        core: PreparedCoreCatalogActivation,
+        customRevision: number,
+        customOnly = false,
+        cachedOnly = false,
+    ): Promise<PreparedUnitsCatalogActivation | undefined> {
+        const key = `${core.revision}:${customRevision}`;
+        if (this.preparation?.key === key) return this.preparation.promise;
+        if (key === this.lastPreparedKey) return Promise.resolve(this.pendingActivation());
+        this.preparation?.controller.abort();
+        this.pendingActivationValue.set(undefined);
+        this.summaryPreparationState.set(undefined);
+        const controller = new AbortController();
+        let showProgress = !customOnly;
+        const promise = this.custom.prepareSummaries(core.dependencies, {
+            signal: controller.signal,
+            cachedOnly,
+            onProgress: progress => {
+                if (controller.signal.aborted) return;
+                showProgress ||= progress.total >= 10;
+                if (!showProgress) return;
+                this.summaryPreparationState.set({
+                    status: 'loading', availableUnits: this.snapshotValue().summaries.length,
+                    progress: { phase: 'projecting', ...progress },
+                });
+            },
+        }).then(customSummaries => {
+            if (controller.signal.aborted || this.custom.revision() !== customRevision
+                || (this.core.pendingActivation() ?? this.activeCore)?.revision !== core.revision) return undefined;
+            if (cachedOnly) this.initialCustomRebuildPending = customSummaries.length < this.custom.records().length;
+            const snapshot = this.buildSnapshot(core, customOnly, customSummaries);
+            this.lastPreparedKey = key;
+            const prepared = Object.freeze({
+                revision: snapshot.revision, coreRevision: core.revision, core, snapshot, showProgress,
+                ...(customOnly ? { customOnly: true } : {}),
+            });
+            this.pendingActivationValue.set(prepared);
+            this.summaryPreparationState.set(undefined);
+            return prepared;
+        }).catch(error => {
+            if (controller.signal.aborted) return undefined;
+            this.summaryPreparationState.set({ status: 'error', availableUnits: this.snapshotValue().summaries.length,
+                error: error instanceof Error ? error.message : String(error) });
+            if (!customOnly) this.core.rejectPendingActivation(core.revision, error);
+            this.logger.error(`Custom unit summary preparation failed: ${String(error)}`);
+            throw error;
+        }).finally(() => {
+            if (this.preparation?.controller === controller) this.preparation = undefined;
+        });
+        this.preparation = { key, controller, promise };
+        return promise;
+    }
+
+    private buildSnapshot(core: PreparedCoreCatalogActivation, customOnly: boolean,
+        preparedCustomSummaries: readonly UnitSummary[]): UnitsCatalogSnapshot {
+        const coreSummaries = core.snapshot.summaries;
+        const coreIds = new Set(coreSummaries.map(summary => summary.uuid));
+        // Core assets win UUID collisions; the custom store already selects owned
+        // designs over subscriptions before projecting summaries and sources.
+        const customSummaries = preparedCustomSummaries
+            .filter(summary => !coreIds.has(summary.uuid));
+        const customIds = new Set(customSummaries.map(summary => summary.uuid));
+        const customSources = new Map([...this.custom.captureSources()]
+            .filter(([uuid]) => customIds.has(uuid)));
+        // A custom edit reuses the active core generation. Detach only branches
+        // that search preparation mutates, keeping the currently visible rows
+        // intact until the complete replacement index commits.
+        const summaries = [
+            ...coreSummaries.map(summary => customOnly ? {
+                ...summary,
+                as: { ...summary.as, dmg: { ...summary.as.dmg }, MVm: { ...summary.as.MVm } },
+            } : summary),
+            ...customSummaries,
+        ];
+        for (const summary of summaries) {
+            if (Object.prototype.hasOwnProperty.call(summary, 'fluff')) {
+                throw new Error('Runtime catalog summary cannot contain native-source fluff');
             }
-
-            if (!data || !Array.isArray(data.units)) {
-                continue;
-            }
-
-            let added = 0;
-            for (const rawUnit of data.units) {
-                const nameKey = rawUnit.name?.toLowerCase();
-                if (!nameKey || usedNames.has(nameKey)) {
-                    continue; // Primary source (or an earlier server) already owns this name.
-                }
-                usedNames.add(nameKey);
-
-                let uuid = typeof rawUnit.uuid === 'string' ? rawUnit.uuid.trim() : '';
-                if (!uuid || usedUuids.has(uuid)) {
-                    uuid = createCustomUnitUuid(server, nameKey, usedUuids);
-                }
-                usedUuids.add(uuid);
-
-                customUnits.push({ ...rawUnit, uuid, serverHost: server });
-                added++;
-            }
-            this.logger.info(`Loaded ${added} additional unit(s) from ${server}.`);
         }
 
-        if (customUnits.length === 0) {
-            return;
+        const previousUnitsByUuid = new Map<UnitUuid, UnitSummary>();
+        const current = this.snapshotValue();
+        for (let index = 0; index < current.units.length; index += 1) {
+            const summary = current.summaries[index];
+            const unit = current.units[index];
+            if (summary && unit) previousUnitsByUuid.set(summary.uuid, unit);
         }
+        const units = summaries.map(summary => {
+            const unit = materializeUnitSummaryView(summary);
+            const previous = previousUnitsByUuid.get(summary.uuid);
+            if (previous) preserveTransientUnitOverlays(previous, unit);
+            return unit;
+        });
 
-        this.units = [...this.units, ...customUnits];
-        this.unitRuntimeService.preprocessUnits(this.units);
+        return Object.freeze({
+            revision: this.nextPreparedRevision++,
+            coreRevision: core.revision,
+            ...(core.snapshot.generation
+                ? { coreActivationId: core.snapshot.generation.activationId }
+                : {}),
+            summaries,
+            coreSummaries,
+            customSummaries,
+            customSources,
+            units,
+        });
     }
 
-    private async loadServerUnits(server: string): Promise<Units | null> {
-        const url = `${server}/units.json`;
-        const cached = await this.dbService.getCustomServerUnits(server);
-
-        if (!navigator.onLine) {
-            return cached ?? null;
+    private async loadNativeUnitSource(
+        uuid: UnitUuid,
+        coreRevision: number,
+        activationId: CatalogActivationId | undefined,
+    ): Promise<StoredCoreContent | undefined> {
+        const loaded = await this.core.readUnitSource(uuid);
+        if (!loaded) return undefined;
+        const current = this.core.catalogSnapshot();
+        if (current.revision !== coreRevision
+            || current.generation?.activationId !== activationId) {
+            throw new Error('Core catalog generation changed while opening the native unit source');
         }
-
-        const remoteEtag = await this.getRemoteEtagFor(url);
-        if (cached && remoteEtag && cached.etag === remoteEtag) {
-            return cached;
-        }
-
-        try {
-            const response = await firstValueFrom(this.http.get<Units>(withServiceWorkerBypass(url), {
-                observe: 'response',
-                reportProgress: false,
-            }));
-
-            const body = response.body;
-            if (!body || !Array.isArray(body.units) || body.units.length === 0) {
-                this.logger.warn(`Additional server ${server} returned no usable units.`);
-                return cached ?? null;
-            }
-
-            const etag = response.headers.get('ETag') || remoteEtag || uuidv7();
-            const data: Units = { ...body, etag };
-            await this.dbService.saveCustomServerUnits(server, data);
-            return data;
-        } catch (error) {
-            this.logger.warn(`Failed to download units from ${server}: ${this.describeServerError(error)}`);
-            return cached ?? null;
-        }
+        const summary = this.snapshotValue().summaries.find(unit => unit.uuid === uuid);
+        const unitLabel = summary ? ` for unit "${formatUnitName(summary)}"` : '';
+        this.logger.info(
+            `Opening native ${loaded.format.toUpperCase()} unit file "${loaded.file}"${unitLabel} (${uuid}).`,
+        );
+        return cloneStoredCoreContent(loaded);
     }
+}
 
-    private async getRemoteEtagFor(url: string): Promise<string> {
-        try {
-            const response = await firstValueFrom(this.http.head(withServiceWorkerBypass(url), {
-                observe: 'response',
-                responseType: 'text',
-            }));
-            return response.headers.get('ETag') || '';
-        } catch {
-            return '';
-        }
-    }
+function cloneStoredCoreContent(source: StoredCoreContent): StoredCoreContent {
+    return Object.freeze({
+        file: source.file,
+        hash: source.hash,
+        format: source.format,
+        bytes: source.bytes.slice(0),
+    });
+}
 
-    private describeServerError(error: unknown): string {
-        if (error instanceof HttpErrorResponse) {
-            if (error.status === 0) {
-                return `network/CORS error (status 0). Ensure the server is reachable and sends an 'Access-Control-Allow-Origin' header for units.json.`;
-            }
-            return `HTTP ${error.status} ${error.statusText}`.trim();
-        }
-        if (error instanceof Error) {
-            return `${error.name}: ${error.message}`;
-        }
-        return String(error);
-    }
+function preserveTransientUnitOverlays(source: UnitSummary, target: UnitSummary): void {
+    target._nameTags = (source._nameTags ?? []).map(entry => ({ ...entry }));
+    target._chassisTags = (source._chassisTags ?? []).map(entry => ({ ...entry }));
+    target._publicTags = source._publicTags?.map(entry => ({ ...entry }));
 }

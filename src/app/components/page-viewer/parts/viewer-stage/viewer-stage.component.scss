@@ -12,6 +12,16 @@
     touch-action: none;
 }
 
+@media screen {
+    .page-viewer-container.multiple-visible {
+        // Both projected Angular pages and imperative swipe wrappers live here.
+        ::ng-deep .page-wrapper.selected > svg.mekbay-sheet {
+            outline: 4px solid var(--bt-yellow);
+            outline-offset: -4px;
+        }
+    }
+}
+
 @media print {
     .page-viewer-container {
         width: 100% !important;

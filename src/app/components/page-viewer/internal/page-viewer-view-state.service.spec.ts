@@ -4,11 +4,17 @@
 
 import { TestBed } from '@angular/core/testing';
 
-import type { CBTForceUnit } from '../../../models/cbt-force-unit.model';
+import { CBTForceMember, type CBTMekForceMember } from '../../../models/force-member.model';
+import type { CBTForce } from '../../../models/cbt-force.model';
+import { TestBipedMekEntity } from '../../../models/entity/testing/test-entities';
 import { PageViewerViewStateService } from './page-viewer-view-state.service';
 
-function createUnit(id: string): CBTForceUnit {
-    return { id, viewState: null } as unknown as CBTForceUnit;
+function createUnit(id: string): CBTMekForceMember {
+    return new CBTForceMember(
+        id,
+        {} as CBTForce,
+        new TestBipedMekEntity(),
+    ) as CBTMekForceMember;
 }
 
 describe('PageViewerViewStateService', () => {

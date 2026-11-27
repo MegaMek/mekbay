@@ -2,9 +2,15 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 // Author: Drake
 
-import { TestInfantryEntity, TestTankEntity } from '../../testing/test-entities';
+import { TestBipedMekEntity, TestInfantryEntity, TestTankEntity } from '../../testing/test-entities';
 
 describe('entity effective tonnage', () => {
+  it('calculates Mek construction mass through the entity authority', () => {
+    const loadoutTonnage = new TestBipedMekEntity().loadoutTonnage();
+    expect(Number.isFinite(loadoutTonnage)).toBeTrue();
+    expect(loadoutTonnage).toBeGreaterThanOrEqual(0);
+  });
+
   it('calculates infantry construction mass independently through loadoutTonnage', () => {
     const entity = new TestInfantryEntity();
     entity.squadSize.set(10);

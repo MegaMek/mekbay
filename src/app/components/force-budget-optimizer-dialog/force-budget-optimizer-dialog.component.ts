@@ -2,17 +2,25 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 // Author: Drake
 
-import { CommonModule } from '@angular/common';
+import { crewSkillsForUnit, unitCrewSkillSet } from '../../models/unit-crew-policy';
+import { UnitNameService } from '../../services/unit-name.service';
 import { ChangeDetectionStrategy, Component, computed, inject, signal } from '@angular/core';
 import { DIALOG_DATA, DialogRef } from '@angular/cdk/dialog';
 import { ASForceUnit } from '../../models/as-force-unit.model';
-import { CBTForceUnit } from '../../models/cbt-force-unit.model';
 import { GameSystem } from '../../models/common.model';
 import type { Force } from '../../models/force.model';
-import type { ForceUnit } from '../../models/force-unit.model';
+import {
+    isCBTForceMember,
+    type CBTForceMember,
+    type ForceMember,
+} from '../../models/force-member.model';
 import type { UnitSummary } from '../../models/unit-summary.model';
-import { BVCalculatorUtil } from '../../utils/bv-calculator.util';
-import { getEffectivePilotingSkill, getFixedPilotingSkill } from '../../utils/cbt-common.util';
+import type { BaseEntity } from '../../models/entity/base-entity';
+import {
+    adjustEntityBattleValueForSkills,
+    effectiveEntityPilotingSkill,
+    fixedEntityPilotingSkill,
+} from '../../models/entity/utils/battle-value/skill-facts';
 import { adjustPointValueForSkill } from '../../utils/pv-skill-adjustment.util';
 import { OptionsService } from '../../services/options.service';
 import { UnitSearchFiltersService } from '../../services/unit-search-filters.service';
@@ -25,7 +33,7 @@ interface ForceBudgetOptimizerDialogData {
 }
 
 interface OptimizationChoice {
-    forceUnit: ForceUnit;
+    member: ForceMember;
     cost: number;
     smartScore: number;
     gunnery?: number;
@@ -70,16 +78,16 @@ const BALANCED_DAMAGE_RATIO = 0.5;
 
 @Component({
     selector: 'force-budget-optimizer-dialog',
-    standalone: true,
     changeDetection: ChangeDetectionStrategy.OnPush,
-    imports: [CommonModule, RangeSliderComponent, ThousandsIntegerInputComponent],
+    imports: [RangeSliderComponent, ThousandsIntegerInputComponent],
     host: {
         class: 'fullscreen-dialog-host glass'
     },
     templateUrl: './force-budget-optimizer-dialog.component.html',
-    styleUrls: ['./force-budget-optimizer-dialog.component.scss'],
+    styleUrl: './force-budget-optimizer-dialog.component.scss',
 })
 export class ForceBudgetOptimizerDialogComponent {
+    readonly unitNames = inject(UnitNameService);
     private readonly dialogRef = inject(DialogRef<null, ForceBudgetOptimizerDialogComponent>);
     private readonly data: ForceBudgetOptimizerDialogData = inject(DIALOG_DATA) as ForceBudgetOptimizerDialogData;
     private readonly optionsService = inject(OptionsService);
@@ -99,12 +107,15 @@ export class ForceBudgetOptimizerDialogComponent {
     readonly maxPilotSkillDelta = signal(this.normalizeSkillValue(this.initialSkillSettings.maxDelta));
     readonly resultMessage = signal<string | null>(null);
 
-    readonly isAlphaStrike = computed(() => this.force.gameSystem === GameSystem.ALPHA_STRIKE);
+    readonly isAlphaStrike = computed(() => this.force.gameSystem === GameSystem.AS);
     readonly budgetLabel = computed(() => this.isAlphaStrike() ? 'PV' : 'BV');
-    readonly currentTotal = computed(() => this.force.totalBv());
+    readonly members = computed(() => this.force.members());
+    readonly currentTotal = computed(() => {
+        return this.members().reduce((total, member) => total + this.memberCost(member), 0);
+    });
     readonly targetDifference = computed(() => this.targetBudget() - this.currentTotal());
     readonly optimizing = signal(false);
-    readonly canOptimize = computed(() => !this.optimizing() && !this.force.readOnly() && this.force.units().length > 0);
+    readonly canOptimize = computed(() => !this.optimizing() && !this.force.readOnly() && this.members().length > 0);
     readonly maxPilotSkillDeltaActive = computed(() => this.maxPilotSkillDelta() !== DEFAULT_MAX_SKILL_DELTA);
 
     onTargetBudgetChange(value: number): void {
@@ -168,7 +179,7 @@ export class ForceBudgetOptimizerDialogComponent {
 
             const changedUnits: OptimizationChangeSummary[] = [];
             for (const choice of result.choices) {
-                const change = this.applyChoice(choice);
+                const change = await this.applyChoice(choice);
                 if (change) {
                     changedUnits.push(change);
                 }
@@ -192,7 +203,7 @@ export class ForceBudgetOptimizerDialogComponent {
     }
 
     private async findBestOptimization(targetBudget: number): Promise<OptimizationResult | null> {
-        const optionsByUnit = this.force.units().map((forceUnit) => this.createOptions(forceUnit));
+        const optionsByUnit = this.members().map((member) => this.createOptions(member));
         if (optionsByUnit.length === 0 || optionsByUnit.some(options => options.length === 0)) {
             return null;
         }
@@ -238,18 +249,22 @@ export class ForceBudgetOptimizerDialogComponent {
         };
     }
 
-    private createOptions(forceUnit: ForceUnit): OptimizationChoice[] {
-        if (this.isAlphaStrike() && forceUnit instanceof ASForceUnit) {
-            return this.createAlphaStrikeOptions(forceUnit);
+    private createOptions(member: ForceMember): OptimizationChoice[] {
+        const stations = member.force.getUnitCrewPolicy(member.id).positions;
+        if (!stations.some(position => member.force.getAssignedPerson(member.id, position.positionId))) {
+            return [this.createCurrentChoice(member)];
         }
-        if (!this.isAlphaStrike() && forceUnit instanceof CBTForceUnit) {
-            return this.createCBTOptions(forceUnit);
+        if (this.isAlphaStrike() && member instanceof ASForceUnit) {
+            return this.createAlphaStrikeOptions(member);
         }
-        return [this.createCurrentChoice(forceUnit)];
+        if (!this.isAlphaStrike() && isCBTForceMember(member)) {
+            return this.createCBTOptions(member);
+        }
+        return [this.createCurrentChoice(member)];
     }
 
     private createAlphaStrikeOptions(forceUnit: ASForceUnit): OptimizationChoice[] {
-        const unit = forceUnit.getUnit();
+        const unit = forceUnit.getSummary();
         const priority = this.getAlphaStrikeSkillPriority(unit);
         const optionsByCost = new Map<number, OptimizationChoice>();
         const [minSkill, maxSkill] = this.gunnerySkillRange();
@@ -257,7 +272,7 @@ export class ForceBudgetOptimizerDialogComponent {
         for (let skill = minSkill; skill <= maxSkill; skill += 1) {
             const cost = Math.max(0, adjustPointValueForSkill(unit.as.PV, skill));
             const option: OptimizationChoice = {
-                forceUnit,
+                member: forceUnit,
                 cost,
                 skill,
                 smartScore: priority * (MAX_PILOT_SKILL - skill),
@@ -268,25 +283,30 @@ export class ForceBudgetOptimizerDialogComponent {
         return [...optionsByCost.values()];
     }
 
-    private createCBTOptions(forceUnit: CBTForceUnit): OptimizationChoice[] {
-        const unit = forceUnit.getUnit();
-        const preSkillBv = forceUnit.getBaseBv() + forceUnit.tagBV() + forceUnit.c3Tax() + forceUnit.externalStoresBv();
-        const priorities = this.getCBTSkillPriorities(unit);
+    private createCBTOptions(member: CBTForceMember): OptimizationChoice[] {
+        const entity = member.entity;
+        const preSkillBv = member.currentBaseBattleValue() ?? member.pristineBattleValue();
+        const priorities = this.getCBTSkillPriorities(entity);
         const optionsByCost = new Map<number, OptimizationChoice>();
         const [minGunnery, maxGunnery] = this.gunnerySkillRange();
         const [minPiloting, maxPiloting] = this.pilotingSkillRange();
         const maxDelta = this.maxPilotSkillDelta();
-        const fixedPiloting = getFixedPilotingSkill(unit);
+        const hasFixedPiloting = fixedEntityPilotingSkill(entity) !== null;
 
         for (let gunnery = minGunnery; gunnery <= maxGunnery; gunnery += 1) {
             for (let requestedPiloting = minPiloting; requestedPiloting <= maxPiloting; requestedPiloting += 1) {
-                const piloting = getEffectivePilotingSkill(unit, requestedPiloting);
-                if (fixedPiloting === null && Math.abs(gunnery - piloting) > maxDelta) {
+                const piloting = effectiveEntityPilotingSkill(entity, requestedPiloting);
+                if (!hasFixedPiloting && Math.abs(gunnery - piloting) > maxDelta) {
                     continue;
                 }
-                const cost = Math.max(0, BVCalculatorUtil.calculateAdjustedBV(unit, preSkillBv, gunnery, piloting));
+                const cost = Math.max(0, adjustEntityBattleValueForSkills(
+                    entity,
+                    preSkillBv,
+                    gunnery,
+                    piloting,
+                ));
                 const option: OptimizationChoice = {
-                    forceUnit,
+                    member,
                     cost,
                     gunnery,
                     piloting,
@@ -306,78 +326,94 @@ export class ForceBudgetOptimizerDialogComponent {
         }
     }
 
-    private createCurrentChoice(forceUnit: ForceUnit): OptimizationChoice {
-        if (forceUnit instanceof ASForceUnit) {
-            const skill = forceUnit.pilotSkill();
+    private createCurrentChoice(member: ForceMember): OptimizationChoice {
+        if (member instanceof ASForceUnit) {
+            const skill = member.pilotSkill();
             return {
-                forceUnit,
-                cost: forceUnit.getBv(),
+                member,
+                cost: member.getBv(),
                 skill,
-                smartScore: this.getAlphaStrikeSkillPriority(forceUnit.getUnit()) * (MAX_PILOT_SKILL - skill),
+                smartScore: this.getAlphaStrikeSkillPriority(member.getSummary()) * (MAX_PILOT_SKILL - skill),
             };
         }
 
-        if (forceUnit instanceof CBTForceUnit) {
-            const gunnery = forceUnit.gunnerySkill();
-            const piloting = forceUnit.pilotingSkill();
-            const priorities = this.getCBTSkillPriorities(forceUnit.getUnit());
+        if (isCBTForceMember(member)) {
+            const position = member.force.getUnitCrewProfile(member.id)?.positions[0];
+            const { gunnery, piloting } = crewSkillsForUnit(position, member.entity.unitType(), member.entity.unitSubtype());
+            const priorities = this.getCBTSkillPriorities(member.entity);
             return {
-                forceUnit,
-                cost: forceUnit.getBv(),
+                member,
+                cost: this.memberCost(member),
                 gunnery,
                 piloting,
                 smartScore: this.getCBTSmartScore(priorities, gunnery, piloting),
             };
         }
 
-        return { forceUnit, cost: forceUnit.getBv(), smartScore: 0 };
+        return { member, cost: this.memberCost(member), smartScore: 0 };
     }
 
-    private applyChoice(choice: OptimizationChoice): OptimizationChangeSummary | null {
-        if (choice.forceUnit instanceof ASForceUnit && choice.skill !== undefined) {
-            const currentSkill = choice.forceUnit.pilotSkill();
+    private async applyChoice(choice: OptimizationChoice): Promise<OptimizationChangeSummary | null> {
+        if (choice.member instanceof ASForceUnit && choice.skill !== undefined) {
+            const currentSkill = choice.member.pilotSkill();
             if (currentSkill === choice.skill) {
                 return null;
             }
-            choice.forceUnit.setPilotSkill(choice.skill);
+            choice.member.setPilotSkill(choice.skill);
             return {
-                detail: `${choice.forceUnit.getDisplayName()} (${currentSkill}→${choice.skill})`,
+                detail: `${this.unitNames.name(choice.member.getSummary())} (${currentSkill}→${choice.skill})`,
             };
         }
 
-        if (choice.forceUnit instanceof CBTForceUnit && choice.gunnery !== undefined && choice.piloting !== undefined) {
-            const crew = choice.forceUnit.getCrewMembers();
-            const pilot = crew[0];
-            const gunner = crew.length > 1 ? crew[1] : pilot;
-            if (!pilot || !gunner) {
+        if (isCBTForceMember(choice.member) && choice.gunnery !== undefined && choice.piloting !== undefined) {
+            const before = choice.member.force.getUnitCrewProfile(choice.member.id);
+            const primary = before?.positions[0];
+            if (!before || !primary) return null;
+            const { gunnery: currentGunnery, piloting: currentPiloting } = crewSkillsForUnit(primary,
+                choice.member.entity.unitType(), choice.member.entity.unitSubtype());
+            const skillSet = unitCrewSkillSet(choice.member.entity.unitType(), choice.member.entity.unitSubtype());
+            const personalPiloting = fixedEntityPilotingSkill(choice.member.entity) === null
+                ? choice.piloting : currentPiloting;
+            if (currentGunnery === choice.gunnery && currentPiloting === personalPiloting) {
                 return null;
             }
-
-            const currentGunnery = gunner.getSkill('gunnery');
-            const currentPiloting = pilot.getSkill('piloting');
-            let changed = false;
-            if (currentGunnery !== choice.gunnery) {
-                gunner.setSkill('gunnery', choice.gunnery);
-                changed = true;
-            }
-            if (currentPiloting !== choice.piloting) {
-                pilot.setSkill('piloting', choice.piloting);
-                changed = true;
-            }
-            if (!changed) {
-                return null;
-            }
+            const positions = before.positions.map((position, index) => index === 0 ? {
+                ...position,
+                ...(skillSet !== 'aerospace' ? { gunnery: choice.gunnery!, piloting: personalPiloting } : {}),
+                ...(skillSet !== 'ground' ? { aeroGunnery: choice.gunnery!, aeroPiloting: personalPiloting } : {}),
+            } : position);
+            const applied = await choice.member.force.replaceUnitCrewProfile(choice.member.id, positions);
+            if (!applied) return null;
             return {
-                detail: `${choice.forceUnit.getDisplayName()} (${currentGunnery}/${currentPiloting}→${choice.gunnery}/${choice.piloting})`,
+                detail: `${this.unitNames.name(choice.member.entity)} (${currentGunnery}/${currentPiloting}→${choice.gunnery}/${choice.piloting})`,
             };
         }
 
         return null;
     }
 
-    private getCBTSkillPriorities(unit: UnitSummary): CBTSkillPriorities {
-        const rangedDamage = Math.max(0, unit.dpt || 0);
-        const physicalDamage = this.getPhysicalDamagePerTurn(unit);
+    private memberCost(member: ForceMember): number {
+        if (member instanceof ASForceUnit) return member.getBv();
+        return member.adjustedBattleValue() ?? member.pristineBattleValue();
+    }
+
+    private getCBTSkillPriorities(entity: BaseEntity): CBTSkillPriorities {
+        const rangedDamage = entity.rangedWeapons().reduce((total, mount) =>
+            total + entity.resolveMountedWeaponDamage(mount).maximum, 0);
+        const physicalDamage = entity.equipment().reduce((total, mount) =>
+            total + (mount.getPhysicalWeaponDamage()?.value ?? 0), 0)
+            + (entity.unitType() === 'Mek' ? entity.tonnage() / 5 : 0);
+        return this.skillPriorities(rangedDamage, physicalDamage);
+    }
+
+    private getSummarySkillPriorities(unit: UnitSummary): CBTSkillPriorities {
+        return this.skillPriorities(
+            Math.max(0, unit.dpt || 0),
+            this.getPhysicalDamagePerTurn(unit),
+        );
+    }
+
+    private skillPriorities(rangedDamage: number, physicalDamage: number): CBTSkillPriorities {
         const strongerDamage = Math.max(rangedDamage, physicalDamage);
         const weakerDamage = Math.min(rangedDamage, physicalDamage);
         const balance = strongerDamage > 0 && weakerDamage / strongerDamage >= BALANCED_DAMAGE_RATIO
@@ -392,7 +428,7 @@ export class ForceBudgetOptimizerDialogComponent {
     }
 
     private getAlphaStrikeSkillPriority(unit: UnitSummary): number {
-        const priorities = this.getCBTSkillPriorities(unit);
+        const priorities = this.getSummarySkillPriorities(unit);
         return priorities.gunnery + priorities.piloting;
     }
 
@@ -531,7 +567,7 @@ export class ForceBudgetOptimizerDialogComponent {
     }
 
     private resolveInitialGunnerySkillRange(): [number, number] {
-        const range = this.force.gameSystem === GameSystem.ALPHA_STRIKE
+        const range = this.force.gameSystem === GameSystem.AS
             ? this.initialSkillSettings.skill
             : this.initialSkillSettings.gunnery;
         return this.normalizeRange([range.min, range.max]);
@@ -539,7 +575,9 @@ export class ForceBudgetOptimizerDialogComponent {
 
     private resolveInitialTargetBudget(): number {
         const budgetLimit = this.unitSearchFiltersService.bvPvLimit();
-        return budgetLimit > 0 ? budgetLimit : Math.max(0, this.force.totalBv());
+        const currentTotal = this.force.members()
+            .reduce((total, member) => total + this.memberCost(member), 0);
+        return budgetLimit > 0 ? budgetLimit : Math.max(0, currentTotal);
     }
 
     private yieldToBrowser(): Promise<void> {

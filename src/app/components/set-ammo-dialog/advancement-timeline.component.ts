@@ -38,7 +38,6 @@ export interface EquipmentAdvancementTimeline {
 
 @Component({
     selector: 'advancement-timeline',
-    standalone: true,
     changeDetection: ChangeDetectionStrategy.OnPush,
     host: {
         '[class.compact]': `density() === 'compact'`,

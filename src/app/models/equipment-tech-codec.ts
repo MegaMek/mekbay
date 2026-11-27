@@ -9,6 +9,7 @@ import {
     type TechAdvancementDates,
     type TechAvailability,
     type TechData,
+    type TechFactions,
     type TechRating,
 } from './entity/types/tech';
 
@@ -34,6 +35,26 @@ export interface WireEquipmentTechData {
     readonly level: ComponentTechLevel;
     readonly availability: TechAvailability;
     readonly advancement: WireSplitTechDates;
+    readonly factions?: TechFactions;
+}
+
+function decodeTechFactions(wire: TechFactions | undefined): TechFactions | undefined {
+    if (!wire) return undefined;
+    const copy = (values: readonly string[] | undefined, path: string): readonly string[] | undefined => {
+        if (values === undefined) return undefined;
+        if (!Array.isArray(values) || values.some(value => typeof value !== 'string' || !value.trim() || value.includes('\0'))) {
+            throw new Error(`Invalid equipment tech factions: ${path}`);
+        }
+        return Object.freeze([...values]);
+    };
+    return Object.freeze({
+        ...(wire.prototype === undefined ? {} : { prototype: copy(wire.prototype, 'prototype')! }),
+        ...(wire.production === undefined ? {} : { production: copy(wire.production, 'production')! }),
+        ...(wire.extinction === undefined ? {} : { extinction: copy(wire.extinction, 'extinction')! }),
+        ...(wire.reintroduction === undefined ? {} : {
+            reintroduction: copy(wire.reintroduction, 'reintroduction')!,
+        }),
+    });
 }
 
 function decodeTechDates(wire: WireTechDates | undefined): TechAdvancementDates | undefined {
@@ -58,5 +79,6 @@ export function decodeEquipmentTechData(wire: WireEquipmentTechData): TechData {
             is: decodeTechDates(wire.advancement.is),
             clan: decodeTechDates(wire.advancement.clan),
         },
+        ...(wire.factions === undefined ? {} : { factions: decodeTechFactions(wire.factions)! }),
     };
 }

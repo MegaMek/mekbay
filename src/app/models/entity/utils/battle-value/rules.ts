@@ -3,6 +3,7 @@
 // Author: Drake
 
 import type { ArmorEquipment } from '../../../equipment.model';
+import type { UnitSubtype, UnitType } from '../../types';
 
 /** Default Total Warfare target movement modifier (advanced movement option off). */
 export function targetMovementModifier(mp: number, jumped = false, airborne = false): number {
@@ -18,8 +19,9 @@ export function offensiveSpeedFactor(mp: number): number {
   return Math.round(Math.pow(1 + (mp - 5) / 10, 1.2) * 100) / 100;
 }
 
-export function armorBVMultiplier(armor: ArmorEquipment | undefined): number {
-  switch (armor?.armorType) {
+/** Pure armor-type kernel shared by mutable and immutable calculator adapters. */
+export function armorBVMultiplierForType(armorType: string | undefined): number {
+  switch (armorType) {
     case 'HARDENED': return 2;
     case 'REACTIVE':
     case 'REFLECTIVE':
@@ -29,6 +31,14 @@ export function armorBVMultiplier(armor: ArmorEquipment | undefined): number {
     case 'HEAT_DISSIPATING': return 1.1;
     default: return 1;
   }
+}
+
+export function armorBVMultiplier(armor: ArmorEquipment | undefined): number {
+  return armorBVMultiplierForType(armor?.armorType);
+}
+
+export function mekArmorBarFactor(armorType: string | undefined): number {
+  return armorType === 'COMMERCIAL' ? 0.5 : 1;
 }
 
 export function vehicleTypeModifier(motive: string): number {
@@ -45,4 +55,79 @@ export function vehicleTypeModifier(motive: string): number {
 export function ammoKey(ammoType: string, rackSize: number, location?: string): string {
   const key = `${ammoType}:${rackSize}`;
   return location === undefined ? key : `${location}:${key}`;
+}
+
+const MEK_SKILL_MULTIPLIERS = Object.freeze([
+  Object.freeze([2.42, 2.31, 2.21, 2.10, 1.93, 1.75, 1.68, 1.59, 1.50]),
+  Object.freeze([2.21, 2.11, 2.02, 1.92, 1.76, 1.60, 1.54, 1.46, 1.38]),
+  Object.freeze([1.93, 1.85, 1.76, 1.68, 1.54, 1.40, 1.35, 1.28, 1.21]),
+  Object.freeze([1.66, 1.58, 1.51, 1.44, 1.32, 1.20, 1.16, 1.10, 1.04]),
+  Object.freeze([1.38, 1.32, 1.26, 1.20, 1.10, 1.00, 0.95, 0.90, 0.85]),
+  Object.freeze([1.31, 1.19, 1.13, 1.08, 0.99, 0.90, 0.86, 0.81, 0.77]),
+  Object.freeze([1.24, 1.12, 1.07, 1.02, 0.94, 0.85, 0.81, 0.77, 0.72]),
+  Object.freeze([1.17, 1.06, 1.01, 0.96, 0.88, 0.80, 0.76, 0.72, 0.68]),
+  Object.freeze([1.10, 0.99, 0.95, 0.90, 0.83, 0.75, 0.71, 0.68, 0.64]),
+] as const);
+
+/** Minimal canonical facts needed by the CBT crew-skill BV rule. */
+export interface CBTSkillUnitFacts {
+  readonly unitType: UnitType;
+  readonly unitSubtype: UnitSubtype;
+  readonly canMakeAntiMekAttacks: boolean;
+  readonly hasAntiMekGear: boolean;
+}
+
+const DEFAULT_PILOTING_SKILL = 5;
+const NO_ANTIMEK_SKILL = 8;
+
+/** Fixed piloting column for unit families that do not use the requested value. */
+export function fixedCBTPilotingSkill(facts: CBTSkillUnitFacts): number | null {
+  if (facts.unitType === 'ProtoMek') return DEFAULT_PILOTING_SKILL;
+  if (facts.unitType !== 'Infantry') return null;
+  if (!facts.canMakeAntiMekAttacks) return DEFAULT_PILOTING_SKILL;
+  if (facts.unitSubtype.endsWith('Conventional Infantry') && !facts.hasAntiMekGear) return NO_ANTIMEK_SKILL;
+  return null;
+}
+
+export function effectiveCBTPilotingSkill(
+  facts: CBTSkillUnitFacts,
+  requested: number,
+): number {
+  return fixedCBTPilotingSkill(facts) ?? requested;
+}
+
+/** Unrounded Total Warfare/Core crew-skill result over a current or pristine Mek BV. */
+export function unroundedMekBattleValueForSkills(base: number, gunnery: number, piloting: number): number {
+  const row = MEK_SKILL_MULTIPLIERS[Math.max(0, Math.min(8, Math.trunc(gunnery)))]!;
+  const multiplier = row[Math.max(0, Math.min(8, Math.trunc(piloting)))] ?? 1;
+  return base * multiplier;
+}
+
+/** Final Total Warfare/Core crew-skill adjustment, rounded only at the BV boundary. */
+export function adjustMekBattleValueForSkills(base: number, gunnery: number, piloting: number): number {
+  return Math.round(unroundedMekBattleValueForSkills(base, gunnery, piloting));
+}
+
+/** Entity/search adapter result before the final BV rounding boundary. */
+export function unroundedCBTBattleValueForSkills(
+  base: number,
+  gunnery: number,
+  piloting: number,
+  facts: CBTSkillUnitFacts,
+): number {
+  return unroundedMekBattleValueForSkills(
+    base,
+    gunnery,
+    effectiveCBTPilotingSkill(facts, piloting),
+  );
+}
+
+/** Entity/search adapters share this rule without making UnitSummary an authority. */
+export function adjustCBTBattleValueForSkills(
+  base: number,
+  gunnery: number,
+  piloting: number,
+  facts: CBTSkillUnitFacts,
+): number {
+  return Math.round(unroundedCBTBattleValueForSkills(base, gunnery, piloting, facts));
 }

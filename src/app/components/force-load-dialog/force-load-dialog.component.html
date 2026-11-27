@@ -1,5 +1,5 @@
 @let unitDisplayName = optionsService.options().unitDisplayName;
-<base-dialog modalClass="wide" [tabs]="tabs" [activeTab]="activeTab()" (activeTabChange)="activeTab.set($event)" >
+<base-dialog modalClass="wide" [tabs]="tabs" [activeTab]="activeTab()" (activeTabChange)="setActiveTab($event)" >
     <div dialog-header>
         <div class="title">Load</div>
     </div>
@@ -21,19 +21,19 @@
                     [class.active]="hangarTagFilter() === hangarAllFilter"
                     (click)="setHangarTagFilter(hangarAllFilter)">
                     <span class="filter-label">All</span>
-                    <span class="filter-count">{{ getHangarGameTypeCount('all') }}</span>
+                    <span class="filter-count">{{ hangarComplete() ? getHangarGameTypeCount('all') : '…' }}</span>
                 </button>
                 <button class="filter-btn"
-                    [class.active]="hangarTagFilter() === hangarClassicFilter"
-                    (click)="toggleHangarTagFilter(hangarClassicFilter)">
+                    [class.active]="hangarTagFilter() === hangarCBTFilter"
+                    (click)="toggleHangarTagFilter(hangarCBTFilter)">
                     <span class="filter-label">Battletech</span>
-                    <span class="filter-count">{{ getHangarGameTypeCount(GameSystem.CLASSIC) }}</span>
+                    <span class="filter-count">{{ hangarComplete() ? getHangarGameTypeCount(GameSystem.CBT) : '…' }}</span>
                 </button>
                 <button class="filter-btn"
                     [class.active]="hangarTagFilter() === hangarAlphaStrikeFilter"
                     (click)="toggleHangarTagFilter(hangarAlphaStrikeFilter)">
                     <span class="filter-label">Alpha Strike</span>
-                    <span class="filter-count">{{ getHangarGameTypeCount(GameSystem.ALPHA_STRIKE) }}</span>
+                    <span class="filter-count">{{ hangarComplete() ? getHangarGameTypeCount(GameSystem.AS) : '…' }}</span>
                 </button>
                 @if (getHangarTagCount(hangarUnfiledFilter) > 0) {
                     <button type="button"
@@ -41,7 +41,7 @@
                         [class.active]="hangarTagFilter() === hangarUnfiledFilter"
                         (click)="toggleHangarTagFilter(hangarUnfiledFilter)">
                         <span class="filter-label">Untagged</span>
-                        <span class="filter-count">{{ getHangarTagCount(hangarUnfiledFilter) }}</span>
+                        <span class="filter-count">{{ hangarComplete() ? getHangarTagCount(hangarUnfiledFilter) : '…' }}</span>
                     </button>
                 }
                 @for (tag of hangarTags(); track tag.id) {
@@ -51,14 +51,19 @@
                         [class.active]="hangarTagFilter() === tag.id"
                         (click)="toggleHangarTagFilter(tag.id)">
                         <span class="filter-label">{{ tag.label }}</span>
-                        <span class="filter-count">{{ tag.count }}</span>
+                        <span class="filter-count">{{ hangarComplete() ? tag.count : '…' }}</span>
                     </button>
                     }
                 }
+                @if (!hangarComplete()) {
+                    <button type="button" class="filter-btn" (click)="loadAllForces()" [disabled]="loading() || hangarLoadingAll()">All tags…</button>
+                }
             </div>
-            @if (loading()) {
-                <loading-spinner class="loading-spinner" message="Loading forces..." ariaLabel="Loading forces"></loading-spinner>
-            } @else if (filteredForces().length === 0) {
+            @if (loading() || hangarLoadingAll()) {
+                <loading-spinner class="loading-spinner" [message]="hangarLoadingAll() ? 'Loading all forces for account-wide results…' : 'Loading forces…'" ariaLabel="Loading forces"></loading-spinner>
+            } @else if (!hangarComplete() && hangarRequiresComplete()) {
+                <div class="empty-state">Load the remaining cloud summaries to search, filter, or sort the entire account.</div>
+            } @else if (filteredForces().length === 0 && hangarComplete()) {
                 <div class="empty-state">{{ getHangarEmptyStateMessage() }}</div>
             } @else {
                 <cdk-virtual-scroll-viewport
@@ -68,6 +73,8 @@
                     [style.--hangar-item-size.px]="hangarItemSize()"
                     [minBufferPx]="hangarMinBufferPx"
                     [maxBufferPx]="hangarMaxBufferPx"
+                    [forceListPaging]="activeTab() === 'Hangar' && !loading() && !hangarLoadingMore() && !hangarLoadingAll() && !hangarComplete() && !hangarLoadError() && !hangarRequiresComplete()"
+                    (forceListLoadMore)="loadMoreForces()"
                     tabindex="0">
                     <div class="virtual-hangar-item"
                         *cdkVirtualFor="let force of filteredForces(); let i = index; trackBy: trackForce"
@@ -123,9 +130,7 @@
                             <div class="force-note-shell">
                                 @if (noteIsExpandable) {
                                 <button class="force-note-toggle" type="button" [attr.aria-expanded]="isForceNoteExpanded(force)" (click)="toggleForceNote(force, $event)">
-                                    <svg class="chevron" width="12px" height="12px" fill="currentColor" viewBox="0 0 10 10" xmlns="http://www.w3.org/2000/svg" [class.collapsed]="!isForceNoteExpanded(force)">
-                                        <path d="M0 2l5 6 5-6z"/>
-                                    </svg>
+                                    <span class="chevron" [class.collapsed]="!isForceNoteExpanded(force)" aria-hidden="true"></span>
                                     <span
                                         class="force-note-summary"
                                         [class.clamped]="!isForceNoteExpanded(force)"
@@ -155,25 +160,18 @@
                                 </div>
                                 <div class="units">
                                     @for (unitEntry of group.units; let i = $index; track i) {
-                                    <div class="unit-square compact-mode" [class.destroyed]="unitEntry.destroyed" [class.missing]="!unitEntry.unit">
+                                    <div class="unit-square compact-mode" [class.destroyed]="unitEntry.destroyed" [class.missing]="!unitEntry.unit && !unitEntry.embeddedCustom">
                                         @if (unitEntry.commander) {
                                             <div class="group-commander-indicator" aria-hidden="true">
-                                                <svg class="group-commander-icon" width="42.08" height="51.88" viewBox="0 0 21.04 25.94" preserveAspectRatio="xMidYMid meet" xmlns="http://www.w3.org/2000/svg" focusable="false">
-                                                    <g transform="translate(-.02)">
-                                                        <g transform="matrix(.265 0 0 .265 -21.1 0)" fill="currentColor">
-                                                            <path d="m79.7 70 39.3-70 40 70.1h-27l-13-22.1-13 22.1z" />
-                                                            <path d="m81.4 97.9 11.3-21.6h52.3l12 21.6z" />
-                                                        </g>
-                                                    </g>
-                                                </svg>
+                                                <commander-icon />
                                             </div>
                                         }
-                                        <unit-icon [unit]="unitEntry.unit" [size]="32"></unit-icon>
-                                        @if (unitDisplayName === 'chassisModel' 
-                                            || unitDisplayName === 'both'
-                                            || !unitEntry.alias) {
-                                        <div class="unit-model">{{ unitEntry.unit?.model | cleanModelString }}</div>
-                                        <div class="unit-chassis">{{ unitEntry.unit?.chassis }}</div>
+                                        @let display = getUnitDisplay(unitEntry, unitDisplayName);
+                                        <unit-icon [unit]="unitEntry.unit" [iconPath]="display.iconPath" [size]="32"
+                                            [alt]="unitNames.name(display.name)"></unit-icon>
+                                        @if (display.showName) {
+                                        <div class="unit-model">{{ display.name?.model | cleanModelString }}</div>
+                                        <div class="unit-chassis">{{ unitNames.chassis(display.name) }}</div>
                                         }
                                         @if (unitDisplayName === 'alias' || unitDisplayName === 'both') {
                                         <div class="unit-alias" 
@@ -187,10 +185,26 @@
                                 </div>
                             </div>
                             }
+                            @if ((force.reserveCount ?? 0) > 0) {
+                                <force-reserves-preview [count]="force.reserveCount ?? 0"></force-reserves-preview>
+                            }
                         </div>
                     </div>
                     </div>
                 </cdk-virtual-scroll-viewport>
+            }
+            @if (!loading() && !hangarComplete()) {
+                <div class="hangar-page-status" role="status">
+                    @if (hangarLoadError()) {
+                        <span>Could not finish loading cloud forces. {{ forces().length }} loaded.</span>
+                    } @else {
+                        <span>{{ forces().length }} loaded · More cloud forces available</span>
+                    }
+                    <button type="button" class="bt-button" [disabled]="hangarLoadingMore() || hangarLoadingAll()"
+                        (click)="hangarRequiresComplete() ? loadAllForces() : loadMoreForces()">
+                        {{ hangarLoadingMore() || hangarLoadingAll() ? 'Loading…' : hangarLoadError() ? 'Retry' : 'Load more' }}
+                    </button>
+                </div>
             }
         }
         @if (activeTab() === 'Force Packs') {
@@ -223,7 +237,7 @@
                                     <div class="unit-square compact-mode" [class.missing]="!pu.unit">                                        
                                         <unit-icon [unit]="pu.unit" [size]="32"></unit-icon>
                                         <div class="unit-model">{{ pu.unit?.model || pu.model || '' }}</div>
-                                        <div class="unit-chassis">{{ pu.unit?.chassis || pu.chassis }}</div>
+                                        <div class="unit-chassis">{{ unitNames.chassis(pu.unit) || pu.chassis }}</div>
                                     </div>
                                     }
                                 </div>
@@ -243,11 +257,11 @@
                     [class.active]="gameTypeFilter() === 'all'" 
                     (click)="onGameTypeFilter('all')">All</button>
                 <button class="filter-btn" 
-                    [class.active]="gameTypeFilter() === GameSystem.CLASSIC" 
-                    (click)="onGameTypeFilter(GameSystem.CLASSIC)">Battletech</button>
+                    [class.active]="gameTypeFilter() === GameSystem.CBT" 
+                    (click)="onGameTypeFilter(GameSystem.CBT)">Battletech</button>
                 <button class="filter-btn" 
-                    [class.active]="gameTypeFilter() === GameSystem.ALPHA_STRIKE" 
-                    (click)="onGameTypeFilter(GameSystem.ALPHA_STRIKE)">Alpha Strike</button>
+                    [class.active]="gameTypeFilter() === GameSystem.AS" 
+                    (click)="onGameTypeFilter(GameSystem.AS)">Alpha Strike</button>
             </div>
             @if (operationsLoading()) {
                 <loading-spinner class="loading-spinner" message="Loading operations..." ariaLabel="Loading operations"></loading-spinner>
@@ -281,9 +295,7 @@
                             <div class="operation-note-shell">
                                 @if (noteIsExpandable) {
                                 <button class="operation-note-toggle" type="button" [attr.aria-expanded]="isOperationNoteExpanded(op)" (click)="toggleOperationNote(op, $event)">
-                                    <svg class="chevron" width="12px" height="12px" fill="currentColor" viewBox="0 0 10 10" xmlns="http://www.w3.org/2000/svg" [class.collapsed]="!isOperationNoteExpanded(op)">
-                                        <path d="M0 2l5 6 5-6z"/>
-                                    </svg>
+                                    <span class="chevron" [class.collapsed]="!isOperationNoteExpanded(op)" aria-hidden="true"></span>
                                     <span
                                         class="operation-note-summary"
                                         [class.clamped]="!isOperationNoteExpanded(op)"
@@ -358,6 +370,7 @@
                     allLabel="All factions"
                     ariaLabel="Filter by faction"
                     fallbackLabel="F"
+                    (opened)="loadAllForces()"
                     (selectedIdChange)="setHangarFactionFilter($event)">
                 </compact-filter-menu>
                 <compact-filter-menu
@@ -366,6 +379,7 @@
                     allLabel="All eras"
                     ariaLabel="Filter by era"
                     fallbackLabel="E"
+                    (opened)="loadAllForces()"
                     (selectedIdChange)="setHangarEraFilter($event)">
                 </compact-filter-menu>
             </div>
@@ -382,7 +396,7 @@
             </div>
             }
             <div class="sort-controls">
-                <select class="bt-input sort-select"
+                <select class="bt-select sort-select"
                     (change)="setSortOrder($any($event.target).value)">
                     @for (opt of activeSortOptions(); let i = $index; track i) {
                         <option [value]="opt.key" [selected]="opt.key === activeSort()">{{ opt.label }}</option>

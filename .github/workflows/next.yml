@@ -46,6 +46,9 @@ jobs:
           npm ci
           npm run build:next
 
+      - name: Verify script typechecks
+        run: npm run typecheck:scripts
+
       - name: Upload and activate release
         id: deploy
         env:
@@ -76,3 +79,7 @@ jobs:
           for asset in ngsw.json ngsw-worker.js; do
             curl --fail --silent --show-error --head --max-time 30 "$DEPLOY_URL/$asset" | grep -Ei '^cache-control:.*no-cache'
           done
+
+      - name: Verify deployed generated core assets
+        if: steps.deploy.outputs.deployed == 'true'
+        run: npm run validate:deployed-core-assets -- --base-url https://next.mekbay.com/

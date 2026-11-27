@@ -2,9 +2,11 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 // Author: Drake
 
-import { Component, ChangeDetectionStrategy, input, inject, computed, signal } from '@angular/core';
-import { CommonModule } from '@angular/common';
-import type { UnitSummary, UnitComponent } from '../../../models/unit-summary.model';
+import { UnitNameService } from '../../../services/unit-name.service';
+import { Component, ChangeDetectionStrategy, ElementRef, input, inject, computed, effect, resource, signal, viewChild } from '@angular/core';
+import { NgTemplateOutlet } from '@angular/common';
+import { hasAcceptedIssues, type UnitSummary } from '../../../models/unit-summary.model';
+import { buildUnitComponentMetadata, type UnitConditionComponent as UnitComponent } from '../../../utils/unit-component-metadata-builder';
 import { weaponTypes } from '../../../utils/equipment.util';
 import { DataService } from '../../../services/data.service';
 import { DialogsService } from '../../../services/dialogs.service';
@@ -15,8 +17,11 @@ import { FilterAmmoPipe } from '../../../pipes/filter-ammo.pipe';
 import { UnitComponentItemComponent } from '../../unit-component-item/unit-component-item.component';
 import { ModeSwitchComponent } from '../../mode-switch/mode-switch.component';
 import { TooltipDirective } from '../../../directives/tooltip.directive';
-import { BVCalculatorUtil } from '../../../utils/bv-calculator.util';
+import type { TooltipLine } from '../../tooltip/tooltip.component';
 import { getUnitSourceFilterValues } from '../../../utils/unit-search-shared.util';
+import { isJumpJetEquipment } from '../../../models/jump-equipment.model';
+import { isHeatSinkEquipment } from '../../../models/heat-equipment.model';
+import { caseRecordSheetLabel, isCaseEquipment } from '../../../models/case-equipment.model';
 import {
     SourcebookInfoDialogComponent,
     type SourcebookInfoDialogData,
@@ -32,11 +37,19 @@ import {
     type ComponentMatrixAreaView,
 } from './unit-details-component-matrix.util';
 import { naturalCompare } from '../../../utils/sort.util';
-import { EquipmentFlag } from '../../../models/equipment-flags.type';
-import { formatBvPv } from '../../../utils/force-viewer-bv-pv-display.util';
+import { isClubOrHandWeaponEquipment } from '../../../models/entity/utils/physical-weapon';
 import { BASE_RULES_REFS } from '../../../utils/rules-ref.util';
-import { adjustPointValueForSkill } from '../../../utils/pv-skill-adjustment.util';
-import { GameService } from '../../../services/game.service';
+import { collectUnitRulesRefComponents, unitRulesRefRequirers } from '../../../utils/unit-rules-ref-builder';
+import { NativeEntityService } from '../../../services/native-entity.service';
+import { isCBTForceMember, type ForceMember } from '../../../models/force-member.model';
+import { ForceUnitCrewComponent } from '../../force-crew/force-unit-crew.component';
+import { QuirkBadgeComponent } from '../../quirk-badge/quirk-badge.component';
+import { UnitTagsComponent, type TagClickEvent } from '../../unit-tags/unit-tags.component';
+import { SheetPanelComponent } from '../../sheet-panel/sheet-panel.component';
+import { CustomUnitUpdateComponent } from '../../custom-unit-update/custom-unit-update.component';
+import { TaggingService } from '../../../services/tagging.service';
+import { CustomUnitsService } from '../../../services/custom-units.service';
+import { PlayerNamesService } from '../../../services/player-names.service';
 
 type SourceListEntry = Sourcebook & { sourceAnnotations: string[] };
 type ComponentDetailsDisplayStyle = 'normal' | 'additional';
@@ -50,13 +63,11 @@ type ComponentLayoutState = {
     showAdditionalSummary: boolean;
 };
 
-const ADDITIONAL_COMPONENT_FLAGS: EquipmentFlag[] = ['F_HEAT_SINK', 'F_DOUBLE_HEAT_SINK', 'F_JUMP_JET'];
-const CASE_COMPONENT_FLAGS: EquipmentFlag[] = ['F_CASE', 'F_CASE_II'];
-const WEAPON_MODE_MISC_COMPONENT_FLAGS: EquipmentFlag[] = ['F_CLUB', 'F_HAND_WEAPON'];
 const RULES_REF_COLLAPSED_GROUP_LIMIT = 2;
 
 export interface RulesRefBadge {
-    label: string;
+    /** Interchangeable books: several only for merged base alternatives. */
+    books: string[];
     isBase: boolean;
 }
 
@@ -169,16 +180,13 @@ export function getRulesRefBadgeGroups(
             if (existingGroup) {
                 existingGroup.baseRefSets.push(baseRefs);
             } else {
-                groupedByNonBaseRefs.set(groupKey, {
-                    baseRefSets: [baseRefs],
-                    nonBaseRefs,
-                });
+                groupedByNonBaseRefs.set(groupKey, { baseRefSets: [baseRefs], nonBaseRefs });
             }
             continue;
         }
 
         displayGroups.push({
-            badges: nonBaseRefs.map(label => ({ label, isBase: false })),
+            badges: nonBaseRefs.map(book => ({ books: [book], isBase: false })),
             bookCount: nonBaseRefs.length,
             hasBaseRefs: false,
         });
@@ -188,8 +196,8 @@ export function getRulesRefBadgeGroups(
         for (const baseExpression of factorBaseRulesRefExpressions(group.baseRefSets)) {
             displayGroups.push({
                 badges: [
-                    ...baseExpression.map(choice => ({ label: choice.join('/'), isBase: true })),
-                    ...group.nonBaseRefs.map(label => ({ label, isBase: false })),
+                    ...baseExpression.map(books => ({ books, isBase: true })),
+                    ...group.nonBaseRefs.map(book => ({ books: [book], isBase: false })),
                 ],
                 bookCount: baseExpression.length + group.nonBaseRefs.length,
                 hasBaseRefs: true,
@@ -205,45 +213,107 @@ export function getRulesRefBadgeGroups(
             const typeOrder = Number(right.hasBaseRefs) - Number(left.hasBaseRefs);
             if (typeOrder !== 0) return typeOrder;
 
-            const leftKey = left.badges.map(badge => badge.label).join('\u0000');
-            const rightKey = right.badges.map(badge => badge.label).join('\u0000');
+            const leftKey = left.badges.map(badge => badge.books.join('/')).join('\u0000');
+            const rightKey = right.badges.map(badge => badge.books.join('/')).join('\u0000');
             return compareRulesRefNames(leftKey, rightKey);
         })
         .map(group => group.badges);
 }
 
-export function shouldShowAdjustedPilotSkills(
-    adjustedBv: number | null,
-    baseBv: number,
-    gunnery: number | undefined,
-    piloting: number | undefined,
-): boolean {
-    return adjustedBv !== null
-        && Number.isFinite(adjustedBv)
-        && adjustedBv !== baseBv
-        && Number.isFinite(gunnery)
-        && Number.isFinite(piloting);
+/** The nearest ancestor that scrolls: the dialog's swipe panel or the sidebar panel's body. */
+function scrollParent(element: HTMLElement): HTMLElement | null {
+    for (let parent = element.parentElement; parent; parent = parent.parentElement) {
+        if (/(auto|scroll)/.test(getComputedStyle(parent).overflowY)) return parent;
+    }
+    return null;
 }
 
 @Component({
     selector: 'unit-details-general-tab',
     changeDetection: ChangeDetectionStrategy.OnPush,
-    imports: [CommonModule, UnitComponentItemComponent, ModeSwitchComponent, StatBarSpecsPipe, FilterAmmoPipe, TooltipDirective],
+    imports: [NgTemplateOutlet, UnitComponentItemComponent, ModeSwitchComponent, StatBarSpecsPipe, FilterAmmoPipe, TooltipDirective, ForceUnitCrewComponent, QuirkBadgeComponent, UnitTagsComponent, SheetPanelComponent, CustomUnitUpdateComponent],
     templateUrl: './unit-details-general-tab.component.html',
-    styleUrls: ['./unit-details-general-tab.component.css']
+    styleUrl: './unit-details-general-tab.component.css'
 })
 export class UnitDetailsGeneralTabComponent {
+    readonly unitNames = inject(UnitNameService);
     private dataService = inject(DataService);
     private dialogsService = inject(DialogsService);
     private layoutService = inject(LayoutService);
     private optionsService = inject(OptionsService);
-    private gameService = inject(GameService);
+    private nativeEntities = inject(NativeEntityService);
+    private tagging = inject(TaggingService);
+    private customUnits = inject(CustomUnitsService);
+    readonly playerNames = inject(PlayerNamesService);
 
     // Inputs
     unit = input.required<UnitSummary>();
-    gunnerySkill = input<number | undefined>(undefined);
-    pilotingSkill = input<number | undefined>(undefined);
-    adjustedValueOverride = input<number | undefined>(undefined);
+    forceMember = input<ForceMember>();
+    private readonly railLayout = viewChild<ElementRef<HTMLElement>>('railLayout');
+    /**
+     * Side by side, the rail and the loadout share the panel's one scroll. Each column sticks at the offset where its end
+     * just fits the view: a column that fits stays put, a taller one scrolls until its end shows.
+     * Sticky offsets depend on each column's height, which CSS cannot read, so they are measured.
+     */
+    private readonly stickyColumns = effect(onCleanup => {
+        const layout = this.railLayout()?.nativeElement;
+        const tab = layout?.parentElement;
+        const scroller = layout && scrollParent(layout);
+        if (!layout || !tab || !scroller) return;
+        // The notices stick to the bottom of the view and cover what is under them.
+        const notices = tab.nextElementSibling as HTMLElement | null;
+        const columns = [...layout.children] as HTMLElement[];
+        const place = () => {
+            const style = getComputedStyle(tab);
+            const top = parseFloat(style.paddingTop);
+            const bottom = parseFloat(style.paddingBottom);
+            const view = scroller.clientHeight - (notices?.offsetHeight ?? 0);
+            layout.style.setProperty('--column-fill', `${view - top - bottom}px`);
+            for (const column of columns) {
+                column.style.setProperty('--sticky-top', `${Math.min(top, view - bottom - column.offsetHeight)}px`);
+            }
+        };
+        const observer = new ResizeObserver(place);
+        for (const element of [scroller, ...columns, ...(notices ? [notices] : [])]) observer.observe(element);
+        onCleanup(() => observer.disconnect());
+    });
+    /** Another player's custom design names its creator among the sources. */
+    readonly designer = computed(() => {
+        const unit = this.unit();
+        if (!unit.isCustom) return null;
+        const record = this.customUnits.records().find(candidate => candidate.uuid === unit.uuid);
+        return record?.owned === false ? record.ownerId ?? null : null;
+    });
+    /** A force unit built from a custom design can take that design's newer saved versions. */
+    readonly designUpdateMember = computed(() => {
+        const member = this.forceMember();
+        return this.unit().isCustom && isCBTForceMember(member) ? member : undefined;
+    });
+
+    private readonly runtimeSnapshot = computed(() => {
+        const member = this.forceMember();
+        if (!isCBTForceMember(member)) return null;
+        // Subscribe to this member's runtime, including pending damage and repairs.
+        if (member.entity.entityType === 'Mek') member.mekRecordSheetSnapshot();
+        else member.nonMekRecordSheetSnapshot();
+        return member.force.getUnitSnapshot(member.id);
+    });
+    isComponentDestroyed(component: UnitComponent): boolean {
+        return component.destroyed ?? false;
+    }
+
+    readonly conditionComponents = computed<UnitComponent[]>(() => {
+        const snapshot = this.runtimeSnapshot();
+        return snapshot ? buildUnitComponentMetadata(snapshot.entity, snapshot.query) : this.unit().comp;
+    });
+
+    private readonly collapsedLoadIssuesUnit = signal<UnitSummary | null>(null);
+    readonly loadIssuesOpen = computed(() => this.collapsedLoadIssuesUnit() !== this.unit());
+    readonly issuesAccepted = computed(() => hasAcceptedIssues(this.unit().quirks.map(name => this.getQuirk(name))));
+
+    toggleLoadIssues(): void {
+        this.collapsedLoadIssuesUnit.set(this.loadIssuesOpen() ? this.unit() : null);
+    }
 
     // Computed state - derived from unit
     groupedBays = computed(() => this.getGroupedBaysByLocation());
@@ -290,6 +360,39 @@ export class UnitDetailsGeneralTabComponent {
         this.expandedRulesRefUnit.set(this.unit());
     }
 
+    /** The summary keeps only book names; the equipment behind them comes from the native entity. */
+    private readonly rulesRefComponents = resource({
+        params: () => {
+            if (!this.rulesRefBadgeGroups().some(group => group.some(badge => !badge.isBase))) return undefined;
+            const member = this.forceMember();
+            const unit = this.unit();
+            if (isCBTForceMember(member)) return { uuid: unit.uuid, entity: member.entity };
+            return this.nativeEntities.canLoad(unit) ? { uuid: unit.uuid, entity: null } : undefined;
+        },
+        loader: async ({ params }) => collectUnitRulesRefComponents(
+            params.entity ?? (await this.nativeEntities.load(params.uuid)).entity),
+    });
+    /** Why each supplement is needed: the equipment its companion books leave uncovered. */
+    rulesRefBadgeTooltips = computed(() => {
+        const tooltips = new Map<RulesRefBadge, TooltipLine[]>();
+        if (!this.rulesRefComponents.hasValue()) return tooltips;
+        const components = this.rulesRefComponents.value();
+        for (const group of this.rulesRefBadgeGroups()) {
+            for (const badge of group) {
+                if (badge.isBase) continue;
+                const [book] = badge.books;
+                const companions = group.filter(other => other !== badge).map(other => other.books);
+                tooltips.set(badge, [
+                    { value: `${this.dataService.getSourcebookTitle(book)} is required by:`, isHeader: true },
+                    ...unitRulesRefRequirers(components, book, companions).map(({ name, unless }) => ({
+                        value: unless.length > 0 ? `${name} (unless ${unless.join('/')})` : name,
+                    })),
+                ]);
+            }
+        }
+        return tooltips;
+    });
+
     setComponentViewMode(showDetails: boolean): void {
         if (this.showFilteredComponents() === showDetails) return;
         void this.optionsService.setOption('showFilteredComponents', showDetails);
@@ -316,9 +419,7 @@ export class UnitDetailsGeneralTabComponent {
         if (!u?.comp) return result;
         for (const comp of u.comp) {
             if (!comp.eq || !comp.l) continue;
-            let label: string | undefined;
-            if (comp.eq.hasFlag('F_CASE_II')) label = '[CASE II]';
-            else if (comp.eq.hasFlag('F_CASE') || comp.eq.hasFlag('F_CASE_P')) label = '[CASE]';
+            const label = caseRecordSheetLabel(comp.eq) ?? undefined;
             if (label) result.set(normalizeComponentLocation(comp.l), label);
         }
         return result;
@@ -368,12 +469,14 @@ export class UnitDetailsGeneralTabComponent {
 
     typeSummary = computed(() => {
         const u = this.unit();
-        const EXCLUDE_FLAGS: EquipmentFlag[] = ['F_HEAT_SINK', 'F_DOUBLE_HEAT_SINK', 'F_CASE', 'F_CASE_II', 'F_JUMP_JET'];
         const counts: Record<string, number> = {};
         if (u?.comp) {
             for (const comp of u.comp) {
                 let code = comp.t;
-                if (code === 'C' && !comp.eq?.hasAnyFlag(EXCLUDE_FLAGS)) {
+                if (code === 'C'
+                    && !isHeatSinkEquipment(comp.eq)
+                    && !isCaseEquipment(comp.eq)
+                    && !isJumpJetEquipment(comp.eq)) {
                     code = 'O';
                 }
                 counts[code] = (counts[code] || 0) + (comp.q || 1);
@@ -382,54 +485,23 @@ export class UnitDetailsGeneralTabComponent {
         return weaponTypes.map(wt => ({ ...wt, count: counts[wt.code] ?? 0 }));
     });
 
-    adjustedValue = computed(() => {
-        const override = this.adjustedValueOverride();
-        if (override !== undefined) {
-            return override;
-        }
-        const gunnery = this.gunnerySkill();
-        const piloting = this.pilotingSkill();
+    /** Walk / run [run with MASC] / jump / UMU, as the record sheet lists it. */
+    movementText = computed(() => {
         const unit = this.unit();
-        if (gunnery === undefined || piloting === undefined) {
-            return null;
-        }
-        return this.gameService.isAlphaStrike()
-            ? adjustPointValueForSkill(unit.as.PV, gunnery)
-            : BVCalculatorUtil.calculateAdjustedBV(unit, unit.bv, gunnery, piloting);
+        return `${unit.walk} / ${unit.run}${unit.run2 != unit.run ? ` [${unit.run2}]` : ''}`
+            + `${unit.jump ? ` / ${unit.jump}` : ''}${unit.umu ? ` / ${unit.umu}` : ''}`;
     });
 
-    readonly valueLabel = computed(() => this.gameService.isAlphaStrike() ? 'PV' : 'BV');
-
-    displayedValue = computed(() => {
-        const unit = this.unit();
-        const baseValue = this.gameService.isAlphaStrike() ? unit.as.PV : unit.bv;
-        return formatBvPv(this.adjustedValue() ?? baseValue, baseValue, 'both');
-    });
-
-    showAdjustedPilotSkills = computed(() => {
-        return shouldShowAdjustedPilotSkills(
-            this.adjustedValue(),
-            this.gameService.isAlphaStrike() ? this.unit().as.PV : this.unit().bv,
-            this.gunnerySkill(),
-            this.pilotingSkill(),
-        );
-    });
+    openTags({ unit, event }: TagClickEvent): void {
+        void this.tagging.openTagSelector([unit], event.currentTarget as HTMLElement);
+    }
 
     formatThousands(value: number): string {
         if (value === undefined || value === null) return '';
         return value.toString().replace(/\B(?=(\d{3})+(?!\d))/g, ',');
     }
 
-    getQuirkClass(quirk: string): string {
-        const q = this.dataService.getQuirkByName(quirk);
-        if (!q) return '';
-        return q.type == 'positive' ? 'positive' : 'negative';
-    }
-
-    getQuirkDesc(quirk: string): string {
-        const q = this.dataService.getQuirkByName(quirk);
-        return q?.description || '';
-    }
+    getQuirk(quirk: string) { return this.dataService.getQuirkByName(quirk); }
 
     openSourcebooksDialog(index: number): void {
         const sources = this.sourceList();
@@ -481,17 +553,18 @@ export class UnitDetailsGeneralTabComponent {
     }
 
     isAdditionalComponent(comp: UnitComponent | null | undefined): boolean {
-        return comp?.t === 'C' && !!comp.eq?.hasAnyFlag(ADDITIONAL_COMPONENT_FLAGS);
+        return comp?.t === 'C'
+            && (isHeatSinkEquipment(comp.eq) || isJumpJetEquipment(comp.eq));
     }
 
     private isWeaponModeMiscComponent(comp: UnitComponent | null | undefined): boolean {
-        return comp?.t === 'C' && !!comp.eq?.hasAnyFlag(WEAPON_MODE_MISC_COMPONENT_FLAGS);
+        return comp?.t === 'C' && isClubOrHandWeaponEquipment(comp.eq);
     }
 
     private isWeaponModeSummaryComponent(comp: UnitComponent | null | undefined): boolean {
         return comp?.t === 'C'
             && (comp.p ?? -1) >= 0
-            && !comp.eq?.hasAnyFlag(CASE_COMPONENT_FLAGS)
+            && !isCaseEquipment(comp.eq)
             && !this.isAdditionalComponent(comp)
             && !this.isWeaponModeMiscComponent(comp);
     }
@@ -500,7 +573,7 @@ export class UnitDetailsGeneralTabComponent {
         for (const component of this.getHydratedComponents()) {
             if (component.t === 'X') return true;
             if (component.t !== 'C' || component.p < 0) continue;
-            if (component.eq?.hasAnyFlag(CASE_COMPONENT_FLAGS)) continue;
+            if (isCaseEquipment(component.eq)) continue;
             if (!this.isWeaponModeMiscComponent(component)) return true;
         }
         return false;
@@ -528,11 +601,12 @@ export class UnitDetailsGeneralTabComponent {
             if (component.t === 'S') continue;
             if (component.t === 'C') {
                 if (component.p < 0) continue; // Hide non-weapon components that are not in valid location (like HS in engine)
-                if (component.eq?.hasAnyFlag(CASE_COMPONENT_FLAGS)) continue; // Hide CASE components
+                if (isCaseEquipment(component.eq)) continue; // Hide CASE components
                 if (!showFilteredComponents && !this.isWeaponModeMiscComponent(component)) continue;
             };
 
-            if (options.splitMultiLocation && component.l && component.l.includes('/')) {
+            // A building location is one hex/level label (0101/G), not a list of locations.
+            if (options.splitMultiLocation && this.unit().type !== 'Building' && component.l && component.l.includes('/')) {
                 const locs = component.l.split('/').map(s => s.trim()).filter(Boolean);
                 for (const loc of locs) {
                     expanded.push({
@@ -614,7 +688,7 @@ export class UnitDetailsGeneralTabComponent {
     private getHydratedComponents(): UnitComponent[] {
         const u = this.unit();
         if (!u?.comp) return [];
-        return u.comp.map(component => ({
+        return this.conditionComponents().map(component => ({
             ...component,
             eq: component.eq ?? this.dataService.findEquipment(component.id)
         }));
@@ -623,7 +697,7 @@ export class UnitDetailsGeneralTabComponent {
     private getAdditionalComponentSummary(): UnitComponent[] {
         const byName = new Map<string, UnitComponent>();
         for (const comp of this.additionalComponentEntries()) {
-            const key = comp.n ?? '';
+            const key = `${comp.n ?? ''}|${comp.destroyed ?? false}`;
             if (!byName.has(key)) {
                 byName.set(key, { ...comp });
             } else {
@@ -639,7 +713,7 @@ export class UnitDetailsGeneralTabComponent {
         const u = this.unit();
         if (!u?.comp) return [];
         const groupMap = new Map<string, { l: string, p: number, comps: UnitComponent[] }>();
-        u.comp.forEach(comp => {
+        this.conditionComponents().forEach(comp => {
             const loc = comp.l;
             const pos = comp.p ?? 0;
             const key = `${loc}|${pos}`;
@@ -655,7 +729,7 @@ export class UnitDetailsGeneralTabComponent {
             comps.forEach(comp => {
                 if (comp.bay && comp.bay.length) {
                     comp.bay.forEach(bayComp => {
-                        const key = bayComp.n;
+                        const key = `${bayComp.n}|${bayComp.rear ?? false}|${bayComp.destroyed ?? false}`;
                         if (!bayMap[key]) {
                             bayMap[key] = { ...bayComp };
                         } else {

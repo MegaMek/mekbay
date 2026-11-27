@@ -60,7 +60,7 @@ describe('Alpha Strike point value', () => {
   it('rejects invalid skill and base-PV inputs', () => {
     expect(() => calculateAlphaStrikePointValue(element(), -1)).toThrowError(RangeError);
     expect(() => calculateAlphaStrikePointValue(element(), 1.5)).toThrowError(RangeError);
-    expect(() => adjustPointValueForSkill(0, 4)).toThrowError(RangeError);
+    expect(() => adjustPointValueForSkill(-1, 4)).toThrowError(RangeError);
   });
 });
 

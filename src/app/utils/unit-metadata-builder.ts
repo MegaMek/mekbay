@@ -3,43 +3,48 @@
 // Author: Drake
 
 import { BaseEntity } from '../models/entity/base-entity';
+import type { CBTRuleset } from '../models/cbt-ruleset.model';
+import { AeroEntity } from '../models/entity/entities/aero/aero-entity';
+import { BattleArmorEntity } from '../models/entity/entities/infantry/battle-armor-entity';
 import { InfantryBaseEntity } from '../models/entity/entities/infantry/infantry-base-entity';
 import { InfantryEntity } from '../models/entity/entities/infantry/infantry-entity';
 import { JumpShipEntity } from '../models/entity/entities/largecraft/jumpship-entity';
 import { type UnitMaterialLayout, UnitSummary } from '../models/unit-summary.model';
 import { EntityType, MoveType } from '../models/entity/types';
+import { encodeBlkArmorType } from '../models/entity/parsers/blk-codec';
 import { buildUnitCargoMetadata } from './unit-cargo-metadata-builder';
 import { buildUnitComponentMetadata } from './unit-component-metadata-builder';
-import { EquipmentFlag } from '../models/equipment-flags.type';
 import { convertEntityToAlphaStrike } from '../models/entity/utils/alpha-strike/alpha-strike-converter';
 import { alphaStrikeUnitType } from '../models/entity/utils/alpha-strike/foundation/unit-classification';
-import type { UnitIconResolver } from './unit-sprite-resolver';
-import { encodeBlkArmorType } from '../models/entity/parsers/blk-codec';
+import { createUnitIconResolver, type UnitIconResolver } from './unit-sprite-resolver';
+import {
+  armorTypeDisplayName,
+  equipmentFireControlFeature,
+} from './unit-summary-display-facts';
+import { buildUnitRulesRefs } from './unit-rules-ref-builder';
 
-/**
- * Builds a `Partial<Unit>` metadata object from a parsed entity.
- *
- * Fields are added incrementally — the builder starts with trivial identity
- * fields and grows as more entity computeds are implemented and validated
- * against the Java-generated `units.json` oracle.
- *
- * This is an external utility, NOT on the entity class, because the `Unit`
- * interface is a metadata/export concern, not a game-mechanics concern.
- */
+/** Entity-derived export fields, before catalog identity and presentation enrichment. */
+export type UnitMetadata = Omit<UnitSummary,
+  | 'provider' | 'origin' | 'hash' | 'summaryVersion' | 'loadIssues'
+  | 'baseChassis' | 'clanName' | 'entityType' | 'pv' | 'dpt'
+  | `_${string}`
+>;
+
+/** Projects canonical entity data into the metadata fields compared with MegaMek's export. */
 export class UnitMetadataBuilder {
-  constructor(private readonly resolveIcon: UnitIconResolver = () => '') {}
+  constructor(private readonly resolveIcon: UnitIconResolver = createUnitIconResolver(undefined)) {}
 
   /**
-   * Build metadata for a single entity.
+   * Build metadata for a single entity, pricing BV under `ruleset`.
    *
-   * Returns only the fields that are currently implemented.
    * Use the compare-unit-output script to validate against units.json.
    */
-  build(entity: BaseEntity, unitFile?: string): Partial<UnitSummary> {
+  build(entity: BaseEntity, ruleset: CBTRuleset, unitFile?: string): UnitMetadata {
     const me = entity.mountedEngine();
     const alphaStrikeUnitStats = convertEntityToAlphaStrike(entity);
     return {
       // ── Phase 0: Identity ──────────────────────────────────────────
+      uuid: entity.uuid() as UnitSummary['uuid'],
       name: this.buildName(entity),
       icon: this.resolveIcon(entity),
       chassis: entity.fullChassis(),
@@ -51,6 +56,7 @@ export class UnitMetadataBuilder {
       role: entity.role() || 'None',
       source: entity.source().map(source => source.abbrev),
       published: entity.published().map(source => source.abbrev),
+      rulesRefs: buildUnitRulesRefs(entity),
       type: entity.unitType(),
       mul1id: entity.mulId(),
       canon: entity.canon(),
@@ -100,11 +106,12 @@ export class UnitMetadataBuilder {
       engineHS: entity.engineHeatSinks(),
       engineHSType: entity.engineHeatSinkType(),
       moveType: this.buildMoveType(entity),
-      quirks: entity.quirks().map(({ quirk }) => quirk.name),
+      quirks: entity.applicableQuirks().map(({ quirk }) => quirk.name),
+      assignedQuirks: entity.quirks().map(({ quirk }) => quirk.name),
       crewSize: entity.crewSlotCount(),
       features: this.buildFeatures(entity),
       cost: Math.round(entity.cost()),
-      bv: entity.battleValue(),
+      bv: entity.battleValue(ruleset),
       offSpeedFactor: entity.offensiveSpeedFactor(),
       as: alphaStrikeUnitStats,
     };
@@ -122,7 +129,9 @@ export class UnitMetadataBuilder {
   }
 
   private buildCanAntiMech(entity: BaseEntity): boolean {
-    return entity instanceof InfantryBaseEntity ? entity.canAntiMech() : false;
+    // Preserve the exported catalog contract: gear for CI and installed attack capability for BA.
+    if (entity instanceof InfantryEntity) return entity.hasAntiMekGear();
+    return entity instanceof BattleArmorEntity && (entity.legAttackCapable() || entity.swarmAttackCapable());
   }
 
   // ═══════════════════════════════════════════════════════════════════════
@@ -157,11 +166,10 @@ export class UnitMetadataBuilder {
   private buildFeatures(entity: BaseEntity): string[] {
     const features: string[] = [...entity.entityFeatures()];
 
-    const hasEquipmentFlag = (flag: EquipmentFlag): boolean => entity.equipment().some(
+    const fireControl = equipmentFireControlFeature(flag => entity.equipment().some(
       mount => mount.equipment?.hasFlag(flag),
-    );
-    if (hasEquipmentFlag('F_ADVANCED_FIRE_CONTROL')) features.push('Advanced Fire Control');
-    else if (hasEquipmentFlag('F_BASIC_FIRE_CONTROL')) features.push('Basic Fire Control');
+    ));
+    if (fireControl) features.push(fireControl);
 
     return features;
   }
@@ -195,13 +203,12 @@ export class UnitMetadataBuilder {
     }
   }
 
-  private buildEngineName(entity: BaseEntity): UnitSummary['engine'] {
+  private buildEngineName(entity: BaseEntity): string | null {
     if (!this.exportsEngine(entity)) return null;
 
     const engine = entity.mountedEngine();
     const type = engine.type();
-    if (type === 'XL' || type === 'XXL') return `${type} (${engine.techBase})`;
-    return type === 'Maglev' ? 'MagLev' : type;
+    return type === 'XL' || type === 'XXL' ? `${type} (${engine.techBase})` : type;
   }
 
   private exportsEngine(entity: BaseEntity): boolean {
@@ -218,9 +225,9 @@ export class UnitMetadataBuilder {
       case 'Assault': return 'Assault';
       case 'Super Heavy': return 'Colossal/Super-Heavy';
       case 'Small Craft': return 'Small Craft';
-      case 'Small DropShip': return 'Small Dropship';
-      case 'Medium DropShip': return 'Medium Dropship';
-      case 'Large DropShip': return 'Large Dropship';
+      case 'Small DropShip': return 'Small DropShip';
+      case 'Medium DropShip': return 'Medium DropShip';
+      case 'Large DropShip': return 'Large DropShip';
       case 'Small Support': return 'Small Support Vehicle';
       case 'Medium Support': return 'Medium Support Vehicle';
       case 'Large Support': return 'Large Support Vehicle';
@@ -231,9 +238,9 @@ export class UnitMetadataBuilder {
 
   private buildCapitalWeightClass(entity: BaseEntity, size: 'Small' | 'Large'): UnitSummary['weightClass'] {
     switch (entity.entityType) {
-      case 'WarShip': return `${size} Warship`;
+      case 'WarShip': return `${size} WarShip`;
       case 'SpaceStation': return `${size} Space Station`;
-      default: return `${size} Jumpship`;
+      default: return `${size} JumpShip`;
     }
   }
 
@@ -273,17 +280,29 @@ export class UnitMetadataBuilder {
       return entity.armorDivisor() !== 1 ? 'Custom' : '';
     }
 
-    if (entity.hasPatchworkArmor()) return ARMOR_TYPE_DISPLAY_NAME['PATCHWORK'] ?? 'Patchwork';
+    if (entity.hasPatchworkArmor()) return armorTypeDisplayName('PATCHWORK', 'Patchwork');
     const armorType = entity.uniformArmor()?.type ?? 'STANDARD';
-    return ARMOR_TYPE_DISPLAY_NAME[armorType] ?? armorType;
+    return armorTypeDisplayName(armorType, armorType);
   }
 
   private buildPatchworkLayout(entity: BaseEntity): UnitMaterialLayout | undefined {
     if (!entity.hasPatchworkArmor()) return undefined;
-    return Object.fromEntries([...entity.armorByLocation()].map(([location, armor]) => [
+    const entries: [string, { type: number; clan: boolean }][] = [...entity.armorByLocation()].map(([
+      location,
+      armor,
+    ]) => [
       entity.componentLocationLabel(location),
       { type: encodeBlkArmorType(armor), clan: this.isClanMaterial(entity, armor.techBase) },
-    ]));
+    ]);
+    if (entity instanceof AeroEntity) {
+      // MegaMek exposes two fighter pseudo-locations in patchwork exports even
+      // though neither carries canonical location armor.
+      entries.push(
+        [entity.componentLocationLabel('Wings'), { type: 0, clan: false }],
+        [entity.componentLocationLabel('Fuselage'), { type: -1, clan: false }],
+      );
+    }
+    return Object.fromEntries(entries);
   }
 
   private buildHybridLayout(entity: BaseEntity): UnitMaterialLayout | undefined {
@@ -309,62 +328,3 @@ export class UnitMetadataBuilder {
 const ENGINELESS_EXPORT_TYPES: ReadonlySet<EntityType> = new Set([
   'SmallCraft', 'DropShip', 'JumpShip', 'WarShip', 'SpaceStation',
 ]);
-
-/**
- * Map internal ArmorType codes to display names used in units.json.
- * These match the names from Java's `EquipmentType.getArmorTypeName()`.
- */
-const ARMOR_TYPE_DISPLAY_NAME: Partial<Record<string, string>> = {
-  'STANDARD': 'Standard Armor',
-  'FERRO_FIBROUS': 'Ferro-Fibrous',
-  'REACTIVE': 'Reactive',
-  'REFLECTIVE': 'Reflective',
-  'HARDENED': 'Hardened',
-  'LIGHT_FERRO': 'Light Ferro-Fibrous',
-  'HEAVY_FERRO': 'Heavy Ferro-Fibrous',
-  'PATCHWORK': 'Patchwork',
-  'STEALTH': 'Stealth',
-  'FERRO_FIBROUS_PROTO': 'Ferro-Fibrous Prototype',
-  'COMMERCIAL': 'Commercial, BAR: 5',
-  'INDUSTRIAL': 'Industrial',
-  'HEAVY_INDUSTRIAL': 'Heavy Industrial',
-  'FERRO_LAMELLOR': 'Ferro-Lamellor',
-  'PRIMITIVE': 'Primitive',
-  'EDP': 'Electric Discharge ProtoMech',
-  'ANTI_PENETRATIVE_ABLATION': 'Anti-Penetrative Ablation',
-  'HEAT_DISSIPATING': 'Heat-Dissipating',
-  'IMPACT_RESISTANT': 'Impact-Resistant',
-  'BALLISTIC_REINFORCED': 'Ballistic-Reinforced',
-  'ALUM': 'Ferro-Aluminum',
-  'HEAVY_ALUM': 'Heavy Ferro-Aluminum',
-  'LIGHT_ALUM': 'Light Ferro-Aluminum',
-  'FERRO_ALUM_PROTO': 'Prototype Ferro-Aluminum',
-  'STEALTH_VEHICLE': 'Vehicular Stealth',
-  'LC_FERRO_CARBIDE': 'Ferro-Carbide',
-  'LC_LAMELLOR_FERRO_CARBIDE': 'Lamellor Ferro-Carbide',
-  'LC_FERRO_IMP': 'Improved Ferro-Aluminum',
-  'AEROSPACE': 'Standard Aerospace',
-  'STANDARD_PROTOMEK': 'Standard ProtoMech',
-  'PRIMITIVE_FIGHTER': 'Primitive Fighter',
-  'PRIMITIVE_AERO': 'Primitive Aerospace',
-  'BA_STANDARD': 'BA Standard (Basic)',
-  'BA_STANDARD_PROTOTYPE': 'BA Standard (Prototype)',
-  'BA_STANDARD_ADVANCED': 'BA Advanced',
-  'BA_STEALTH_BASIC': 'BA Stealth (Basic)',
-  'BA_STEALTH': 'BA Stealth (Standard)',
-  'BA_STEALTH_IMP': 'BA Stealth (Improved)',
-  'BA_STEALTH_PROTOTYPE': 'BA Stealth (Prototype)',
-  'BA_FIRE_RESIST': 'BA Fire Resistant',
-  'BA_MIMETIC': 'BA Mimetic',
-  'BA_REFLECTIVE': 'BA Laser Reflective (Reflec/Glazed)',
-  'BA_REACTIVE': 'BA Reactive (Blazer)',
-  'SV_BAR_2': 'BAR: 2',
-  'SV_BAR_3': 'BAR: 3',
-  'SV_BAR_4': 'BAR: 4',
-  'SV_BAR_5': 'BAR: 5',
-  'SV_BAR_6': 'BAR: 6',
-  'SV_BAR_7': 'BAR: 7',
-  'SV_BAR_8': 'BAR: 8',
-  'SV_BAR_9': 'BAR: 9',
-  'SV_BAR_10': 'BAR: 10',
-};

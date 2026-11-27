@@ -6,11 +6,9 @@ import { ChangeDetectionStrategy, Component, input, output } from '@angular/core
 
 @Component({
     selector: 'mode-switch',
-    standalone: true,
     changeDetection: ChangeDetectionStrategy.OnPush,
-    imports: [],
     templateUrl: './mode-switch.component.html',
-    styleUrls: ['./mode-switch.component.scss'],
+    styleUrl: './mode-switch.component.scss',
     host: {
         '[class.mode-switch-active-right]': 'selectedRight()',
         '[class.mode-switch-game-system]': 'variant() === "game-system"',

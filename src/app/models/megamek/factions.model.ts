@@ -41,7 +41,7 @@ type InheritedFactionField = typeof INHERITED_FACTION_FIELDS[number];
 export type MegaMekFactions = Record<string, MegaMekFactionRecord>;
 
 export interface MegaMekFactionsData {
-    etag: string;
+    assetHash: string;
     factions: Record<string, MegaMekFactionRecordData>;
 }
 

@@ -3,7 +3,6 @@
 // Author: Drake
 
 import { ChangeDetectionStrategy, Component, inject } from '@angular/core';
-import { CommonModule } from '@angular/common';
 import { DialogRef, DIALOG_DATA } from '@angular/cdk/dialog';
 import type { LoadOrganizationEntry } from '../../models/organization.model';
 
@@ -20,9 +19,7 @@ export interface OrgSelectDialogData {
 
 @Component({
     selector: 'org-select-dialog',
-    standalone: true,
     changeDetection: ChangeDetectionStrategy.OnPush,
-    imports: [CommonModule],
     host: {
         class: 'fullscreen-dialog-host glass'
     },

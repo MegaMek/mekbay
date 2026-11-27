@@ -12,7 +12,7 @@ import {
 } from '../types';
 import { BuildingBlock } from './building-block';
 import { FIGHTER_EQUIP_TAGS, FWS_EQUIP_TAGS } from './blk-constants';
-import { getBlkTechBase, parseBaseBlk, parseBlkAeroEngine, parseBlkArmor, parseBlkArmorValues, parseBlkEquipment, parseBlkSupportArmor, resolveBlkStructure } from './blk-base-parser';
+import { parseBaseBlk, parseBlkAeroEngine, parseBlkArmor, parseBlkArmorValues, parseBlkEquipment, parseBlkSupportArmor, resolveBlkStructure } from './blk-base-parser';
 import { ParseContext } from './parse-context';
 import { decodeMotiveType } from './motive-type-codec';
 import { decodeBlkAeroCockpitType } from './blk-codec';
@@ -39,7 +39,6 @@ export function parseBlkAero(bb: BuildingBlock, ctx: ParseContext): AeroEntity {
   // ── Base parsing (identity, year, source, transporters, role, etc.) ──
   parseBaseBlk(bb, entity, ctx);
   if (!bb.exists('internal_type')) resolveBlkStructure(entity, 0, ctx);
-  const techBase = getBlkTechBase(bb);
 
   // ── Movement ──
   if (bb.exists('SafeThrust'))   entity.originalWalkMP.set(bb.getFirstInt('SafeThrust'));
@@ -97,7 +96,8 @@ export function parseBlkAero(bb: BuildingBlock, ctx: ParseContext): AeroEntity {
 }
 
 function getAeroEngineRating(bb: BuildingBlock, entity: AeroEntity): number {
-  if (entity instanceof FixedWingSupportEntity) return 1;
+  // TM p.126, errata v8 p.6: support ratings use safe thrust and chassis mass, capped at 500.
+  if (entity instanceof FixedWingSupportEntity) return Math.min(500, entity.originalWalkMP() * entity.tonnage());
 
   const tonnage = Math.trunc(entity.tonnage());
   if (entity instanceof ConvFighterEntity) return entity.safeThrust() * tonnage;

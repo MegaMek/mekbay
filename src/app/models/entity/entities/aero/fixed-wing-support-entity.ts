@@ -2,19 +2,23 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 // Author: Drake
 
-import { computed } from '@angular/core';
-import { SupportVehicleData, type SupportVehicle } from '../support-vehicle';
+import { signal } from '@angular/core';
+import { supportVehicleBarRating, type SupportVehicle } from '../support-vehicle';
 import {
   AERO_LOCATIONS,
   EntityType,
   FIXED_WING_EQUIP_LOCATIONS,
   type EntityFeature,
   WeightClass,
+  resolveSupportVehicleWeightClass,
 } from '../../types';
+import { isExternalStoresHardpointEquipment } from '../../../aerospace-support-equipment.model';
+import type { BombCapacity } from '../../../aerospace-bomb.model';
 import { AeroEntity } from './aero-entity';
 import type { UnitSubtype } from '../../types';
 import type { TechRatingSource } from '../../types';
 import { getFixedWingSupportConstructionTech } from '../../components';
+import { isVstolEquipment } from '../../../chassis-equipment.model';
 
 /** Fixed Wing Support vehicle - uses BAR rating and tech ratings. */
 export class FixedWingSupportEntity extends AeroEntity implements SupportVehicle {
@@ -32,14 +36,13 @@ export class FixedWingSupportEntity extends AeroEntity implements SupportVehicle
     return this.withOmniSubtype('Fixed Wing Support Vehicle');
   }
 
-  readonly supportVehicle = new SupportVehicleData(10);
-  readonly barRating = this.supportVehicle.barRating;
-  readonly structuralTechRating = this.supportVehicle.structuralTechRating;
-  readonly engineTechRating = this.supportVehicle.engineTechRating;
+  readonly barRating = signal(10);
+  readonly structuralTechRating = signal(0);
+  readonly engineTechRating = signal(0);
 
   protected override computeAeroFeatures(): readonly EntityFeature[] {
     const features = [...super.computeAeroFeatures()];
-    if (this.equipment().some(mount => mount.equipment?.hasFlag('F_VSTOL_CHASSIS'))) {
+    if (this.equipment().some(mount => isVstolEquipment(mount.equipment))) {
       features.push('VSTOL Equipment');
     }
     return features;
@@ -53,17 +56,13 @@ export class FixedWingSupportEntity extends AeroEntity implements SupportVehicle
     ];
   }
   
-  /** Maximum bomb payload, derived from external hardpoints and Internal Bomb Bay cargo space. */
-  readonly maxBombPoints = computed(() => {
-    const externalHardpoints = this.equipment().filter(mount =>
-      mount.equipment?.hasFlag('F_EXTERNAL_STORES_HARDPOINT')).length;
-    if (!this.quirks().some(({ quirk }) => quirk.key === 'internal_bomb')) return externalHardpoints;
-    const internalCapacity = this.transporters().reduce((total, transporter) =>
-      total + (transporter.kind === 'bay' && transporter.configuration.type === 'cargo'
-        ? Math.floor(transporter.capacity)
-        : 0), 0);
-    return externalHardpoints + internalCapacity;
-  });
+  /** MegaMek FixedWingSupport: one external hardpoint per External Stores Hardpoint. */
+  protected override computeBombCapacity(): BombCapacity {
+    return {
+      external: this.equipment().filter(mount => isExternalStoresHardpointEquipment(mount.equipment)).length,
+      internal: this.internalBombBayPoints(),
+    };
+  }
 
   override isSupportVehicle(): this is this & SupportVehicle {
     return true;
@@ -74,11 +73,16 @@ export class FixedWingSupportEntity extends AeroEntity implements SupportVehicle
   }
 
   protected override computeWeightClass(): WeightClass {
-    return this.supportVehicle.resolveWeightClass(this.tonnage(), 'Aerodyne');
+    return resolveSupportVehicleWeightClass(this.tonnage(), 'Aerodyne');
   }
 
   override autoSetStructuralIntegrity(): void {
     this.structuralIntegrity.set(this.originalWalkMP());
+  }
+
+  override armorDamageThreshold(location: string): number {
+    const bar = supportVehicleBarRating(this, location);
+    return bar === 10 ? super.armorDamageThreshold(location) : bar >= 2 ? 1 : 0;
   }
 
   get locationOrder(): readonly string[] {

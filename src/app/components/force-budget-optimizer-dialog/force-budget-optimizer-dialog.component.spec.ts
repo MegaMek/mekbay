@@ -6,13 +6,18 @@ import { DialogRef, DIALOG_DATA } from '@angular/cdk/dialog';
 import { provideZonelessChangeDetection, signal } from '@angular/core';
 import { TestBed } from '@angular/core/testing';
 import { GameSystem } from '../../models/common.model';
+import type { BaseEntity } from '../../models/entity/base-entity';
+import { InfantryEntity } from '../../models/entity/entities/infantry/infantry-entity';
+import { createTestEquipmentRegistry } from '../../models/entity/testing/test-equipment-registry';
+import { TestBipedMekEntity, TestTankEntity, TestProtoMekEntity } from '../../models/entity/testing/test-entities';
+import { CBTForceMember } from '../../models/force-member.model';
+import type { CBTForce } from '../../models/cbt-force.model';
 import type { Force } from '../../models/force.model';
-import type { UnitSummary } from '../../models/unit-summary.model';
 import { OptionsService } from '../../services/options.service';
 import { UnitSearchFiltersService } from '../../services/unit-search-filters.service';
 import { ForceBudgetOptimizerDialogComponent } from './force-budget-optimizer-dialog.component';
 
-interface ClassicSkillPrioritiesTestApi {
+interface CBTSkillPrioritiesTestApi {
     gunnery: number;
     piloting: number;
     balance: number;
@@ -20,17 +25,22 @@ interface ClassicSkillPrioritiesTestApi {
 
 interface ForceBudgetOptimizerDialogTestApi {
     targetBudget(): number;
-    createCBTOptions(forceUnit: {
-        getUnit(): UnitSummary;
-        getBaseBv(): number;
-        tagBV(): number;
-        c3Tax(): number;
-        externalStoresBv(): number;
-    }): Array<{ gunnery?: number; piloting?: number }>;
-    getCBTSkillPriorities(unit: UnitSummary): ClassicSkillPrioritiesTestApi;
-    getCBTSmartScore(priorities: ClassicSkillPrioritiesTestApi, gunnery: number, piloting: number): number;
-    getPhysicalDamagePerTurn(unit: UnitSummary): number;
+    createCBTOptions(member: CBTOptionsMemberTestApi): readonly CBTOptimizationChoiceTestApi[];
+    getCBTSkillPriorities(entity: BaseEntity): CBTSkillPrioritiesTestApi;
+    getCBTSmartScore(priorities: CBTSkillPrioritiesTestApi, gunnery: number, piloting: number): number;
     selectBestAffordableState(states: readonly OptimizationStateTestApi[], targetBudget: number): OptimizationStateTestApi | null;
+    createOptions(member: CBTForceMember): readonly { cost: number }[];
+    applyChoice(choice: { member: CBTForceMember; gunnery: number; piloting: number }): Promise<unknown>;
+}
+
+interface CBTOptionsMemberTestApi {
+    readonly entity: BaseEntity;
+    currentBaseBattleValue(): number | null;
+}
+
+interface CBTOptimizationChoiceTestApi {
+    readonly gunnery?: number;
+    readonly piloting?: number;
 }
 
 interface OptimizationStateTestApi {
@@ -41,11 +51,18 @@ interface OptimizationStateTestApi {
 }
 
 describe('ForceBudgetOptimizerDialogComponent', () => {
-    async function createComponent(forceTotal = 0, bvPvLimit = 0, maxDelta = 8): Promise<ForceBudgetOptimizerDialogTestApi> {
+    async function createComponent(
+        forceTotal = 0,
+        bvPvLimit = 0,
+        maxDelta = 8,
+    ): Promise<ForceBudgetOptimizerDialogTestApi> {
         const force = {
-            gameSystem: GameSystem.CLASSIC,
+            gameSystem: GameSystem.CBT,
             totalBv: jasmine.createSpy('totalBv').and.returnValue(forceTotal),
             units: signal([]),
+            members: signal(forceTotal > 0
+                ? [{ adjustedBattleValue: () => forceTotal, entity: { battleValue: () => forceTotal } }]
+                : []),
             readOnly: signal(false),
         } as unknown as Force;
 
@@ -82,35 +99,56 @@ describe('ForceBudgetOptimizerDialogComponent', () => {
         expect(component.targetBudget()).toBe(7_500);
     });
 
+    it('does not price or fill a vacant crew slot during optimization', async () => {
+        const component = await createComponent();
+        const force = {
+            getUnitCrewPolicy: () => ({ positions: [{ positionId: 'crew:0' }] }),
+            getAssignedPerson: () => undefined,
+            getUnitCrewProfile: () => ({ positions: [] }),
+            getUnitAdjustedBattleValue: () => 0,
+        } as unknown as CBTForce;
+        const member = new CBTForceMember('vacant', force, new TestBipedMekEntity());
+        expect(component.createOptions(member).map(option => option.cost)).toEqual([0]);
+    });
+
+    it('changes ProtoMek Gunnery without overwriting the personal Piloting with its fixed effective value', async () => {
+        const component = await createComponent();
+        const replace = jasmine.createSpy().and.resolveTo(true);
+        const force = {
+            getUnitCrewProfile: () => ({ positions: [{ positionId: 'crew:0', name: 'Pilot', gunnery: 4, piloting: 2 }] }),
+            replaceUnitCrewProfile: replace,
+        } as unknown as CBTForce;
+        const member = new CBTForceMember('proto', force, new TestProtoMekEntity());
+        await component.applyChoice({ member, gunnery: 3, piloting: 5 });
+        expect(replace).toHaveBeenCalledWith('proto', [
+            { positionId: 'crew:0', name: 'Pilot', gunnery: 3, piloting: 2 },
+        ]);
+    });
+
     it('uses the current force total when no positive BV/PV limit is set', async () => {
         const component = await createComponent(5_000, 0);
 
         expect(component.targetBudget()).toBe(5_000);
     });
 
-    function createUnit(overrides: Partial<UnitSummary>): UnitSummary {
-        return {
-            type: 'Mek',
-            tons: 0,
-            dpt: 0,
-            comp: [],
-            ...overrides,
-        } as UnitSummary;
+    function createMekEntity(rangedDamage: number, physicalWeaponDamage: number): TestBipedMekEntity {
+        const entity = new TestBipedMekEntity();
+        entity.setTonnage(40);
+        const rangedMount = {} as ReturnType<TestBipedMekEntity['rangedWeapons']>[number];
+        spyOn(entity, 'rangedWeapons').and.returnValue(rangedDamage > 0 ? [rangedMount] : []);
+        spyOn(entity, 'resolveMountedWeaponDamage').and.returnValue({ maximum: rangedDamage } as any);
+        spyOn(entity, 'equipment').and.returnValue(physicalWeaponDamage > 0 ? [{
+            getPhysicalWeaponDamage: () => ({ value: physicalWeaponDamage }),
+        } as any] : []);
+        return entity;
     }
 
-    it('uses ranged DPT and physical plus kick damage as comparable Classic skill priorities', async () => {
+    it('uses ranged DPT and physical plus kick damage as comparable CBT skill priorities', async () => {
         const component = await createComponent();
-        const assassin = createUnit({
-            tons: 40,
-            dpt: 11.3,
-            comp: [
-                { id: 'Sword', q: 1, n: 'Sword', t: 'P', p: 5, l: 'LA', md: '5' },
-            ],
-        });
+        const assassin = createMekEntity(11.3, 5);
 
         const priorities = component.getCBTSkillPriorities(assassin);
 
-        expect(component.getPhysicalDamagePerTurn(assassin)).toBe(13);
         expect(priorities.gunnery).toBeCloseTo(12.3, 5);
         expect(priorities.piloting).toBe(14);
         expect(priorities.balance).toBeCloseTo(11.3, 5);
@@ -118,13 +156,7 @@ describe('ForceBudgetOptimizerDialogComponent', () => {
 
     it('prefers balanced gunnery and piloting for units with balanced ranged and physical damage', async () => {
         const component = await createComponent();
-        const assassin = createUnit({
-            tons: 40,
-            dpt: 11.3,
-            comp: [
-                { id: 'Sword', q: 1, n: 'Sword', t: 'P', p: 5, l: 'LA', md: '5' },
-            ],
-        });
+        const assassin = createMekEntity(11.3, 5);
         const priorities = component.getCBTSkillPriorities(assassin);
 
         const balancedScore = component.getCBTSmartScore(priorities, 4, 4);
@@ -135,12 +167,12 @@ describe('ForceBudgetOptimizerDialogComponent', () => {
 
     it('prioritizes gunnery for ranged-focused units', async () => {
         const component = await createComponent();
-        const rangedVehicle = createUnit({
-            type: 'Tank',
-            tons: 80,
-            dpt: 30,
-            comp: [],
-        });
+        const rangedVehicle = new TestTankEntity();
+        rangedVehicle.setTonnage(80);
+        const rangedMount = {} as ReturnType<TestTankEntity['rangedWeapons']>[number];
+        spyOn(rangedVehicle, 'rangedWeapons').and.returnValue([rangedMount]);
+        spyOn(rangedVehicle, 'resolveMountedWeaponDamage').and.returnValue({ maximum: 30 } as any);
+        spyOn(rangedVehicle, 'equipment').and.returnValue([]);
         const priorities = component.getCBTSkillPriorities(rangedVehicle);
 
         const gunneryFocusedScore = component.getCBTSmartScore(priorities, 2, 6);
@@ -151,24 +183,17 @@ describe('ForceBudgetOptimizerDialogComponent', () => {
         expect(gunneryFocusedScore).toBeGreaterThan(pilotingFocusedScore);
     });
 
-    it('ignores max delta for fixed-Piloting units', async () => {
+    it('does not reject fixed-piloting units through the configurable skill-delta filter', async () => {
         const component = await createComponent(0, 0, 0);
-        const infantry = createUnit({
-            type: 'Infantry',
-            subtype: 'Conventional Infantry',
-            canAntiMech: false,
-            bv: 100,
+        const entity = new InfantryEntity(createTestEquipmentRegistry());
+
+        const choices = component.createCBTOptions({
+            entity,
+            currentBaseBattleValue: () => 100,
         });
 
-        const options = component.createCBTOptions({
-            getUnit: () => infantry,
-            getBaseBv: () => 100,
-            tagBV: () => 0,
-            c3Tax: () => 0,
-            externalStoresBv: () => 0,
-        });
-
-        expect(options.some(option => option.gunnery === 2 && option.piloting === 8)).toBeTrue();
+        expect(choices.length).toBeGreaterThan(0);
+        expect(choices.every(choice => choice.piloting === 8)).toBeTrue();
     });
 
     it('selects the nearest result without exceeding the target budget', async () => {

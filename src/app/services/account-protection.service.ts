@@ -103,7 +103,7 @@ export class AccountProtectionService {
             const response = await this.wsService.sendAndWaitForResponse({
                 action: 'dismissAccountProtectionPrompt',
             });
-            if (!response?.success) {
+            if (response?.['success'] !== true) {
                 this.logger.warn('Account protection dismissal was saved locally but not confirmed by the server.');
             }
         } catch (err) {

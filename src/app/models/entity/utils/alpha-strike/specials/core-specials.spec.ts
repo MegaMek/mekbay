@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 // Author: Drake
 
-import { MountedArmor, MountedEngine } from '../../../components';
+import { MountedArmor, MountedEngine, MountedStructure, STANDARD_STRUCTURE_EQUIPMENT } from '../../../components';
 import { AmmoEquipment, ArmorEquipment, MiscEquipment, WeaponEquipment } from '../../../../equipment.model';
 import type { EquipmentFlag } from '../../../../equipment-flags.type';
 import {
@@ -50,7 +50,8 @@ describe('Alpha Strike core specials', () => {
     for (let trooper = 1; trooper <= 4; trooper++) {
       addTestEquipmentWithFlags(entity, 'F_VEHICLE_MINE_DISPENSER', { location: `Trooper ${trooper}` });
     }
-    addTestEquipmentWithFlags(entity, ['F_TOOLS', 'S_MINESWEEPER', 'F_PARAFOIL'], { location: 'Squad' });
+    addTestEquipmentWithFlags(entity, ['F_TOOLS', 'S_MINESWEEPER'], { location: 'Squad' });
+    addTestEquipmentWithFlags(entity, 'F_PARAFOIL', { location: 'Squad' });
 
     expect(alphaStrikeCoreSpecials(entity, { type: 'BA', hasStandardDamage: true }))
       .toEqual(jasmine.arrayContaining(['MDS8', 'MSW', 'PAR']));
@@ -328,22 +329,14 @@ describe('Alpha Strike core specials', () => {
       .toEqual(jasmine.arrayContaining(['RBT', 'SDCS']));
   });
 
-  it('adds SHLD only when dedicated shield and size flags coexist, regardless of equipment class', () => {
-    for (const shieldFlag of ['S_SHIELD_SMALL', 'S_SHIELD_MEDIUM', 'S_SHIELD_LARGE'] as const) {
-      const entity = new TankEntity();
-      addTestEquipment(entity, new WeaponEquipment({
-        id: `custom-${shieldFlag}`, name: 'Custom Shield Weapon', type: 'weapon',
-        flags: ['F_SHIELD', shieldFlag], weapon: { ammoType: 'NA' },
-      }));
-      expect(alphaStrikeCoreSpecials(entity, { type: 'CV', hasStandardDamage: true }))
-        .withContext(shieldFlag)
-        .toEqual(jasmine.arrayContaining(['MEL', 'SHLD']));
-    }
+  it('adds MEL and SHLD from shield misc equipment', () => {
+    const entity = new TankEntity();
+    addTestEquipment(entity, new MiscEquipment({
+      id: 'shield', name: 'Shield', type: 'misc', flags: ['F_SHIELD'],
+    }));
 
-    const incompleteShield = new TankEntity();
-    addTestEquipmentWithFlags(incompleteShield, 'S_SHIELD_MEDIUM');
-    expect(alphaStrikeCoreSpecials(incompleteShield, { type: 'CV', hasStandardDamage: true }))
-      .not.toContain('SHLD');
+    expect(alphaStrikeCoreSpecials(entity, { type: 'CV', hasStandardDamage: true }))
+      .toEqual(jasmine.arrayContaining(['MEL', 'SHLD']));
   });
 
   it('adds intrinsic DN only for a Mek interface cockpit', () => {
@@ -351,8 +344,7 @@ describe('Alpha Strike core specials', () => {
     interfaceMek.cockpitType.set('Interface');
     expect(alphaStrikeCoreSpecials(interfaceMek, GROUND_CONTEXT)).toContain('DN');
 
-    const standardMek = new BipedMekEntity();
-    expect(alphaStrikeCoreSpecials(standardMek, GROUND_CONTEXT)).not.toContain('DN');
+    expect(alphaStrikeCoreSpecials(new BipedMekEntity(), GROUND_CONTEXT)).not.toContain('DN');
   });
 
   it('adds intrinsic QV only for QuadVee chassis', () => {
@@ -570,6 +562,24 @@ describe('Alpha Strike core specials', () => {
     expect(alphaStrikeCoreSpecials(new ProtoMekEntity(), { type: 'PM', hasStandardDamage: true })).toEqual(['ENE']);
   });
 
+  it('includes automatic CASE supplied by Clan structure on an Inner Sphere chassis', () => {
+    const entity = new BipedMekEntity();
+    entity.techBase.set('IS');
+    entity.mixedTech.set(true);
+    const explosive = new WeaponEquipment({
+      id: 'explosive', name: 'Explosive Weapon', type: 'weapon', stats: { explosive: true },
+      weapon: { explosionDamage: 10, ammoType: 'NA' },
+    });
+    addTestEquipment(entity, explosive, { location: 'RT' });
+    expect(alphaStrikeCoreSpecials(entity, GROUND_CONTEXT)).not.toContain('CASE');
+
+    entity.setStructureAt('RT', new MountedStructure({
+      tonnage: entity.tonnage(), structure: STANDARD_STRUCTURE_EQUIPMENT, techBase: 'Clan',
+    }));
+    expect(entity.automaticClanCaseLocations()).toEqual(new Set(['RT']));
+    expect(alphaStrikeCoreSpecials(entity, GROUND_CONTEXT)).toContain('CASE');
+  });
+
   it('converts ECM and probe variants with their implied reconnaissance ability', () => {
     const entity = new BipedMekEntity();
     addTestEquipmentWithFlags(entity, 'F_ECM');
@@ -643,6 +653,11 @@ describe('Alpha Strike core specials', () => {
 
     const vehicle = new TankEntity();
     vehicle.omni.set(true);
+    vehicle.setUniformArmor(stealthArmor());
+    expect(alphaStrikeCoreSpecials(vehicle, { type: 'CV', hasStandardDamage: true }))
+      .toEqual(['ENE', 'OMNI', 'SRCH', 'STL']);
+
+    vehicle.setArmorAt('Front', stealthArmor('STANDARD'));
     expect(alphaStrikeCoreSpecials(vehicle, { type: 'CV', hasStandardDamage: true }))
       .toEqual(['ENE', 'OMNI', 'SRCH']);
   });
@@ -700,6 +715,13 @@ describe('Alpha Strike core specials', () => {
     expect(alphaStrikeCoreSpecials(entity, GROUND_CONTEXT)).toEqual([
       'ARM', 'C3I', 'C3S', 'EE', 'ENE', 'ES', 'MHQ3', 'RCA', 'RHS', 'TSM',
     ]);
+  });
+
+  it('derives ARM from armored Mek system slots without an armored equipment mount', () => {
+    const entity = new BipedMekEntity();
+    entity.armoredSystemSlots.set(new Set(['CT:1']));
+
+    expect(alphaStrikeCoreSpecials(entity, GROUND_CONTEXT)).toContain('ARM');
   });
 
   it('adds command-network values with final MHQ flooring and Naval C3', () => {
@@ -869,6 +891,23 @@ describe('Alpha Strike core specials', () => {
       .toEqual(['CT4', 'ENE', 'SRCH']);
   });
 
+  it('serializes summed fractional cargo without binary floating-point noise', () => {
+    const entity = new TankEntity();
+    entity.transporters.set([
+      {
+        id: 'cargo-bay', kind: 'bay', configuration: { type: 'cargo' }, capacity: 21.5,
+        doors: 1, bayNumber: 1, omni: false,
+      },
+      {
+        id: 'reefer-bay', kind: 'bay', configuration: { type: 'refrigerated-cargo' }, capacity: 10.44,
+        doors: 1, bayNumber: 2, omni: false,
+      },
+    ]);
+
+    expect(alphaStrikeCoreSpecials(entity, { type: 'CV', hasStandardDamage: true }))
+      .toContain('CT31.94');
+  });
+
   it('rounds large-aerospace cargo and converts high capacity to CK', () => {
     const largeCraft = new DropShipEntity();
     largeCraft.transporters.set([{
@@ -969,21 +1008,27 @@ describe('Alpha Strike core specials', () => {
       .toEqual(['CAR5', 'XMEC']);
   });
 
-  it('adds one LMAS from Battle Armor visual-camouflage misc equipment', () => {
-    const entity = new BattleArmorEntity();
-    addTestEquipmentWithFlags(entity, 'F_VISUAL_CAMO');
-    addTestEquipmentWithFlags(entity, 'F_VISUAL_CAMO');
+  it('adds infantry misc abilities to both conventional infantry and Battle Armor', () => {
+    for (const [entity, type] of [
+      [new InfantryEntity(), 'CI'],
+      [new BattleArmorEntity(), 'BA'],
+    ] as const) {
+      addTestEquipmentWithFlags(entity, 'F_VISUAL_CAMO');
+      addTestEquipmentWithFlags(entity, ['F_TOOLS', 'S_MINESWEEPER']);
+      addTestEquipmentWithFlags(entity, 'F_PARAFOIL');
+      addTestEquipmentWithFlags(entity, 'F_MAGNETIC_CLAMP');
 
-    expect(alphaStrikeCoreSpecials(entity, { type: 'BA', hasStandardDamage: true }))
-      .toEqual(['CAR5', 'LMAS']);
+      expect(alphaStrikeCoreSpecials(entity, { type, hasStandardDamage: true }))
+        .toEqual(jasmine.arrayContaining(['LMAS', 'MSW', 'PAR', 'XMEC']));
+    }
   });
 
-  it('does not add LMAS from visual camouflage on conventional infantry', () => {
+  it('adds LMAS from conventional-infantry sneak-camo armor kits', () => {
     const entity = new InfantryEntity();
-    addTestEquipmentWithFlags(entity, 'F_VISUAL_CAMO');
+    addTestEquipmentWithFlags(entity, ['F_ARMOR_KIT', 'S_SNEAK_CAMO']);
 
     expect(alphaStrikeCoreSpecials(entity, { type: 'CI', hasStandardDamage: true }))
-      .not.toContain('LMAS');
+      .toContain('LMAS');
   });
 
   it('derives MAS but not LMAS from mounted BA mimetic armor records', () => {

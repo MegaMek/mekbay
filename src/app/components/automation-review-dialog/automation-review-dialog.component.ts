@@ -1,17 +1,20 @@
 // Copyright (C) 2026 The MegaMek Team
 // SPDX-License-Identifier: GPL-3.0-or-later
-// Author: Drake
 
 import { ChangeDetectionStrategy, Component, computed, inject, signal } from '@angular/core';
 import { DialogRef, DIALOG_DATA } from '@angular/cdk/dialog';
-import type { AutomationReviewDialogData, AutomationReviewResult } from '../../models/automation-review.model';
 
-interface ReviewActionData {
-    kind: 'accept-all' | 'skip-all' | 'apply-choices',
-    label: string,
-    tone: 'primary' | 'success' | 'danger' | 'muted' | undefined;
+import type {
+    AutomationReviewDialogData,
+    AutomationReviewResult,
+} from '../../models/automation-review.model';
+
+type ReviewAction = Readonly<{
+    kind: 'accept-all' | 'skip-all' | 'apply-choices';
+    label: string;
+    tone: 'primary' | 'success' | 'danger';
     disabled: boolean;
-}
+}>;
 
 @Component({
     selector: 'automation-review-dialog',
@@ -25,22 +28,17 @@ interface ReviewActionData {
 })
 export class AutomationReviewDialogComponent {
     readonly data = inject<AutomationReviewDialogData>(DIALOG_DATA);
-    private readonly dialogRef = inject<DialogRef<AutomationReviewResult | undefined, AutomationReviewDialogComponent>>(DialogRef);
+    private readonly dialogRef = inject<DialogRef<AutomationReviewResult | undefined>>(DialogRef);
     private readonly decisions = signal<ReadonlyMap<string, boolean>>(new Map());
 
     readonly allDecided = computed(() => this.decisions().size === this.data.events.length);
-    readonly reviewAction = computed<ReviewActionData>(() => {
-        const decisions = this.decisions();
-        const rejectedCount = this.data.events.reduce(
-            (count, event) => count + (decisions.get(event.id) === false ? 1 : 0),
-            0,
-        );
-
-        if (rejectedCount === 0) {
-            return { kind: 'accept-all', label: 'ACCEPT ALL', tone: 'success', disabled: false } as const;
+    readonly reviewAction = computed<ReviewAction>(() => {
+        const rejected = this.data.events.filter(event => this.decisions().get(event.id) === false).length;
+        if (rejected === 0) {
+            return { kind: 'accept-all', label: 'ACCEPT ALL', tone: 'success', disabled: false };
         }
-        if (rejectedCount === this.data.events.length) {
-            return { kind: 'skip-all', label: 'SKIP ALL', tone: 'danger', disabled: false } as const;
+        if (rejected === this.data.events.length) {
+            return { kind: 'skip-all', label: 'SKIP ALL', tone: 'danger', disabled: false };
         }
         return {
             kind: 'apply-choices',
@@ -59,20 +57,14 @@ export class AutomationReviewDialogComponent {
     }
 
     choose(eventId: string, accepted: boolean): void {
-        const next = new Map(this.decisions());
-        next.set(eventId, accepted);
-        this.decisions.set(next);
-    }
-
-    acceptAll(): void {
-        this.closeWithAccepted(this.data.events.map(event => event.id));
+        this.decisions.set(new Map(this.decisions()).set(eventId, accepted));
     }
 
     performReviewAction(): void {
         const action = this.reviewAction();
         if (action.disabled) return;
         if (action.kind === 'accept-all') {
-            this.acceptAll();
+            this.close(this.data.events.map(event => event.id));
             return;
         }
         this.applyChoices();
@@ -80,22 +72,21 @@ export class AutomationReviewDialogComponent {
 
     applyChoices(): void {
         if (!this.allDecided()) return;
-        const acceptedEventIds = this.data.events
+        this.close(this.data.events
             .filter(event => this.decisions().get(event.id) === true)
-            .map(event => event.id);
-        this.closeWithAccepted(acceptedEventIds);
+            .map(event => event.id));
     }
 
     resolveSingle(accepted: boolean): void {
         if (this.data.events.length !== 1) return;
-        this.closeWithAccepted(accepted ? [this.data.events[0].id] : []);
+        this.close(accepted ? [this.data.events[0].id] : []);
     }
 
     cancel(): void {
         this.dialogRef.close(undefined);
     }
 
-    private closeWithAccepted(acceptedEventIds: string[]): void {
+    private close(acceptedEventIds: string[]): void {
         this.dialogRef.close({ acceptedEventIds });
     }
 }

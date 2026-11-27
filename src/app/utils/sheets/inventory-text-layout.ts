@@ -1,0 +1,230 @@
+// Copyright (C) 2026 The MegaMek Team
+// SPDX-License-Identifier: GPL-3.0-or-later
+
+import { measureSvgTextCanvas } from '../svg-text.util';
+import { addText, formatNumber, setAttributes, svgElement, transparentRect } from './record-sheet-svg-rendering';
+import { INVENTORY_BADGE, RECORD_SHEET_FONT } from './record-sheet-typography';
+
+export const MIN_INVENTORY_FONT = 4.5;
+export const MIN_INVENTORY_LINE_RATIO = 0.93;
+export const MAX_INVENTORY_LINE_RATIO = 1.35;
+/**
+ * How far a fitted inventory's first row rises toward its headings: by as much as its rows tightened, less the
+ * room its smaller type gives up, because the headings keep their full size.
+ */
+export function inventoryHeadingLift(lineStep: number, fontSize: number): number {
+    return Math.max(0, RECORD_SHEET_FONT.inventory * MAX_INVENTORY_LINE_RATIO - lineStep
+        - (RECORD_SHEET_FONT.inventory - fontSize));
+}
+/** The wrap width addInventoryText laid a cell out at. */
+export const INVENTORY_TEXT_WIDTH_ATTRIBUTE = 'data-mekbay-max-width';
+
+/**
+ * Match MegaMekLab: tighten line spacing, then reduce type, preserving a readable minimum. At that minimum a row
+ * gives up its badge's minimum height before rows would overlap; only then does the result not fit.
+ */
+export function fitInventoryText<T>(height: number,
+    measure: (fontSize: number) => { lineCount: number; content: T; badgeRows?: readonly number[] }) {
+    let fontSize: number = RECORD_SHEET_FONT.inventory;
+    while (true) {
+        const { lineCount, content, badgeRows = [] } = measure(fontSize);
+        const minimumStep = fontSize * MIN_INVENTORY_LINE_RATIO;
+        const maximumStep = fontSize * MAX_INVENTORY_LINE_RATIO;
+        const withBadges = (step: number) => lineCount * step
+            + badgeRows.reduce((extra, lines) => extra + Math.max(0, INVENTORY_BADGE.minimumHeight - lines * step), 0);
+        const atMinimum = fontSize <= MIN_INVENTORY_FONT;
+        const requiredHeight = atMinimum && withBadges(minimumStep) > height ? (step: number) => lineCount * step : withBadges;
+        if (requiredHeight(minimumStep) <= height || atMinimum) {
+            let lineStep = maximumStep;
+            if (requiredHeight(maximumStep) > height) {
+                let low = minimumStep;
+                let high = maximumStep;
+                for (let i = 0; i < 24; i++) {
+                    const middle = (low + high) / 2;
+                    if (requiredHeight(middle) <= height) low = middle;
+                    else high = middle;
+                }
+                lineStep = low;
+            }
+            // The badge height the rows were fitted with, which inventoryRowSpan must space them by.
+            const badgeHeight = requiredHeight === withBadges ? INVENTORY_BADGE.minimumHeight : 0;
+            return { fontSize, lineStep, content, fits: requiredHeight(lineStep) <= height, badgeHeight };
+        }
+        fontSize = Math.max(MIN_INVENTORY_FONT, Number((fontSize - 0.05).toFixed(2)));
+    }
+}
+
+/**
+ * Keep enough leading for a row's badge to stay legible as it shrinks with dense leading: the fit's `badgeHeight`
+ * (`fitInventoryText`), so rows are spaced as they were fitted.
+ */
+export function inventoryRowSpan(lines: number, lineStep: number, badgeHeight: number): number {
+    return Math.max(lines, badgeHeight / lineStep);
+}
+
+/** Wrap at word boundaries, splitting a long identifier only when it cannot fit by itself. */
+export function inventoryCellLines(value: string, width: number, fontSize: number = RECORD_SHEET_FONT.inventory): string[] {
+    if (!value) return [''];
+    const probe = svgElement('text');
+    probe.setAttribute('font-size', String(fontSize));
+    probe.setAttribute('font-family', 'Roboto, Arial, sans-serif');
+    const fits = (text: string) => measureSvgTextCanvas(probe, text) <= width;
+    const lines: string[] = [];
+    let line = '';
+    // No-break spaces (U+00A0, U+202F) join their words, so they never become line breaks.
+    for (const word of value.trim().split(/[^\S  ]+/u)) {
+        if (fits(line ? `${line} ${word}` : word)) { line = line ? `${line} ${word}` : word; continue; }
+        if (line) { lines.push(line); line = ''; }
+        for (const character of word) {
+            if (line && !fits(line + character)) { lines.push(line); line = ''; }
+            line += character;
+        }
+    }
+    if (line) lines.push(line);
+    return lines;
+}
+
+export function inventoryRowLineCount(cells: readonly (readonly [string, number])[], fontSize: number = RECORD_SHEET_FONT.inventory): number {
+    return Math.max(1, ...cells.map(([value, width]) => inventoryCellLines(value, width, fontSize).length));
+}
+
+/** Inventory cells always wrap; textLength must never squeeze their glyphs. */
+export function addInventoryText(parent: SVGElement, value: string, x: number, y: number,
+    options: Parameters<typeof addText>[4] & { readonly lineHeight?: number } = {}): SVGTextElement {
+    const { maxWidth, lineHeight = (options.size ?? RECORD_SHEET_FONT.inventory) * 1.35, ...style } = options;
+    const text = addText(parent, '', x, y, { ...style, size: style.size ?? RECORD_SHEET_FONT.inventory });
+    // Binders rewrap live values at this width, so they keep the lines laid out here.
+    if (maxWidth) text.setAttribute(INVENTORY_TEXT_WIDTH_ATTRIBUTE, formatNumber(maxWidth));
+    const lines = maxWidth ? inventoryCellLines(value, maxWidth, style.size) : [value];
+    if (lines.length === 1) text.textContent = lines[0];
+    else {
+        let sourceOffset = 0;
+        const source = value.trim().replace(/[^\S  ]+/gu, ' ');
+        lines.forEach((line, index) => {
+            const span = svgElement('tspan');
+            setAttributes(span, { x, y: y + index * lineHeight, 'font-size': style.size ?? RECORD_SHEET_FONT.inventory });
+            span.textContent = line;
+            text.appendChild(span);
+            sourceOffset += line.length;
+            if (index < lines.length - 1 && source[sourceOffset] === ' ') {
+                text.appendChild(document.createTextNode(' '));
+                sourceOffset++;
+            }
+        });
+    }
+    return text;
+}
+
+const RANGE_BOX_WIDTH = 12.4;
+const RANGE_BOX_GAP = 1.4;
+/** The widest value a range column prints before it wraps. */
+export const INVENTORY_RANGE_VALUE_WIDTH = 12;
+
+/** An inventory's row band and Min/Sht/Med/Lng columns, in its template units. */
+export interface InventoryRangeColumns {
+    readonly bandLeft: number;
+    readonly bandRight: number;
+    /** Centres of the Min, Sht, Med and Lng columns. */
+    readonly ranges: readonly number[];
+}
+
+/**
+ * Min/Sht/Med/Lng columns whose Lng box ends at `lngRight`: equal range boxes a constant gap apart, and the row band
+ * from `bandLeft` to that gap before Min, so every inventory spaces its ranges alike.
+ */
+export function inventoryRangeColumns(bandLeft: number, lngRight: number): InventoryRangeColumns {
+    const pitch = RANGE_BOX_WIDTH + RANGE_BOX_GAP;
+    const ranges = [3, 2, 1, 0].map(step => lngRight - RANGE_BOX_WIDTH / 2 - step * pitch);
+    return Object.freeze({
+        bandLeft,
+        bandRight: ranges[0] - RANGE_BOX_WIDTH / 2 - RANGE_BOX_GAP,
+        ranges: Object.freeze(ranges),
+    });
+}
+
+/** The full-width ('Mek and vehicle) inventory, its Lng box close to the frame. */
+export const STANDARD_INVENTORY_COLUMNS = inventoryRangeColumns(6, 221.6);
+
+/** Min/Sht/Med/Lng headings centred on their columns. */
+export function inventoryRangeHeadings(columns: InventoryRangeColumns): readonly (readonly [string, number, 'middle'])[] {
+    return (['Min', 'Sht', 'Med', 'Lng'] as const).map((label, index) => [label, columns.ranges[index], 'middle'] as const);
+}
+
+/** The row band and Sht/Med/Lng boxes through a layout's template-to-sheet x scale. */
+export function inventoryRangeButtons(columns: InventoryRangeColumns, x: (value: number) => number): Readonly<{
+    band: readonly [x: number, width: number];
+    ranges: readonly (readonly [className: string, x: number, width: number])[];
+}> {
+    return Object.freeze({
+        band: [x(columns.bandLeft), x(columns.bandRight - columns.bandLeft)] as const,
+        ranges: (['shrButton', 'medButton', 'lngButton'] as const).map((className, index) =>
+            [className, x(columns.ranges[index + 1] - RANGE_BOX_WIDTH / 2), x(RANGE_BOX_WIDTH)] as const),
+    });
+}
+
+/** Vertical middle of an inventory line's text, shared by its badges and click targets. */
+function inventoryLineMiddle(baseline: number, scale: number): number {
+    return baseline - 2.5 * scale;
+}
+
+/**
+ * An inventory row's click targets: the main (or alternative-mode) button and the range buttons, each a band of whole
+ * line pitches centred on the row's text like its badges, so the selection highlight sits on the row in every layout.
+ */
+export function appendInventoryRowButtons(
+    row: SVGElement,
+    baseline: number,
+    scale: number,
+    lineHeight: number,
+    lines: number,
+    main: readonly [x: number, width: number],
+    ranges: readonly (readonly [className: string, x: number, width: number])[] = [],
+    mainClass: 'mainButton' | 'alternativeModeButton' = 'mainButton',
+): void {
+    const top = inventoryLineMiddle(baseline, scale) - lineHeight / 2;
+    const height = lines * lineHeight;
+    row.appendChild(transparentRect(main[0], top, main[1], height, `inventoryEntryButton ${mainClass}`));
+    for (const [className, x, width] of ranges) {
+        row.appendChild(transparentRect(x, top, width, height, `inventoryEntryButton ${className}`));
+    }
+}
+
+/**
+ * A row's weapon to-hit modifier and selected-target number, sharing one slot straddling the frame's left border: the
+ * target number takes the modifier's place while a target is selected. A layout whose rows start further inside its
+ * frame gives the slot's centre `x`.
+ */
+export function appendInventoryBadges(parent: SVGElement, baseline: number, scale = 1, lineHeight = 9 * scale,
+    x = INVENTORY_BADGE.offsetX * scale): void {
+    appendInventoryBadge(parent, 'hitMod', x, baseline, scale, lineHeight);
+    appendInventoryBadge(parent, 'targetTn', x, baseline, scale, lineHeight);
+}
+
+/**
+ * The one modifier badge of every sheet, for inventory rows and movement modes alike: the standard size at the layout's
+ * `scale`, shrunk as a whole, keeping its proportions, only where rows `lineHeight` apart are too dense for it.
+ */
+export function recordSheetBadgeSize(scale: number, lineHeight: number): {
+    readonly scale: number; readonly width: number; readonly height: number; readonly fontSize: number;
+} {
+    const height = Math.min(INVENTORY_BADGE.height * scale, Math.max(INVENTORY_BADGE.minimumHeight * scale, lineHeight));
+    const badgeScale = height / INVENTORY_BADGE.height;
+    return { scale: badgeScale, width: INVENTORY_BADGE.width * badgeScale, height, fontSize: INVENTORY_BADGE.fontSize * badgeScale };
+}
+
+function appendInventoryBadge(parent: SVGElement, kind: 'hitMod' | 'targetTn', x: number, baseline: number, scale: number,
+    lineHeight: number): void {
+    const { scale: badgeScale, width, height, fontSize } = recordSheetBadgeSize(scale, lineHeight);
+    const center = inventoryLineMiddle(baseline, scale);
+    const hitModifier = kind === 'hitMod';
+    const rect = svgElement('rect');
+    setAttributes(rect, { x: x - width / 2, y: center - height / 2, width, height,
+        fill: hitModifier ? '#000' : '#fff', stroke: hitModifier ? undefined : '#000',
+        'stroke-width': hitModifier ? undefined : 0.8 * badgeScale, class: `${kind}-rect`, display: 'none' });
+    parent.appendChild(rect);
+    const text = addText(parent, '', x, center + fontSize / 3, {
+        class: `${kind}-text`, size: fontSize, weight: 700,
+        fill: hitModifier ? '#fff' : undefined, anchor: 'middle' });
+    text.setAttribute('font-family', 'monospace');
+    text.setAttribute('display', 'none');
+}

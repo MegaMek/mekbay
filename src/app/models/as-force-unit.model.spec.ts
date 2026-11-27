@@ -2,17 +2,13 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 // Author: Drake
 
-import { Injector, provideZonelessChangeDetection, signal } from '@angular/core';
+import { Injector, provideZonelessChangeDetection } from '@angular/core';
 import { TestBed } from '@angular/core/testing';
-import type { DataService } from '../services/data.service';
-import type { UnitInitializerService } from '../services/unit-initializer.service';
 import { createEmptyUnit } from '../testing/unit-test-helpers';
-import type { ASForce } from './as-force.model';
+import { ASForce } from './as-force.model';
+import type { DataService } from '../services/data.service';
 import { ASForceUnit } from './as-force-unit.model';
-import { GameSystem } from './common.model';
-import type { UnitGroup } from './force.model';
 import type { UnitSummary } from './unit-summary.model';
-import { getFormationDefinition } from '../utils/formation-blueprints';
 
 describe('ASForceUnit ability effects', () => {
     let injector: Injector;
@@ -25,19 +21,8 @@ describe('ASForceUnit ability effects', () => {
     });
 
     function createForceUnit(unit: UnitSummary = createTestUnit()): ASForceUnit {
-        const force = {
-            owned: () => true,
-            emitChanged: jasmine.createSpy('emitChanged'),
-            groups: () => [],
-        } as unknown as ASForce;
-
-        return new ASForceUnit(
-            unit,
-            force,
-            {} as DataService,
-            {} as UnitInitializerService,
-            injector,
-        );
+        const force = new ASForce('Test', {} as DataService, injector);
+        return force.addUnit(unit);
     }
 
     function createTestUnit(overrides: Parameters<typeof createEmptyUnit>[0] = {}): UnitSummary {
@@ -67,8 +52,34 @@ describe('ASForceUnit ability effects', () => {
 
         expect(forceUnit.getBaseBv()).toBe(30);
         expect(forceUnit.getPreSkillBv()).toBe(30);
-        expect(forceUnit.baseAdjustedBv()).toBe(30);
         expect(forceUnit.getBv()).toBeGreaterThan(30);
+    });
+
+    it('uses one personal rating for AS Skill across zero, default and maximum values', () => {
+        const unit = createForceUnit();
+        for (const skill of [0, 4, 8]) {
+            unit.setPilotSkill(skill);
+            expect(unit.getPilotSkill()).toBe(skill);
+            expect(unit.pilot()!.gunnery ?? 4).toBe(skill);
+            expect('skill' in unit.pilot()!).toBeFalse();
+            expect('role' in unit.pilot()!).toBeFalse();
+        }
+    });
+
+    it('constructs from UnitSummary without opening a native CBT source', () => {
+        const force = {
+            owned: () => true,
+            emitChanged: jasmine.createSpy('emitChanged'),
+            groups: () => [],
+        } as unknown as ASForce;
+        const summary = createTestUnit();
+        const forceUnit = new ASForceUnit(
+            summary,
+            force,
+            injector,
+        );
+
+        expect(forceUnit.getSummary()).toBe(summary);
     });
 
     it('keeps default heat behavior without Hot Dog', () => {
@@ -91,6 +102,23 @@ describe('ASForceUnit ability effects', () => {
         expect(forceUnit.isShutdown()).toBeTrue();
         expect(forceUnit.effectiveMovement()).toEqual({ '': 0, a: 10 });
         expect(forceUnit.movementDisplayValue('', 0)).toEqual({ baseInches: 0 });
+    });
+
+    it('keeps parsed movement modes at zero for a vacant pilot station', () => {
+        const forceUnit = createForceUnit(createTestUnit({
+            as: { MV: '8\"/4\"j', MVm: { '': 8, j: 4 } },
+        }));
+        expect(forceUnit.force.unassignPerson(forceUnit.id, 'pilot')).toBeTrue();
+        expect(forceUnit.effectiveMovement()).toEqual({ '': 0, j: 0 });
+        expect(forceUnit.previewMovement()).toEqual({ '': 0, j: 0 });
+        expect(forceUnit.previewMovementNoHeat()).toEqual({ '': 0, j: 0 });
+        expect(forceUnit.isImmobilized()).toBeTrue();
+    });
+
+    it('preserves normalized ground movement for a vacant jump-only Mek', () => {
+        const forceUnit = createForceUnit(createTestUnit({ as: { MVm: { j: 6 } } }));
+        expect(forceUnit.force.unassignPerson(forceUnit.id, 'pilot')).toBeTrue();
+        expect(forceUnit.effectiveMovement()).toEqual({ '': 0, j: 0 });
     });
 
     it('preserves aerospace thrust while heat shutdown', () => {
@@ -134,48 +162,6 @@ describe('ASForceUnit ability effects', () => {
         expect(forceUnit.shutdownHeatThreshold()).toBe(5);
         expect(forceUnit.effectiveHeatForPenalties()).toBe(3);
         expect(forceUnit.isShutdown()).toBeFalse();
-    });
-
-    it('keeps a Support setup snapshot but deactivates it below three active units', () => {
-        let groups: UnitGroup<ASForceUnit>[] = [];
-        const force = {
-            owned: () => true,
-            emitChanged: jasmine.createSpy('emitChanged'),
-            gameSystem: GameSystem.ALPHA_STRIKE,
-            groups: () => groups,
-        } as unknown as ASForce;
-        const createOwnedUnit = (): ASForceUnit => new ASForceUnit(
-            createTestUnit(),
-            force,
-            {} as DataService,
-            {} as UnitInitializerService,
-            injector,
-        );
-        const supportUnits = [createOwnedUnit(), createOwnedUnit(), createOwnedUnit()];
-        const targetUnit = createOwnedUnit();
-        const supportGroup = {
-            id: 'support',
-            force,
-            units: () => supportUnits,
-            activeFormation: () => getFormationDefinition('support-lance', GameSystem.ALPHA_STRIKE),
-            formationTargetGroupId: signal<string | null>('target'),
-        } as unknown as UnitGroup<ASForceUnit>;
-        const targetGroup = {
-            id: 'target',
-            force,
-            units: () => [targetUnit],
-            activeFormation: () => getFormationDefinition('striker-lance', GameSystem.ALPHA_STRIKE),
-            formationTargetGroupId: signal<string | null>(null),
-        } as unknown as UnitGroup<ASForceUnit>;
-        groups = [supportGroup, targetGroup];
-        supportUnits[0].setFormationAbilities(['hot_dog'], false);
-
-        expect(supportUnits[0].activeFormationAbilities()).toEqual(['hot_dog']);
-        supportUnits[2].setDestroyed(true);
-        expect(supportUnits[0].formationAbilities()).toEqual(['hot_dog']);
-        expect(supportUnits[0].activeFormationAbilities()).toEqual([]);
-        supportUnits[2].setDestroyed(false);
-        expect(supportUnits[0].activeFormationAbilities()).toEqual(['hot_dog']);
     });
 
     it('uses preview heat for pending Hot Dog shutdown and movement', () => {

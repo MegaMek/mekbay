@@ -2,42 +2,34 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 // Author: Drake
 
-import { inject, Injectable } from '@angular/core';
-import type { UnitFluffCatalog, UnitFluffCatalogEntry, UnitFluffCatalogMetadata, Units } from '../models/unit-summary.model';
-import type { Eras } from '../models/eras.model';
-import type { RawMULFactions } from '../models/mulfactions.model';
+import { inject, Injectable, Injector } from '@angular/core';
+import { Subject } from 'rxjs';
 import type { Options } from '../models/options.model';
-import type { Quirks } from '../models/quirks.model';
-import type { Sourcebooks } from '../models/sourcebook.model';
-import type { MegaMekFactionsData } from '../models/megamek/factions.model';
-import type { MegaMekAvailabilityData } from '../models/megamek/availability.model';
-import type { MegaMekRulesetsData } from '../models/megamek/rulesets.model';
-import type { SarnaPageTitlesData } from '../models/sarna-page-titles.model';
-import type { ForceNameWordsData } from '../models/force-name-words.model';
-import type { PilotNameCatalogData } from '../models/pilot-name-catalog.model';
-import type { RawEquipmentData } from '../models/equipment.model';
 import type { SerializedForce } from '../models/force-serialization';
+import { decodeRemoteLoadForceEntry, type RemoteLoadForceEntry } from '../models/remote-load-force-entry.model';
 import { DialogsService } from './dialogs.service';
+import { AppUpdateService } from './app-update.service';
 import type { SerializedSearchFilter } from './unit-search-filters.model';
-import {
-    createLoadForceEntryFromSerializedForce,
-    LoadForceEntry,
-} from '../models/load-force-entry.model';
-import type { ForceEntryResolver } from '../models/force-entry-resolver.model';
 import { LoggerService } from './logger.service';
 import type { SerializedOperation } from '../models/operation.model';
 import type { SerializedOrganization } from '../models/organization.model';
 import type { LinkedOAuthProvider } from '../models/account-auth.model';
-
-
+import type { SavedCustomUnit } from '../models/custom-unit.model';
+import { isUnitArtwork, type UnitArtwork } from '../models/unit-artwork.model';
+import { asUnitUuid, type UnitUuid } from './unit-catalog/unit-catalog.types';
+import { assertImageFreeUnitSource, extractNativeUnitArtwork } from '../models/entity/native-unit-artwork';
+import { decodeUnitArtwork } from '../utils/unit-artwork.util';
+import { nativeSourceHashCanary, type SourceHashCanary } from '../models/source-hash-canary';
+import type { StoredCustomUnitSummary } from './unit-catalog/custom-unit-summary-cache';
+import {
+    decodeForceFromStorage,
+    encodeForceForStorage,
+    type StoredForceRecord,
+} from '../models/runtime/force-storage-codec';
 
 const DB_NAME = 'mekbay';
-const DB_VERSION = 13;
+const DB_VERSION = 23;
 const DB_STORE = 'store';
-const UNITS_KEY = 'units';
-const UNITS_FLUFF_METADATA_KEY = 'unitsFluff';
-const CUSTOM_UNITS_KEY_PREFIX = 'units:server:';
-const CUSTOM_UNITS_FLUFF_KEY_PREFIX = 'units-fluff:server:';
 const EQUIPMENT_KEY = 'equipment';
 const FACTIONS_KEY = 'factions';
 const MEGAMEK_FACTIONS_KEY = 'megamekFactions';
@@ -45,15 +37,18 @@ const MEGAMEK_AVAILABILITY_KEY = 'megamekAvailability';
 const MEGAMEK_RULESETS_KEY = 'megamekRulesets';
 const ERAS_KEY = 'eras';
 const SOURCEBOOKS_KEY = 'sourcebooks';
-const SHEETS_STORE = 'sheetsStore';
 const CANVAS_STORE = 'canvasStore';
-const UNIT_FLUFF_STORE = 'unitFluffStore';
 const OPERATIONS_STORE = 'operationsStore';
 const FORCE_STORE = 'forceStore';
 const TAGS_STORE = 'tagsStore';
 const SAVED_SEARCHES_STORE = 'savedSearchesStore';
 const PUBLIC_TAGS_STORE = 'publicTagsStore';
 const ORGANIZATIONS_STORE = 'organizationsStore';
+const UNIT_ARTWORK_STORE = 'unitArtworkStore';
+const PROVIDED_IMAGES_STORE = 'providedImagesStore';
+const CUSTOM_UNITS_STORE = 'customUnitsStore';
+const SUBSCRIBED_CUSTOM_UNITS_STORE = 'subscribedCustomUnitsStore';
+const CUSTOM_UNIT_SUMMARIES_STORE = 'customUnitSummariesStore';
 const OPTIONS_KEY = 'options';
 const USER_KEY = 'user';
 const QUIRKS_KEY = 'quirks';
@@ -62,8 +57,6 @@ const FORCE_NAME_WORDS_KEY = 'forceNameWords';
 const PILOT_NAMES_KEY = 'pilotNames';
 
 const CATALOG_GENERAL_STORE_KEYS = [
-    UNITS_KEY,
-    UNITS_FLUFF_METADATA_KEY,
     EQUIPMENT_KEY,
     FACTIONS_KEY,
     MEGAMEK_FACTIONS_KEY,
@@ -77,15 +70,12 @@ const CATALOG_GENERAL_STORE_KEYS = [
     PILOT_NAMES_KEY,
 ] as const;
 
-const MAX_SHEET_CACHE_COUNT = 5000; // Max number of sheets to cache
-
-export interface StoredSheet {
-    key: string;
-    timestamp: number; // Timestamp of when the sheet was saved
-    etag: string; // ETag for the sheet content for cache validation
-    fingerprintVersion?: number; // Cache policy fingerprintVersion; absent on legacy records
-    content: Blob; // The compressed XML content of the sheet
-    size: number; // Size of the blob in bytes
+class IndexedDbUpgradeBlockedError extends Error {
+    constructor() {
+        super('The local database upgrade is blocked by another MekBay tab. '
+            + 'Close the other tab, then retry or reload this one.');
+        this.name = 'IndexedDbUpgradeBlockedError';
+    }
 }
 
 /** Tag data keyed by tag label -> unit keys array. */
@@ -242,9 +232,7 @@ export class DbService {
     private dbPromise: Promise<IDBDatabase | null>;
     private logger = inject(LoggerService);
     private dialogsService = inject(DialogsService);
-    
-    /** Whether the database is in a degraded state (failed to initialize) */
-    private degradedMode = false;
+    private injector = inject(Injector);
     
     /** Whether blob storage is unavailable (iOS Safari Private Mode) */
     private blobStorageUnavailable = false;
@@ -270,6 +258,10 @@ export class DbService {
      * Handle database initialization failure with user options.
      */
     private async handleDbInitFailure(error: unknown): Promise<IDBDatabase | null> {
+        const blockedGuidance = error instanceof IndexedDbUpgradeBlockedError
+            ? '<p><strong>Another MekBay tab is blocking the database upgrade.</strong> '
+                + 'Close every other MekBay tab before retrying.</p>'
+            : '<p>Failed to open the local database. This may be due to storage corruption or browser issues.</p>';
         const choice = await this.dialogsService.choose<'retry' | 'reset' | 'continue'>(
             'Database Error',
             '',
@@ -282,7 +274,7 @@ export class DbService {
             {
                 panelClass: 'danger',
                 messageHtml: `
-                    <p>Failed to open the local database. This may be due to storage corruption or browser issues.</p>
+                    ${blockedGuidance}
                     <p style="margin-top: 1em;"><strong>Your options:</strong></p>
                     <ul style="margin: 0.5em 0 1.5em 1.5em; padding: 0;">
                         <li><strong>RETRY</strong> – Try opening the database again</li>
@@ -312,13 +304,11 @@ export class DbService {
                     'Failed to reset the database. Continuing without local storage.',
                     'Reset Failed'
                 );
-                this.degradedMode = true;
                 return null;
             }
         }
 
         // choice === 'continue'
-        this.degradedMode = true;
         return null;
     }
 
@@ -341,29 +331,109 @@ export class DbService {
     private initIndexedDb(): Promise<IDBDatabase> {
         return new Promise((resolve, reject) => {
             const request = indexedDB.open(DB_NAME, DB_VERSION);
+            let settled = false;
+            const rejectOnce = (error: unknown): void => {
+                if (settled) return;
+                settled = true;
+                reject(error);
+            };
 
             request.onupgradeneeded = (event) => {
                 const db = (event.target as IDBOpenDBRequest).result;
                 const transaction = (event.target as IDBOpenDBRequest).transaction;
                 this.createStoreIfMissing(db, transaction, DB_STORE);
-                this.createStoreIfMissing(db, transaction, SHEETS_STORE, 'timestamp');
                 this.createStoreIfMissing(db, transaction, FORCE_STORE, 'timestamp');
                 this.createStoreIfMissing(db, transaction, TAGS_STORE);
                 this.createStoreIfMissing(db, transaction, SAVED_SEARCHES_STORE);
                 this.createStoreIfMissing(db, transaction, CANVAS_STORE);
-                this.createStoreIfMissing(db, transaction, UNIT_FLUFF_STORE);
                 this.createStoreIfMissing(db, transaction, PUBLIC_TAGS_STORE);
                 this.createStoreIfMissing(db, transaction, OPERATIONS_STORE);
                 this.createStoreIfMissing(db, transaction, ORGANIZATIONS_STORE);
+                this.createStoreIfMissing(db, transaction, UNIT_ARTWORK_STORE);
+                this.createStoreIfMissing(db, transaction, PROVIDED_IMAGES_STORE);
+                this.createStoreIfMissing(db, transaction, CUSTOM_UNITS_STORE);
+                this.createStoreIfMissing(db, transaction, SUBSCRIBED_CUSTOM_UNITS_STORE);
+                this.createStoreIfMissing(db, transaction, CUSTOM_UNIT_SUMMARIES_STORE);
+                if (transaction) {
+                    const owned = transaction.objectStore(CUSTOM_UNITS_STORE);
+                    // Keep existing user designs while separating disposable subscription copies.
+                    const subscriptions = transaction.objectStore(SUBSCRIBED_CUSTOM_UNITS_STORE);
+                    const cursor = owned.openCursor();
+                    cursor.onsuccess = () => {
+                        const entry = cursor.result;
+                        if (!entry) return;
+                        const record = entry.value as SavedCustomUnit;
+                        if (!record || typeof record.uuid !== 'string') { entry.continue(); return; }
+                        if (record.owned === false) {
+                            if (record.subscribed) subscriptions.put(record, [record.accountUuid ?? '', record.uuid]);
+                            entry.delete();
+                        } else if (typeof entry.key === 'string') {
+                            owned.put(record, [record.accountUuid ?? '', record.uuid]);
+                            entry.delete();
+                        }
+                        entry.continue();
+                    };
+                }
+
+                // Schema 14 removes the pre-generated units-fluff.json cache. Prose is
+                // read from the native MTF/BLK only while Intel is open; art is resolved
+                // independently through images.json.
+                if (db.objectStoreNames.contains('unitFluffStore')) {
+                    db.deleteObjectStore('unitFluffStore');
+                }
+                if (transaction && db.objectStoreNames.contains(DB_STORE)) {
+                    const generalStore = transaction.objectStore(DB_STORE);
+                    generalStore.delete('unitsFluff');
+                    // Schema 15 removes the obsolete units.json snapshot.
+                    // Provider-specific legacy caches use a different prefix and are preserved.
+                    generalStore.delete('units');
+                    if (event.oldVersion < 17) {
+                        // Catalog caches are disposable application data. Do not
+                        // migrate old-webapp payloads into the user-data database.
+                        for (const key of CATALOG_GENERAL_STORE_KEYS) {
+                            generalStore.delete(key);
+                        }
+                    }
+                }
             };
 
-            request.onsuccess = (event) => resolve((event.target as IDBOpenDBRequest).result);
-            request.onerror = (event) => reject((event.target as IDBOpenDBRequest).error);
-            request.onblocked = async () => {
-                await this.dialogsService.showError('Database upgrade blocked. Please close other tabs of this app and reload.', 'Database Upgrade Blocked');
-                reject('IndexedDB upgrade blocked');
+            request.onsuccess = (event) => {
+                const db = (event.target as IDBOpenDBRequest).result;
+                if (settled) {
+                    db.close();
+                    return;
+                }
+                settled = true;
+                db.onversionchange = () => {
+                    this.logger.warn('IndexedDB schema changed in another tab; closing this stale connection.');
+                    db.close();
+                    // Only a newer MekBay (or a database reset) changes the schema, and this tab's code cannot
+                    // reopen it. Run without local storage, as after "continue without storage", until reload.
+                    this.dbPromise = Promise.resolve(null);
+                    void this.requestReloadForNewerVersion();
+                };
+                resolve(db);
             };
+            request.onerror = (event) => rejectOnce((event.target as IDBOpenDBRequest).error);
+            // Reject the open before any recovery UI is awaited. The outer
+            // recovery path owns exactly one actionable dialog.
+            request.onblocked = () => rejectOnce(new IndexedDbUpgradeBlockedError());
         });
+    }
+
+    private async requestReloadForNewerVersion(): Promise<void> {
+        const appUpdate = this.injector.get(AppUpdateService);
+        appUpdate.updatePending.set(true);
+        const choice = await this.dialogsService.choose<'reload' | 'later'>(
+            'Reload required',
+            'Another MekBay tab updated or reset this device\'s storage. This tab cannot save until it reloads.',
+            [
+                { label: 'RELOAD', value: 'reload' },
+                { label: 'LATER', value: 'later' },
+            ],
+            'later',
+        );
+        if (choice === 'reload') await appUpdate.restartForUpdate();
     }
 
     private createStoreIfMissing(db: IDBDatabase, transaction: IDBTransaction | null, storeName: string, indexName?: string) {
@@ -382,9 +452,202 @@ export class DbService {
         await this.dbPromise;
     }
 
-    /** Check if database is in degraded mode (no storage available) */
-    public isDegraded(): boolean {
-        return this.degradedMode;
+    /** Local artwork outlives account sessions. A null change means the entire store changed. */
+    readonly unitArtworkChanges = new Subject<readonly UnitUuid[] | null>();
+
+    async listProvidedImages(): Promise<ReadonlyMap<string, Blob>> {
+        const db = await this.dbPromise;
+        if (!db) return new Map();
+        return new Promise((resolve, reject) => {
+            const rows = new Map<string, Blob>();
+            const tx = db.transaction(PROVIDED_IMAGES_STORE, 'readonly');
+            const request = tx.objectStore(PROVIDED_IMAGES_STORE).openCursor();
+            request.onsuccess = () => {
+                const cursor = request.result;
+                if (!cursor) return;
+                if (typeof cursor.key === 'string' && cursor.value instanceof Blob && cursor.value.size > 0) {
+                    rows.set(cursor.key, cursor.value);
+                }
+                cursor.continue();
+            };
+            tx.oncomplete = () => resolve(rows);
+            tx.onerror = () => reject(tx.error);
+            tx.onabort = () => reject(tx.error ?? new Error('Provided image read was aborted.'));
+        });
+    }
+
+    async saveProvidedImage(url: string, blob: Blob): Promise<void> {
+        const db = await this.dbPromise;
+        if (!db) throw new Error('Local storage is unavailable; provided image was not saved.');
+        await new Promise<void>((resolve, reject) => {
+            const tx = db.transaction(PROVIDED_IMAGES_STORE, 'readwrite');
+            tx.objectStore(PROVIDED_IMAGES_STORE).put(blob, url);
+            tx.oncomplete = () => resolve();
+            tx.onerror = () => reject(tx.error);
+            tx.onabort = () => reject(tx.error ?? new Error('Provided image save was aborted.'));
+        });
+    }
+
+    async purgeProvidedImages(): Promise<void> {
+        const db = await this.dbPromise;
+        if (!db) throw new Error('Local storage is unavailable.');
+        await new Promise<void>((resolve, reject) => {
+            const tx = db.transaction(PROVIDED_IMAGES_STORE, 'readwrite');
+            tx.objectStore(PROVIDED_IMAGES_STORE).clear();
+            tx.oncomplete = () => resolve();
+            tx.onerror = () => reject(tx.error);
+            tx.onabort = () => reject(tx.error ?? new Error('Provided image purge was aborted.'));
+        });
+    }
+
+    async listUnitArtwork(): Promise<ReadonlyMap<UnitUuid, UnitArtwork>> {
+        const db = await this.dbPromise;
+        if (!db) return new Map();
+        return new Promise((resolve, reject) => {
+            const rows = new Map<UnitUuid, UnitArtwork>();
+            const tx = db.transaction(UNIT_ARTWORK_STORE, 'readonly');
+            const request = tx.objectStore(UNIT_ARTWORK_STORE).openCursor();
+            request.onsuccess = () => {
+                const cursor = request.result;
+                if (!cursor) return;
+                try { if (isUnitArtwork(cursor.value)) rows.set(asUnitUuid(String(cursor.key)), cursor.value); }
+                catch { /* An invalid stored key is not a unit identity. */ }
+                cursor.continue();
+            };
+            tx.oncomplete = () => resolve(rows);
+            tx.onerror = () => reject(tx.error);
+            tx.onabort = () => reject(tx.error ?? new Error('Artwork read was aborted.'));
+        });
+    }
+
+    async getUnitArtwork(uuid: UnitUuid): Promise<UnitArtwork | null> {
+        const value = await this.getDataFromStore<unknown>(uuid, UNIT_ARTWORK_STORE);
+        return isUnitArtwork(value) ? value : null;
+    }
+
+    async saveUnitArtwork(uuid: UnitUuid, artwork: UnitArtwork | null, onlyIfAbsent = false): Promise<void> {
+        asUnitUuid(uuid);
+        if (artwork && !isUnitArtwork(artwork)) throw new Error('Invalid or oversized unit artwork.');
+        const db = await this.dbPromise;
+        if (!db) throw new Error('Local storage is unavailable; artwork was not saved.');
+        await new Promise<void>((resolve, reject) => {
+            const tx = db.transaction(UNIT_ARTWORK_STORE, 'readwrite');
+            const store = tx.objectStore(UNIT_ARTWORK_STORE);
+            const write = (): void => { if (artwork) store.put(artwork, uuid); else store.delete(uuid); };
+            if (onlyIfAbsent) {
+                const request = store.getKey(uuid);
+                request.onsuccess = () => { if (request.result === undefined) write(); };
+            } else write();
+            tx.oncomplete = () => resolve();
+            tx.onerror = () => reject(tx.error);
+            tx.onabort = () => reject(tx.error ?? new Error('Artwork save was aborted.'));
+        });
+        this.unitArtworkChanges.next([uuid]);
+    }
+
+    async purgeUnitArtwork(uuids?: readonly UnitUuid[]): Promise<void> {
+        const db = await this.dbPromise;
+        if (!db) throw new Error('Local storage is unavailable.');
+        await new Promise<void>((resolve, reject) => {
+            const tx = db.transaction(UNIT_ARTWORK_STORE, 'readwrite');
+            const store = tx.objectStore(UNIT_ARTWORK_STORE);
+            if (uuids) uuids.forEach(uuid => store.delete(uuid)); else store.clear();
+            tx.oncomplete = () => resolve();
+            tx.onerror = () => reject(tx.error);
+            tx.onabort = () => reject(tx.error ?? new Error('Artwork purge was aborted.'));
+        });
+        this.unitArtworkChanges.next(uuids ? [...uuids] : null);
+    }
+
+    /** User designs are independent of disposable core catalog caches. */
+    public async listCustomUnits(): Promise<unknown[]> {
+        const db = await this.dbPromise;
+        if (!db) return [];
+        return new Promise((resolve, reject) => {
+            const transaction = db.transaction([CUSTOM_UNITS_STORE, SUBSCRIBED_CUSTOM_UNITS_STORE], 'readonly');
+            const owned = transaction.objectStore(CUSTOM_UNITS_STORE).getAll();
+            const subscribed = transaction.objectStore(SUBSCRIBED_CUSTOM_UNITS_STORE).getAll();
+            transaction.oncomplete = () => resolve([...owned.result, ...subscribed.result]);
+            transaction.onerror = () => reject(transaction.error);
+            transaction.onabort = () => reject(transaction.error ?? new Error('Custom unit read was aborted'));
+        });
+    }
+
+    /** Read/modify/write together: another tab's pending edits must participate in the decision. */
+    public async updateCustomUnits(changes: readonly {
+        readonly uuid: string;
+        readonly accountUuid: string;
+        readonly update: (current: SavedCustomUnit | undefined) => SavedCustomUnit | undefined;
+    }[]): Promise<readonly (SavedCustomUnit | undefined)[]> {
+        if (!changes.length) return [];
+        const db = await this.dbPromise;
+        if (!db) throw new Error('Local storage is unavailable; the custom unit was not saved');
+        return new Promise((resolve, reject) => {
+            const transaction = db.transaction([CUSTOM_UNITS_STORE, SUBSCRIBED_CUSTOM_UNITS_STORE, CUSTOM_UNIT_SUMMARIES_STORE], 'readwrite');
+            const owned = transaction.objectStore(CUSTOM_UNITS_STORE);
+            const subscribed = transaction.objectStore(SUBSCRIBED_CUSTOM_UNITS_STORE);
+            const results: (SavedCustomUnit | undefined)[] = [];
+            let failure: unknown;
+            for (const [index, change] of changes.entries()) {
+                const key = [change.accountUuid, change.uuid];
+                const ownedRead = owned.get(key);
+                const subscribedRead = subscribed.get(key);
+                subscribedRead.onsuccess = () => {
+                    try {
+                        const current = ownedRead.result ?? subscribedRead.result;
+                        const record = change.update(current);
+                        results[index] = record;
+                        if (record === current) return;
+                        if (record) {
+                            if (record.uuid !== change.uuid || (record.accountUuid ?? '') !== change.accountUuid) {
+                                throw new Error('Custom unit identity cannot change during an update');
+                            }
+                            if (record.owned === false && (!record.subscribed || record.pending)) {
+                                throw new Error('Only subscribed foreign designs can be saved locally.');
+                            }
+                            assertImageFreeUnitSource(record.source, record.format);
+                            (record.owned === false ? subscribed : owned).put(record, key);
+                            (record.owned === false ? owned : subscribed).delete(key);
+                        } else {
+                            owned.delete(key);
+                            subscribed.delete(key);
+                            transaction.objectStore(CUSTOM_UNIT_SUMMARIES_STORE).delete(key);
+                        }
+                    } catch (error) { failure = error; transaction.abort(); }
+                };
+            }
+            transaction.oncomplete = () => resolve(results);
+            // Failed requests bubble before onabort; retain an explicit callback failure.
+            transaction.onerror = () => undefined;
+            transaction.onabort = () => reject(failure ?? transaction.error ?? new Error('Custom unit save was aborted'));
+        });
+    }
+
+    public async listCustomUnitSummaries(): Promise<unknown[]> {
+        const db = await this.dbPromise;
+        if (!db) return [];
+        return new Promise((resolve, reject) => {
+            const transaction = db.transaction(CUSTOM_UNIT_SUMMARIES_STORE, 'readonly');
+            const request = transaction.objectStore(CUSTOM_UNIT_SUMMARIES_STORE).getAll();
+            transaction.oncomplete = () => resolve(request.result);
+            transaction.onerror = () => reject(transaction.error);
+            transaction.onabort = () => reject(transaction.error ?? new Error('Custom summary read was aborted'));
+        });
+    }
+
+    /** One cache transaction per rebuild; cache failure never rolls back a saved native design. */
+    public async saveCustomUnitSummaries(rows: readonly StoredCustomUnitSummary[]): Promise<void> {
+        if (!rows.length) return;
+        const db = await this.dbPromise;
+        if (!db) throw new Error('Custom summary storage is unavailable');
+        return new Promise((resolve, reject) => {
+            const transaction = db.transaction(CUSTOM_UNIT_SUMMARIES_STORE, 'readwrite');
+            const store = transaction.objectStore(CUSTOM_UNIT_SUMMARIES_STORE);
+            for (const row of rows) store.put(row, [row.accountUuid, row.uuid]);
+            transaction.oncomplete = () => resolve();
+            transaction.onerror = () => reject(transaction.error);
+            transaction.onabort = () => reject(transaction.error ?? new Error('Custom summary save was aborted'));
+        });
     }
 
     private async getDataFromGeneralStore<T>(key: string): Promise<T | null> {
@@ -487,121 +750,6 @@ export class DbService {
         });
     }
 
-    public async getUnits(): Promise<Units | null> {
-        return await this.getDataFromGeneralStore<Units>(UNITS_KEY);
-    }
-
-    public async saveEquipment(equipmentData: RawEquipmentData): Promise<void> {
-        return await this.saveDataFromGeneralStore(equipmentData, EQUIPMENT_KEY);
-    }
-
-    public async getEquipments(): Promise<RawEquipmentData | null> {
-        return await this.getDataFromGeneralStore<RawEquipmentData>(EQUIPMENT_KEY);
-    }
-
-    public async saveUnits(unitsData: Units): Promise<void> {
-        return await this.saveDataFromGeneralStore(unitsData, UNITS_KEY);
-    }
-
-    private static customUnitsKey(serverUrl: string): string {
-        return `${CUSTOM_UNITS_KEY_PREFIX}${serverUrl}`;
-    }
-
-    public async getCustomServerUnits(serverUrl: string): Promise<Units | null> {
-        return await this.getDataFromGeneralStore<Units>(DbService.customUnitsKey(serverUrl));
-    }
-
-    public async saveCustomServerUnits(serverUrl: string, unitsData: Units): Promise<void> {
-        return await this.saveDataFromGeneralStore(unitsData, DbService.customUnitsKey(serverUrl));
-    }
-
-    private static customFluffKey(serverUrl: string): string {
-        return `${CUSTOM_UNITS_FLUFF_KEY_PREFIX}${serverUrl}`;
-    }
-
-    public async getCustomServerFluff(serverUrl: string): Promise<UnitFluffCatalog | null> {
-        return await this.getDataFromGeneralStore<UnitFluffCatalog>(DbService.customFluffKey(serverUrl));
-    }
-
-    public async saveCustomServerFluff(serverUrl: string, fluffData: UnitFluffCatalog): Promise<void> {
-        return await this.saveDataFromGeneralStore(fluffData, DbService.customFluffKey(serverUrl));
-    }
-
-    public async getUnitFluffCatalogMetadata(): Promise<UnitFluffCatalogMetadata | null> {
-        return await this.getDataFromGeneralStore<UnitFluffCatalogMetadata>(UNITS_FLUFF_METADATA_KEY);
-    }
-
-    public async getUnitFluff(name: string): Promise<UnitFluffCatalogEntry | null> {
-        return await this.getDataFromStore<UnitFluffCatalogEntry>(name, UNIT_FLUFF_STORE);
-    }
-
-    public async saveUnitsFluff(unitsFluffData: UnitFluffCatalog): Promise<void> {
-        const db = await this.dbPromise;
-        if (!db) return; // Degraded mode - caller may keep an in-memory copy
-
-        const entries = Object.entries(unitsFluffData.fluff ?? {});
-        const metadata: UnitFluffCatalogMetadata = {
-            version: unitsFluffData.version,
-            etag: unitsFluffData.etag || '',
-            count: entries.length,
-        };
-
-        return new Promise<void>((resolve, reject) => {
-            const transaction = db.transaction([DB_STORE, UNIT_FLUFF_STORE], 'readwrite');
-            const generalStore = transaction.objectStore(DB_STORE);
-            const unitFluffStore = transaction.objectStore(UNIT_FLUFF_STORE);
-
-            unitFluffStore.clear();
-            for (const [name, fluff] of entries) {
-                unitFluffStore.put(fluff, name);
-            }
-            generalStore.put(metadata, UNITS_FLUFF_METADATA_KEY);
-
-            transaction.oncomplete = () => resolve();
-            transaction.onerror = () => reject(transaction.error);
-        });
-    }
-
-    public async getFactions(): Promise<RawMULFactions | null> {
-        return await this.getDataFromGeneralStore<RawMULFactions>(FACTIONS_KEY);
-    }
-
-    public async saveFactions(factionsData: RawMULFactions): Promise<void> {
-        return await this.saveDataFromGeneralStore(factionsData, FACTIONS_KEY);
-    }
-
-    public async getMegaMekFactions(): Promise<MegaMekFactionsData | null> {
-        return await this.getDataFromGeneralStore<MegaMekFactionsData>(MEGAMEK_FACTIONS_KEY);
-    }
-
-    public async saveMegaMekFactions(factionsData: MegaMekFactionsData): Promise<void> {
-        return await this.saveDataFromGeneralStore(factionsData, MEGAMEK_FACTIONS_KEY);
-    }
-
-    public async getMegaMekAvailability(): Promise<MegaMekAvailabilityData | null> {
-        return await this.getDataFromGeneralStore<MegaMekAvailabilityData>(MEGAMEK_AVAILABILITY_KEY);
-    }
-
-    public async saveMegaMekAvailability(availabilityData: MegaMekAvailabilityData): Promise<void> {
-        return await this.saveDataFromGeneralStore(availabilityData, MEGAMEK_AVAILABILITY_KEY);
-    }
-
-    public async getMegaMekRulesets(): Promise<MegaMekRulesetsData | null> {
-        return await this.getDataFromGeneralStore<MegaMekRulesetsData>(MEGAMEK_RULESETS_KEY);
-    }
-
-    public async saveMegaMekRulesets(rulesetsData: MegaMekRulesetsData): Promise<void> {
-        return await this.saveDataFromGeneralStore(rulesetsData, MEGAMEK_RULESETS_KEY);
-    }
-
-    public async getEras(): Promise<Eras | null> {
-        return await this.getDataFromGeneralStore<Eras>(ERAS_KEY);
-    }
-
-    public async saveEras(erasData: Eras): Promise<void> {
-        return await this.saveDataFromGeneralStore(erasData, ERAS_KEY);
-    }
-
     public async getOptions(): Promise<Options | null> {
         return await this.getDataFromGeneralStore<Options>(OPTIONS_KEY);
     }
@@ -616,46 +764,6 @@ export class DbService {
 
     public async saveUserData(userData: UserData): Promise<void> {
         return await this.saveDataFromGeneralStore(userData, USER_KEY);
-    }
-
-    public async getQuirks(): Promise<Quirks | null> {
-        return await this.getDataFromGeneralStore<Quirks>(QUIRKS_KEY);
-    }
-
-    public async saveQuirks(quirksData: Quirks): Promise<void> {
-        return await this.saveDataFromGeneralStore(quirksData, QUIRKS_KEY);
-    }
-
-    public async getSourcebooks(): Promise<Sourcebooks | null> {
-        return await this.getDataFromGeneralStore<Sourcebooks>(SOURCEBOOKS_KEY);
-    }
-
-    public async saveSourcebooks(sourcebooksData: Sourcebooks): Promise<void> {
-        return await this.saveDataFromGeneralStore(sourcebooksData, SOURCEBOOKS_KEY);
-    }
-
-    public async getSarnaPageTitles(): Promise<SarnaPageTitlesData | null> {
-        return await this.getDataFromGeneralStore<SarnaPageTitlesData>(SARNA_PAGE_TITLES_KEY);
-    }
-
-    public async saveSarnaPageTitles(data: SarnaPageTitlesData): Promise<void> {
-        return await this.saveDataFromGeneralStore(data, SARNA_PAGE_TITLES_KEY);
-    }
-
-    public async getForceNameWords(): Promise<ForceNameWordsData | null> {
-        return await this.getDataFromGeneralStore<ForceNameWordsData>(FORCE_NAME_WORDS_KEY);
-    }
-
-    public async saveForceNameWords(data: ForceNameWordsData): Promise<void> {
-        return await this.saveDataFromGeneralStore(data, FORCE_NAME_WORDS_KEY);
-    }
-
-    public async getPilotNames(): Promise<PilotNameCatalogData | null> {
-        return await this.getDataFromGeneralStore<PilotNameCatalogData>(PILOT_NAMES_KEY);
-    }
-
-    public async savePilotNames(data: PilotNameCatalogData): Promise<void> {
-        return await this.saveDataFromGeneralStore(data, PILOT_NAMES_KEY);
     }
 
     /**
@@ -1025,8 +1133,32 @@ export class DbService {
         });
     }
 
-    public async getForce(instanceId: string): Promise<SerializedForce | null> {
-        return await this.getDataFromStore<SerializedForce>(instanceId, FORCE_STORE);
+    /** The stored force; `onUnreadableUnitState` loads unreadable units pristine (`decodeForceFromStorage`). */
+    public async getForce(
+        instanceId: string,
+        onUnreadableUnitState?: (unitId: string) => void,
+    ): Promise<SerializedForce | null> {
+        const stored = await this.readForceRecord(instanceId);
+        return stored === undefined ? null : decodeForceFromStorage(stored, onUnreadableUnitState);
+    }
+
+    public async getForcePreview(instanceId: string): Promise<RemoteLoadForceEntry | null> {
+        const stored = await this.readForceRecord(instanceId);
+        return stored === undefined ? null : decodeRemoteLoadForceEntry(stored);
+    }
+
+    private async readForceRecord(instanceId: string): Promise<StoredForceRecord | undefined> {
+        const db = await this.dbPromise;
+        if (!db) return undefined;
+        return new Promise<StoredForceRecord | undefined>((resolve, reject) => {
+            const transaction = db.transaction(FORCE_STORE, 'readonly');
+            const request = transaction.objectStore(FORCE_STORE).get(instanceId);
+            transaction.oncomplete = () => {
+                resolve(request.result as StoredForceRecord | undefined);
+            };
+            transaction.onerror = () => reject(transaction.error);
+            transaction.onabort = () => reject(transaction.error ?? new Error('Force read was aborted'));
+        });
     }
 
     public async countForces(): Promise<number> {
@@ -1042,11 +1174,69 @@ export class DbService {
         });
     }
 
+    public async getExistingForceIds(instanceIds: readonly string[]): Promise<ReadonlySet<string>> {
+        const existingIds = new Set<string>();
+        if (instanceIds.length === 0) return existingIds;
+        const db = await this.dbPromise;
+        if (!db) return existingIds;
+
+        return new Promise((resolve, reject) => {
+            const transaction = db.transaction(FORCE_STORE, 'readonly');
+            const store = transaction.objectStore(FORCE_STORE);
+            for (const instanceId of instanceIds) {
+                const request = store.getKey(instanceId);
+                request.onsuccess = () => {
+                    if (request.result !== undefined) existingIds.add(instanceId);
+                };
+            }
+            transaction.oncomplete = () => resolve(existingIds);
+            transaction.onerror = () => reject(transaction.error);
+            transaction.onabort = () => reject(transaction.error ?? new Error('Force presence query was aborted'));
+        });
+    }
+
     public async saveForce(force: SerializedForce): Promise<void> {
         if (!force.instanceId) {
             throw new Error('Force instance ID is required for saving.');
         }
-        return await this.saveDataToStore(force, force.instanceId, FORCE_STORE);
+        // Without storage (a stale tab, or chosen) the save is skipped before any artwork is prepared.
+        if (!await this.dbPromise) return;
+        // Live owners save V2. Background downloads may cache an intact V1
+        // source until an explicit load can warn about best-effort conversion.
+        if (force.version === 2 && force.cbt) {
+            const cleaned = new Map<string, Promise<{ source: string; sourceHashCanary: SourceHashCanary }>>();
+            const units = await Promise.all(force.cbt.units.map(async entry => {
+                const pin = entry.unit.customSource;
+                if (!pin) return entry;
+                const extracted = extractNativeUnitArtwork(pin.source, pin.format);
+                if (extracted.source === pin.source) return entry;
+                const key = JSON.stringify([entry.unit.entity, pin]);
+                let preparation = cleaned.get(key);
+                if (!preparation) {
+                    preparation = (async () => {
+                        const { artwork, warnings } = await decodeUnitArtwork(extracted.images);
+                        warnings.forEach(warning => this.logger.warn(warning));
+                        if (artwork) await this.saveUnitArtwork(entry.unit.entity, artwork, true);
+                        return { source: extracted.source, sourceHashCanary: await nativeSourceHashCanary(extracted.source, pin.format) };
+                    })();
+                    cleaned.set(key, preparation);
+                }
+                const clean = await preparation;
+                return { ...entry, unit: { ...entry.unit, sourceHashCanary: clean.sourceHashCanary,
+                    customSource: { ...pin, source: clean.source } } };
+            }));
+            force = { ...force, cbt: { ...force.cbt, units } };
+        }
+        const stored = encodeForceForStorage(force);
+        const db = await this.dbPromise;
+        if (!db) return;
+        return new Promise<void>((resolve, reject) => {
+            const transaction = db.transaction(FORCE_STORE, 'readwrite');
+            transaction.objectStore(FORCE_STORE).put(stored, force.instanceId);
+            transaction.oncomplete = () => resolve();
+            transaction.onerror = () => reject(transaction.error);
+            transaction.onabort = () => reject(transaction.error ?? new Error('Force save was aborted'));
+        });
     }
 
     public async updateForceTags(instanceId: string, tags: readonly string[]): Promise<SerializedForce | null> {
@@ -1060,24 +1250,23 @@ export class DbService {
             let updatedForce: SerializedForce | null = null;
 
             request.onsuccess = () => {
-                const force = request.result as SerializedForce | undefined;
-                if (!force) {
-                    return;
+                const stored = request.result as StoredForceRecord | undefined;
+                // Loaded force ownership must reseal V2 records.
+                if (!stored || stored['cbt'] !== undefined) return;
+                try {
+                    const force = decodeForceFromStorage(stored);
+                    updatedForce = { ...force };
+                    if (tags.length > 0) {
+                        updatedForce.tags = [...tags];
+                    } else {
+                        delete updatedForce.tags;
+                    }
+                    updatedForce.timestamp = new Date().toISOString();
+                    store.put(encodeForceForStorage(updatedForce), instanceId);
+                } catch (error) {
+                    reject(error);
+                    transaction.abort();
                 }
-
-                updatedForce = { ...force };
-                if (tags.length > 0) {
-                    updatedForce.tags = [...tags];
-                } else {
-                    delete updatedForce.tags;
-                }
-                updatedForce.timestamp = new Date().toISOString();
-
-                store.put(updatedForce, instanceId);
-            };
-
-            request.onerror = () => {
-                reject(request.error);
             };
 
             transaction.oncomplete = () => {
@@ -1087,20 +1276,21 @@ export class DbService {
             transaction.onerror = () => {
                 reject(transaction.error);
             };
+            transaction.onabort = () => reject(transaction.error ?? new Error('Force tag update was aborted'));
         });
     }
     
     /**
      * Retrieves all forces from IndexedDB, sorted by timestamp descending.
      */
-    public async listForces(dataService: ForceEntryResolver): Promise<LoadForceEntry[]> {
+    public async listForces(): Promise<RemoteLoadForceEntry[]> {
         const db = await this.dbPromise;
         if (!db) return []; // Degraded mode
-        return new Promise<LoadForceEntry[]>((resolve, reject) => {
+        return new Promise<RemoteLoadForceEntry[]>((resolve, reject) => {
             const transaction = db.transaction(FORCE_STORE, 'readonly');
             const store = transaction.objectStore(FORCE_STORE);
             // Use index if available, otherwise iterate and sort manually
-            let forces: any[] = [];
+            const forces: RemoteLoadForceEntry[] = [];
             let request: IDBRequest;
             if (store.indexNames.contains('timestamp')) {
                 const index = store.index('timestamp');
@@ -1112,21 +1302,20 @@ export class DbService {
             request.onsuccess = () => {
                 const cursor = request.result;
                 if (cursor) {
-                    forces.push(cursor.value);
+                    // Drop gameplay state as each cursor row arrives. Listing
+                    // never decodes unit state or promotes a legacy record.
+                    try {
+                        forces.push(decodeRemoteLoadForceEntry(cursor.value));
+                    } catch (error) {
+                        this.logger.warn(`Skipping unreadable saved force: ${error instanceof Error ? error.message : String(error)}`);
+                    }
                     cursor.continue();
                 } else {
-                    // If not using index, sort manually
-                    if (!store.indexNames.contains('timestamp')) {
-                        forces.sort((a, b) => (b.timestamp ?? 0) - (a.timestamp ?? 0));
-                    }
-                    // Deserialize each force
-                    try {
-                        resolve(
-                            forces.map((raw) => createLoadForceEntryFromSerializedForce(raw as SerializedForce, dataService, { local: true })),
-                        );
-                    } catch (err) {
-                        reject(err);
-                    }
+                    // V1 records use ISO strings while current records use epoch
+                    // numbers. IndexedDB orders those as different key types, so
+                    // normalize before comparing.
+                    forces.sort((left, right) => forceTimestamp(right) - forceTimestamp(left));
+                    resolve(forces);
                 }
             };
             request.onerror = () => {
@@ -1135,24 +1324,25 @@ export class DbService {
         });
     }
 
-    private async deleteForceCanvasData(instanceId: string): Promise<void> {
-        const force = await this.getForce(instanceId);
-        if (!force) return;
-        if (force.groups) {
-            for (const group of force.groups) {
-                const unitIds = group.units.map(unit => unit.id).filter(id => id);
-                await Promise.all(unitIds.map(id => this.deleteCanvasData(id)));
-            }
-        }
+    private async deleteForceCanvasData(unitIds: readonly string[]): Promise<void> {
+        await Promise.all(unitIds.map(unitId => this.deleteCanvasData(unitId)));
     }
 
     public async deleteCanvasData(unitId: string): Promise<void> {
         await this.deleteDataFromStore(unitId, CANVAS_STORE);
     }
 
-    public async deleteForce(instanceId: string): Promise<void> {
-        await this.deleteForceCanvasData(instanceId);
-        await this.deleteDataFromStore(instanceId, FORCE_STORE);
+    public async deleteForce(instanceId: string, unitIds: readonly string[] = []): Promise<void> {
+        await this.deleteForceCanvasData(unitIds);
+        const db = await this.dbPromise;
+        if (!db) return;
+        await new Promise<void>((resolve, reject) => {
+            const transaction = db.transaction(FORCE_STORE, 'readwrite');
+            transaction.objectStore(FORCE_STORE).delete(instanceId);
+            transaction.oncomplete = () => resolve();
+            transaction.onerror = () => reject(transaction.error);
+            transaction.onabort = () => reject(transaction.error ?? new Error('Force deletion was aborted'));
+        });
     }
 
     /* ----------------------------------------------------------
@@ -1249,80 +1439,6 @@ export class DbService {
         }
     }
 
-    /**
-     * Get sheet metadata without decompressing content.
-     */
-    public async getSheetMeta(key: string): Promise<{ timestamp: number; etag: string; fingerprintVersion?: number } | null> {
-        const storedData = await this.getDataFromStore<StoredSheet>(key, SHEETS_STORE);
-        if (!storedData) return null;
-        return {
-            timestamp: storedData.timestamp,
-            etag: storedData.etag,
-            ...(storedData.fingerprintVersion === undefined ? {} : { fingerprintVersion: storedData.fingerprintVersion }),
-        };
-    }
-
-    /**
-     * Get the decompressed sheet content from cache.
-     */
-    public async getSheet(key: string): Promise<SVGSVGElement | null> {
-        const storedData = await this.getDataFromStore<StoredSheet>(key, SHEETS_STORE);
-        if (!storedData) return null;
-        try {
-            const decompressedStream = storedData.content.stream().pipeThrough(new DecompressionStream('gzip'));
-            const decompressedString = await new Response(decompressedStream).text();
-            const parser = new DOMParser();
-            const content = parser.parseFromString(decompressedString, 'image/svg+xml');
-            return content.documentElement as unknown as SVGSVGElement;
-        } catch (error) {
-            this.logger.error(`Error retrieving sheet ${key}: ${error}`);
-            return null;
-        }
-    }
-
-    /**
-     * Update the timestamp of a cached sheet (to mark it as recently validated).
-     */
-    public async touchSheet(key: string, fingerprintVersion?: number): Promise<void> {
-        const storedData = await this.getDataFromStore<StoredSheet>(key, SHEETS_STORE);
-        if (!storedData) return;
-        storedData.timestamp = Date.now();
-        if (fingerprintVersion !== undefined) {
-            storedData.fingerprintVersion = fingerprintVersion;
-        }
-        try {
-            await this.saveDataToStore(storedData, key, SHEETS_STORE);
-        } catch {
-            // Silently ignore - not critical
-        }
-    }
-
-    public async saveSheet(key: string, sheet: SVGSVGElement, etag: string, fingerprintVersion?: number): Promise<void> {
-        // Skip saving if blob storage is unavailable
-        if (this.blobStorageUnavailable) return;
-        
-        const serializer = new XMLSerializer();
-        const contentString = serializer.serializeToString(sheet);
-        const compressedStream = new Blob([contentString]).stream().pipeThrough(new CompressionStream('gzip'));
-        const compressedBlob = await new Response(compressedStream).blob();
-        const data: StoredSheet = {
-            key: key,
-            timestamp: Date.now(),
-            etag: etag,
-            ...(fingerprintVersion === undefined ? {} : { fingerprintVersion }),
-            content: compressedBlob,
-            size: compressedBlob.size,
-        };
-        try {
-            await this.saveDataToStore(data, key, SHEETS_STORE);
-            if (!this.blobStorageUnavailable) {
-                this.cullOldSheets();
-            }
-        } catch {
-            // Silently ignore cache failures - sheets will be refetched as needed
-        }
-    }
-
     private async clearStore(storeName: string): Promise<void> {
         const db = await this.dbPromise;
         if (!db) return; // Degraded mode
@@ -1341,10 +1457,6 @@ export class DbService {
         });
     }
 
-    public async clearSheetsStore(): Promise<void> {
-        await this.clearStore(SHEETS_STORE);
-    }
-
     public async clearCanvasStore(): Promise<void> {
         await this.clearStore(CANVAS_STORE);
     }
@@ -1354,56 +1466,35 @@ export class DbService {
         if (!db) return; // Degraded mode
 
         return new Promise<void>((resolve, reject) => {
-            const transaction = db.transaction([DB_STORE, UNIT_FLUFF_STORE], 'readwrite');
+            const transaction = db.transaction(DB_STORE, 'readwrite');
             const store = transaction.objectStore(DB_STORE);
 
             for (const key of CATALOG_GENERAL_STORE_KEYS) {
                 store.delete(key);
             }
 
-            // Remove any cached additional-unit-server datasets (keys are dynamic per server URL).
-            const cursorRequest = store.openKeyCursor();
-            cursorRequest.onsuccess = () => {
-                const cursor = cursorRequest.result;
-                if (!cursor) return;
-                if (typeof cursor.key === 'string'
-                    && (cursor.key.startsWith(CUSTOM_UNITS_KEY_PREFIX) || cursor.key.startsWith(CUSTOM_UNITS_FLUFF_KEY_PREFIX))) {
-                    store.delete(cursor.key);
-                }
-                cursor.continue();
-            };
-
-            transaction.objectStore(UNIT_FLUFF_STORE).clear();
-
             transaction.oncomplete = () => resolve();
             transaction.onerror = () => reject(transaction.error);
         });
     }
 
-    /**
-     * Clear all local per-user object stores while preserving shared data kept in the general store.
-     * The persisted USER_KEY entry is removed as part of the reset.
-     */
-    public async clearLocalUserStores(): Promise<void> {
+    /** Logout clears identity and preferences; forces, tags, searches and custom units are removed only on request. */
+    public async clearLocalSession(deletePersonalData = false): Promise<void> {
         const db = await this.dbPromise;
-        if (!db) return; // Degraded mode
-
-        const storesToClear = Array.from(db.objectStoreNames).filter(
-            storeName => storeName !== DB_STORE && storeName !== UNIT_FLUFF_STORE,
-        );
-        const transactionStores = [DB_STORE, ...storesToClear];
-
+        if (!db) return;
         return new Promise<void>((resolve, reject) => {
-            const transaction = db.transaction(transactionStores, 'readwrite');
-
-            transaction.objectStore(DB_STORE).delete(USER_KEY);
-
-            for (const storeName of storesToClear) {
-                transaction.objectStore(storeName).clear();
-            }
-
+            const personalStores = deletePersonalData ? [
+                FORCE_STORE, TAGS_STORE, SAVED_SEARCHES_STORE, CUSTOM_UNITS_STORE,
+                SUBSCRIBED_CUSTOM_UNITS_STORE, CUSTOM_UNIT_SUMMARIES_STORE,
+            ] : [];
+            const transaction = db.transaction([DB_STORE, ...personalStores], 'readwrite');
+            const store = transaction.objectStore(DB_STORE);
+            store.delete(USER_KEY);
+            store.delete(OPTIONS_KEY);
+            for (const name of personalStores) transaction.objectStore(name).clear();
             transaction.oncomplete = () => resolve();
             transaction.onerror = () => reject(transaction.error);
+            transaction.onabort = () => reject(transaction.error ?? new Error('Logout was aborted.'));
         });
     }
 
@@ -1436,56 +1527,17 @@ export class DbService {
         });
     }
 
-    private async getStoreCount(storeName: string): Promise<number> {
-        const db = await this.dbPromise;
-        if (!db) return 0; // Degraded mode
-        return new Promise<number>((resolve, reject) => {
-            const transaction = db.transaction(storeName, 'readonly');
-            const store = transaction.objectStore(storeName);
-            const request = store.count();
-
-            request.onsuccess = () => {
-                resolve(request.result);
-            };
-
-            request.onerror = () => {
-                reject(request.error);
-            };
-        });
-    }
-
-    public async getSheetsStoreSize(): Promise<{memorySize: number, count: number}> {
-        const [memorySize, count] = await Promise.all([
-            this.getStoreSize(SHEETS_STORE),
-            this.getStoreCount(SHEETS_STORE)
-        ]);
-        return { memorySize, count };
-    }
-
     public async getCanvasStoreSize(): Promise<number> {
         return await this.getStoreSize(CANVAS_STORE);
     }
 
-    private async cullOldSheets(): Promise<void> {
-        const db = await this.dbPromise;
-        if (!db) return; // Degraded mode
-        const transaction = db.transaction(SHEETS_STORE, 'readwrite');
-        const store = transaction.objectStore(SHEETS_STORE);
-        const countRequest = store.count();
-        countRequest.onsuccess = () => {
-            let itemsToDelete = countRequest.result - MAX_SHEET_CACHE_COUNT;
-            if (itemsToDelete <= 0) return;
-            const index = store.index('timestamp');
-            const cursorRequest = index.openCursor(); // Iterates from oldest to newest
-            cursorRequest.onsuccess = () => {
-                const cursor = cursorRequest.result;
-                if (cursor && itemsToDelete > 0) {
-                    cursor.delete(); // Deletes the current (oldest) item
-                    itemsToDelete--;
-                    cursor.continue(); // Move to the next item
-                }
-            };
-        };
-    }
+}
 
+function forceTimestamp(value: unknown): number {
+    if (value === null || typeof value !== 'object' || Array.isArray(value)) return 0;
+    const timestamp = (value as Record<string, unknown>)['timestamp'];
+    if (typeof timestamp === 'number' && Number.isFinite(timestamp)) return timestamp;
+    if (typeof timestamp !== 'string') return 0;
+    const parsed = Date.parse(timestamp);
+    return Number.isFinite(parsed) ? parsed : 0;
 }

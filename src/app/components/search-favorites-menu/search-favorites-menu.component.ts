@@ -3,8 +3,9 @@
 // Author: Drake
 
 import { Component, ChangeDetectionStrategy, input, output, signal, afterNextRender, computed, DestroyRef, inject, viewChildren } from '@angular/core';
-import { CdkMenuModule, CdkMenuTrigger, MenuTracker } from '@angular/cdk/menu';
+import { CdkMenuModule, CdkMenuTrigger } from '@angular/cdk/menu';
 import type { SerializedSearchFilter } from '../../services/unit-search-filters.model';
+import { closeCdkMenus } from '../../utils/cdk-menu.util';
 
 @Component({
     selector: 'search-favorites-menu',
@@ -251,18 +252,7 @@ export class SearchFavoritesMenuComponent {
     private menuTriggers = viewChildren<CdkMenuTrigger>(CdkMenuTrigger);
     
     private cleanupMenuTriggers(): void {
-        const triggers = this.menuTriggers();
-        if (!triggers) return;
-        triggers.forEach(t => {
-            try {
-                if (t.isOpen()) t.close();
-                // CDK bug workaround: MenuTracker never clears _openMenuTrigger
-                const tracker = MenuTracker as unknown as { _openMenuTrigger?: CdkMenuTrigger };
-                if (tracker._openMenuTrigger === t) {
-                    tracker._openMenuTrigger = undefined;
-                }
-            } catch {}
-        });
+        closeCdkMenus(this.menuTriggers());
     }
 
     onSearch(text: string) {

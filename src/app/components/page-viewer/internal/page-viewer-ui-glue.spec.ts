@@ -1,0 +1,127 @@
+// Copyright (C) 2026 The MegaMek Team
+// SPDX-License-Identifier: GPL-3.0-or-later
+// Author: Drake
+
+import { buildViewerResizePlan, resolvePageSelectionUnit } from './page-viewer-ui-glue';
+
+describe('page-viewer ui-glue', () => {
+    it('requests a redisplay when the effective visible count changes', () => {
+        expect(buildViewerResizePlan({
+            previousVisibleCount: 1,
+            nextVisibleCount: 2,
+            hasCurrentUnit: true,
+            initialRenderComplete: true,
+            shadowPagesEnabled: true,
+            totalUnits: 4,
+            renderedShadowCount: 2
+        })).toEqual({
+            shouldRedisplay: true,
+            shouldScheduleShadowRender: false
+        });
+    });
+
+    it('schedules shadow rendering without redisplaying the active page when shadows are missing', () => {
+        expect(buildViewerResizePlan({
+            previousVisibleCount: 1,
+            nextVisibleCount: 1,
+            hasCurrentUnit: true,
+            initialRenderComplete: true,
+            shadowPagesEnabled: true,
+            totalUnits: 3,
+            renderedShadowCount: 0
+        })).toEqual({
+            shouldRedisplay: false,
+            shouldScheduleShadowRender: true
+        });
+    });
+
+    it('schedules shadow rendering when only a steady-state resize refresh is needed', () => {
+        expect(buildViewerResizePlan({
+            previousVisibleCount: 1,
+            nextVisibleCount: 1,
+            hasCurrentUnit: true,
+            initialRenderComplete: true,
+            shadowPagesEnabled: true,
+            totalUnits: 3,
+            renderedShadowCount: 2
+        })).toEqual({
+            shouldRedisplay: false,
+            shouldScheduleShadowRender: true
+        });
+    });
+
+    it('does not schedule impossible shadow work for an empty viewer', () => {
+        expect(buildViewerResizePlan({
+            previousVisibleCount: 1,
+            nextVisibleCount: 1,
+            hasCurrentUnit: false,
+            initialRenderComplete: true,
+            shadowPagesEnabled: true,
+            totalUnits: 0,
+            renderedShadowCount: 0
+        })).toEqual({
+            shouldRedisplay: false,
+            shouldScheduleShadowRender: false
+        });
+    });
+
+    it('schedules one cleanup when stale shadows remain without a current unit', () => {
+        expect(buildViewerResizePlan({
+            previousVisibleCount: 1,
+            nextVisibleCount: 1,
+            hasCurrentUnit: false,
+            initialRenderComplete: true,
+            shadowPagesEnabled: true,
+            totalUnits: 0,
+            renderedShadowCount: 1
+        }).shouldScheduleShadowRender).toBeTrue();
+    });
+
+    it('resolves a clicked visible unit only when the gesture is a real page click', () => {
+        const wrapper = document.createElement('div');
+        wrapper.className = 'page-wrapper';
+        wrapper.dataset['unitId'] = 'unit-b';
+        const child = document.createElement('span');
+        wrapper.appendChild(child);
+        const units = [{ id: 'unit-a' }, { id: 'unit-b' }] as never[];
+
+        expect(resolvePageSelectionUnit({
+            eventTarget: child,
+            pointerMoved: false,
+            isPanning: false,
+            isSwiping: false,
+            displayedUnits: units,
+            currentUnitId: 'unit-a'
+        })).toEqual(units[1]);
+
+        expect(resolvePageSelectionUnit({
+            eventTarget: child,
+            pointerMoved: true,
+            isPanning: false,
+            isSwiping: false,
+            displayedUnits: units,
+            currentUnitId: 'unit-a'
+        })).toBeNull();
+    });
+
+    it('resolves selection events that originate from SVG sheet elements', () => {
+        const wrapper = document.createElement('div');
+        wrapper.className = 'page-wrapper';
+        wrapper.dataset['unitId'] = 'unit-b';
+        const svg = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
+        const armorLocation = document.createElementNS('http://www.w3.org/2000/svg', 'g');
+        armorLocation.classList.add('unitLocation');
+        svg.appendChild(armorLocation);
+        wrapper.appendChild(svg);
+        const units = [{ id: 'unit-a' }, { id: 'unit-b' }] as never[];
+
+        expect(resolvePageSelectionUnit({
+            eventTarget: armorLocation,
+            pointerMoved: false,
+            isPanning: false,
+            isSwiping: false,
+            displayedUnits: units,
+            currentUnitId: 'unit-a'
+        })).toEqual(units[1]);
+    });
+});

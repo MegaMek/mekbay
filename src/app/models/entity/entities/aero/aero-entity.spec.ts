@@ -2,11 +2,15 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 // Author: Drake
 
+import { AmmoEquipment } from '../../../equipment.model';
 import {
+  TestAeroSpaceFighterEntity as AeroSpaceFighterEntity,
   TestConvFighterEntity as ConvFighterEntity,
+  TestDropShipEntity as DropShipEntity,
   TestFixedWingSupportEntity as FixedWingSupportEntity,
+  TestSmallCraftEntity as SmallCraftEntity,
 } from '../../testing/test-entities';
-import { addTestEquipmentWithFlags } from '../../testing/test-mounted-equipment';
+import { addTestEquipment, addTestEquipmentWithFlags } from '../../testing/test-mounted-equipment';
 import { writeBlkAero } from '../../writers/blk-aero-writer';
 
 describe('AeroEntity movement', () => {
@@ -81,14 +85,14 @@ describe('AeroEntity movement', () => {
     addTestEquipmentWithFlags(entity, 'F_EXTERNAL_STORES_HARDPOINT', { location: 'Nose' });
     addTestEquipmentWithFlags(entity, 'F_EXTERNAL_STORES_HARDPOINT', { location: 'Left Wing' });
 
-    expect(entity.maxBombPoints()).toBe(4);
+    expect(entity.bombCapacity()).toEqual({ external: 2, internal: 2 });
   });
 
   it('ignores fixed-wing cargo capacity without the Internal Bomb Bay quirk', () => {
     const entity = new FixedWingSupportEntity();
     entity.transporters.set([cargoBay(100)]);
 
-    expect(entity.maxBombPoints()).toBe(0);
+    expect(entity.bombCapacity()).toEqual({ external: 0, internal: 0 });
   });
 
   it('floors each Internal Bomb Bay cargo capacity before summing', () => {
@@ -100,13 +104,63 @@ describe('AeroEntity movement', () => {
     }]);
     entity.transporters.set([cargoBay(0.9), { ...cargoBay(0.9), id: 'second-cargo-bay' }]);
 
-    expect(entity.maxBombPoints()).toBe(0);
+    expect(entity.bombCapacity()).toEqual({ external: 0, internal: 0 });
   });
 
   it('reports zero bomb capacity without hardpoints or cargo space', () => {
     const entity = new FixedWingSupportEntity();
 
-    expect(entity.maxBombPoints()).toBe(0);
+    expect(entity.bombCapacity()).toEqual({ external: 0, internal: 0 });
+  });
+});
+
+describe('AeroEntity bomb capacity', () => {
+  it('gives fighters one Java-rounded external hardpoint per five tons', () => {
+    const entity = new ConvFighterEntity();
+    for (const [tons, points] of [[10, 2], [12, 2], [12.5, 3], [13, 3]] as const) {
+      entity.setTonnage(tons);
+      expect(entity.bombCapacity()).withContext(`${tons} tons`).toEqual({ external: points, internal: 0 });
+    }
+  });
+
+  it('gives small craft internal bomb bays only with the Internal Bomb Bay quirk', () => {
+    const entity = new SmallCraftEntity();
+    entity.transporters.set([cargoBay(12)]);
+    expect(entity.bombCapacity()).toEqual({ external: 0, internal: 0 });
+
+    entity.quirks.set([{
+      quirk: { key: 'internal_bomb', name: 'Internal Bomb Bay', description: '', type: 'positive' },
+    }]);
+    expect(entity.bombCapacity()).toEqual({ external: 0, internal: 12 });
+  });
+});
+
+describe('AeroEntity ammunition CASE', () => {
+  it('protects only the CASE II location, while standard CASE covers all fighter ammunition (TO:AUE p. 110; TW p. 161)', () => {
+    const entity = new ConvFighterEntity();
+    const caseII = addTestEquipmentWithFlags(entity, 'F_CASE_II', { location: 'Nose' });
+
+    expect(entity.ammoCaseProtection('Nose')).toBe('case-ii');
+    expect(entity.ammoCaseProtection('Fuselage')).toBeNull();
+    expect(entity.ammoCaseProtection('Nose', mount => mount !== caseII)).toBeNull();
+
+    addTestEquipmentWithFlags(entity, 'F_CASE', { location: 'Fuselage' });
+    expect(entity.ammoCaseProtection('Nose')).toBe('case-ii');
+    expect(entity.ammoCaseProtection('Fuselage')).toBe('case');
+    expect(entity.ammoCaseProtection('Left Wing')).toBe('case');
+  });
+
+  it('builds CASE into a Clan fighter, but not a Small Craft or DropShip, which "may not carry CASE" (TM p. 210)', () => {
+    const ammo = new AmmoEquipment({ id: 'Clan Test Ammo', name: 'Test Ammo', type: 'ammo', stats: { explosive: true } });
+    const [fighter, smallCraft, dropShip] = [new AeroSpaceFighterEntity(), new SmallCraftEntity(), new DropShipEntity()];
+    for (const entity of [fighter, smallCraft, dropShip]) {
+      entity.techBase.set('Clan');
+      addTestEquipment(entity, ammo, { location: 'Nose' });
+    }
+
+    expect(fighter.ammoCaseProtection('Nose')).toBe('case');
+    expect(smallCraft.ammoCaseProtection('Nose')).toBeNull();
+    expect(dropShip.ammoCaseProtection('Nose')).toBeNull();
   });
 });
 

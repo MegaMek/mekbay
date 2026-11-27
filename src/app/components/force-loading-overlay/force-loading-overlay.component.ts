@@ -1,157 +1,121 @@
 // Copyright (C) 2026 The MegaMek Team
 // SPDX-License-Identifier: GPL-3.0-or-later
-// Author: Drake
 
-import { ChangeDetectionStrategy, Component, inject, type Signal, type WritableSignal } from '@angular/core';
-import { CommonModule } from '@angular/common';
+import { ChangeDetectionStrategy, Component, computed, inject, type Signal } from '@angular/core';
 import { DIALOG_DATA } from '@angular/cdk/dialog';
+import { getFactionImg } from '../../models/factions.model';
+import type { ForceLoadingProgress } from '../../models/force-loading-progress.model';
+import { DataService } from '../../services/data.service';
 import { LoadingSpinnerComponent } from '../loading-spinner/loading-spinner.component';
 
-/*
- *
- * Full-screen overlay shown while force units are being loaded and initialized.
- * Displays per-force progress (faction icon, force name, loaded/total units)
- * and a spinner. When some units fail to load, shows a retry button.
- */
-
-/** Tracks loading progress for a single force. */
-export interface ForceLoadingProgress {
-    forceName: string;
-    factionImg: string | null;
-    loadedUnits: Signal<number>;
-    totalUnits: number;
-}
-
-/** Data injected into the overlay dialog. */
 export interface ForceLoadingOverlayData {
-    forces: ForceLoadingProgress[];
-    /** Number of units that failed to load in the last attempt. */
-    failedCount: WritableSignal<number>;
-    /** Whether a loading pass is currently in progress. */
-    loading: WritableSignal<boolean>;
-    /** Callback to retry loading failed units. */
-    onRetry: () => void;
-    /** Callback to skip/dismiss the overlay without waiting for completion. */
-    onSkip: () => void;
+    readonly message: Signal<string>;
+    readonly forces: Signal<readonly ForceLoadingProgress[]>;
 }
 
+/** Blocks workspace interaction until a force link has finished restoring. */
 @Component({
     selector: 'force-loading-overlay',
-    standalone: true,
     changeDetection: ChangeDetectionStrategy.OnPush,
-    imports: [CommonModule, LoadingSpinnerComponent],
-    host: {
-        class: 'fullscreen-dialog-host glass'
-    },
+    imports: [LoadingSpinnerComponent],
+    host: { class: 'fullscreen-dialog-host glass' },
     template: `
-        <div class="wide-dialog">
-            <h2 class="wide-dialog-title">Loading Units</h2>
+        <div class="wide-dialog force-loading-dialog" aria-busy="true">
+            <h2 class="wide-dialog-title">Loading Forces</h2>
             <div class="wide-dialog-body">
-                <div class="force-list">
-                    @for (entry of data.forces; track entry.forceName) {
-                        <div class="force-entry">
+                <p>Please wait while your forces and units are loaded.</p>
+                <div class="force-list" role="list" aria-label="Forces being loaded">
+                    @for (entry of entries(); track entry.instanceId) {
+                        <div class="force-entry" role="listitem">
+                            @if (entry.factionImg) {
+                                <img [src]="entry.factionImg" [alt]="entry.factionName" class="faction-icon" />
+                            }
                             <div class="force-info">
-                                @if (entry.factionImg) {
-                                    <img [src]="entry.factionImg" class="faction-icon" />
+                                <span class="force-name">{{ entry.name }}</span>
+                                @if (entry.eraName) {
+                                    <span class="force-era">{{ entry.eraName }}</span>
                                 }
-                                <span class="force-name">{{ entry.forceName }}</span>
                             </div>
-                            <span class="force-progress">
-                                {{ entry.loadedUnits() }} / {{ entry.totalUnits }}
+                            <span class="force-status" [class.failed]="entry.status === 'failed'">
+                                @switch (entry.status) {
+                                    @case ('pending') { Waiting }
+                                    @case ('loading') { Loading… }
+                                    @case ('loaded') { Ready }
+                                    @case ('failed') { Unavailable }
+                                }
                             </span>
                         </div>
                     }
                 </div>
-            </div>
-            <div class="wide-dialog-actions">
-                @if (data.loading()) {
-                    <loading-spinner class="spinner-container"></loading-spinner>
-                } @else if (data.failedCount() > 0) {
-                    <div class="error-section">
-                        <div class="error-message">
-                            {{ data.failedCount() }} unit{{ data.failedCount() > 1 ? 's' : '' }} failed to load.
-                        </div>
-                        <div class="error-actions">
-                            <button class="bt-button modal-btn" (click)="data.onRetry()">RETRY</button>
-                            <button class="bt-button modal-btn danger" (click)="data.onSkip()">SKIP</button>
-                        </div>
-                    </div>
-                }
+                <loading-spinner [message]="data.message()" ariaLabel="Loading forces"></loading-spinner>
             </div>
         </div>
     `,
     styles: [`
+        .force-loading-dialog {
+            width: min(480px, calc(100vw - 32px));
+        }
 
-        .wide-dialog-actions {
-            border: 0;
-            margin-top: 0;
+        .wide-dialog-body {
+            text-align: center;
+        }
+
+        p {
+            margin: 0 0 24px;
         }
 
         .force-list {
             display: flex;
             flex-direction: column;
             gap: 12px;
-            width: 100%;
+            margin-bottom: 24px;
         }
+
+        .force-list:empty { display: none; }
 
         .force-entry {
             display: flex;
             align-items: center;
-            justify-content: space-between;
             gap: 12px;
             padding: 8px 12px;
             background: rgba(255, 255, 255, 0.05);
-        }
-
-        .force-info {
-            display: flex;
-            align-items: center;
-            gap: 8px;
-            flex: 1 1 0;
-            min-width: 0;
+            text-align: left;
         }
 
         .faction-icon {
-            width: 24px;
-            height: 24px;
+            width: 32px;
+            height: 32px;
             object-fit: contain;
             flex-shrink: 0;
         }
 
-        .force-name {
-            font-weight: 600;
-            white-space: nowrap;
-            overflow: hidden;
-            text-overflow: ellipsis;
-            color: var(--text-color, #fff);
-        }
-
-        .force-progress {
-            font-size: 0.9em;
-            color: var(--text-color-secondary, #aaa);
-            white-space: nowrap;
-            font-variant-numeric: tabular-nums;
-        }
-
-        .error-section {
+        .force-info {
             display: flex;
             flex-direction: column;
-            align-items: center;
-            gap: 12px;
+            gap: 4px;
+            flex: 1;
+            min-width: 0;
+            overflow-wrap: anywhere;
         }
 
-        .error-message {
-            color: #ff6644;
-            font-size: 0.95em;
-        }
-
-        .error-actions {
-            display: flex;
-            gap: 8px;
-        }
-
-    `]
+        .force-name { font-weight: 600; }
+        .force-era, .force-status { font-size: 0.9em; color: var(--text-color-secondary); }
+        .force-status { flex-shrink: 0; }
+        .failed { color: #ff6644; }
+    `],
 })
 export class ForceLoadingOverlayComponent {
-    data = inject<ForceLoadingOverlayData>(DIALOG_DATA);
+    protected readonly data = inject<ForceLoadingOverlayData>(DIALOG_DATA);
+    private readonly dataService = inject(DataService);
+    protected readonly entries = computed(() => this.data.forces().map((force, index) => {
+        const faction = force.factionId === undefined ? null : this.dataService.getFactionById(force.factionId);
+        const era = force.eraId === undefined ? null : this.dataService.getEraById(force.eraId);
+        return {
+            ...force,
+            name: force.name || `Force ${index + 1}`,
+            factionImg: faction ? getFactionImg(faction) : undefined,
+            factionName: faction?.name ?? '',
+            eraName: era?.name,
+        };
+    }));
 }

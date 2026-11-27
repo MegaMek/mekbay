@@ -3,180 +3,3498 @@
 // Author: Drake
 
 import type { Injector } from '@angular/core';
+import { CBTUnitService,type CBTUnitRestoreWarning } from '../services/cbt-unit.service';
 import type { DataService } from '../services/data.service';
+import { BOUND_OPTIONAL_RULE_DEFAULTS } from './runtime/bound-optional-rules';
 import { DialogsService } from '../services/dialogs.service';
+import { EquipmentInteractionRegistry } from '../services/equipment-interaction-registry.service';
+import { ForceDialogsService } from '../services/force-dialogs.service';
 import { LoggerService } from '../services/logger.service';
-import type { UnitInitializerService } from '../services/unit-initializer.service';
-import { GameSystem } from './common.model';
-import { CBTForceUnit } from './cbt-force-unit.model';
+import { ToastService } from '../services/toast.service';
 import { CBTForce } from './cbt-force.model';
-import type { CBTSerializedForce, CBTSerializedUnit } from './force-serialization';
+import { GameSystem } from './common.model';
+import type { SerializedCBTForce } from './force-serialization';
+import { createMekUnit,restoreMekUnit } from './runtime/cbt-mek-unit';
+import { createNonMekUnit,restoreNonMekUnit } from './runtime/cbt-non-mek-unit';
+import { type CBTMekUnit } from './runtime/cbt-unit';
+import { C3Handler } from './runtime/component-c3-configuration';
+import { C3EmergencyMasterHandler } from './runtime/component-c3-emergency-master';
+import { asEncounterNetworkId,asEncounterTargetId,type EncounterNetwork } from './runtime/encounter-runtime';
+import {
+asForceId,
+emptyRuntimeHistory,
+type SerializedCBTEncounterStateV2,
+type SerializedCBTForceV2,
+type SerializedCBTUnitV2,
+} from './runtime/persistence-v2';
+import { formatRuntimeHistoryMessage, RUNTIME_HISTORY_MESSAGE } from './runtime/runtime-history';
+import type { VelocityRecordField } from './aerospace-velocity-record.model';
 
-describe('CBTForce pilot transfer', () => {
-    function createCrew(
-        groundGunnery: number,
-        groundPiloting: number,
-        asfGunnery = groundGunnery,
-        asfPiloting = groundPiloting,
-    ) {
-        return {
-            getName: () => 'Pilot',
-            getSkill: (skill: 'gunnery' | 'piloting', asf = false) => {
-                if (skill === 'gunnery') return asf ? asfGunnery : groundGunnery;
-                return asf ? asfPiloting : groundPiloting;
-            },
-            setName: jasmine.createSpy('setName'),
-            setSkill: jasmine.createSpy('setSkill'),
-        };
+import { decodeRemoteLoadForceEntry } from './remote-load-force-entry.model';
+import { decodeForceFromStorage,encodeForceForStorage } from './runtime/force-storage-codec';
+
+import { OptionsService } from '../services/options.service';
+import { ForceCustomDesignsService } from '../services/force-custom-designs.service';
+import { MM_DATA_UNIT_PROVIDER_ID,asUnitUuid } from '../services/unit-catalog/unit-catalog.types';
+import { CORE_2026_RULESET,TOTAL_WARFARE_RULESET,type CBTRuleset } from './cbt-ruleset.model';
+import type { ScenarioRules } from './runtime/unit-state-initializer';
+import { addTestEquipment } from './entity/testing/test-mounted-equipment';
+import { hasMekRuntime,hasNonMekRuntime } from './cbt-unit-snapshot';
+import { CBTUnitStore } from './cbt-unit-store';
+import type { BaseEntity } from './entity/base-entity';
+import { asComponentId } from './entity/entity-identifiers';
+import { TestBattleArmorEntity,TestHandheldWeaponEntity,TestInfantryEntity,TestProtoMekEntity,TestTankEntity } from './entity/testing/test-entities';
+import { createTestEquipmentRegistry } from './entity/testing/test-equipment-registry';
+import { EntityMountedEquipment } from './entity/types';
+import { AmmoEquipment,MiscEquipment,WeaponEquipment } from './equipment.model';
+import type { CBTUnit } from './runtime/cbt-unit';
+import { isSerializedNonMekUnit,type SerializedNonMekUnit } from './runtime/non-mek-unit-persistence';
+import {
+createDirectC3MasterRuntimeFixture,
+createDirectMekRuntimeFixture,
+} from './runtime/testing/direct-mek-runtime-fixture';
+import type { UnitCover } from './unit-cover.model';
+import type { UnitSummary } from './unit-summary.model';
+import { parseEntity } from './entity/parse-entity';
+import { encodeNativeEntity } from './entity/write-entity';
+import { matchNativeMounts } from './entity/utils/native-mount-correspondence';
+import { makeUnitFileName } from '../services/unit-catalog/unit-catalog.types';
+import type { NativeUnitSourceHandle } from './native-unit-source-handle';
+import { TestAeroSpaceFighterEntity, TestFixedWingSupportEntity } from './entity/testing/test-entities';
+
+const dataService = {
+    getFactionById: () => null,
+    getEraById: () => null,
+} as unknown as DataService;
+
+function refitCopy(entity: BaseEntity, uuid = asUnitUuid('019f6767-0dcb-7bb8-992f-000000000078')) {
+    const format = entity.entityType === 'Mek' ? 'mtf' : 'blk';
+    const draft = parseEntity(encodeNativeEntity(entity), `refit.${format}`, entity.getEquipmentRegistry()).entity;
+    draft.uuid.set(uuid);
+    draft.model.set('Refitted');
+    const source: NativeUnitSourceHandle = { file: makeUnitFileName(uuid, format), format,
+        bytes: new TextEncoder().encode(encodeNativeEntity(draft)).buffer as ArrayBuffer };
+    return { draft, source, origins: matchNativeMounts(entity, draft) };
+}
+
+const optionsService = {
+    options: () => ({
+        CBTRules: CORE_2026_RULESET,
+        CBTOptionalRules: { forcedWithdrawal: true, sprinting: false, hotLoadedAmmo: false },
+    }),
+    cbtAutomationMode: () => 'no',
+} as unknown as OptionsService;
+
+const injector = {
+    get: (token: unknown) => token === OptionsService
+        ? optionsService
+        : token === LoggerService
+            ? jasmine.createSpyObj<LoggerService>('LoggerService', ['error', 'warn'])
+            : null,
+} as unknown as Injector;
+
+/** The scenario the test options bind, with the given ruleset and optional rules. */
+function scenarioRules(
+    ruleset: CBTRuleset = CORE_2026_RULESET,
+    optional: Readonly<{ sprinting?: boolean }> = {},
+): ScenarioRules {
+    return { id: 'megamek', ruleset, options: { ...BOUND_OPTIONAL_RULE_DEFAULTS, ...optional } };
+}
+
+function emptySerializedEncounterV2(): SerializedCBTEncounterStateV2 {
+    return { networks: [] };
+}
+
+function directForceRecord(): SerializedCBTForce {
+    const forceId = asForceId('force:encounter');
+    const cbt: SerializedCBTForceV2 = {
+        forceId,
+        forceRevision: 0,
+        history: emptyRuntimeHistory(),
+        units: [],
+        roster: { groups: [] },
+        encounter: emptySerializedEncounterV2(),
+    };
+    return {
+        version: 2,
+        timestamp: '2026-01-01T00:00:00.000Z',
+        instanceId: forceId,
+        type: GameSystem.CBT,
+        name: 'Encounter force',
+        cbt,
+    };
+}
+
+async function loadForce(record: SerializedCBTForce = directForceRecord()): Promise<CBTForce> {
+    return CBTForce.deserialize(structuredClone(record), dataService, injector);
+}
+
+function mekRuntimeSnapshot(force: CBTForce, instanceId: string) {
+    const snapshot = force.getUnitSnapshot(instanceId);
+    if (!snapshot || !hasMekRuntime(snapshot)) throw new Error(`Missing Mek runtime ${instanceId}`);
+    return snapshot;
+}
+
+function entityRuntimeSnapshot(force: CBTForce, instanceId: string) {
+    const snapshot = force.getUnitSnapshot(instanceId);
+    if (!snapshot || !hasNonMekRuntime(snapshot)) throw new Error(`Missing Non-Mek runtime ${instanceId}`);
+    return snapshot;
+}
+
+async function readyCloneForce(): Promise<{
+    readonly force: CBTForce;
+    readonly armorFaceId: ReturnType<typeof createDirectMekRuntimeFixture>['index']['armorFaces'] extends ReadonlyMap<infer T, unknown> ? T : never;
+    readonly createTargetForce: () => Promise<CBTForce>;
+    readonly reload: (record: SerializedCBTForce) => Promise<CBTForce>;
+}> {
+    const fixture = createDirectC3MasterRuntimeFixture();
+    const initializeOptions = {
+        profileId: 'pristine',
+        deployment: { id: 'default' },
+        scenario: { id: 'megamek', ruleset: 'core-2026' as const },
+    };
+    const firstId = 'unit:clone:first';
+    const secondId = 'unit:clone:second';
+    const first = await createMekUnit({
+        uuid: fixture.identity,
+        instanceId: firstId,
+    }, fixture.entity, fixture.identity, initializeOptions);
+    const second = await createMekUnit({
+        uuid: fixture.identity,
+        instanceId: secondId,
+    }, fixture.entity, fixture.identity, initializeOptions);
+    const armorFaceId = [...fixture.index.armorFaces.keys()][0]!;
+    const damaged = first.dispatch({
+        type: 'damage-armor',
+
+        faceId: armorFaceId,
+        amount: 1,
+        target: 'committed',
+    });
+    if (!damaged.accepted) throw new Error('Ready clone fixture damage failed');
+    const firstUnit = first.serialize();
+    const secondUnit = second.serialize();
+    const componentId = fixture.equipmentComponent('Test C3 Master').id;
+    const forceId = asForceId('force:ready-clone');
+    const cbt: SerializedCBTForceV2 = {
+        forceId,
+        forceRevision: 7,
+        history: emptyRuntimeHistory(),
+        units: [
+            { instanceId: firstId, stateRevision: firstUnit.stateRevision, unit: firstUnit },
+            { instanceId: secondId, stateRevision: secondUnit.stateRevision, unit: secondUnit },
+        ],
+        roster: {
+            groups: [{
+                groupId: 'group:clone-source',
+                order: 0,
+                name: 'Clone source',
+                members: [
+                    { instanceId: firstId, order: 0, commander: true },
+                    { instanceId: secondId, order: 1 },
+                ],
+            }],
+        },
+        encounter: {
+            networks: [{
+                id: 'network:clone-source',
+                networkType: 'c3',
+                color: '#123456',
+                endpoints: [
+                    { instanceId: firstId, componentId, role: 'master' },
+                    { instanceId: secondId, componentId, role: 'member' },
+                ],
+            }],
+            c3Positions: [
+                { unitId: firstId, x: 203, y: 392 },
+                { unitId: secondId, x: 407, y: 392 },
+            ],
+        },
+    };
+    const summary = {
+        name: 'Direct Fixture DF-1',
+        chassis: 'Direct Fixture',
+        model: 'DF-1',
+        provider: MM_DATA_UNIT_PROVIDER_ID,
+        uuid: fixture.identity,
+        entityType: 'Mek',
+    } as unknown as UnitSummary;
+    const localData = {
+        getFactionById: () => null,
+        getEraById: () => null,
+        getUnitByUuid: () => summary,
+    } as unknown as DataService;
+    const cbtUnits = {
+        restore: async (saved: SerializedCBTUnitV2) => ({
+            unit: await restoreMekUnit(
+                saved,
+                fixture.entity,
+                fixture.identity,
+                initializeOptions,
+            ),
+            warnings: [],
+        }),
+    } as unknown as CBTUnitService;
+    const localInjector = {
+        get: (token: unknown) => token === CBTUnitService
+            ? cbtUnits
+            : token === OptionsService
+                ? optionsService
+            : token === ToastService
+                ? jasmine.createSpyObj<ToastService>('ToastService', ['showToast'])
+            : token === ForceCustomDesignsService
+                ? { checkNative: async () => true, resetIfEmbedded: () => {} }
+                : token === LoggerService
+                    ? jasmine.createSpyObj<LoggerService>('LoggerService', ['error', 'warn'])
+                    : null,
+    } as unknown as Injector;
+    const record: SerializedCBTForce = {
+        version: 2,
+        timestamp: '2026-01-01T00:00:00.000Z',
+        instanceId: forceId,
+        type: GameSystem.CBT,
+        name: 'Ready clone force',
+        cbt,
+    };
+    const force = await CBTForce.deserialize(record, localData, localInjector);
+    const createTargetForce = async (): Promise<CBTForce> => {
+        const target = new CBTForce('Transfer target', localData, localInjector);
+        await target.addGroup('Target lance');
+        return target;
+    };
+    const reload = async (saved: SerializedCBTForce): Promise<CBTForce> => {
+        return CBTForce.deserialize(saved, localData, localInjector);
+    };
+    return { force, armorFaceId, createTargetForce, reload };
+}
+
+describe('CBTForce NEXT heat', () => {
+    for (const mode of ['yes', 'ask', 'no'] as const) {
+        it(`sets NEXT ${mode === 'no' ? 'as the player’s own number' : 'to follow the calculated heat'} with heat resolution ${
+            mode}`, async () => {
+            spyOn(optionsService, 'cbtAutomationMode').and.returnValue(mode);
+            const { force } = await readyCloneForce();
+            const [first] = force.getCBTMembers();
+            const projection = mekRuntimeSnapshot(force, first.id).query.heatProjection();
+            const calculated = projection.kind === 'supported' ? projection.projection.projected : NaN;
+
+            expect((await force.dispatchUnitCommand(first.id, { type: 'set-pending-heat', heat: 6 })).changed).toBeTrue();
+
+            expect(mekRuntimeSnapshot(force, first.id).state.heat.pendingOffset).toBe(mode === 'no' ? undefined : 6 - calculated);
+            // APPLY HEAT after outside heat moved the calculation settles NEXT where the mode puts it.
+            await force.dispatchUnitCommand(first.id, { type: 'add-outside-heat', amount: 15, target: 'committed' });
+            const moved = mekRuntimeSnapshot(force, first.id).query.heatProjection();
+            const after = moved.kind === 'supported' ? moved.projection.projected : NaN;
+            expect((await force.dispatchUnitCommand(first.id, { type: 'apply-heat' })).changed).toBeTrue();
+            expect(mekRuntimeSnapshot(force, first.id).state.heat.current).toBe(mode === 'no' ? 6 : 6 + after - calculated);
+        });
     }
+});
 
-    function transfer(fromSubtype: string, toUnitData: any, fromCrew: any, toCrew: any): void {
-        const fromUnit = {
-            getUnit: () => ({ subtype: fromSubtype }),
-            getCrewMembers: () => [fromCrew],
-            commander: () => true,
-        };
-        const toUnit = {
-            getUnit: () => toUnitData,
-            getCrewMembers: () => [toCrew],
-            setFormationCommander: jasmine.createSpy('setFormationCommander'),
-        };
+describe('CBTForce game restart', () => {
+    it('returns Meks to turn 1 Movement, discards uncommitted damage and starts an empty log without undo', async () => {
+        const { force, armorFaceId } = await readyCloneForce();
+        const [first, second] = force.getCBTMembers();
+        expect((await force.dispatchUnitCommand(first.id, { type: 'complete-turn-step', step: 0 })).changed).toBeTrue();
+        await force.dispatchUnitCommand(first.id, { type: 'set-condition', condition: 'tagged', active: true });
+        await force.dispatchUnitCommand(second.id, { type: 'damage-armor', faceId: armorFaceId, amount: 2, target: 'pending' });
+        const committedArmor = force.getUnitSnapshot(first.id)!.query.remainingArmor(armorFaceId);
+        expect(force.getRuntimeUndoState().canUndo).toBeTrue();
 
-        (CBTForce.prototype as any).transferPilotData.call({}, fromUnit, toUnit);
-    }
+        expect(await force.restartGame()).toBeTrue();
 
-    it('preserves custom ASF skills when replacing one LAM with another', () => {
-        const sourceCrew = createCrew(4, 5, 2, 3);
-        const targetCrew = createCrew(4, 5);
-
-        transfer('Land-Air BattleMek', { type: 'Mek', subtype: 'Land-Air BattleMek' }, sourceCrew, targetCrew);
-
-        expect(targetCrew.setSkill).toHaveBeenCalledWith('gunnery', 2, true);
-        expect(targetCrew.setSkill).toHaveBeenCalledWith('piloting', 3, true);
+        const restarted = mekRuntimeSnapshot(force, first.id);
+        expect(restarted.state.turn.turnCounter).toBe(0);
+        expect(restarted.state.turn.turnStep).toBe(0);
+        expect(restarted.query.conditions()).not.toContain('tagged');
+        expect(restarted.query.remainingArmor(armorFaceId)).toBe(committedArmor);
+        expect(mekRuntimeSnapshot(force, second.id).query.hasPendingPhaseChanges()).toBeFalse();
+        expect(force.getRuntimeHistory()).toEqual([]);
+        expect(force.getRuntimeUndoState()).toEqual({ canUndo: false, canRedo: false });
+        expect((await force.serializeForPersistence()).cbt!.history.t).toEqual([]);
     });
 
-    it('initializes ASF skills from ground skills when replacing a non-LAM with a LAM', () => {
-        const sourceCrew = createCrew(6, 7);
-        const targetCrew = createCrew(4, 5);
+    it('returns a non-Mek to turn 1 Movement', async () => {
+        const { force, instanceId } = await readyEntityForce();
+        await force.dispatchUnitCommand(instanceId, { type: 'end-turn', policy: 'automatic' });
+        expect(entityRuntimeSnapshot(force, instanceId).state.turn.turnCounter).toBe(1);
 
-        transfer('BattleMek', { type: 'Mek', subtype: 'Land-Air BattleMek' }, sourceCrew, targetCrew);
+        expect(await force.restartGame()).toBeTrue();
 
-        expect(targetCrew.setSkill).toHaveBeenCalledWith('gunnery', 6, true);
-        expect(targetCrew.setSkill).toHaveBeenCalledWith('piloting', 7, true);
-    });
-
-    it('enforces fixed Piloting on the replacement unit', () => {
-        const sourceCrew = createCrew(3, 0);
-        const targetCrew = createCrew(4, 5);
-
-        transfer('BattleMek', { type: 'ProtoMek', subtype: 'ProtoMek' }, sourceCrew, targetCrew);
-
-        expect(targetCrew.setSkill).toHaveBeenCalledWith('piloting', 5);
-        expect(targetCrew.setSkill).not.toHaveBeenCalledWith('piloting', 0);
+        expect(entityRuntimeSnapshot(force, instanceId).state.turn.turnCounter).toBe(0);
+        expect(force.getRuntimeUndoState()).toEqual({ canUndo: false, canRedo: false });
     });
 });
 
-describe('CBTForce deserialization failures', () => {
-    let dialogs: jasmine.SpyObj<DialogsService>;
-    let logger: jasmine.SpyObj<LoggerService>;
-    let dataService: DataService;
-    let injector: Injector;
+describe('CBTForce rules switch', () => {
+    it('rebinds an owned force to the new ruleset, saves it and starts undo over while the log stays', async () => {
+        const { force, armorFaceId } = await readyCloneForce();
+        const [mek] = force.getCBTMembers();
+        await force.dispatchUnitCommand(mek.id, { type: 'damage-armor', faceId: armorFaceId, amount: 2, target: 'committed' });
+        const armor = mekRuntimeSnapshot(force, mek.id).query.remainingArmor(armorFaceId);
+        const log = force.getRuntimeHistory();
+        expect(log.length).toBeGreaterThan(0);
+        expect(force.getRuntimeUndoState().canUndo).toBeTrue();
+        const revision = force.serialize().cbt!.forceRevision;
+        const saves = jasmine.createSpy('changed');
+        force.changed.subscribe(saves);
 
-    function createSerializedUnit(id: string, unit: string): CBTSerializedUnit {
-        return {
-            id,
-            unit,
-            state: {
-                modified: false,
-                destroyed: false,
-                crew: [],
-                crits: [],
-                locations: {},
-                heat: { current: 0, previous: 0 },
-            },
-        };
-    }
+        expect(await force.rebindScenarioRules(scenarioRules(TOTAL_WARFARE_RULESET))).toEqual({ bound: true, dropped: [] });
 
-    function createSerializedForce(unitNames: string[]): CBTSerializedForce {
-        return {
-            version: 1,
-            timestamp: new Date().toISOString(),
-            instanceId: 'force-id',
-            type: GameSystem.CLASSIC,
-            name: 'Partially valid force',
-            groups: [{
-                id: 'group-id',
-                units: unitNames.map((name, index) => createSerializedUnit(`unit-${index}`, name)),
+        expect(force.getUnitSnapshot(mek.id)!.ruleset).toBe(TOTAL_WARFARE_RULESET);
+        expect(mek.ruleset()).toBe(TOTAL_WARFARE_RULESET);
+        expect(mekRuntimeSnapshot(force, mek.id).query.remainingArmor(armorFaceId)).toBe(armor);
+        // Checkpoints from the old rules cannot be restored; what they did stays in the log, saved with the force.
+        expect(force.getRuntimeUndoState()).toEqual({ canUndo: false, canRedo: false });
+        expect(force.getRuntimeHistory()).toEqual(log);
+        expect(saves).toHaveBeenCalled();
+        const saved = await force.serializeForPersistence();
+        expect(saved.cbt!.forceRevision).toBeGreaterThan(revision);
+        expect(saved.cbt!.history).toEqual(force.serialize().cbt!.history);
+        expect(saved.cbt!.history.t).not.toEqual([]);
+
+        // The unit plays on under the new rules.
+        const intact = [...mekRuntimeSnapshot(force, mek.id).index.armorFaces.keys()].find(faceId =>
+            mekRuntimeSnapshot(force, mek.id).query.remainingArmor(faceId) > 0)!;
+        expect((await force.dispatchUnitCommand(mek.id, {
+            type: 'damage-armor', faceId: intact, amount: 1, target: 'committed',
+        })).changed).toBeTrue();
+        expect(force.getRuntimeUndoState().canUndo).toBeTrue();
+    });
+
+    it('rebinds a force this player only views in memory, without saving it', async () => {
+        const { force, reload } = await readyCloneForce();
+        const viewed = await reload({ ...await force.serializeForPersistence(), owned: false } as SerializedCBTForce);
+        expect(viewed.readOnly()).toBeTrue();
+        const [mek] = viewed.getCBTMembers();
+        const revision = viewed.serialize().cbt!.forceRevision;
+        const saves = jasmine.createSpy('changed');
+        const redraws = jasmine.createSpy('sessionChanged');
+        viewed.changed.subscribe(saves);
+        viewed.sessionChanged.subscribe(redraws);
+
+        expect((await viewed.rebindScenarioRules(scenarioRules(TOTAL_WARFARE_RULESET))).bound).toBeTrue();
+
+        expect(viewed.getUnitSnapshot(mek.id)!.ruleset).toBe(TOTAL_WARFARE_RULESET);
+        expect(mek.ruleset()).toBe(TOTAL_WARFARE_RULESET);
+        expect(saves).not.toHaveBeenCalled();
+        expect(redraws).toHaveBeenCalled();
+        expect(viewed.serialize().cbt!.forceRevision).toBe(revision);
+    });
+
+    it('ends a fall paused after its head hits and keeps the other pending rolls', async () => {
+        const { force } = await readyCloneForce();
+        const [mek] = force.getCBTMembers();
+        const crewId = [...mekRuntimeSnapshot(force, mek.id).index.crewPositions.keys()][0]!;
+        for (const command of [
+            { type: 'set-pending-fall-consequences', pending: {
+                eventId: 'fall:1', totalDamage: 10, hitArcLabel: 'Front', applyPilotHits: true,
+                forceSeatbeltFailure: false, seatbeltPositionIds: [crewId], headHits: 1, stage: 'crew-hits',
+            } },
+            { type: 'set-consciousness-rolls-due', positionIds: [crewId] },
+            { type: 'record-mek-physical-attack-checks', attackId: 'attack:1', checks: ['kicked'] },
+        ] as const) {
+            expect((await force.dispatchUnitCommand(mek.id, command)).changed).toBeTrue();
+        }
+
+        // Total Warfare applies falling head hits before the seatbelt rolls, Core after them: resuming either way would skip or repeat them.
+        expect(await force.rebindScenarioRules(scenarioRules(TOTAL_WARFARE_RULESET))).toEqual({
+            bound: true,
+            dropped: [{ unit: force.runtimeHistoryUnitLabel(mek.id), items: ['the rest of an unfinished fall'] }],
+        });
+        const state = mekRuntimeSnapshot(force, mek.id).state;
+        expect(state.turn.pendingFallConsequences).toBeUndefined();
+        expect(state.turn.consciousnessRollsDue).toEqual([crewId]);
+        expect(state.movementPsr.checks.map(check => check.status)).toEqual(['pending']);
+    });
+
+    it('drops skidding under Core, which has no skidding', async () => {
+        const { force } = await readyCloneForce();
+        const [mek] = force.getCBTMembers();
+        expect((await force.rebindScenarioRules(scenarioRules(TOTAL_WARFARE_RULESET))).bound).toBeTrue();
+        expect((await force.dispatchUnitCommand(mek.id, { type: 'set-condition', condition: 'skidding', active: true })).changed)
+            .toBeTrue();
+
+        expect(await force.rebindScenarioRules(scenarioRules())).toEqual({
+            bound: true,
+            dropped: [{ unit: force.runtimeHistoryUnitLabel(mek.id), items: ['skidding condition'] }],
+        });
+        expect(force.getUnitConditions(mek.id)).not.toContain('skidding');
+    });
+
+    it('locks sheet targeting, reset and the firing mode after a weapon declaration', async () => {
+        const options = optionsService.options();
+        const configuration = spyOn(optionsService, 'options').and.returnValue({ ...options, realPhases: true, trackPhaseAndTurn: true });
+        const laser = new WeaponEquipment({ id: 'PhaseLaser', name: 'Phase Laser', type: 'weapon', modes: ['Normal', 'Low'],
+            weapon: { ammoType: 'NA', damage: 5, heat: 1, ranges: [3, 6, 9, 12] } });
+        const entity = new TestTankEntity(createTestEquipmentRegistry({ [laser.id]: laser }));
+        const componentId = asComponentId(addTestEquipment(entity, laser, { location: 'Front' }).mountId);
+        const { force, instanceId } = await readyEntityForce({ entity });
+        const [a, b] = ['A', 'B'].map(letter => {
+            const id = asEncounterTargetId('target:' + letter);
+            force.dispatchInventoryControlTargetRegistry({ kind: 'create-target', target: { id, letter, name: letter, color: '#123456' } });
+            return id;
+        });
+        const select = (id: typeof a | null) => force.dispatchAttackerTargeting(instanceId, { type: 'edit-attacker-targeting',
+            edit: { kind: 'set-component-selection', componentId, selection: id ? { kind: 'target', targetId: id } : null } });
+        await force.dispatchUnitCommand(instanceId, { type: 'complete-turn-step', step: 0 });
+        expect((await select(a)).changed).toBeTrue();
+        await force.dispatchUnitCommand(instanceId, { type: 'complete-turn-step', step: 1 });
+        expect((await select(b)).accepted).toBeFalse();
+        expect((await select(null)).accepted).toBeFalse();
+        expect((await force.dispatchUnitCommand(instanceId, { type: 'set-component-mode', componentId, mode: 'Low' })).accepted).toBeFalse();
+        expect(force.getAttackerTargeting(instanceId)?.state.components.get(componentId)?.selection).toEqual({ kind: 'target', targetId: a });
+        configuration.and.returnValue({ ...options, realPhases: false });
+        expect((await select(b)).changed).toBeTrue();
+        expect((await select(null)).changed).toBeTrue();
+    });
+
+    it('keeps a declared physical attack when a sheet clears it at To-Hit', async () => {
+        const options = optionsService.options();
+        spyOn(optionsService, 'options').and.returnValue({ ...options, realPhases: true, trackPhaseAndTurn: true });
+        const { force } = await readyCloneForce();
+        const id = force.getCBTMembers()[0]!.id;
+        const select = (selected: boolean) => force.dispatchAttackerTargeting(id, { type: 'edit-attacker-targeting',
+            edit: { kind: 'set-action-selection', target: { kind: 'intrinsic', actionId: 'intrinsic:punch:RA' },
+                selection: selected ? { kind: 'selected' } : null } });
+        for (let step = 0; step < 5; step++) await force.dispatchUnitCommand(id, { type: 'complete-turn-step', step });
+        expect((await select(true)).changed).toBeTrue();
+        expect((await force.dispatchUnitCommand(id, { type: 'complete-turn-step', step: 5 })).changed).toBeTrue();
+        expect((await select(false)).accepted).toBeFalse();
+    });
+
+    it('drops a jam the new rules do not have instead of failing the switch', async () => {
+        const ultra = new WeaponEquipment({
+            id: 'TestUltraAC5', name: 'Test Ultra AC/5', type: 'weapon',
+            flags: ['F_AC', 'F_BALLISTIC', 'F_DIRECT_FIRE'], modes: ['Single', 'Ultra'],
+            weapon: { ammoType: 'AC_ULTRA', rackSize: 5, damage: 5, heat: 1, ranges: [3, 6, 9, 12] },
+        });
+        const entity = new TestTankEntity(createTestEquipmentRegistry({ [ultra.id]: ultra }));
+        const ultraId = asComponentId(addTestEquipment(entity, ultra, { location: entity.locationOrder[0] }).mountId);
+        const { force, instanceId } = await readyEntityForce({ entity });
+        expect((await force.rebindScenarioRules(scenarioRules(TOTAL_WARFARE_RULESET))).bound).toBeTrue();
+        expect((await force.dispatchUnitCommand(instanceId, {
+            type: 'set-component-jammed', componentId: ultraId, jammed: true,
+        })).changed).toBeTrue();
+
+        // Under Core only Rotary ACs jam.
+        expect(await force.rebindScenarioRules(scenarioRules())).toEqual({
+            bound: true,
+            dropped: [{
+                unit: force.runtimeHistoryUnitLabel(instanceId),
+                items: [force.runtimeHistoryTargetLabel(instanceId, 'component', ultraId)],
             }],
+        });
+        expect(entityRuntimeSnapshot(force, instanceId).state.components.get(ultraId)?.jammed).toBeUndefined();
+        expect(force.getUnitSnapshot(instanceId)!.ruleset).toBe(CORE_2026_RULESET);
+    });
+});
+
+describe('CBTForce real-phase rewind', () => {
+    it('moves a unit back within its turn without undoing what it did', async () => {
+        const { force, armorFaceId } = await readyCloneForce();
+        const [mek] = force.getCBTMembers();
+        await force.dispatchUnitCommand(mek.id, { type: 'complete-turn-step', step: 0 });
+        await force.dispatchUnitCommand(mek.id, { type: 'damage-armor', faceId: armorFaceId, amount: 2, target: 'committed' });
+        await force.dispatchUnitCommand(mek.id, { type: 'complete-turn-step', step: 1 });
+        const armor = mekRuntimeSnapshot(force, mek.id).query.remainingArmor(armorFaceId);
+
+        expect((await force.dispatchUnitCommand(mek.id, { type: 'rewind-turn-step', step: 2 })).changed).toBeFalse();
+        expect((await force.dispatchUnitCommand(mek.id, { type: 'rewind-turn-step', step: 0 })).changed).toBeTrue();
+
+        const rewound = mekRuntimeSnapshot(force, mek.id);
+        expect(rewound.state.turn.turnStep).toBe(0);
+        expect(rewound.query.remainingArmor(armorFaceId)).toBe(armor);
+
+        const { force: entityForce, instanceId } = await readyEntityForce();
+        await entityForce.dispatchUnitCommand(instanceId, { type: 'complete-turn-step', step: 0 });
+        await entityForce.dispatchUnitCommand(instanceId, { type: 'rewind-turn-step', step: 0 });
+        expect(entityRuntimeSnapshot(entityForce, instanceId).state.turn.turnStep).toBe(0);
+    });
+});
+
+describe('CBTForce construction refits', () => {
+    it('keeps the original force unit when a refit crosses the superheavy donor boundary', async () => {
+        const { force } = await readyCloneForce();
+        const member = force.getCBTMembers()[0];
+        const before = force.getUnitSnapshot(member.id)!;
+        const { draft, source, origins } = refitCopy(member.entity);
+        draft.setStructureAt('LA', draft.structureAt('LA').withTonnage(105));
+        const bytes = new TextEncoder().encode(encodeNativeEntity(draft)).buffer as ArrayBuffer;
+        await expectAsync(force.applyConstruction(member, { entity: draft, source: { ...source, bytes }, origins }))
+            .toBeRejectedWithError(/LA has a 105-ton donor/);
+        expect(force.getUnitSnapshot(member.id)!.entity).toBe(before.entity);
+        expect(force.getUnitSnapshot(member.id)!.state).toBe(before.state);
+    });
+
+    it('refuses a requested design update while the unit is damaged', async () => {
+        const { force } = await readyCloneForce();
+        const member = force.getCBTMembers()[0];
+        const before = force.getUnitSnapshot(member.id)!;
+        const { draft, source, origins } = refitCopy(member.entity);
+        await expectAsync(force.applyConstruction(member, { entity: draft, source, origins }, undefined, true))
+            .toBeRejectedWithError(/Fully repair/u);
+        expect(force.getUnitSnapshot(member.id)!.entity).toBe(before.entity);
+        expect(force.getUnitSnapshot(member.id)!.state).toBe(before.state);
+    });
+
+    it('previews a repair without mutating the force, then commits it with the core identity and force undo intact', async () => {
+        const { force, armorFaceId } = await readyCloneForce();
+        const [member, other] = force.getCBTMembers();
+        const before = force.getUnitSnapshot(member.id)!;
+        const untouched = force.getUnitSnapshot(other.id)!;
+        const changes = { context: before.editContext, commands: [{ type: 'repair-all' as const }] };
+        const preview = await force.previewConstructionRuntime(member, changes);
+        expect(preview.changed).toBeTrue();
+        expect(preview.snapshot.query.remainingArmor(armorFaceId)).toBe(before.index.armorFaces.get(armorFaceId)!.maximumPoints);
+        expect(force.getUnitSnapshot(member.id)!.state).toBe(before.state);
+        const updated = await force.applyConstruction(member, undefined, changes);
+        const after = force.getUnitSnapshot(member.id)!;
+        expect(updated.entity).toBe(member.entity);
+        expect(after.uuid).toBe(before.uuid);
+        expect(after.query.remainingArmor(armorFaceId)).toBe(preview.snapshot.query.remainingArmor(armorFaceId));
+        expect(force.getUnitSnapshot(other.id)!.state).toBe(untouched.state);
+        expect(force.getC3State(member.id)).toBe('operational');
+        await force.undoRuntimeCommand();
+        expect(force.getUnitSnapshot(member.id)!.query.remainingArmor(armorFaceId)).toBe(before.query.remainingArmor(armorFaceId));
+    });
+
+    it('commits a staged repair and custom refit together', async () => {
+        const { force, armorFaceId } = await readyCloneForce();
+        const member = force.getCBTMembers()[0];
+        const before = force.getUnitSnapshot(member.id)!;
+        const { draft, source, origins } = refitCopy(member.entity);
+        const changes = { context: before.editContext, commands: [{ type: 'repair-all' as const }] };
+        const updated = await force.applyConstruction(member, { entity: draft, source, origins }, changes);
+        expect(updated.entity.uuid()).toBe(draft.uuid());
+        expect(force.getUnitSnapshot(member.id)!.query.remainingArmor(armorFaceId)).toBe(before.index.armorFaces.get(armorFaceId)!.maximumPoints);
+    });
+
+    it('rejects stale runtime edits without overwriting new combat damage or applying a partial refit', async () => {
+        const { force, armorFaceId } = await readyCloneForce();
+        const member = force.getCBTMembers()[0];
+        const changes = { context: force.getUnitSnapshot(member.id)!.editContext, commands: [{ type: 'repair-all' as const }] };
+        await force.previewConstructionRuntime(member, changes);
+        await force.dispatchUnitCommand(member.id, { type: 'damage-armor', faceId: armorFaceId, amount: 1, target: 'committed' });
+        const current = force.getUnitSnapshot(member.id)!;
+        const { draft, source, origins } = refitCopy(member.entity);
+        await expectAsync(force.applyConstruction(member, { entity: draft, source, origins }, changes)).toBeRejectedWithError(/force unit changed/u);
+        expect(force.getUnitSnapshot(member.id)!.state).toBe(current.state);
+        expect(force.getUnitSnapshot(member.id)!.entity).toBe(member.entity);
+    });
+
+    it('atomically switches only the selected core instance to a custom design and keeps its roster, crew, C3 and damage', async () => {
+        const { force, armorFaceId } = await readyCloneForce();
+        const [member, copy] = force.getCBTMembers();
+        const roster = force.queryCanonicalRoster();
+        const personnel = force.personnel();
+        const before = force.getUnitSnapshot(member.id)!;
+        const other = force.getUnitSnapshot(copy.id)!;
+        const { draft, source, origins } = refitCopy(member.entity);
+        const updated = await force.applyConstruction(member, { entity: draft, source, origins });
+        expect(updated.id).toBe(member.id);
+        expect(updated.entity).toBe(draft);
+        expect(updated.entity.uuid()).not.toBe(member.entity.uuid());
+        expect(force.getUnitSnapshot(member.id)!.query.remainingArmor(armorFaceId)).toBe(before.query.remainingArmor(armorFaceId));
+        expect(force.getUnitSnapshot(member.id)!.crewAssignment).toEqual(before.crewAssignment);
+        expect(force.getUnitSnapshot(member.id)!.nativeSource?.bytes).toEqual(source.bytes);
+        expect(force.getUnitSnapshot(copy.id)!.entity).toBe(other.entity);
+        expect(force.getUnitSnapshot(copy.id)!.state).toBe(other.state);
+        expect(force.personnel()).toEqual(personnel);
+        const updatedRoster = force.queryCanonicalRoster();
+        if (roster.kind === 'available' && updatedRoster.kind === 'available') {
+            expect(updatedRoster.snapshot.groups).toEqual(roster.snapshot.groups);
+        }
+        expect(force.getC3State(member.id)).toBe('operational');
+        expect((await force.serialize()).cbt!.units.find(entry => entry.instanceId === member.id)!.unit.entity).toBe(draft.uuid());
+    });
+
+    it('can refit the same custom UUID again through the newly published member', async () => {
+        const { force } = await readyCloneForce();
+        const initial = force.getCBTMembers()[0];
+        const first = refitCopy(initial.entity);
+        const member = await force.applyConstruction(initial, { entity: first.draft, source: first.source, origins: first.origins });
+        const second = refitCopy(member.entity, member.entity.uuid());
+        second.draft.model.set('Second refit');
+        second.source = { ...second.source, bytes: new TextEncoder().encode(encodeNativeEntity(second.draft)).buffer as ArrayBuffer };
+        const updated = await force.applyConstruction(member, { entity: second.draft, source: second.source, origins: second.origins });
+        expect(updated.id).toBe(initial.id);
+        expect(updated.entity.uuid()).toBe(member.entity.uuid());
+        expect(updated.entity.model()).toBe('Second refit');
+        await expectAsync(force.applyConstruction(initial, { entity: first.draft, source: first.source, origins: first.origins })).toBeRejectedWithError(/changed or was removed/u);
+    });
+
+    it('rejects unsupported family changes without publishing a partial force replacement', async () => {
+        const { force } = await readyCloneForce();
+        const member = force.getCBTMembers()[0];
+        const before = force.getUnitSnapshot(member.id)!;
+        const revision = force.getCBTForceV2Revision();
+        const invalid = refitCopy(new TestTankEntity());
+        await expectAsync(force.applyConstruction(member, { entity: invalid.draft, source: invalid.source, origins: new Map() })).toBeRejectedWithError(/retain the unit family/u);
+        expect(force.getCBTMember(member.id)).toBe(member);
+        expect(force.getUnitSnapshot(member.id)!.state).toBe(before.state);
+        expect(force.getCBTForceV2Revision()).toBe(revision);
+    });
+});
+
+async function readyEntityForce(options: Readonly<{
+    readonly supportsAirborne?: boolean;
+    readonly entity?: BaseEntity;
+    readonly restoreWarning?: CBTUnitRestoreWarning;
+}> = {}): Promise<{
+    readonly force: CBTForce;
+    readonly instanceId: string;
+    readonly createTargetForce: () => Promise<CBTForce>;
+    readonly reload: (record: SerializedCBTForce) => Promise<CBTForce>;
+    readonly dialogs: jasmine.SpyObj<DialogsService>;
+    readonly cbtUnits: jasmine.SpyObj<CBTUnitService>;
+}> {
+    const entity = options.entity ?? new TestTankEntity();
+    if (options.supportsAirborne) entity.motiveType.set('WiGE');
+    const uuid = asUnitUuid('019f6767-0dcb-7bb8-992f-aef08202f5e2');
+    entity.uuid.set(uuid);
+    entity.setTonnage(20);
+    const identity = uuid;
+    const instanceId = 'unit:entity:tank';
+    const ready = createNonMekUnit(entity, {
+        instanceId,
+        uuid: identity,
+        deployment: { id: 'default' },
+        scenario: { id: 'megamek', ruleset: CORE_2026_RULESET },
+        initialStateProfileId: 'pristine-non-mek',
+    });
+    const serialized = ready.serialize();
+    const forceId = asForceId('force:ready-entity');
+    const cbt: SerializedCBTForceV2 = {
+        forceId,
+        forceRevision: 0,
+        history: emptyRuntimeHistory(),
+        units: [{ instanceId, stateRevision: serialized.stateRevision, unit: serialized }],
+        roster: {
+            groups: [{
+                groupId: 'group:entity-source',
+                order: 0,
+                name: 'Vehicle source',
+                members: [{ instanceId, order: 0 }],
+            }],
+        },
+        encounter: emptySerializedEncounterV2(),
+    };
+    const summary = {
+        name: entity.displayName(),
+        chassis: entity.chassis(),
+        model: '',
+        provider: MM_DATA_UNIT_PROVIDER_ID,
+        uuid,
+        entityType: entity.entityType,
+        bv: 0,
+    } as unknown as UnitSummary;
+    const localData = {
+        getFactionById: () => null,
+        getEraById: () => null,
+        getUnitByUuid: () => summary,
+    } as unknown as DataService;
+    const cbtUnits = jasmine.createSpyObj<CBTUnitService>(
+        'CBTUnitService',
+        ['restore', 'create'],
+    );
+    cbtUnits.restore.and.callFake(
+        (
+            saved: SerializedCBTUnitV2 | SerializedNonMekUnit,
+            _scenario: Parameters<CBTUnitService['restore']>[1],
+        ) => {
+            if (!isSerializedNonMekUnit(saved)) throw new Error('Expected a non-Mek fixture');
+            return Promise.resolve({
+                unit: restoreNonMekUnit(saved, entity, identity, _scenario),
+                warnings: options.restoreWarning === undefined
+                    ? []
+                    : [options.restoreWarning],
+            });
+        },
+    );
+    cbtUnits.create.and.callFake((
+            request: Parameters<CBTUnitService['create']>[0],
+        ) => Promise.resolve(createNonMekUnit(entity, {
+            instanceId: request.instanceId,
+            uuid: identity,
+            deployment: request.deployment,
+            scenario: request.scenario,
+            initialStateProfileId: request.initialStateProfileId ?? 'pristine-non-mek',
+        })));
+    const dialogs = jasmine.createSpyObj<DialogsService>('DialogsService', ['showNotice']);
+    dialogs.showNotice.and.resolveTo();
+    const localInjector = {
+        get: (token: unknown) => token === CBTUnitService
+            ? cbtUnits
+            : token === OptionsService
+                ? optionsService
+            : token === DialogsService
+                ? dialogs
+                : token === LoggerService
+                    ? jasmine.createSpyObj<LoggerService>('LoggerService', ['error', 'warn'])
+                    : null,
+    } as unknown as Injector;
+    const record: SerializedCBTForce = {
+        version: 2,
+        timestamp: '2026-01-01T00:00:00.000Z',
+        instanceId: forceId,
+        type: GameSystem.CBT,
+        name: 'Ready entity force',
+        cbt,
+    };
+    const force = await CBTForce.deserialize(record, localData, localInjector);
+    const createTargetForce = async (): Promise<CBTForce> => {
+        const target = new CBTForce('Entity transfer target', localData, localInjector);
+        await target.addGroup('Vehicle target');
+        return target;
+    };
+    const reload = async (saved: SerializedCBTForce): Promise<CBTForce> => {
+        return CBTForce.deserialize(saved, localData, localInjector);
+    };
+    return { force, instanceId, createTargetForce, reload, dialogs, cbtUnits };
+}
+
+async function readyEntityC3Force(
+    system: 'c3i' | 'nova' = 'c3i',
+): Promise<Readonly<{
+    force: CBTForce;
+    firstId: string;
+    secondId: string;
+    componentId: ReturnType<typeof asComponentId>;
+    dialogs: jasmine.SpyObj<DialogsService>;
+}>> {
+    const c3 = new MiscEquipment({
+        id: system === 'nova' ? 'TestNovaCEWS' : 'TestC3i',
+        name: system === 'nova' ? 'Nova CEWS' : 'C3i Computer',
+        type: 'misc',
+        flags: system === 'nova' ? ['F_NOVA', 'F_ECM', 'F_BAP'] : ['F_C3I'],
+    });
+    const entity = new TestTankEntity(createTestEquipmentRegistry({ [c3.id]: c3 }));
+    const componentId = asComponentId(system);
+    entity.setEquipment([new EntityMountedEquipment({
+        mountId: componentId,
+        equipmentId: c3.id,
+        equipment: c3,
+        allocation: { kind: 'location', location: 'Front' },
+        rearMounted: false,
+        turretMounted: false,
+        omniPodMounted: false,
+        armored: false,
+    })]);
+    const uuid = asUnitUuid('019f6767-0dcb-7bb8-992f-aef08202f5e3');
+    entity.uuid.set(uuid);
+    entity.setTonnage(20);
+    const identity = uuid;
+    const firstId = 'unit:entity:c3:first';
+    const secondId = 'unit:entity:c3:second';
+    const create = (instanceId: string) => createNonMekUnit(entity, {
+        instanceId,
+        uuid: identity,
+        deployment: { id: 'default' },
+        scenario: { id: 'megamek', ruleset: CORE_2026_RULESET },
+        initialStateProfileId: 'pristine-non-mek',
+    });
+    const first = create(firstId).serialize();
+    const second = create(secondId).serialize();
+    const forceId = asForceId('force:ready-entity-c3');
+    const cbt: SerializedCBTForceV2 = {
+        forceId,
+        forceRevision: 0,
+        history: emptyRuntimeHistory(),
+        units: [
+            { instanceId: firstId, stateRevision: first.stateRevision, unit: first },
+            { instanceId: secondId, stateRevision: second.stateRevision, unit: second },
+        ],
+        roster: {
+            groups: [{
+                groupId: 'group:entity-c3',
+                order: 0,
+                name: system === 'nova' ? 'Vehicle Nova' : 'Vehicle C3i',
+                members: [
+                    { instanceId: firstId, order: 0 },
+                    { instanceId: secondId, order: 1 },
+                ],
+            }],
+        },
+        encounter: emptySerializedEncounterV2(),
+    };
+    const summary = {
+        name: entity.displayName(), chassis: entity.chassis(), model: '',
+        provider: MM_DATA_UNIT_PROVIDER_ID, uuid, entityType: entity.entityType, bv: 0,
+    } as unknown as UnitSummary;
+    const localData = {
+        getFactionById: () => null,
+        getEraById: () => null,
+        getUnitByUuid: () => summary,
+    } as unknown as DataService;
+    const cbtUnits = {
+        restore: (saved: SerializedNonMekUnit, scenario: Parameters<CBTUnitService['restore']>[1]) =>
+            Promise.resolve({
+                unit: restoreNonMekUnit(saved, entity, identity, scenario),
+                warnings: [],
+            }),
+    } as unknown as CBTUnitService;
+    const dialogs = jasmine.createSpyObj<DialogsService>('DialogsService', ['showNotice']);
+    dialogs.showNotice.and.resolveTo();
+    const localInjector = {
+        get: (token: unknown) => token === CBTUnitService
+            ? cbtUnits
+            : token === OptionsService
+                ? optionsService
+            : token === DialogsService
+                ? dialogs
+            : token === ToastService
+                ? jasmine.createSpyObj<ToastService>('ToastService', ['showToast'])
+                : token === LoggerService
+                    ? jasmine.createSpyObj<LoggerService>('runtime service', ['error', 'warn'])
+                    : null,
+    } as unknown as Injector;
+    const record: SerializedCBTForce = {
+        version: 2,
+        timestamp: '2026-01-01T00:00:00.000Z',
+        instanceId: forceId,
+        type: GameSystem.CBT,
+        name: 'Ready Entity C3 force',
+        cbt,
+    };
+    const force = await CBTForce.deserialize(record, localData, localInjector);
+    return Object.freeze({ force, firstId, secondId, componentId, dialogs });
+}
+
+async function readyC3Force(owned = true): Promise<{
+    readonly force: CBTForce;
+    readonly masterId: string;
+    readonly emergencyId: string;
+    readonly masterComponentId: ReturnType<typeof createDirectMekRuntimeFixture>['index']['components'] extends ReadonlyMap<infer T, unknown> ? T : never;
+    readonly emergencyComponentId: ReturnType<typeof createDirectMekRuntimeFixture>['index']['components'] extends ReadonlyMap<infer T, unknown> ? T : never;
+    readonly toast: jasmine.SpyObj<ToastService>;
+    readonly forceDialogs: jasmine.SpyObj<ForceDialogsService>;
+    readonly c3DialogOpened: Promise<void>;
+}> {
+    const masterFixture = createDirectC3MasterRuntimeFixture(undefined, 'unit:c3-force-master');
+    const emergencyFixture = createDirectMekRuntimeFixture(undefined, 'unit:c3-force-emergency');
+    const memberFixture = createDirectMekRuntimeFixture(undefined, 'unit:c3-force-member');
+    const masterId = 'unit:c3-force-master';
+    const emergencyId = 'unit:c3-force-emergency';
+    const memberId = 'unit:c3-force-member';
+    const initializeOptions = {
+        profileId: 'pristine',
+        deployment: { id: 'default' },
+        scenario: { id: 'megamek', ruleset: 'core-2026' as const },
+    };
+    const master = await createMekUnit(
+        { uuid: masterFixture.identity, instanceId: masterId },
+        masterFixture.entity,
+        masterFixture.identity,
+        initializeOptions,
+    );
+    const emergency = await createMekUnit(
+        { uuid: emergencyFixture.identity, instanceId: emergencyId },
+        emergencyFixture.entity,
+        emergencyFixture.identity,
+        initializeOptions,
+    );
+    const member = await createMekUnit(
+        { uuid: memberFixture.identity, instanceId: memberId },
+        memberFixture.entity,
+        memberFixture.identity,
+        initializeOptions,
+    );
+    const masterComponentId = masterFixture.equipmentComponent('Test C3 Master').id;
+    const emergencyComponentId = emergencyFixture.equipmentComponent('Test C3 Emergency Master').id;
+    const memberComponentId = memberFixture.equipmentComponent('Test C3 Emergency Master').id;
+    const memberOff = member.dispatch({
+        type: 'edit-c3-emergency-master',
+
+        componentId: memberComponentId,
+        edit: { kind: 'toggle-requested', turningOn: false },
+    });
+    if (!memberOff.accepted) throw new Error('C3 member setup failed');
+    const readyById = new Map<string, {
+        ready: CBTMekUnit;
+        fixture: ReturnType<typeof createDirectMekRuntimeFixture>;
+    }>([
+        [masterId, { ready: master, fixture: masterFixture }],
+        [emergencyId, { ready: emergency, fixture: emergencyFixture }],
+        [memberId, { ready: member, fixture: memberFixture }],
+    ] as const);
+    const forceId = asForceId('force:c3-runtime');
+    const units = [...readyById].map(([instanceId, entry]) => {
+        const unit = entry.ready.serialize();
+        return { instanceId, stateRevision: unit.stateRevision, unit };
+    });
+    const cbt: SerializedCBTForceV2 = {
+        forceId,
+        forceRevision: 0,
+        history: emptyRuntimeHistory(),
+        units,
+        roster: {
+            groups: [{
+                groupId: 'group:c3-runtime',
+                order: 0,
+                name: 'C3 Lance',
+                members: units.map((unit, order) => ({
+                    instanceId: unit.instanceId,
+                    order,
+                })),
+            }],
+        },
+        encounter: {
+            networks: [{
+                id: 'network:c3-runtime',
+                networkType: 'c3',
+                color: '#123456',
+                endpoints: [
+                    { instanceId: emergencyId, componentId: emergencyComponentId, role: 'member' },
+                    { instanceId: masterId, componentId: masterComponentId, role: 'master' },
+                    { instanceId: memberId, componentId: memberComponentId, role: 'member' },
+                ],
+            }],
+        },
+    };
+    const summary = {
+        name: 'Direct Fixture DF-1',
+        chassis: 'Direct Fixture',
+        model: 'DF-1',
+        provider: MM_DATA_UNIT_PROVIDER_ID,
+        uuid: masterFixture.identity,
+    } as unknown as UnitSummary;
+    const localData = {
+        getFactionById: () => null,
+        getEraById: () => null,
+        getUnitByUuid: () => summary,
+        getEquipmentRegistry: () => emergencyFixture.equipment,
+    } as unknown as DataService;
+    const cbtUnits = {
+        restore: async (saved: SerializedCBTUnitV2) => {
+            const entry = readyById.get(saved.instanceId);
+            if (!entry) throw new Error(`Unknown C3 fixture ${saved.instanceId}`);
+            return {
+                unit: await restoreMekUnit(
+                    saved,
+                    entry.fixture.entity,
+                    entry.fixture.identity,
+                    initializeOptions,
+                ),
+                warnings: [],
+            };
+        },
+    } as unknown as CBTUnitService;
+    const toast = jasmine.createSpyObj<ToastService>('ToastService', ['showToast']);
+    const dialogs = jasmine.createSpyObj<DialogsService>(
+        'DialogsService',
+        ['createDialog', 'showError', 'showNoticeHtml'],
+    );
+    const equipmentInteractions = new EquipmentInteractionRegistry();
+    equipmentInteractions.register(new C3Handler());
+    equipmentInteractions.register(new C3EmergencyMasterHandler());
+    let notifyC3DialogOpened!: () => void;
+    const c3DialogOpened = new Promise<void>(resolve => { notifyC3DialogOpened = resolve; });
+    const forceDialogs = jasmine.createSpyObj<ForceDialogsService>('ForceDialogsService', ['openC3Network']);
+    forceDialogs.openC3Network.and.callFake(async () => { notifyC3DialogOpened(); });
+    const localInjector = {
+        get: (token: unknown) => token === CBTUnitService
+            ? cbtUnits
+            : token === OptionsService
+                ? optionsService
+            : token === ToastService
+                ? toast
+                : token === DialogsService
+                    ? dialogs
+                    : token === EquipmentInteractionRegistry
+                        ? equipmentInteractions
+                        : token === ForceDialogsService
+                            ? forceDialogs
+                            : token === LoggerService
+                                ? jasmine.createSpyObj<LoggerService>('LoggerService', ['error', 'warn'])
+                                : null,
+    } as unknown as Injector;
+    const record: SerializedCBTForce = {
+        version: 2,
+        timestamp: '2026-01-01T00:00:00.000Z',
+        instanceId: forceId,
+        type: GameSystem.CBT,
+        name: 'C3 runtime force',
+        owned,
+        cbt,
+    };
+    const force = await CBTForce.deserialize(record, localData, localInjector);
+    return {
+        force,
+        masterId,
+        emergencyId,
+        masterComponentId,
+        emergencyComponentId,
+        toast,
+        forceDialogs,
+        c3DialogOpened,
+    };
+}
+
+function createTarget(force: CBTForce): void {
+    const snapshot = force.queryInventoryControlTargetRegistry();
+    const letter = String.fromCharCode(65 + snapshot.targets.length);
+    const result = force.dispatchInventoryControlTargetRegistry({
+        kind: 'create-target',
+
+        target: {
+            id: asEncounterTargetId(`target:${letter}`),
+            letter,
+            name: `Target ${letter}`,
+            color: '#123456',
+            source: 'manual',
+        },
+    });
+    if (!result.accepted) throw new Error('Target creation failed');
+}
+
+function updateTarget(
+    force: CBTForce,
+    targetId: ReturnType<typeof asEncounterTargetId>,
+    patch: Readonly<Record<string, unknown>>,
+): void {
+    const snapshot = force.queryInventoryControlTargetRegistry();
+    const result = force.dispatchInventoryControlTargetRegistry({
+        kind: 'update-target',
+
+        targetId,
+        patch: patch as never,
+    });
+    if (!result.accepted) throw new Error('Target update failed');
+}
+
+describe('CBTForce V2 encounter persistence', () => {
+    it('rejects queued edits authored from an already-consumed snapshot', async () => {
+        const { force, instanceId } = await readyEntityForce();
+        const context = force.getUnitSnapshot(instanceId)!.editContext;
+        const first = force.dispatchUnitCommand(instanceId, {
+            type: 'set-condition', condition: 'shutdown', active: true,
+        }, context);
+        const stale = force.dispatchUnitCommand(instanceId, {
+            type: 'set-condition', condition: 'immobile', active: true,
+        }, context);
+        expect((await first).accepted).toBeTrue();
+        expect((await stale).accepted).toBeFalse();
+        expect(force.getUnitConditions(instanceId)).toEqual(['shutdown']);
+    });
+
+    it('rejects context from a replaced owner even at the same numeric revision', async () => {
+        const { force, instanceId } = await readyEntityForce();
+        const context = force.getUnitSnapshot(instanceId)!.editContext;
+        const result = await force.dispatchUnitCommand(instanceId, {
+            type: 'set-condition', condition: 'shutdown', active: true,
+        }, { ...context, owner: {} });
+        expect(result.accepted).toBeFalse();
+        expect(force.getUnitConditions(instanceId)).toEqual([]);
+    });
+
+    it('invalidates an old edit after targeting changes without a durable revision change', async () => {
+        const { force, instanceId } = await readyEntityForce();
+        createTarget(force);
+        const targetId = force.queryInventoryControlTargetRegistry().targets[0]!.id;
+        const context = force.getUnitSnapshot(instanceId)!.editContext;
+        expect((await force.dispatchAttackerTargeting(instanceId, {
+            type: 'edit-attacker-targeting',
+            edit: { kind: 'set-target-facts', targetId, facts: { distance: 6 } },
+        }, context)).accepted).toBeTrue();
+        expect(force.getUnitSnapshot(instanceId)!.state.stateRevision).toBe(context.state.stateRevision);
+        expect((await force.dispatchUnitCommand(instanceId, {
+            type: 'set-condition', condition: 'shutdown', active: true,
+        }, context)).accepted).toBeFalse();
+        expect(force.getUnitConditions(instanceId)).toEqual([]);
+    });
+
+    it('hands the record sheet the edit context of a targeting change made without a durable revision change', async () => {
+        const { force, instanceId } = await readyEntityForce();
+        createTarget(force);
+        const targetId = force.queryInventoryControlTargetRegistry().targets[0]!.id;
+        const member = force.getCBTMembers().find(candidate => candidate.id === instanceId)!;
+        expect(member.nonMekRecordSheetSnapshot()?.editContext.state).toBe(force.getUnitSnapshot(instanceId)!.editContext.state);
+        expect((await force.dispatchAttackerTargeting(instanceId, {
+            type: 'edit-attacker-targeting',
+            edit: { kind: 'set-target-facts', targetId, facts: { distance: 6 } },
+        })).accepted).toBeTrue();
+        // A sheet still holding the old context would have its next selection rejected as stale.
+        expect(member.nonMekRecordSheetSnapshot()?.editContext.state).toBe(force.getUnitSnapshot(instanceId)!.editContext.state);
+    });
+
+    it('rejects a queued crew-profile edit after its source snapshot changes', async () => {
+        const { force, instanceId } = await readyEntityForce();
+        const context = force.getUnitSnapshot(instanceId)!.editContext;
+        const profile = force.getUnitCrewProfile(instanceId)!;
+        const first = force.dispatchUnitCommand(instanceId, {
+            type: 'set-condition', condition: 'shutdown', active: true,
+        }, context);
+        const stale = force.replaceUnitCrewProfile(instanceId, profile.positions.map(position => ({
+            ...position, gunnery: 2,
+        })), context);
+        expect((await first).accepted).toBeTrue();
+        expect(await stale).toBeNull();
+        expect(force.getUnitCrewProfile(instanceId)).toEqual(profile);
+    });
+
+    it('saves the sealed live BV for projected lists after crew and runtime damage changes', async () => {
+        const { force, armorFaceId, reload } = await readyCloneForce();
+        const before = await force.serializeForPersistence();
+        const unitId = 'unit:clone:second';
+        const profile = force.getUnitCrewProfile(unitId)!;
+        await force.replaceUnitCrewProfile(unitId, profile.positions.map(position => ({ ...position, gunnery: 1, piloting: 2 })));
+        await force.dispatchUnitCommand(unitId, { type: 'damage-armor', faceId: armorFaceId, amount: 1, target: 'committed' });
+        const saved = await force.serializeForPersistence();
+        expect(saved.bv).toBe(force.totalBv());
+        expect(saved.bv).not.toBe(before.bv);
+        const wire = encodeForceForStorage(saved);
+        expect(decodeRemoteLoadForceEntry(wire).bv).toBe(saved.bv);
+        const restored = await reload(decodeForceFromStorage(wire) as SerializedCBTForce);
+        expect(restored.totalBv()).toBe(saved.bv!);
+    });
+    it('keeps reserves editable and saved after the last unit is removed', async () => {
+        const { force, reload } = await readyCloneForce();
+        const reserve = force.addUnassignedPerson({ name: 'Reserve', gunnery: 2, notes: 'Keep me',
+            health: { wounds: 2, unconscious: false, ejected: false } })!;
+
+        for (const member of force.members()) {
+            expect((await force.removeCBTMember(member.id)).accepted).toBeTrue();
+        }
+
+        expect(force.members()).toEqual([]);
+        expect(force.personnel()).toEqual({ people: [reserve], assignments: [] });
+        expect(force.canEditPersonnel()).toBeTrue();
+        const restored = await reload(await force.serializeForPersistence() as SerializedCBTForce);
+        expect(restored.members()).toEqual([]);
+        expect(restored.personnel()).toEqual(force.personnel());
+        expect(restored.canEditPersonnel()).toBeTrue();
+        expect(restored.addUnassignedPerson({ name: 'Another reserve' })).not.toBeNull();
+    });
+
+    it('advances the CBT persistence revision for reserve-only edits and reuses it on unchanged saves', async () => {
+        const force = await loadForce();
+        const before = force.getCBTForceV2Revision()!;
+        const reserve = force.addUnassignedPerson({ name: 'Reserve' })!;
+        expect(force.getCBTForceV2Revision()).toBe(before + 1);
+        const saved = await force.serializeForPersistence();
+        const repeated = await force.serializeForPersistence();
+        expect(saved.cbt!.forceRevision).toBe(before + 1);
+        expect(repeated.cbt!.forceRevision).toBe(saved.cbt!.forceRevision);
+        expect(saved.personnel!.people[0].id).toBe(reserve.id);
+        expect(await force.deletePerson(reserve.id)).toBeTrue();
+        expect(force.getCBTForceV2Revision()).toBe(before + 2);
+    });
+
+    it('undoes vacancies and reserve assignments without changing identities or unrelated reserve additions', async () => {
+        const { force } = await readyCloneForce();
+        const unitId = 'unit:clone:second';
+        const stationId = force.getUnitCrewProfile(unitId)!.positions[0].positionId;
+        const original = force.getAssignedPerson(unitId, stationId)!;
+        await force.dispatchCanonicalRosterCommand({ kind: 'set-commander', instanceId: unitId, commander: true });
+        expect(await force.detachUnitCrew(unitId)).toBeTrue();
+        expect(force.isUnitCommander(unitId)).toBeFalse();
+        expect(force.personnel().people.find(person => person.id === original.id)!.commander).toBeTrue();
+        const reserve = force.addUnassignedPerson({ name: 'Reserve', health: { wounds: 2, unconscious: false, ejected: false } })!;
+        expect((await force.undoRuntimeCommand()).accepted).toBeTrue();
+        expect(force.getAssignedPerson(unitId, stationId)!.id).toBe(original.id);
+        expect(force.isUnitCommander(unitId)).toBeTrue();
+        expect(force.personnel().people.some(person => person.id === reserve.id)).toBeTrue();
+        expect((await force.redoRuntimeCommand()).accepted).toBeTrue();
+        expect(force.getAssignedPerson(unitId, stationId)).toBeUndefined();
+        expect(await force.assignPersonToUnit(reserve.id, unitId, stationId)).toBeTrue();
+        expect((await force.undoRuntimeCommand()).accepted).toBeTrue();
+        expect(force.getAssignedPerson(unitId, stationId)).toBeUndefined();
+        expect(force.personnel().people.find(person => person.id === reserve.id)!.health!.wounds).toBe(2);
+        expect((await force.redoRuntimeCommand()).accepted).toBeTrue();
+        expect(force.getAssignedPerson(unitId, stationId)!.id).toBe(reserve.id);
+        expect(mekRuntimeSnapshot(force, unitId).query.crewState(stationId).wounds).toBe(2);
+    });
+
+    it('retains reserves and vacant stations across saves and assigns the same person with exact health', async () => {
+        const { force, reload } = await readyCloneForce();
+        const unitId = 'unit:clone:second';
+        const stationId = force.getUnitCrewProfile(unitId)!.positions[0].positionId;
+        const originalPilot = force.getAssignedPerson(unitId, stationId)!;
+        const reserve = force.addUnassignedPerson({ name: 'Reserve', gunnery: 2, piloting: 3, aeroGunnery: 6, aeroPiloting: 7,
+            health: { wounds: 2, unconscious: false, ejected: false } })!;
+        expect(await force.detachUnitCrew(unitId)).toBeTrue();
+        expect(force.getUnitCrewProfile(unitId)!.positions).toEqual([]);
+        expect(force.personnel().people.some(person => person.id === originalPilot.id)).toBeTrue();
+        const saved = await force.serializeForPersistence() as SerializedCBTForce;
+        const restored = await reload(decodeForceFromStorage(encodeForceForStorage(saved)) as SerializedCBTForce);
+        expect(Object.isFrozen(restored.personnel())).toBeTrue();
+        expect(Object.isFrozen(restored.personnel().people[0])).toBeTrue();
+        expect(restored.getUnitCrewProfile(unitId)!.positions).toEqual([]);
+        expect(restored.personnel().people.find(person => person.id === reserve.id)?.health?.wounds).toBe(2);
+        expect(await restored.assignPersonToUnit(reserve.id, unitId, stationId)).toBeTrue();
+        expect(restored.getAssignedPerson(unitId, stationId)?.id).toBe(reserve.id);
+        expect(restored.getUnitCrewProfile(unitId)!.positions[0]).toEqual(jasmine.objectContaining({ name: 'Reserve', gunnery: 2, piloting: 3, aeroGunnery: 6, aeroPiloting: 7 }));
+        expect(mekRuntimeSnapshot(restored, unitId).query.crewState(stationId).wounds).toBe(2);
+        expect(restored.getAssignedPerson(unitId, stationId)?.health).toBeUndefined();
+        const again = await restored.serializeForPersistence() as SerializedCBTForce;
+        const assignedReload = await reload(decodeForceFromStorage(encodeForceForStorage(again)) as SerializedCBTForce);
+        expect(assignedReload.getUnitCrewProfile(unitId)!.positions[0]).toEqual(jasmine.objectContaining({ gunnery: 2, piloting: 3, aeroGunnery: 6, aeroPiloting: 7 }));
+        expect(again.personnel?.people.map(person => person.id)).toEqual(saved.personnel?.people.map(person => person.id));
+        expect(await restored.dispatchCanonicalRosterCommand({ kind: 'remove-member', instanceId: unitId })).toEqual(jasmine.objectContaining({ accepted: true }));
+        expect(restored.personnel().assignments.some(assignment => assignment.personId === reserve.id)).toBeFalse();
+        expect(restored.personnel().people.some(person => person.id === reserve.id)).toBeFalse();
+    });
+
+    it('updates authoritative people only with accepted crew edits and preserves their identities through undo', async () => {
+        const { force } = await readyCloneForce();
+        const unitId = 'unit:clone:second';
+        const profile = force.getUnitCrewProfile(unitId)!;
+        const personId = force.getAssignedPerson(unitId, profile.positions[0].positionId)!.id;
+        const updated = await force.replaceUnitCrewProfile(unitId, profile.positions.map(position => ({ ...position, name: 'Alex', gunnery: 2 })));
+        expect(updated).not.toBeNull();
+        expect(force.personnel().people.find(person => person.id === personId)).toEqual(jasmine.objectContaining({ name: 'Alex', gunnery: 2 }));
+        const before = force.personnel();
+        expect(await force.replaceUnitCrewProfile('unit:missing', profile.positions)).toBeNull();
+        expect(force.personnel()).toBe(before);
+        expect(await force.undoRuntimeCommand()).toEqual(jasmine.objectContaining({ accepted: true }));
+        expect(force.getAssignedPerson(unitId, profile.positions[0].positionId)!.id).toBe(personId);
+        expect(force.getAssignedPerson(unitId, profile.positions[0].positionId)!.name).toBeUndefined();
+        const serialized = await force.serializeForPersistence() as SerializedCBTForce;
+        expect(serialized.personnel?.people.find(person => person.id === personId)?.name).toBeUndefined();
+    });
+
+    it('flags a missing attacker-movement modifier for ground units only, never for aerospace', async () => {
+        for (const [entity, missing] of [[new TestTankEntity(), true], [new TestAeroSpaceFighterEntity(), false]] as const) {
+            const { force, instanceId } = await readyEntityForce({ entity });
+            const attack = force.getWeaponAttackContext(instanceId)!;
+            expect(attack.movementMode).toBeNull();
+            expect(attack.attackModifierBreakdown).toEqual([]);
+            expect(attack.missingMovementModifier).withContext(entity.unitType()).toBe(missing);
+        }
+    });
+
+    it('uses aerospace ratings on an Aero unit and preserves both sets through crew edits, undo and storage', async () => {
+        const { force, instanceId, reload } = await readyEntityForce({ entity: new TestAeroSpaceFighterEntity() });
+        const positionId = force.getUnitCrewProfile(instanceId)!.positions[0].positionId;
+        const personId = force.getAssignedPerson(instanceId, positionId)!.id;
+        expect(await force.updatePerson(personId, { gunnery: 1, piloting: 2, aeroGunnery: 6, aeroPiloting: 7 })).toBeTrue();
+        expect(force.getNonMekRecordSheetSnapshot(instanceId)!.crew[0])
+            .toEqual(jasmine.objectContaining({ gunnery: 6, piloting: 7 }));
+        const profile = force.getUnitCrewProfile(instanceId)!;
+        expect(await force.replaceUnitCrewProfile(instanceId, profile.positions.map(row => ({ ...row, aeroGunnery: 3 })))).not.toBeNull();
+        expect(force.getAssignedPerson(instanceId, positionId)).toEqual(jasmine.objectContaining({
+            gunnery: 1, piloting: 2, aeroGunnery: 3, aeroPiloting: 7,
+        }));
+        expect(await force.undoRuntimeCommand()).toEqual(jasmine.objectContaining({ accepted: true }));
+        expect(force.getNonMekRecordSheetSnapshot(instanceId)!.crew[0].gunnery).toBe(6);
+        const saved = await force.serializeForPersistence() as SerializedCBTForce;
+        const restored = await reload(decodeForceFromStorage(encodeForceForStorage(saved)) as SerializedCBTForce);
+        expect(restored.getAssignedPerson(instanceId, positionId)).toEqual(jasmine.objectContaining({
+            gunnery: 1, piloting: 2, aeroGunnery: 6, aeroPiloting: 7,
+        }));
+        expect(restored.getNonMekRecordSheetSnapshot(instanceId)!.crew[0])
+            .toEqual(jasmine.objectContaining({ gunnery: 6, piloting: 7 }));
+    });
+
+    it('atomically swaps occupied people after combat, preserves damage and pending state, and undoes both stations together', async () => {
+        const { force, armorFaceId } = await readyCloneForce();
+        const first = 'unit:clone:first', second = 'unit:clone:second';
+        const positionId = force.getUnitCrewProfile(first)!.positions[0].positionId;
+        const firstPerson = force.getAssignedPerson(first, positionId)!, secondPerson = force.getAssignedPerson(second, positionId)!;
+        expect(await force.updatePerson(firstPerson.id, { name: 'Veteran', gunnery: 2, piloting: 1, notes: 'Wounded veteran' })).toBeTrue();
+        expect((await force.dispatchUnitCommand(first, { type: 'set-crew-state', positionId, wounds: 2, unconscious: false, ejected: false })).accepted).toBeTrue();
+        expect((await force.dispatchUnitCommand(first, { type: 'damage-armor', faceId: armorFaceId, amount: 1, target: 'pending' })).accepted).toBeTrue();
+        const stateBefore = mekRuntimeSnapshot(force, first).state;
+        const secondBefore = mekRuntimeSnapshot(force, second).state;
+        const revision = force.getCBTForceV2Revision()!;
+        expect(await force.assignPersonToUnit(firstPerson.id, second, positionId)).toBeTrue();
+        expect(force.getCBTForceV2Revision()).toBe(revision + 1);
+        expect(force.getAssignedPerson(first, positionId)!.id).toBe(secondPerson.id);
+        expect(force.getAssignedPerson(second, positionId)).toEqual(jasmine.objectContaining({ id: firstPerson.id, notes: 'Wounded veteran', piloting: 1 }));
+        expect(mekRuntimeSnapshot(force, second).query.crewState(positionId).wounds).toBe(2);
+        expect(mekRuntimeSnapshot(force, first).query.crewState(positionId).wounds).toBe(0);
+        expect({ ...mekRuntimeSnapshot(force, first).state, crew: stateBefore.crew }).toEqual(stateBefore);
+        expect({ ...mekRuntimeSnapshot(force, second).state, crew: secondBefore.crew }).toEqual(secondBefore);
+        expect((await force.undoRuntimeCommand()).accepted).toBeTrue();
+        expect(force.getAssignedPerson(first, positionId)!.id).toBe(firstPerson.id);
+        expect(force.getAssignedPerson(second, positionId)!.id).toBe(secondPerson.id);
+        expect(mekRuntimeSnapshot(force, first).query.crewState(positionId).wounds).toBe(2);
+        expect((await force.redoRuntimeCommand()).accepted).toBeTrue();
+        expect(force.getAssignedPerson(second, positionId)!.id).toBe(firstPerson.id);
+        expect(await force.unassignPerson(second, positionId)).toBeTrue();
+        expect(force.getUnitAdjustedPreSkillBattleValue(second)).toBe(0);
+        expect(force.getUnitPristineAdjustedPreSkillBattleValue(second)).toBe(0);
+        expect(force.getCBTMember(second)!.adjustedPreSkillBattleValue()).toBe(0);
+        expect(force.getCBTMember(second)!.pristineAdjustedPreSkillBattleValue()).toBe(0);
+        expect(force.getUnitAdjustedBattleValue(second)).toBe(0);
+        expect(force.getUnitPristineAdjustedBattleValue(second)).toBe(0);
+        expect(force.personnel().people.find(person => person.id === firstPerson.id)!.health!.wounds).toBe(2);
+        expect(await force.deletePerson(firstPerson.id)).toBeTrue();
+    });
+
+    it('keeps integrated infantry fixed while preserving editable raw Piloting through persistence', async () => {
+        const { force, instanceId, reload } = await readyEntityForce({ entity: new TestInfantryEntity() });
+        const positionId = force.getUnitCrewProfile(instanceId)!.positions[0].positionId;
+        const personId = force.getAssignedPerson(instanceId, positionId)!.id;
+        const reserve = force.addUnassignedPerson({ piloting: 1 })!;
+        expect(force.getUnitCrewPolicy(instanceId).kind).toBe('integrated');
+        expect(await force.assignPersonToUnit(reserve.id, instanceId, positionId)).toBeFalse();
+        expect(await force.unassignPerson(instanceId, positionId)).toBeFalse();
+        expect(await force.deletePerson(personId)).toBeFalse();
+        expect(await force.updatePerson(personId, { name: 'Squad', piloting: 2, notes: 'Integrated' })).toBeTrue();
+        expect(force.getUnitCrewProfile(instanceId)!.positions[0].piloting).toBe(2);
+        expect(force.getNonMekRecordSheetSnapshot(instanceId)!.crew[0].piloting).toBe(8);
+        const restored = await reload(decodeForceFromStorage(encodeForceForStorage(await force.serializeForPersistence())) as SerializedCBTForce);
+        expect(restored.getAssignedPerson(instanceId, positionId)).toEqual(jasmine.objectContaining({ id: personId, notes: 'Integrated', piloting: 2 }));
+        expect(await restored.replaceCopiedUnitPersonnel(instanceId, [{ positionId, profile: { name: 'Imported', piloting: 1 } }])).toBeTrue();
+        expect(restored.getAssignedPerson(instanceId, positionId)!.name).toBe('Imported');
+    });
+
+    it('allows ProtoMek personnel to retain a rating unused by that unit and creates no handheld crew', async () => {
+        const { force, instanceId } = await readyEntityForce({ entity: new TestProtoMekEntity() });
+        const positionId = force.getUnitCrewProfile(instanceId)!.positions[0].positionId;
+        const reserve = force.addUnassignedPerson({ piloting: 1 })!;
+        expect(await force.assignPersonToUnit(reserve.id, instanceId, positionId)).toBeTrue();
+        expect(force.getUnitCrewProfile(instanceId)!.positions[0].piloting).toBe(1);
+        expect(force.getNonMekRecordSheetSnapshot(instanceId)!.crew[0].piloting).toBe(5);
+        const handheld = await readyEntityForce({ entity: new TestHandheldWeaponEntity() });
+        expect(handheld.force.getUnitCrewPolicy(handheld.instanceId).kind).toBe('none');
+        expect(handheld.force.personnel().people).toEqual([]);
+        expect(await handheld.force.createPersonForUnit(handheld.instanceId, 'crew:0')).toBeNull();
+    });
+
+    it('publishes neither half of a swap when one runtime replacement fails', async () => {
+        const { force } = await readyCloneForce();
+        const first = 'unit:clone:first', second = 'unit:clone:second';
+        const positionId = force.getUnitCrewProfile(first)!.positions[0].positionId;
+        const original = force.personnel();
+        const firstState = mekRuntimeSnapshot(force, first).state, secondState = mekRuntimeSnapshot(force, second).state;
+        const revision = force.getCBTForceV2Revision();
+        const buildCandidates = CBTUnitStore.prototype.buildCrewCandidates;
+        spyOn(CBTUnitStore.prototype, 'buildCrewCandidates').and.callFake(async function (this: CBTUnitStore, edits) {
+            await buildCandidates.call(this, edits.slice(0, 1));
+            throw new Error('Rejected second candidate');
+        });
+        expect(await force.assignPersonToUnit(force.getAssignedPerson(first, positionId)!.id, second, positionId)).toBeFalse();
+        expect(force.personnel()).toBe(original);
+        expect(mekRuntimeSnapshot(force, first).state).toBe(firstState);
+        expect(mekRuntimeSnapshot(force, second).state).toBe(secondState);
+        expect(force.getCBTForceV2Revision()).toBe(revision);
+    });
+
+    it('rejects prepared crew replacements when owner retirement starts during preparation', async () => {
+        const { force } = await readyCloneForce();
+        const first = 'unit:clone:first', second = 'unit:clone:second';
+        const positionId = force.getUnitCrewProfile(first)!.positions[0].positionId;
+        const firstPerson = force.getAssignedPerson(first, positionId)!;
+        const beforePersonnel = force.personnel();
+        const firstState = mekRuntimeSnapshot(force, first).state;
+        const secondState = mekRuntimeSnapshot(force, second).state;
+        const history = force.getRuntimeHistory();
+        const revision = force.getCBTForceV2Revision()!;
+        let notifyPrepared!: () => void;
+        let releasePreparation!: () => void;
+        const prepared = new Promise<void>(resolve => { notifyPrepared = resolve; });
+        const proceed = new Promise<void>(resolve => { releasePreparation = resolve; });
+        const buildCandidates = CBTUnitStore.prototype.buildCrewCandidates;
+        spyOn(CBTUnitStore.prototype, 'buildCrewCandidates').and.callFake(async function (this: CBTUnitStore, edits) {
+            const replacement = await buildCandidates.call(this, edits);
+            notifyPrepared();
+            await proceed;
+            return replacement;
+        });
+
+        const swap = force.assignPersonToUnit(firstPerson.id, second, positionId);
+        await prepared;
+        const retirement = force.beginWholeOwnerRetirement()!;
+        releasePreparation();
+
+        expect(await swap).toBeFalse();
+        expect(await retirement.ready).toBeTrue();
+        expect(force.personnel()).toBe(beforePersonnel);
+        expect(mekRuntimeSnapshot(force, first).state).toBe(firstState);
+        expect(mekRuntimeSnapshot(force, second).state).toBe(secondState);
+        expect(force.getRuntimeHistory()).toEqual(history);
+        expect(force.getCBTForceV2Revision()).toBe(revision);
+        force.cancelWholeOwnerRetirement(retirement.token);
+    });
+
+    it('keeps crew preparation and independent reserve additions outside a battle phase undo', async () => {
+        const { force, armorFaceId } = await readyCloneForce();
+        const unitId = 'unit:clone:second';
+        const profile = force.getUnitCrewProfile(unitId)!;
+        const personId = force.getAssignedPerson(unitId, profile.positions[0].positionId)!.id;
+        await force.replaceUnitCrewProfile(unitId, profile.positions.map(position => ({ ...position, name: 'Alex' })));
+        const reserve = force.addUnassignedPerson({ name: 'Reserve' })!;
+        await force.replaceUnitCrewProfile(unitId, profile.positions.map(position => ({ ...position, name: 'Morgan' })));
+        expect((await force.dispatchUnitCommand(unitId, {
+            type: 'damage-armor', faceId: armorFaceId, amount: 1, target: 'pending',
+        })).accepted).toBeTrue();
+        expect((await force.dispatchUnitCommand(unitId, { type: 'end-phase' })).accepted).toBeTrue();
+        expect((await force.undoRuntimeCommand()).accepted).toBeTrue();
+        expect(force.personnel().people.find(person => person.id === personId)!.name).toBe('Morgan');
+        expect(force.personnel().people.some(person => person.id === reserve.id)).toBeTrue();
+        expect((await force.undoRuntimeCommand()).accepted).toBeTrue();
+        expect(force.personnel().people.find(person => person.id === personId)!.name).toBe('Alex');
+        expect(force.personnel().people.some(person => person.id === reserve.id)).toBeTrue();
+    });
+
+    it('shows transient unit restoration warnings after loading succeeds', async () => {
+        const warning: CBTUnitRestoreWarning = {
+            unitName: 'Vedette',
+            code: 'SOURCE_REVISION_CHANGED',
+            message: 'The source file changed.',
         };
-    }
+        const { dialogs } = await readyEntityForce({ restoreWarning: warning });
 
-    function createLoadedUnit(data: CBTSerializedUnit): CBTForceUnit {
-        return {
-            id: data.id,
-            getUnit: () => ({ name: data.unit }),
-        } as CBTForceUnit;
-    }
+        expect(dialogs.showNotice).toHaveBeenCalledOnceWith(
+            `• ${warning.message}\n\n  • ${warning.unitName}`,
+            'Save Loaded with Warnings',
+        );
+    });
 
-    beforeEach(() => {
-        dialogs = jasmine.createSpyObj<DialogsService>('DialogsService', ['showError']);
-        dialogs.showError.and.resolveTo();
-        logger = jasmine.createSpyObj<LoggerService>('LoggerService', ['error']);
-        dataService = {
-            getUnitByName: () => undefined,
-            getFactionById: () => null,
-            getEraById: () => null,
-        } as unknown as DataService;
-        injector = {
-            get: (token: unknown) => {
-                if (token === DialogsService) return dialogs;
-                if (token === LoggerService) return logger;
-                throw new Error(`Unexpected injector token: ${String(token)}`);
+    it('lists repeated restore warnings once with distinct, sorted unit names', async () => {
+        const { force, reload, dialogs, cbtUnits } = await readyEntityForce();
+        const saved = structuredClone(await force.serializeForPersistence()) as SerializedCBTForce;
+        const first = saved.cbt.units[0];
+        const units = ['unit:z', 'unit:a', 'unit:duplicate'].map(instanceId => ({
+            ...first, instanceId, unit: { ...first.unit, instanceId },
+        }));
+        const grouped = { ...saved, cbt: { ...saved.cbt, units, roster: { ...saved.cbt.roster,
+            groups: [{ ...saved.cbt.roster.groups[0], members: units.map((entry, order) => ({ instanceId: entry.instanceId, order })) }],
+        } } };
+        const pristine = await cbtUnits.restore(first.unit, { id: 'megamek', ruleset: CORE_2026_RULESET });
+        cbtUnits.restore.and.callFake(async (unit, scenario) => ({
+            unit: restoreNonMekUnit(unit as SerializedNonMekUnit, pristine.unit.getUnit(), unit.entity, scenario),
+            warnings: [{ unitName: unit.instanceId === 'unit:z' ? 'Zeus' : 'Atlas',
+                code: 'SOURCE_REVISION_CHANGED', message: 'The source file changed.' }],
+        }));
+        await reload(grouped);
+        expect(dialogs.showNotice).toHaveBeenCalledOnceWith(
+            '• The source file changed.\n\n  • Atlas\n  • Zeus', 'Save Loaded with Warnings',
+        );
+    });
+
+    it('loads V2 best effort and drops unsupported unit state without preserving its shape', async () => {
+        const { force, instanceId, reload, dialogs } = await readyEntityForce();
+        const unsupported = structuredClone(await force.serializeForPersistence()) as SerializedCBTForce;
+        const envelope = unsupported.cbt;
+        const entry = envelope.units[0]!;
+        if (!isSerializedNonMekUnit(entry.unit)) throw new Error('Expected a non-Mek V2 fixture');
+        const positionId = entry.unit.deployment.values.crewAssignment.positions[0]!.positionId;
+        Reflect.set(entry.unit, 'conditions', ['not-a-condition']);
+        Reflect.set(entry.unit, 'crewState', [{
+            positionId,
+            wounds: 1,
+            unconscious: false,
+            ejected: false,
+            state: 'killed',
+        }]);
+
+        const restored = await reload(unsupported);
+        const snapshot = entityRuntimeSnapshot(restored, instanceId);
+        const rewritten = await restored.serializeForPersistence();
+
+        expect(snapshot.state.conditions.size).toBe(0);
+        expect(snapshot.state.crew.get(positionId)).toBeUndefined();
+        expect(JSON.stringify(rewritten)).not.toContain('not-a-condition');
+        expect(JSON.stringify(rewritten)).not.toContain('"state":"killed"');
+        expect(dialogs.showNotice).toHaveBeenCalledOnceWith(
+            '• 1 unit had unreadable saved state and was reset to pristine.',
+            'Save Loaded with Warnings',
+        );
+    });
+
+    it('skips an unavailable V2 catalog unit and removes its force references', async () => {
+        const {
+            force,
+            instanceId,
+            reload,
+            dialogs,
+            cbtUnits,
+        } = await readyEntityForce();
+        const saved = structuredClone(await force.serializeForPersistence()) as SerializedCBTForce;
+        Reflect.set(saved.cbt!, 'history', { u: [instanceId], t: [] });
+        Reflect.set(saved.cbt!.encounter, 'c3Positions', [
+            { unitId: instanceId, x: 203, y: 392 },
+        ]);
+        dialogs.showNotice.calls.reset();
+        cbtUnits.restore.and.rejectWith(new Error('Unit not found'));
+        cbtUnits.create.and.rejectWith(new Error('Unit not found'));
+
+        const restored = await reload(saved);
+        const rewritten = await restored.serializeForPersistence();
+
+        expect(restored.getUnitSnapshot(instanceId)).toBeNull();
+        expect(rewritten.cbt!.units).toEqual([]);
+        expect(rewritten.cbt!.roster.groups[0].members).toEqual([]);
+        expect(rewritten.cbt!.history).toEqual({ u: [], t: [] });
+        expect(rewritten.cbt!.encounter.c3Positions).toBeUndefined();
+        expect(dialogs.showNotice).toHaveBeenCalledOnceWith(
+            '• 1 unit was not found in the catalog and was skipped.',
+            'Save Loaded with Warnings',
+        );
+    });
+
+    it('keeps the person and their wounds as reserves when their saved unit is unavailable', async () => {
+        const { force, instanceId, reload, cbtUnits } = await readyEntityForce();
+        const positionId = force.getUnitCrewProfile(instanceId)!.positions[0].positionId;
+        const personId = force.getAssignedPerson(instanceId, positionId)!.id;
+        const result = await force.dispatchUnitCommand(instanceId, {
+            type: 'set-crew-state', positionId, wounds: 2, unconscious: true, ejected: false,
+        });
+        expect(result.accepted).toBeTrue();
+        const saved = await force.serializeForPersistence();
+        const decoded = decodeForceFromStorage(encodeForceForStorage(saved)) as SerializedCBTForce;
+        cbtUnits.restore.and.rejectWith(new Error('Unit not found'));
+        cbtUnits.create.and.rejectWith(new Error('Unit not found'));
+        const restored = await reload(decoded);
+        expect(restored.getUnitSnapshot(instanceId)).toBeNull();
+        expect(restored.personnel().assignments).toEqual([]);
+        expect(restored.personnel().people.find(person => person.id === personId)!.health)
+            .toEqual(jasmine.objectContaining({ wounds: 2, unconscious: true }));
+        expect(Object.isFrozen(restored.personnel().people[0].health)).toBeTrue();
+        const rewritten = await restored.serializeForPersistence();
+        expect(rewritten.personnel!.people.find(person => person.id === personId)!.health!.wounds).toBe(2);
+    });
+
+    it('reconstructs deployment crew from authoritative personnel when a derived profile is unreadable', async () => {
+        const { force, instanceId, reload, dialogs } = await readyEntityForce();
+        const saved = structuredClone(await force.serializeForPersistence()) as SerializedCBTForce;
+        const unit = saved.cbt!.units[0]!.unit;
+        if (!isSerializedNonMekUnit(unit)) throw new Error('Expected a non-Mek V2 fixture');
+        Reflect.set(unit.deployment, 'values', { id: 'broken', crewAssignment: 'garbage' });
+        dialogs.showNotice.calls.reset();
+
+        const restored = await reload(saved);
+        const rewritten = await restored.serializeForPersistence();
+
+        expect(restored.getUnitSnapshot(instanceId)).not.toBeNull();
+        expect(rewritten.cbt!.units.map(entry => entry.instanceId)).toEqual([instanceId]);
+        expect(restored.getUnitCrewProfile(instanceId)).toEqual(force.getUnitCrewProfile(instanceId));
+        expect(dialogs.showNotice).not.toHaveBeenCalled();
+    });
+
+    it('owns new groups in the canonical roster and projects the same group handles', async () => {
+        const force = new CBTForce('New force', dataService, injector);
+        const alpha = await force.addGroup('Alpha Lance');
+        const beta = await force.addGroup('Beta Lance');
+
+        expect(force.groups()).toEqual([alpha, beta]);
+        expect(force.groups().map(group => [group.id, group.name()])).toEqual([
+            [alpha.id, 'Alpha Lance'],
+            [beta.id, 'Beta Lance'],
+        ]);
+
+        const renamed = await force.updateRosterGroup(alpha, { name: 'Command Lance' });
+        expect(renamed.accepted).toBeTrue();
+        const reordered = await force.reorderRosterGroup(1, 0);
+        expect(reordered.accepted).toBeTrue();
+        const removed = await force.removeRosterGroup(alpha);
+        expect(removed.accepted).toBeTrue();
+
+        const saved = await force.serializeForPersistence();
+        expect('scenarioRules' in saved.cbt!).toBeFalse();
+        expect(saved.cbt?.roster.groups.map(group => [group.groupId, group.name])).toEqual([
+            [beta.id, 'Beta Lance'],
+        ]);
+        expect(force.groups()).toEqual([beta]);
+    });
+
+    it('keeps target-registry edits session-only and outside force dirty state', async () => {
+        const force = await loadForce();
+        const baseline = await force.serializeForPersistence();
+        let changeCount = 0;
+        const subscription = force.changed.subscribe(() => { changeCount += 1; });
+        createTarget(force);
+        const targetId = force.queryInventoryControlTargetRegistry().targets[0].id;
+        updateTarget(force, targetId, { name: 'Primary' });
+
+        const saved = await force.serializeForPersistence();
+        expect(saved.timestamp).toBe(baseline.timestamp);
+        expect(saved.cbt?.forceRevision).toBe(baseline.cbt?.forceRevision);
+        expect(saved.cbt?.encounter).toEqual({ networks: [] });
+        expect(changeCount).toBe(0);
+
+        const reloaded = await loadForce(saved as SerializedCBTForce);
+        expect(force.queryInventoryControlTargetRegistry().targets[0].name).toBe('Primary');
+        expect(reloaded.queryInventoryControlTargetRegistry().targets).toEqual([]);
+        expect(reloaded.c3EncounterNetworks()).toEqual([]);
+        subscription.unsubscribe();
+    });
+
+    it('retains attacker-local target edits in this force session without persisting them', async () => {
+        const { force, instanceId, reload } = await readyEntityForce();
+        const baseline = await force.serializeForPersistence() as SerializedCBTForce;
+        const durableRevision = force.getUnitSnapshot(instanceId)!.state.stateRevision;
+        let durableChanges = 0;
+        let sessionChanges = 0;
+        const durableSubscription = force.changed.subscribe(() => { durableChanges += 1; });
+        const sessionSubscription = force.sessionChanged.subscribe(() => { sessionChanges += 1; });
+
+        createTarget(force);
+        const targetId = force.queryInventoryControlTargetRegistry().targets[0]!.id;
+        const result = await force.dispatchAttackerTargeting(instanceId, {
+            type: 'edit-attacker-targeting',
+            edit: {
+                kind: 'set-target-facts',
+                targetId,
+                facts: {
+                    distance: 6,
+                    manualTnOverride: { kind: 'user-manual', modifier: 2 },
+                },
             },
-        } as Injector;
+        });
+
+        expect(result).toEqual(jasmine.objectContaining({ accepted: true, changed: true }));
+        expect(force.getUnitSnapshot(instanceId)!.state.stateRevision).toBe(durableRevision);
+        expect(force.getAttackerTargeting(instanceId)?.state.targets.get(targetId))
+            .toEqual({ distance: 6, manualTnOverride: { kind: 'user-manual', modifier: 2 } });
+
+        const saved = await force.serializeForPersistence() as SerializedCBTForce;
+        const savedUnit = saved.cbt!.units.find(row => row.instanceId === instanceId)!.unit;
+        expect(saved.timestamp).toBe(baseline.timestamp);
+        expect(saved.cbt!.forceRevision).toBe(baseline.cbt!.forceRevision);
+        expect('attackerTargeting' in savedUnit).toBeFalse();
+        expect(force.queryInventoryControlTargetRegistry().targets.map(target => target.id)).toEqual([targetId]);
+        expect(durableChanges).toBe(0);
+        expect(sessionChanges).toBeGreaterThanOrEqual(2);
+
+        const restored = await reload(saved);
+        expect(restored.queryInventoryControlTargetRegistry().targets).toEqual([]);
+        expect(restored.getAttackerTargeting(instanceId)?.state.targets.size).toBe(0);
+
+        expect(force.dispatchInventoryControlTargetRegistry({ kind: 'delete-target', targetId }).accepted)
+            .toBeTrue();
+        expect(force.queryInventoryControlTargetRegistry().targets).toEqual([]);
+        expect(force.getAttackerTargeting(instanceId)?.state.targets.size).toBe(0);
+        expect(durableChanges).toBe(0);
+        durableSubscription.unsubscribe();
+        sessionSubscription.unsubscribe();
     });
 
-    it('reports and skips a unit that is not found while loading the rest of the force', () => {
-        const deserialize = CBTForceUnit.deserialize;
-        spyOn(CBTForceUnit, 'deserialize').and.callFake((data, force, service, initializer, unitInjector) => {
-            if (data.unit === 'Missing Unit') {
-                return deserialize(data, force, service, initializer, unitInjector);
+    it('keeps target-registry editing outside runtime undo and semantic history', async () => {
+        const force = await loadForce();
+        createTarget(force);
+        const targetId = force.queryInventoryControlTargetRegistry().targets[0].id;
+        updateTarget(force, targetId, { name: 'Primary' });
+
+        expect(force.getRuntimeUndoState()).toEqual({ canUndo: false, canRedo: false });
+        expect(force.getRuntimeHistory()).toEqual([]);
+        expect((await force.serializeForPersistence()).cbt!.history).toEqual({ u: [], t: [] });
+        expect(force.queryInventoryControlTargetRegistry().targets[0].name).toBe('Primary');
+    });
+
+    it('does not invalidate an earlier load for an absent typed-C3 removal no-op', async () => {
+        const force = await loadForce();
+        const saved = await force.serializeForPersistence();
+        let entered!: () => void;
+        const preparationEntered = new Promise<void>(resolve => { entered = resolve; });
+        let release!: () => void;
+        const preparationGate = new Promise<void>(resolve => { release = resolve; });
+        const seam = force as any;
+        const originalPrepare = seam.restoreCBTForce.bind(force);
+        spyOn(seam, 'restoreCBTForce').and.callFake(async (...args: unknown[]) => {
+            entered();
+            await preparationGate;
+            return originalPrepare(...args);
+        });
+
+        const loading = force.loadCBTForceV2Persistence(saved);
+        await preparationEntered;
+        expect(force.replaceC3EncounterConfigurationIfOwnerRevisionCurrent(
+            force.captureForceOwnerRevisionFence(),
+            [],
+            [],
+        )).toBeFalse();
+        release();
+
+        expect(await loading).toBeTrue();
+    });
+
+    it('does not persist the OPFOR target registry or its session flag', async () => {
+        const force = await loadForce();
+        const installed = force.dispatchInventoryControlTargetRegistry({
+            kind: 'replace-targets',
+
+            targets: [{
+                id: asEncounterTargetId('opfor:v1:restored'),
+                letter: 'A',
+                name: 'Restored opponent',
+                color: '#123456',
+                source: 'opfor',
+                readOnly: true,
+            }],
+        }, 'opfor-sync');
+        expect(installed.accepted).toBeTrue();
+        expect(force.inventoryControlOpforEnabled()).toBeFalse();
+
+        const reloaded = await loadForce(await force.serializeForPersistence() as SerializedCBTForce);
+        expect(reloaded.inventoryControlOpforEnabled()).toBeFalse();
+        expect(reloaded.queryInventoryControlTargetRegistry().targets).toEqual([]);
+    });
+
+    it('retries an in-flight save so concurrent accepted edits are included', async () => {
+        const force = await loadForce();
+
+        let entered!: () => void;
+        const preparationEntered = new Promise<void>(resolve => entered = resolve);
+        let release!: () => void;
+        const preparationGate = new Promise<void>(resolve => release = resolve);
+        const seam = force as any;
+        const originalPrepare = seam.prepareCBTForcePersistenceV2.bind(force);
+        let invocation = 0;
+        spyOn(seam, 'prepareCBTForcePersistenceV2').and.callFake(async (input: any) => {
+            invocation += 1;
+            if (invocation === 1) {
+                entered();
+                await preparationGate;
             }
-            return createLoadedUnit(data);
+            return originalPrepare(input);
         });
 
-        const force = CBTForce.deserialize(
-            createSerializedForce(['Valid Unit A', 'Missing Unit', 'Valid Unit B']),
-            dataService,
-            {} as UnitInitializerService,
-            injector,
+        const saving = force.serializeForPersistence();
+        await preparationEntered;
+        force.setName('Edited during persistence');
+        release();
+
+        const saved = await saving;
+        expect(invocation).toBeGreaterThan(1);
+        expect(saved.name).toBe('Edited during persistence');
+        expect(saved.cbt?.encounter).toEqual({ networks: [] });
+    });
+
+    it('reuses validated persistence entries and serializes only changed runtimes', async () => {
+        const { force, reload } = await readyCloneForce();
+        const unitStore = (force as unknown as {
+            readonly unitStore: { liveUnits(): readonly CBTUnit[] };
+        }).unitStore;
+        const [first, second] = unitStore.liveUnits();
+        const readyPrototype = Object.getPrototypeOf(first) as Pick<CBTUnit, 'serialize'>;
+        const serialize = spyOn(readyPrototype, 'serialize').and.callThrough();
+        const serializationCount = (unit: CBTUnit) => serialize.calls.all()
+            .filter(call => call.object === unit).length;
+
+        const unchanged = await force.serializeForPersistence() as SerializedCBTForce;
+        expect(serializationCount(first)).toBe(0);
+        expect(serializationCount(second)).toBe(0);
+
+        const before = mekRuntimeSnapshot(force, first.instanceId);
+        const shutdown = await force.dispatchUnitCommand(first.instanceId, {
+            type: 'declare-mek-action',
+
+            action: { kind: 'shutdown' },
+        });
+        expect(shutdown.accepted).toBeTrue();
+        serialize.calls.reset();
+
+        const changed = await force.serializeForPersistence() as SerializedCBTForce;
+        expect(serializationCount(first)).toBe(1);
+        expect(serializationCount(second)).toBe(0);
+        expect(Number(changed.cbt!.forceRevision)).toBe(Number(unchanged.cbt!.forceRevision) + 1);
+        expect(mekRuntimeSnapshot(await reload(changed), first.instanceId).state.movementPsr.action)
+            .toEqual({ kind: 'shutdown' });
+    });
+
+    it('does not copy the session-only target registry when cloning a force', async () => {
+        const force = await loadForce();
+        createTarget(force);
+        const targetId = force.queryInventoryControlTargetRegistry().targets[0].id;
+        updateTarget(force, targetId, {
+            name: 'Primary',
+            tnCalculator: { prone: true },
+        });
+        (force as any)._owned.set(false);
+        const original = force.queryInventoryControlTargetRegistry();
+
+        const cloned = await force.cloneForPersistence() as CBTForce;
+        const copied = cloned.queryInventoryControlTargetRegistry();
+
+        expect(cloned.instanceId()).not.toBe(force.instanceId());
+        expect(cloned.owned()).toBeTrue();
+        expect(original.targets[0].name).toBe('Primary');
+        expect(copied).toEqual({ revision: 0, targets: [] });
+        expect(force.queryInventoryControlTargetRegistry().targets[0].name).toBe('Primary');
+    });
+
+    it('clones ready runtimes with fresh owner identities and remapped encounter endpoints', async () => {
+        const { force, armorFaceId } = await readyCloneForce();
+        const source = await force.serializeForPersistence();
+        const clone = await force.cloneForPersistence();
+        const copied = await clone.serializeForPersistence();
+        const sourceIds = new Set(source.cbt!.units.map(entry => entry.instanceId));
+        const copiedIds = copied.cbt!.units.map(entry => entry.instanceId);
+
+        expect(clone.instanceId()).not.toBe(force.instanceId());
+        expect(clone.owned()).toBeTrue();
+        const sourcePeople = new Set(force.personnel().people.map(person => person.id));
+        expect(clone.personnel().people.length).toBe(sourcePeople.size);
+        expect(clone.personnel().people.every(person => !sourcePeople.has(person.id))).toBeTrue();
+        expect(Number(copied.cbt!.forceRevision)).toBe(0);
+        expect(copied.cbt!.roster.groups[0].groupId)
+            .not.toBe(source.cbt!.roster.groups[0].groupId);
+        expect(copiedIds.every(instanceId => !sourceIds.has(instanceId))).toBeTrue();
+        expect(copied.cbt!.roster.groups[0].members.map(member => member.instanceId))
+            .toEqual(copiedIds);
+
+        const network = copied.cbt!.encounter.networks[0];
+        if (!network) throw new Error('Cloned network is missing');
+        expect(network.endpoints.map(endpoint => endpoint.instanceId).sort())
+            .toEqual([...copiedIds].sort());
+        expect(network.endpoints.some(endpoint => sourceIds.has(endpoint.instanceId))).toBeFalse();
+        expect(copied.cbt!.encounter.c3Positions).toEqual([
+            { unitId: copiedIds[0], x: 203, y: 392 },
+            { unitId: copiedIds[1], x: 407, y: 392 },
+        ].sort((left, right) => left.unitId < right.unitId ? -1 : left.unitId > right.unitId ? 1 : 0));
+        expect(copied.cbt!.encounter.c3Positions
+            ?.some(position => sourceIds.has(position.unitId))).toBeFalse();
+
+        const copiedFirst = copied.cbt!.roster.groups[0].members[0].instanceId;
+        const sourceFirst = source.cbt!.roster.groups[0].members[0].instanceId;
+        const copiedSnapshot = mekRuntimeSnapshot(clone, copiedFirst);
+        const sourceRemaining = mekRuntimeSnapshot(force, sourceFirst).query.remainingArmor(armorFaceId);
+        expect(copiedSnapshot.query.remainingArmor(armorFaceId)).toBe(sourceRemaining);
+
+        const changed = await clone.dispatchUnitCommand(copiedFirst, {
+            type: 'damage-armor',
+
+            faceId: armorFaceId,
+            amount: 1,
+            target: 'committed',
+        });
+        expect(changed.accepted).toBeTrue();
+        expect(mekRuntimeSnapshot(force, sourceFirst).query.remainingArmor(armorFaceId))
+            .toBe(sourceRemaining);
+    });
+
+    it('hydrates compact sparse Mek state from the exact Entity before installation', async () => {
+        const { force, armorFaceId, reload } = await readyCloneForce();
+        const source = await force.serializeForPersistence();
+        const instanceId = source.cbt!.roster.groups[0].members[0].instanceId;
+        const remaining = mekRuntimeSnapshot(force, instanceId).query.remainingArmor(armorFaceId);
+        const decoded = decodeForceFromStorage(JSON.parse(JSON.stringify(
+            encodeForceForStorage(source),
+        )));
+        if (decoded.type !== GameSystem.CBT || decoded.version !== 2 || decoded.cbt === undefined) {
+            throw new Error('Compact fixture did not decode as a current CBT force');
+        }
+        const decodedEntry = decoded.cbt.units.find(entry => entry.instanceId === instanceId);
+        if (!decodedEntry || isSerializedNonMekUnit(decodedEntry.unit)) {
+            throw new Error('Compact fixture Mek entry is missing');
+        }
+        expect(decodedEntry.unit.blueprintReferences.targets).toEqual({});
+
+        const restored = await reload(decoded as SerializedCBTForce);
+        expect(mekRuntimeSnapshot(restored, instanceId).query.remainingArmor(armorFaceId)).toBe(remaining);
+        const hydrated = await restored.serializeForPersistence();
+        const hydratedEntry = hydrated.cbt!.units.find(entry => entry.instanceId === instanceId);
+        if (!hydratedEntry || isSerializedNonMekUnit(hydratedEntry.unit)) {
+            throw new Error('Hydrated fixture Mek entry is missing');
+        }
+        expect(Object.keys(hydratedEntry.unit.blueprintReferences.targets).length).toBeGreaterThan(0);
+    });
+
+    it('projects the force-level adjusted BV into Mek record sheets', async () => {
+        const { force } = await readyCloneForce();
+        const saved = await force.serializeForPersistence();
+        const instanceId = saved.cbt!.roster.groups[0].members[0].instanceId;
+        spyOn(force, 'getUnitAdjustedBattleValue').and.returnValue(12_345);
+        spyOn(force as any, 'currentHeatPolicy').and.returnValue('manual');
+
+        const sheet = force.getMekRecordSheetSnapshot(instanceId);
+
+        expect(sheet?.battleValue.adjusted).toBe(12_345);
+        expect(sheet?.battleValue.current).toBe(force.getUnitCurrentBaseBattleValue(instanceId));
+    });
+
+    it('keeps base BV computed signals cold for transient Mek state changes', async () => {
+        const { force, armorFaceId } = await readyCloneForce();
+        spyOn(force as any, 'currentHeatPolicy').and.returnValue('manual');
+        spyOn(force, 'getUnitAdjustedBattleValue').and.returnValue(0);
+        const [firstMember, secondMember] = force.getCBTMembers();
+        if (!firstMember || !secondMember) throw new Error('Ready Mek members are missing');
+        const baseProjection = spyOn(force, 'getUnitCurrentBaseBattleValue').and.callThrough();
+        const callsFor = (instanceId: string) => baseProjection.calls.allArgs()
+            .filter(([candidate]) => candidate === instanceId).length;
+        const sheetProjection = spyOn(force, 'getMekRecordSheetSnapshot').and.callThrough();
+        const sheetCallsFor = (instanceId: string) => sheetProjection.calls.allArgs()
+            .filter(([candidate]) => candidate === instanceId).length;
+
+        firstMember.currentBaseBattleValue();
+        secondMember.currentBaseBattleValue();
+        firstMember.mekRecordSheetSnapshot();
+        firstMember.mekRecordSheetSnapshot();
+        secondMember.mekRecordSheetSnapshot();
+        secondMember.mekRecordSheetSnapshot();
+        const firstCallsBefore = callsFor(firstMember.id);
+        const secondCallsBefore = callsFor(secondMember.id);
+        const firstSheetCallsBefore = sheetCallsFor(firstMember.id);
+
+        const transientCommands = [
+            { type: 'set-heat' as const, heat: 5 },
+            { type: 'set-mek-shutdown-state' as const, shutdown: true },
+            { type: 'set-condition' as const, condition: 'prone', active: true },
+            { type: 'set-condition' as const, condition: 'swarmed', active: true },
+            { type: 'set-condition' as const, condition: 'jammed', active: true },
+        ] as const;
+        for (const [index, command] of transientCommands.entries()) {
+            const before = mekRuntimeSnapshot(force, firstMember.id);
+            const result = await force.dispatchUnitCommand(firstMember.id, {
+                ...command,
+            });
+            expect(result.accepted).toBeTrue();
+            firstMember.currentBaseBattleValue();
+            secondMember.currentBaseBattleValue();
+            firstMember.mekRecordSheetSnapshot();
+            firstMember.mekRecordSheetSnapshot();
+            secondMember.mekRecordSheetSnapshot();
+        }
+
+        expect(callsFor(firstMember.id)).toBe(firstCallsBefore);
+        expect(callsFor(secondMember.id)).toBe(secondCallsBefore);
+        expect(sheetCallsFor(firstMember.id)).toBe(firstSheetCallsBefore + transientCommands.length);
+
+        const beforePendingDamage = mekRuntimeSnapshot(force, firstMember.id);
+        const pendingDamage = await force.dispatchUnitCommand(firstMember.id, {
+            type: 'damage-armor',
+
+            faceId: armorFaceId,
+            amount: 1,
+            target: 'pending',
+        });
+        expect(pendingDamage.accepted).toBeTrue();
+        firstMember.currentBaseBattleValue();
+        secondMember.currentBaseBattleValue();
+        expect(callsFor(firstMember.id)).toBe(firstCallsBefore);
+        expect(callsFor(secondMember.id)).toBe(secondCallsBefore);
+
+        const beforeCancel = mekRuntimeSnapshot(force, firstMember.id);
+        expect((await force.dispatchUnitCommand(firstMember.id, {
+            type: 'cancel-pending',
+
+        })).accepted).toBeTrue();
+
+        const beforeDamage = mekRuntimeSnapshot(force, firstMember.id);
+        const damaged = await force.dispatchUnitCommand(firstMember.id, {
+            type: 'damage-armor',
+
+            faceId: armorFaceId,
+            amount: 1,
+            target: 'committed',
+        });
+        expect(damaged.accepted).toBeTrue();
+        firstMember.currentBaseBattleValue();
+        secondMember.currentBaseBattleValue();
+        expect(callsFor(firstMember.id)).toBe(firstCallsBefore + 1);
+        expect(callsFor(secondMember.id)).toBe(secondCallsBefore);
+    });
+
+    it('restores normal BV and C3 invalidation after a command publication throws', async () => {
+        const { force } = await readyCloneForce();
+        const member = force.getCBTMembers()[0]!;
+        const baseProjection = spyOn(force, 'getUnitCurrentBaseBattleValue').and.returnValue(100);
+        const c3Projection = spyOn(force, 'getC3State').and.callThrough();
+        member.currentBaseBattleValue();
+        member.c3State();
+        const baseCalls = baseProjection.calls.count();
+        const c3Calls = c3Projection.calls.count();
+        const publication = spyOn(force, 'emitChanged').and.throwError('Publication failed');
+
+        await expectAsync(force.dispatchUnitCommand(member.id, {
+            type: 'set-heat', heat: 5,
+        })).toBeRejectedWithError('Publication failed');
+
+        publication.and.callThrough();
+        force.emitChanged([member.id]);
+        member.currentBaseBattleValue();
+        member.c3State();
+        expect(baseProjection.calls.count()).toBe(baseCalls + 1);
+        expect(c3Projection.calls.count()).toBe(c3Calls + 1);
+    });
+
+    it('projects current damage and pristine Entity BV through the same force adjustments', async () => {
+        const laser = new WeaponEquipment({
+            id: 'DamagePolicyLaser',
+            name: 'Damage Policy Laser',
+            type: 'weapon',
+            stats: { bv: 200 },
+            weapon: { ammoType: 'NA', heat: 0, damage: 10 },
+        });
+        const entity = new TestTankEntity(createTestEquipmentRegistry({ [laser.id]: laser }));
+        const componentId = asComponentId('damage-policy-laser');
+        entity.setEquipment([new EntityMountedEquipment({
+            mountId: componentId,
+            equipmentId: laser.id,
+            equipment: laser,
+            allocation: { kind: 'location', location: 'Front' },
+            rearMounted: false,
+            turretMounted: false,
+            omniPodMounted: false,
+            armored: false,
+        })]);
+        const { force, instanceId } = await readyEntityForce({ entity });
+        const member = force.getCBTMember(instanceId)!;
+        const profile = force.getUnitCrewProfile(instanceId)!;
+        expect(await force.replaceUnitCrewProfile(instanceId, profile.positions.map(position => ({
+            ...position, gunnery: 3, piloting: 5,
+        })))).not.toBeNull();
+        const currentBefore = member.currentBaseBattleValue()!;
+        const adjustedPreSkillBefore = member.adjustedPreSkillBattleValue()!;
+        const adjustedBefore = member.adjustedBattleValue()!;
+        const pristineBefore = member.pristineBattleValue()!;
+        const pristineAdjustedPreSkillBefore = member.pristineAdjustedPreSkillBattleValue()!;
+        const pristineAdjustedBefore = member.pristineAdjustedBattleValue()!;
+
+        expect(adjustedPreSkillBefore).toBe(currentBefore);
+        expect(pristineAdjustedPreSkillBefore).toBe(pristineBefore);
+        expect(adjustedPreSkillBefore).toBeLessThan(adjustedBefore);
+        expect(pristineAdjustedPreSkillBefore).toBeLessThan(pristineAdjustedBefore);
+
+        const snapshot = entityRuntimeSnapshot(force, instanceId);
+        expect((await force.dispatchUnitCommand(instanceId, {
+            type: 'set-component-status',
+
+            componentId,
+            status: 'destroyed',
+            target: 'committed',
+        })).accepted).toBeTrue();
+
+        expect(member.currentBaseBattleValue()!).toBeLessThan(currentBefore);
+        expect(member.adjustedPreSkillBattleValue()!).toBeLessThan(adjustedPreSkillBefore);
+        expect(member.adjustedPreSkillBattleValue()).toBe(member.currentBaseBattleValue());
+        expect(member.adjustedBattleValue()!).toBeLessThan(adjustedBefore);
+        expect(member.pristineBattleValue()).toBe(pristineBefore);
+        expect(member.pristineAdjustedPreSkillBattleValue()).toBe(pristineAdjustedPreSkillBefore);
+        expect(member.pristineAdjustedBattleValue()).toBe(pristineAdjustedBefore);
+    });
+
+    it('dispatches a canonical turn state without corrupting its immutable map', async () => {
+        const { force } = await readyCloneForce();
+        const saved = await force.serializeForPersistence();
+        const instanceId = saved.cbt!.roster.groups[0].members[0].instanceId;
+        const before = mekRuntimeSnapshot(force, instanceId);
+
+        const changed = await force.dispatchUnitCommand(instanceId, {
+            type: 'replace-turn-state',
+
+            turn: { ...before.query.turnState(), cover: 'light' },
+        });
+
+        expect(changed.accepted).toBeTrue();
+        expect(mekRuntimeSnapshot(force, instanceId).query.turnState().cover).toBe('light');
+    });
+
+    it('logs only the final cover and spotting state selected in a phase', async () => {
+        const { force } = await readyCloneForce();
+        const saved = await force.serializeForPersistence();
+        const instanceId = saved.cbt!.roster.groups[0].members[0].instanceId;
+        let sequence = 0;
+        const replaceTurn = async (patch: Readonly<{
+            cover?: UnitCover | null;
+            spotting?: boolean;
+        }>) => {
+            const snapshot = mekRuntimeSnapshot(force, instanceId);
+            sequence += 1;
+            return force.dispatchUnitCommand(instanceId, {
+                type: 'replace-turn-state',
+
+                turn: { ...snapshot.query.turnState(), ...patch },
+            });
+        };
+
+        expect((await replaceTurn({ cover: 'light' })).accepted).toBeTrue();
+        expect((await replaceTurn({ cover: 'underwater-depth-2' })).accepted).toBeTrue();
+        expect((await replaceTurn({ cover: 'heavy' })).accepted).toBeTrue();
+        const coverRows = force.getRuntimeHistory().filter(row =>
+            row.event.message[0] === RUNTIME_HISTORY_MESSAGE.COVER_CHANGED);
+        expect(JSON.stringify(coverRows.map(row => [...row.event.message]))).toBe(JSON.stringify([[
+            RUNTIME_HISTORY_MESSAGE.COVER_CHANGED,
+            instanceId,
+            0,
+            2,
+        ]]));
+
+        expect((await replaceTurn({ cover: null })).accepted).toBeTrue();
+        expect(force.getRuntimeHistory().filter(row =>
+            row.event.message[0] === RUNTIME_HISTORY_MESSAGE.COVER_CHANGED)).toEqual([]);
+
+        expect((await replaceTurn({ spotting: true })).accepted).toBeTrue();
+        expect((await replaceTurn({ spotting: false })).accepted).toBeTrue();
+        expect(force.getRuntimeHistory().filter(row =>
+            row.event.message[0] === RUNTIME_HISTORY_MESSAGE.SPOTTING_CHANGED)).toEqual([]);
+        expect(force.getRuntimeHistory().filter(row =>
+            row.event.message[0] === RUNTIME_HISTORY_MESSAGE.UNIT_ACTION)).toEqual([]);
+    });
+
+    it('retains emergency-master activation notices across crew edits and settles through the force-owned encounter boundary', async () => {
+        const {
+            force,
+            masterId,
+            emergencyId,
+            masterComponentId,
+            emergencyComponentId,
+            toast,
+        } = await readyC3Force();
+
+        const emergencyBefore = mekRuntimeSnapshot(force, emergencyId);
+        expect((await force.dispatchUnitCommand(emergencyId, {
+            type: 'set-condition',
+
+            condition: 'tagged',
+            active: true,
+        })).accepted).toBeTrue();
+        expect(mekRuntimeSnapshot(force, emergencyId).query
+            .componentC3EmergencyMaster(emergencyComponentId)).toBeUndefined();
+
+        // A personal edit must not erase the previous dormant C3 status. The
+        // next component failure still announces the transition to active.
+        const person = force.getAssignedPerson(emergencyId, force.getUnitCrewProfile(emergencyId)!.positions[0].positionId)!;
+        expect(await force.updatePerson(person.id, { name: 'Replacement pilot' })).toBeTrue();
+        expect((await force.undoRuntimeCommand()).accepted).toBeTrue();
+        expect((await force.redoRuntimeCommand()).accepted).toBeTrue();
+
+        const masterBefore = mekRuntimeSnapshot(force, masterId);
+        const failed = await force.dispatchUnitCommand(masterId, {
+            type: 'set-component-status',
+
+            componentId: masterComponentId,
+            status: 'destroyed',
+            target: 'committed',
+        });
+        expect(failed.accepted).toBeTrue();
+        expect(force.c3EncounterNetworks()[0]?.endpoints.map(endpoint => endpoint.role))
+            .toEqual(['member', 'master', 'member']);
+        expect(mekRuntimeSnapshot(force, emergencyId).query
+            .componentC3EmergencyMaster(emergencyComponentId)?.operatingTurns).toBe(1);
+        expect(force.getC3State(emergencyId)).toBe('operational');
+        expect(toast.showToast).toHaveBeenCalledWith(
+            'Direct Fixture DF-1: Test C3 Emergency Master EMERGENCY active',
+            'info',
+            jasmine.stringMatching(/^c3em-activation-/u),
         );
 
-        expect(force.units().map(unit => unit.getUnit().name)).toEqual(['Valid Unit A', 'Valid Unit B']);
-        expect(dialogs.showError).toHaveBeenCalledOnceWith(
-            'Unable to load unit "Missing Unit". The unit was skipped.\n\n' +
-            'Unit with name "Missing Unit" not found in dataService',
-            'Unit Load Error',
+        const beforeEndTurn = mekRuntimeSnapshot(force, emergencyId);
+        const ended = await force.dispatchUnitCommand(emergencyId, {
+            type: 'end-turn',
+
+            policy: 'automatic',
+        });
+        expect(ended.accepted).toBeTrue();
+        if (!ended.accepted || !ended.state) return;
+        const afterEndTurn = mekRuntimeSnapshot(force, emergencyId);
+        expect(ended.state.stateRevision).toBe(afterEndTurn.state.stateRevision);
+        expect(afterEndTurn.query.componentC3EmergencyMaster(emergencyComponentId)?.operatingTurns)
+            .toBe(2);
+        expect(toast.showToast).toHaveBeenCalledWith(
+            'Direct Fixture DF-1: Test C3 Emergency Master active, 2/6 operating turns',
+            'info',
+            undefined,
+        );
+
+        const configuredNetwork = force.c3EncounterNetworks();
+        expect((await force.undoRuntimeCommand()).accepted).toBeTrue();
+        expect(mekRuntimeSnapshot(force, emergencyId).query
+            .componentC3EmergencyMaster(emergencyComponentId)?.operatingTurns).toBe(1);
+        expect(force.c3EncounterNetworks()).toEqual(configuredNetwork);
+
+        expect((await force.redoRuntimeCommand()).accepted).toBeTrue();
+        expect(mekRuntimeSnapshot(force, emergencyId).query
+            .componentC3EmergencyMaster(emergencyComponentId)?.operatingTurns).toBe(2);
+        expect(force.c3EncounterNetworks()).toEqual(configuredNetwork);
+    });
+
+    it('keeps transient C3 operation out of adjusted BV while refreshing live state', async () => {
+        const { force, masterId } = await readyC3Force();
+        const master = force.getCBTMember(masterId);
+        if (!master) throw new Error('C3 master member is missing');
+        const stateProjection = spyOn(force, 'getC3State').and.callThrough();
+        const adjustedProjection = spyOn(force, 'getUnitAdjustedBattleValue').and.callThrough();
+
+        expect(master.c3State()).toBe('operational');
+        const adjustedBefore = master.adjustedBattleValue();
+        const stateCallsBefore = stateProjection.calls.count();
+        const adjustedCallsBefore = adjustedProjection.calls.count();
+        const beforeProne = mekRuntimeSnapshot(force, masterId);
+        const prone = await force.dispatchUnitCommand(masterId, {
+            type: 'set-condition',
+
+            condition: 'prone',
+            active: true,
+        });
+        expect(prone.accepted).toBeTrue();
+        expect(master.c3State()).toBe('operational');
+        expect(stateProjection.calls.count()).toBe(stateCallsBefore);
+
+        const beforeShutdown = mekRuntimeSnapshot(force, masterId);
+        const shutdown = await force.dispatchUnitCommand(masterId, {
+            type: 'set-mek-shutdown-state',
+
+            shutdown: true,
+        });
+        expect(shutdown.accepted).toBeTrue();
+        expect(master.c3State()).toBe('degraded');
+        expect(stateProjection.calls.count()).toBe(stateCallsBefore + 1);
+        expect(master.adjustedBattleValue()).toBe(adjustedBefore);
+        expect(adjustedProjection.calls.count()).toBe(adjustedCallsBefore);
+
+        const beforeStartup = mekRuntimeSnapshot(force, masterId);
+        const startup = await force.dispatchUnitCommand(masterId, {
+            type: 'set-mek-shutdown-state',
+
+            shutdown: false,
+        });
+        expect(startup.accepted).toBeTrue();
+        expect(master.c3State()).toBe('operational');
+        expect(stateProjection.calls.count()).toBe(stateCallsBefore + 2);
+
+        const beforeJam = mekRuntimeSnapshot(force, masterId);
+        const jammed = await force.dispatchUnitCommand(masterId, {
+            type: 'set-condition',
+
+            condition: 'jammed',
+            active: true,
+        });
+
+        expect(jammed.accepted).toBeTrue();
+        expect(master.c3State()).toBe('none');
+        expect(stateProjection.calls.count()).toBe(stateCallsBefore + 3);
+        expect(master.adjustedBattleValue()).toBe(adjustedBefore);
+        expect(adjustedProjection.calls.count()).toBe(adjustedCallsBefore);
+    });
+
+    it('charges intact Nova CEWS units without configured links and removes destroyed endpoints', async () => {
+        const { force, firstId, secondId, componentId } = await readyEntityC3Force('nova');
+        const first = force.getCBTMember(firstId)!;
+        const second = force.getCBTMember(secondId)!;
+        const forceBase = first.currentBaseBattleValue()! + second.currentBaseBattleValue()!;
+        const expectedTax = forceBase * 0.05;
+
+        expect(force.c3EncounterNetworks()).toEqual([]);
+        expect(first.c3BattleValue()).toBe(expectedTax);
+        expect(second.c3BattleValue()).toBe(expectedTax);
+
+        const secondRuntime = entityRuntimeSnapshot(force, secondId);
+        expect((await force.dispatchUnitCommand(secondId, {
+            type: 'set-component-status',
+
+            componentId,
+            status: 'destroyed',
+            target: 'committed',
+        })).accepted).toBeTrue();
+
+        expect(first.c3BattleValue()).toBe(0);
+        expect(second.c3BattleValue()).toBe(0);
+    });
+
+    it('evaluates non-Mek Entity C3 endpoints from sparse runtime state', async () => {
+        const { force, firstId, secondId, componentId } = await readyEntityC3Force();
+        expect(force.replaceC3EncounterConfigurationIfOwnerRevisionCurrent(
+            force.captureForceOwnerRevisionFence(),
+            [{
+                id: asEncounterNetworkId('network:entity-c3i'),
+                networkType: 'c3i',
+                color: '#1565C0',
+                endpoints: [
+                    { instanceId: firstId, componentId, role: 'peer' },
+                    { instanceId: secondId, componentId, role: 'peer' },
+                ],
+            }],
+            [],
+        )).toBeTrue();
+        expect(force.getC3State(firstId)).toBe('operational');
+        expect(force.getC3State(secondId)).toBe('operational');
+        expect(force.isC3EndpointOperational(firstId, componentId)).toBeTrue();
+
+        const firstMember = force.getCBTMember(firstId)!;
+        const secondMember = force.getCBTMember(secondId)!;
+        const baseProjection = spyOn(force, 'getUnitCurrentBaseBattleValue').and.callThrough();
+        const callsFor = (instanceId: string) => baseProjection.calls.allArgs()
+            .filter(([candidate]) => candidate === instanceId).length;
+        const firstBaseBefore = firstMember.currentBaseBattleValue();
+        const firstAdjustedPreSkillBefore = firstMember.adjustedPreSkillBattleValue()!;
+        const firstPristineAdjustedPreSkillBefore = firstMember.pristineAdjustedPreSkillBattleValue()!;
+        const firstAdjustedBefore = firstMember.adjustedBattleValue();
+        secondMember.adjustedBattleValue();
+        const firstBaseCallsBefore = callsFor(firstId);
+        const secondBaseCallsBefore = callsFor(secondId);
+        expect(firstMember.c3BattleValue()).toBeGreaterThan(0);
+        expect(firstAdjustedPreSkillBefore).toBe(Math.round(firstBaseBefore! + firstMember.c3BattleValue()!));
+        expect(firstPristineAdjustedPreSkillBefore).toBeGreaterThan(firstMember.pristineBattleValue()!);
+
+        const second = entityRuntimeSnapshot(force, secondId);
+        expect((await force.dispatchUnitCommand(secondId, {
+            type: 'set-component-status',
+
+            componentId,
+            status: 'destroyed',
+            target: 'committed',
+        })).accepted).toBeTrue();
+        expect(force.getC3State(firstId)).toBe('degraded');
+        expect(force.getC3State(secondId)).toBe('degraded');
+        expect(force.isC3EndpointOperational(secondId, componentId)).toBeFalse();
+        expect(firstMember.currentBaseBattleValue()).toBe(firstBaseBefore);
+        expect(firstMember.adjustedPreSkillBattleValue()).toBe(firstBaseBefore);
+        expect(firstMember.adjustedPreSkillBattleValue()!).toBeLessThan(firstAdjustedPreSkillBefore);
+        expect(firstMember.pristineAdjustedPreSkillBattleValue()).toBe(firstMember.pristineBattleValue());
+        expect(firstMember.pristineAdjustedPreSkillBattleValue()!).toBeLessThan(firstPristineAdjustedPreSkillBefore);
+        expect(firstMember.adjustedBattleValue()).toBeLessThan(firstAdjustedBefore!);
+        expect(firstMember.c3BattleValue()).toBe(0);
+        secondMember.adjustedBattleValue();
+        expect(callsFor(firstId)).toBe(firstBaseCallsBefore);
+        expect(callsFor(secondId)).toBe(secondBaseCallsBefore + 1);
+
+        const firstBaseCallsAfterDamage = callsFor(firstId);
+        const secondBaseCallsAfterDamage = callsFor(secondId);
+        expect((await force.undoRuntimeCommand()).accepted).toBeTrue();
+        expect(force.getC3State(firstId)).toBe('operational');
+        expect(firstMember.adjustedPreSkillBattleValue()).toBe(firstAdjustedPreSkillBefore);
+        expect(firstMember.pristineAdjustedPreSkillBattleValue()).toBe(firstPristineAdjustedPreSkillBefore);
+        expect(firstMember.adjustedBattleValue()).toBe(firstAdjustedBefore);
+        secondMember.adjustedBattleValue();
+        expect(callsFor(firstId)).toBe(firstBaseCallsAfterDamage);
+        expect(callsFor(secondId)).toBe(secondBaseCallsAfterDamage + 1);
+    });
+
+    it('rejects a non-canonical graph at the force commit boundary', async () => {
+        const { force, firstId, componentId } = await readyEntityC3Force();
+        const invalid: EncounterNetwork = {
+            id: asEncounterNetworkId('network:single-peer'),
+            networkType: 'c3i',
+            color: '#1565C0',
+            endpoints: [{ instanceId: firstId, componentId, role: 'peer' }],
+        };
+
+        expect(force.replaceC3EncounterConfigurationIfOwnerRevisionCurrent(
+            force.captureForceOwnerRevisionFence(),
+            [invalid],
+            [],
+        )).toBeFalse();
+        expect(force.c3EncounterNetworks()).toEqual([]);
+    });
+
+    it('validates encounter networks with the canonical utility before saving', async () => {
+        const { force, firstId, componentId } = await readyEntityC3Force();
+        const invalid: EncounterNetwork = {
+            id: asEncounterNetworkId('network:invalid-save'),
+            networkType: 'c3i',
+            color: '#1565C0',
+            endpoints: [{ instanceId: firstId, componentId, role: 'peer' }],
+        };
+        const seam = force as unknown as {
+            c3Encounter: {
+                networks: readonly EncounterNetwork[];
+                c3Positions: readonly [];
+            };
+        };
+        seam.c3Encounter = { networks: [invalid], c3Positions: [] };
+
+        await expectAsync(force.serializeForPersistence())
+            .toBeRejectedWithError(/Cannot persist non-canonical C3 networks/u);
+    });
+
+    it('ignores invalid encounter networks while hydrating a V2 load', async () => {
+        const { force, firstId, secondId, componentId, dialogs } = await readyEntityC3Force();
+        expect(force.replaceC3EncounterConfigurationIfOwnerRevisionCurrent(
+            force.captureForceOwnerRevisionFence(),
+            [{
+                id: asEncounterNetworkId('network:invalid-load'),
+                networkType: 'c3i',
+                color: '#1565C0',
+                endpoints: [
+                    { instanceId: firstId, componentId, role: 'peer' },
+                    { instanceId: secondId, componentId, role: 'peer' },
+                ],
+            }],
+            [],
+        )).toBeTrue();
+        const tampered = structuredClone(await force.serializeForPersistence()) as any;
+        const network = tampered.cbt.encounter.networks[0];
+        network.endpoints = [network.endpoints[0]];
+
+        dialogs.showNotice.calls.reset();
+        await expectAsync(force.loadCBTForceV2Persistence(tampered)).toBeResolvedTo(true);
+        expect(force.c3EncounterNetworks()).toEqual([]);
+        expect(dialogs.showNotice).toHaveBeenCalledOnceWith(
+            '• C3 network data was invalid and was ignored.',
+            'Save Loaded with Warnings',
         );
     });
 
-    it('reports and skips a unit that throws an arbitrary error while loading the rest of the force', () => {
-        spyOn(CBTForceUnit, 'deserialize').and.callFake((data) => {
-            if (data.unit === 'Broken Unit') throw new TypeError('Invalid serialized state');
-            return createLoadedUnit(data);
-        });
+    it('commits and persists a C3 editor linkage across a cloud-save acknowledgement', async () => {
+        const { force, firstId, secondId, componentId } = await readyEntityC3Force();
+        const baseline = await force.serializeForPersistence();
+        const editorFence = force.captureForceOwnerRevisionFence();
+        const persistenceFingerprint = force.captureWholeOwnerAuthorityFingerprint();
+        let changedUnitIds: readonly string[] | null | undefined;
+        const subscription = force.changed.subscribe(ids => { changedUnitIds = ids; });
+        force.markCloudCBTForceV2Saved(baseline);
 
-        const force = CBTForce.deserialize(
-            createSerializedForce(['Valid Unit', 'Broken Unit']),
-            dataService,
-            {} as UnitInitializerService,
-            injector,
+        expect(force.isWholeOwnerAuthorityFingerprintCurrent(persistenceFingerprint)).toBeFalse();
+        expect(force.isForceOwnerRevisionFenceCurrent(editorFence)).toBeTrue();
+        expect(force.replaceC3EncounterConfigurationIfOwnerRevisionCurrent(editorFence, [{
+            id: asEncounterNetworkId('network:cloud-ack'),
+            networkType: 'c3i',
+            color: '#1565C0',
+            endpoints: [
+                { instanceId: firstId, componentId, role: 'peer' },
+                { instanceId: secondId, componentId, role: 'peer' },
+            ],
+        }], [
+            { unitId: firstId, x: 203, y: 392 },
+            { unitId: secondId, x: 407, y: 392 },
+        ])).toBeTrue();
+        expect(changedUnitIds).toEqual([firstId, secondId]);
+
+        const saved = await force.serializeForPersistence();
+        expect(saved.cbt!.encounter.networks.some(network =>
+            network.id === 'network:cloud-ack')).toBeTrue();
+        expect(saved.cbt!.encounter.c3Positions).toEqual([
+            { unitId: firstId, x: 203, y: 392 },
+            { unitId: secondId, x: 407, y: 392 },
+        ]);
+        expect(force.replaceC3EncounterConfigurationIfOwnerRevisionCurrent(
+            force.captureForceOwnerRevisionFence(),
+            force.c3EncounterNetworks(),
+            [],
+        )).toBeTrue();
+        expect(force.c3EncounterPosition(firstId)).toBeNull();
+        expect(await force.loadCBTForceV2Persistence(saved)).toBeTrue();
+        expect(force.c3EncounterPosition(firstId)).toEqual(jasmine.objectContaining({ x: 203, y: 392 }));
+        expect(force.c3EncounterPosition(secondId)).toEqual(jasmine.objectContaining({ x: 407, y: 392 }));
+        subscription.unsubscribe();
+    });
+
+    it('keeps C3 topology outside undo while preserving prior unit commands', async () => {
+        const { force, firstId, secondId, componentId } = await readyEntityC3Force();
+        const before = entityRuntimeSnapshot(force, firstId);
+        expect((await force.dispatchUnitCommand(firstId, {
+            type: 'set-condition',
+
+            condition: 'immobile',
+            active: true,
+        })).accepted).toBeTrue();
+        const undoBeforeNetwork = force.getRuntimeUndoState();
+        const historyBeforeNetwork = force.getRuntimeHistory();
+        const network = {
+            id: asEncounterNetworkId('network:undo-boundary'),
+            networkType: 'c3i' as const,
+            color: '#1565C0',
+            endpoints: [
+                { instanceId: firstId, componentId, role: 'peer' as const },
+                { instanceId: secondId, componentId, role: 'peer' as const },
+            ],
+        };
+
+        expect(force.replaceC3EncounterConfigurationIfOwnerRevisionCurrent(
+            force.captureForceOwnerRevisionFence(),
+            [network],
+            [],
+        )).toBeTrue();
+        expect(force.getRuntimeUndoState()).toEqual(undoBeforeNetwork);
+        expect(force.getRuntimeHistory()).toEqual(historyBeforeNetwork);
+
+        expect((await force.undoRuntimeCommand()).accepted).toBeTrue();
+        expect(force.getUnitConditions(firstId)).toEqual([]);
+        expect(force.c3EncounterNetworks()).toEqual([network]);
+        expect(force.getC3State(firstId)).toBe('operational');
+    });
+
+    it('opens force-owned C3 configuration without mutating unit runtime or history', async () => {
+        const {
+            force,
+            emergencyId,
+            emergencyComponentId,
+            forceDialogs,
+            c3DialogOpened,
+        } = await readyC3Force();
+        const interaction = force.getEquipmentInteractions(emergencyId)
+            .find(row => row.componentId === emergencyComponentId);
+        const choice = interaction?.choices.find(candidate =>
+            candidate.interactionKind === 'c3-configuration');
+        if (!choice) throw new Error('C3 Configure choice is missing');
+        const beforeRevision = mekRuntimeSnapshot(force, emergencyId).state.stateRevision;
+        const beforeHistory = force.getRuntimeHistory();
+
+        expect(choice).toEqual(jasmine.objectContaining({
+            label: 'Configure',
+            disabled: false,
+            displayType: 'button',
+        }));
+        expect(choice.command.handlerId).toBe('c3-handler');
+        expect(await force.dispatchEquipmentChoice(choice.command)).toEqual({
+            accepted: true,
+            changed: false,
+            context: force.getUnitSnapshot(emergencyId)!.editContext,
+        });
+        await c3DialogOpened;
+
+        expect(forceDialogs.openC3Network).toHaveBeenCalledOnceWith(force, false);
+        expect(mekRuntimeSnapshot(force, emergencyId).state.stateRevision).toBe(beforeRevision);
+        expect(force.getRuntimeHistory()).toEqual(beforeHistory);
+    });
+
+    it('keeps read-only C3 configuration navigable while leaving the force untouched', async () => {
+        const {
+            force,
+            emergencyId,
+            emergencyComponentId,
+            forceDialogs,
+            c3DialogOpened,
+        } = await readyC3Force(false);
+        expect(force.readOnly()).toBeTrue();
+        const interaction = force.getEquipmentInteractions(emergencyId)
+            .find(row => row.componentId === emergencyComponentId);
+        const choice = interaction?.choices.find(candidate =>
+            candidate.interactionKind === 'c3-configuration');
+        if (!choice) throw new Error('Read-only C3 Configure choice is missing');
+        const beforeRevision = mekRuntimeSnapshot(force, emergencyId).state.stateRevision;
+
+        expect(choice.disabled).toBeFalse();
+        expect(await force.dispatchEquipmentChoice(choice.command)).toEqual({
+            accepted: true,
+            changed: false,
+            context: force.getUnitSnapshot(emergencyId)!.editContext,
+        });
+        await c3DialogOpened;
+
+        expect(forceDialogs.openC3Network).toHaveBeenCalledOnceWith(force, true);
+        expect(mekRuntimeSnapshot(force, emergencyId).state.stateRevision).toBe(beforeRevision);
+    });
+
+    it('repairs ready sparse state without replacing its blueprint or resetting its revision', async () => {
+        const { force, armorFaceId } = await readyCloneForce();
+        const before = await force.serializeForPersistence();
+        const instanceId = before.cbt!.roster.groups[0].members[0].instanceId;
+        const snapshot = mekRuntimeSnapshot(force, instanceId);
+        const maximumArmor = snapshot.index.armorFaces.get(armorFaceId)!.maximumPoints;
+        expect(snapshot.query.remainingArmor(armorFaceId)).toBe(maximumArmor - 1);
+
+        const repaired = await force.repairMember(instanceId);
+        expect(repaired.accepted).toBeTrue();
+        expect(repaired.changed).toBeTrue();
+        const after = mekRuntimeSnapshot(force, instanceId);
+        expect(after.entity).toBe(snapshot.entity);
+        expect(after.query.remainingArmor(armorFaceId)).toBe(maximumArmor);
+        expect(Number(after.state.stateRevision)).toBe(Number(snapshot.state.stateRevision) + 1);
+
+        const saved = await force.serializeForPersistence();
+        const beforeUnit = before.cbt!.units.find(entry => entry.instanceId === instanceId);
+        const afterUnit = saved.cbt!.units.find(entry => entry.instanceId === instanceId);
+        if (!beforeUnit || !afterUnit) {
+            throw new Error('Repair fixture ready entry is missing');
+        }
+        expect(afterUnit.unit.entity).toEqual(beforeUnit.unit.entity);
+        expect(afterUnit.unit.deployment).toEqual(beforeUnit.unit.deployment);
+
+        const noOp = await force.repairAllMembers();
+        expect(noOp.accepted).toBeTrue();
+        expect(noOp.changed).toBeFalse();
+    });
+
+    it('atomically rebinds optional rules and clears a Sprint invalidated by disabling the option', async () => {
+        const { force } = await readyCloneForce();
+        const before = await force.serializeForPersistence();
+        const instanceId = before.cbt!.roster.groups[0].members[0].instanceId;
+        const beforeMovement = mekRuntimeSnapshot(force, instanceId).query.mekMovementPsr();
+        expect(beforeMovement.kind).toBe('supported');
+        if (beforeMovement.kind !== 'supported') return;
+        expect(beforeMovement.actions.find(action => action.kind === 'sprint')?.legal).toBeFalse();
+
+        expect((await force.rebindScenarioRules(scenarioRules(CORE_2026_RULESET, { sprinting: true }))).bound).toBeTrue();
+        const enabled = mekRuntimeSnapshot(force, instanceId);
+        const enabledMovement = enabled.query.mekMovementPsr();
+        expect(enabledMovement.kind).toBe('supported');
+        if (enabledMovement.kind !== 'supported') return;
+        expect(enabledMovement.actions.find(action => action.kind === 'sprint')).toEqual(
+            jasmine.objectContaining({ legal: true, ordinaryMaximumMp: 10 }),
+        );
+        expect(enabled.query.heatProjection().kind).toBe('supported');
+        expect('scenarioRules' in (await force.serializeForPersistence()).cbt!).toBeFalse();
+        const revision = force.serialize().cbt!.forceRevision;
+        expect(await force.rebindScenarioRules(scenarioRules(CORE_2026_RULESET, { sprinting: true })))
+            .toEqual({ bound: true, dropped: [] });
+        expect(force.serialize().cbt!.forceRevision).toBe(revision);
+
+        const declared = await force.dispatchUnitCommand(instanceId, {
+            type: 'declare-mek-movement',
+
+            declaration: {
+                mode: 'sprint',
+                distance: 10,
+                boosterComponentIds: [],
+            },
+        });
+        expect(declared.accepted).toBeTrue();
+        const sprinting = mekRuntimeSnapshot(force, instanceId);
+        expect(sprinting.state.movementPsr.movement?.mode).toBe('sprint');
+        const sprintHeat = sprinting.query.heatProjection();
+        expect(sprintHeat.kind).toBe('supported');
+        if (sprintHeat.kind === 'supported') {
+            expect(sprintHeat.projection.sources.find(source => source.id === 'movement')?.value).toBe(3);
+        }
+
+        expect((await force.rebindScenarioRules(scenarioRules())).bound).toBeTrue();
+        expect(mekRuntimeSnapshot(force, instanceId).state.movementPsr.movement).toBeNull();
+        expect('scenarioRules' in (await force.serializeForPersistence()).cbt!).toBeFalse();
+    });
+
+    it('transfers a ready Mek between V2 owners in one paired transaction', async () => {
+        const { force: source, armorFaceId, createTargetForce } = await readyCloneForce();
+        const target = await createTargetForce();
+        const sourceBefore = await source.serializeForPersistence();
+        const targetBefore = await target.serializeForPersistence();
+        const instanceId = sourceBefore.cbt!.roster.groups[0].members[0].instanceId;
+        const sourceSnapshot = mekRuntimeSnapshot(source, instanceId);
+        const pilotAssignment = source.personnel().assignments.find(assignment => assignment.unitId === instanceId)!;
+        const remainingArmor = sourceSnapshot.query.remainingArmor(armorFaceId);
+        const targetGroup = target.groups()[0];
+
+        const transferred = await source.transferMemberTo(target, instanceId, targetGroup.id, 0);
+
+        expect(transferred).toEqual({ accepted: true, changed: true, instanceId });
+        expect(source.getCBTMember(instanceId)).toBeNull();
+        expect(source.getUnitSnapshot(instanceId)).toBeNull();
+        expect(target.getCBTMember(instanceId)).not.toBeNull();
+        expect(target.getAssignedPerson(instanceId, pilotAssignment.positionId)!.id).toBe(pilotAssignment.personId);
+        expect(source.personnel().people.some(person => person.id === pilotAssignment.personId)).toBeFalse();
+        expect(mekRuntimeSnapshot(target, instanceId).query.remainingArmor(armorFaceId)).toBe(remainingArmor);
+        expect(mekRuntimeSnapshot(target, instanceId).entity).toBe(sourceSnapshot.entity);
+        const targetRoster = target.queryCanonicalRoster();
+        expect(targetRoster.kind).toBe('available');
+        expect(target.getFormationUnitsForGroup(targetGroup).map(member => member.id)).toEqual([instanceId]);
+        expect(targetRoster.kind === 'available'
+            && targetRoster.snapshot.members[0].commander).toBeTrue();
+        expect(source.c3EncounterNetworks()).toEqual([]);
+
+        const sourceAfter = await source.serializeForPersistence();
+        const targetAfter = await target.serializeForPersistence();
+        expect(Number(sourceAfter.cbt!.forceRevision)).toBe(Number(sourceBefore.cbt!.forceRevision) + 1);
+        expect(Number(targetAfter.cbt!.forceRevision)).toBe(Number(targetBefore.cbt!.forceRevision) + 1);
+    });
+
+    it('loads and transfers a non-Mek through the same CBT owner', async () => {
+        const { force: source, instanceId, createTargetForce } = await readyEntityForce();
+        const target = await createTargetForce();
+
+        expect(source.getCBTMember(instanceId)).not.toBeNull();
+        expect(source.getCBTMember(instanceId)?.entity.entityType).not.toBe('Mek');
+
+        const transferred = await source.transferMemberTo(
+            target,
+            instanceId,
+            target.groups()[0].id,
+            0,
         );
 
-        expect(force.units().map(unit => unit.getUnit().name)).toEqual(['Valid Unit']);
-        expect(dialogs.showError).toHaveBeenCalledOnceWith(
-            'Unable to load unit "Broken Unit". The unit was skipped.\n\nInvalid serialized state',
-            'Unit Load Error',
+        expect(transferred).toEqual({ accepted: true, changed: true, instanceId });
+        expect(source.getCBTMember(instanceId)).toBeNull();
+        expect(target.getCBTMember(instanceId)).not.toBeNull();
+        expect(target.getCBTMember(instanceId)?.entity.entityType).not.toBe('Mek');
+        const crew = target.getUnitCrewProfile(instanceId)!;
+        const crewChanged = await target.replaceUnitCrewProfile(
+            instanceId,
+            crew.positions.map((position, index) => index === 0
+                ? { ...position, name: 'Vehicle Commander', gunnery: 3, piloting: 4 }
+                : position),
+        );
+        expect(crewChanged).not.toBeNull();
+        expect(target.getUnitCrewProfile(instanceId)?.positions[0]).toEqual(jasmine.objectContaining({
+            name: 'Vehicle Commander', gunnery: 3, piloting: 4,
+        }));
+        expect((await target.undoRuntimeCommand()).accepted).toBeTrue();
+        expect(target.getUnitCrewProfile(instanceId)?.positions[0]?.name)
+            .not.toBe('Vehicle Commander');
+        expect((await target.redoRuntimeCommand()).accepted).toBeTrue();
+        expect(target.getUnitCrewProfile(instanceId)?.positions[0]).toEqual(jasmine.objectContaining({
+            name: 'Vehicle Commander', gunnery: 3, piloting: 4,
+        }));
+        expect(target.getInventoryControlTargetRoster()).toEqual([
+            jasmine.objectContaining({
+                instanceId,
+                unitType: 'vehicle',
+                tnCalculator: jasmine.objectContaining({
+                    targetMovementDistance: null,
+                    targetHeight: 1,
+                    largeTarget: false,
+                }),
+            }),
+        ]);
+        const snapshot = entityRuntimeSnapshot(target, instanceId);
+        const changed = await target.dispatchUnitCommand(instanceId, {
+            type: 'set-condition',
+
+            condition: 'immobile',
+            active: true,
+        });
+        expect(changed.accepted).toBeTrue();
+        expect(target.getUnitConditions(instanceId)).toEqual(['immobile']);
+        const registry = target.queryInventoryControlTargetRegistry();
+        const targetId = asEncounterTargetId('target:entity-force');
+        expect(target.dispatchInventoryControlTargetRegistry({
+            kind: 'create-target',
+
+            target: {
+                id: targetId,
+                letter: 'A',
+                name: 'Target A',
+                color: '#ff0000',
+                source: 'manual',
+            },
+        }).accepted).toBeTrue();
+        const targeting = target.getAttackerTargeting(instanceId)!;
+        expect((await target.dispatchAttackerTargeting(instanceId, {
+            type: 'edit-attacker-targeting',
+
+            edit: {
+                kind: 'set-target-facts',
+                targetId,
+                facts: {
+                    distance: 6,
+                    manualTnOverride: { kind: 'user-manual', modifier: 2 },
+                },
+            },
+        })).accepted).toBeTrue();
+        expect(target.queryInventoryControlTargetRegistry().targets.map(row => row.id))
+            .toEqual([targetId]);
+        expect(target.getAttackerTargeting(instanceId)?.state.targets.get(targetId)?.distance).toBe(6);
+        const entry = (await target.serializeForPersistence()).cbt!.units
+            .find(unit => unit.instanceId === instanceId);
+        expect(entry !== undefined
+            && isSerializedNonMekUnit(entry.unit)
+            && entry.unit.conditions?.includes('immobile')
+            && !('attackerTargeting' in entry.unit)).toBeTrue();
+        expect(target.queryInventoryControlTargetRegistry().targets.map(row => row.id))
+            .toEqual([targetId]);
+        expect(target.getAttackerTargeting(instanceId)?.state.targets.get(targetId)?.manualTnOverride)
+            .toEqual({ kind: 'user-manual', modifier: 2 });
+        const beforeDelete = target.queryInventoryControlTargetRegistry();
+        expect(target.dispatchInventoryControlTargetRegistry({
+            kind: 'delete-target',
+
+            targetId,
+        }).accepted).toBeTrue();
+        expect(target.getAttackerTargeting(instanceId)?.state.targets.has(targetId)).toBeFalse();
+    });
+
+    it('identifies Omni Battle Armor targets from the canonical Entity type', async () => {
+        const entity = new TestBattleArmorEntity();
+        entity.omni.set(true);
+        const { force, instanceId } = await readyEntityForce({ entity });
+
+        expect(force.getInventoryControlTargetRoster()).toContain(
+            jasmine.objectContaining({
+                instanceId,
+                unitType: 'battle-armor',
+            }),
         );
     });
+
+    it('derives Core homing-artillery TAG BV from operational Non-Mek runtime facts', async () => {
+        const tag = new WeaponEquipment({
+            id: 'TestTAG', name: 'TAG', type: 'weapon', flags: ['F_TAG'],
+            weapon: { ammoType: 'NA' },
+        });
+        const launcher = new WeaponEquipment({
+            id: 'TestArrowIV', name: 'Arrow IV', type: 'weapon', flags: ['F_ARTILLERY'],
+            weapon: { ammoType: 'ARROW_IV', rackSize: 20 },
+        });
+        const homing = new AmmoEquipment({
+            id: 'TestArrowIVHoming', name: 'Arrow IV Homing Ammo', type: 'ammo',
+            ammo: {
+                type: 'ARROW_IV', rackSize: 20, shots: 1,
+                munitionType: ['M_HOMING'],
+            },
+        });
+        const entity = new TestTankEntity(createTestEquipmentRegistry({
+            [tag.id]: tag,
+            [launcher.id]: launcher,
+            [homing.id]: homing,
+        }));
+        const installed = (id: string, equipment: WeaponEquipment | AmmoEquipment) =>
+            new EntityMountedEquipment({
+                mountId: id,
+                equipmentId: equipment.id,
+                equipment,
+                allocation: { kind: 'location', location: 'Front' },
+                rearMounted: false,
+                turretMounted: false,
+                omniPodMounted: false,
+                armored: false,
+            });
+        entity.setEquipment([
+            installed('tag', tag),
+            installed('launcher-1', launcher),
+            installed('launcher-2', launcher),
+            installed('ammo', homing),
+        ]);
+        const { force, instanceId } = await readyEntityForce({ entity });
+        const base = force.getUnitCurrentBaseBattleValue(instanceId)!;
+
+        expect(force.getUnitTagBattleValue(instanceId)).toBe(100);
+        expect(force.getUnitAdjustedBattleValue(instanceId)).toBe(base + 100);
+
+        const snapshot = entityRuntimeSnapshot(force, instanceId);
+        const emptied = await force.dispatchUnitCommand(instanceId, {
+            type: 'configure-ammo-source',
+            componentId: asComponentId('ammo'),
+            munitionKey: homing.id,
+            remaining: 0,
+        });
+        expect(emptied.accepted).toBeTrue();
+        expect(force.getUnitTagBattleValue(instanceId)).toBe(0);
+    });
+
+    it('carries a validated bomb loadout through BV, thrust, undo and storage', async () => {
+        const he = new AmmoEquipment({
+            id: 'HEBomb', name: 'HE Bomb', type: 'ammo', flags: ['F_GROUND_BOMB', 'F_SPACE_BOMB'],
+            stats: { bv: 12 }, ammo: { type: 'BOMB', rackSize: 1, shots: 1 },
+        });
+        const entity = new TestAeroSpaceFighterEntity(createTestEquipmentRegistry({ [he.id]: he }));
+        entity.originalWalkMP.set(6);
+        const { force, instanceId, reload } = await readyEntityForce({ entity });
+        expect(entity.bombCapacity()).toEqual({ external: 4, internal: 0 });
+        const load = (count: number) => force.dispatchUnitCommand(instanceId, {
+            type: 'configure-bombs', loads: [{ section: 'external', bombId: he.id, count }],
+        });
+
+        // The runtime leaves an over-capacity loadout unapplied.
+        expect((await load(5)).changed).toBeFalse();
+        expect(entityRuntimeSnapshot(force, instanceId).state.bombs).toBeUndefined();
+        expect((await load(4)).changed).toBeTrue();
+        expect(force.getUnitExternalStoresBattleValue(instanceId)).toBe(48);
+        // Four external bomb points cost one point of safe thrust.
+        expect(force.getNonMekRecordSheetSnapshot(instanceId)!.movement.walk).toBe(5);
+
+        const spend = await force.dispatchUnitCommand(instanceId, {
+            type: 'set-bombs-spent', section: 'external', bombId: he.id, spent: 4,
+        });
+        expect(spend.accepted).toBeTrue();
+        expect(force.getUnitExternalStoresBattleValue(instanceId)).toBe(0);
+        expect(force.getNonMekRecordSheetSnapshot(instanceId)!.movement.walk).toBe(6);
+        expect((await force.undoRuntimeCommand()).accepted).toBeTrue();
+        expect(force.getUnitExternalStoresBattleValue(instanceId)).toBe(48);
+
+        const saved = await force.serializeForPersistence() as SerializedCBTForce;
+        const restored = await reload(decodeForceFromStorage(encodeForceForStorage(saved)) as SerializedCBTForce);
+        expect(restored.getUnitExternalStoresBattleValue(instanceId)).toBe(48);
+        expect(entityRuntimeSnapshot(restored, instanceId).state.bombs)
+            .toEqual([{ section: 'external', bombId: he.id, count: 4, spent: 0 }]);
+    });
+
+    it('round-trips an airship half-speed cycle through the force storage wire format', async () => {
+        const entity = new TestFixedWingSupportEntity();
+        entity.motiveType.set('Airship');
+        const { force, instanceId, reload } = await readyEntityForce({ entity });
+        expect((await force.dispatchUnitCommand(instanceId, { type: 'set-velocity-record',
+            turn: 1, field: 'velocity', value: 0.5 })).changed).toBeTrue();
+        const saved = await force.serializeForPersistence() as SerializedCBTForce;
+        const restored = await reload(decodeForceFromStorage(encodeForceForStorage(saved)) as SerializedCBTForce);
+        expect(restored.getNonMekRecordSheetSnapshot(instanceId)!.velocityRecord)
+            .toEqual([1, 2, 3, 4].map(turn => ({ turn, field: 'velocity', value: 0.5 })));
+    });
+
+    it('keeps an aerospace velocity record with undo, history and storage', async () => {
+        const { force, instanceId, reload } = await readyEntityForce({ entity: new TestAeroSpaceFighterEntity() });
+        const record = (turn: number, field: VelocityRecordField, value: number | null) =>
+            force.dispatchUnitCommand(instanceId, { type: 'set-velocity-record', turn, field, value });
+
+        expect((await record(2, 'velocity', 4)).changed).toBeTrue();
+        expect((await record(1, 'altitude', 6)).changed).toBeTrue();
+        // Past turn 20 the sheet's tables move on, so later turns are recorded too; there is no turn 0.
+        expect((await record(21, 'velocity', 1)).changed).toBeTrue();
+        expect((await record(0, 'velocity', 1)).changed).toBeFalse();
+        expect(force.getRuntimeHistory().some(row =>
+            row.event.message[0] === RUNTIME_HISTORY_MESSAGE.VELOCITY_RECORD_CHANGED)).toBeTrue();
+        expect((await record(2, 'velocity', null)).changed).toBeTrue();
+        expect(force.getNonMekRecordSheetSnapshot(instanceId)!.velocityRecord).toEqual([
+            { turn: 1, field: 'altitude', value: 6 },
+            { turn: 21, field: 'velocity', value: 1 },
+        ]);
+        expect((await force.undoRuntimeCommand()).accepted).toBeTrue();
+        expect(force.getNonMekRecordSheetSnapshot(instanceId)!.velocityRecord).toEqual([
+            { turn: 1, field: 'altitude', value: 6 },
+            { turn: 2, field: 'velocity', value: 4 },
+            { turn: 21, field: 'velocity', value: 1 },
+        ]);
+
+        const saved = await force.serializeForPersistence() as SerializedCBTForce;
+        const restored = await reload(decodeForceFromStorage(encodeForceForStorage(saved)) as SerializedCBTForce);
+        expect(restored.getNonMekRecordSheetSnapshot(instanceId)!.velocityRecord)
+            .toEqual(force.getNonMekRecordSheetSnapshot(instanceId)!.velocityRecord);
+    });
+
+    it('keeps no velocity record for ground units', async () => {
+        const { force, instanceId } = await readyEntityForce({ entity: new TestTankEntity() });
+        const result = await force.dispatchUnitCommand(instanceId, {
+            type: 'set-velocity-record', turn: 1, field: 'velocity', value: 3,
+        });
+        expect(result.changed).toBeFalse();
+        expect(force.getNonMekRecordSheetSnapshot(instanceId)!.velocityRecord).toEqual([]);
+    });
+
+    it('keeps Entity undo/redo in session memory and saves semantic history without checkpoints', async () => {
+        const { force, instanceId } = await readyEntityForce();
+        const before = entityRuntimeSnapshot(force, instanceId);
+
+        const changed = await force.dispatchUnitCommand(instanceId, {
+            type: 'set-condition',
+
+            condition: 'immobile',
+            active: true,
+        });
+
+        expect(changed.accepted).toBeTrue();
+        expect(force.getUnitConditions(instanceId)).toEqual(['immobile']);
+        expect(force.getRuntimeUndoState()).toEqual({ canUndo: true, canRedo: false });
+        expect([...force.getRuntimeHistory()[0].event.message] as unknown[]).toEqual([
+            RUNTIME_HISTORY_MESSAGE.CONDITION_CHANGED,
+            instanceId,
+            'immobile',
+            false,
+            true,
+        ] as unknown[]);
+
+        const undo = await force.undoRuntimeCommand();
+        expect(undo).toEqual(jasmine.objectContaining({ accepted: true, changed: true }));
+        expect(force.getUnitConditions(instanceId)).toEqual([]);
+        expect(force.getRuntimeUndoState()).toEqual({ canUndo: false, canRedo: true });
+
+        const redo = await force.redoRuntimeCommand();
+        expect(redo).toEqual(jasmine.objectContaining({ accepted: true, changed: true }));
+        expect(force.getUnitConditions(instanceId)).toEqual(['immobile']);
+        expect(force.getRuntimeUndoState()).toEqual({ canUndo: true, canRedo: false });
+
+        const serialized = await force.serializeForPersistence();
+        expect(serialized.cbt!.history.u).toEqual([instanceId]);
+        expect(serialized.cbt!.history.t).toEqual([jasmine.objectContaining({
+            n: 1,
+            p: [[[RUNTIME_HISTORY_MESSAGE.CONDITION_CHANGED, 0, 'immobile', false, true]]],
+        })]);
+        expect(JSON.stringify(serialized.cbt)).not.toContain('before');
+        expect(JSON.stringify(serialized.cbt)).not.toContain('after');
+    });
+
+    it('records a semantic vehicle crew state instead of a generic non-Mek command', async () => {
+        const { force, instanceId } = await readyEntityForce();
+        const snapshot = entityRuntimeSnapshot(force, instanceId);
+        const positionId = [...snapshot.index.crewPositions.keys()][0]!;
+
+        const changed = await force.dispatchUnitCommand(instanceId, {
+            type: 'set-crew-state',
+
+            positionId,
+            wounds: 0,
+            unconscious: true,
+            ejected: false,
+        });
+
+        expect(changed.accepted).toBeTrue();
+        const row = force.getRuntimeHistory().find(candidate =>
+            candidate.event.message[0] === RUNTIME_HISTORY_MESSAGE.CREW_CHANGED)!;
+        expect(JSON.stringify(row.event.message)).toBe(JSON.stringify([
+            RUNTIME_HISTORY_MESSAGE.CREW_CHANGED,
+            instanceId,
+            0,
+            0,
+            0,
+            0,
+            5,
+        ]));
+    });
+
+    it('exposes vehicle rules-derived conditions through the force read model', async () => {
+        const { force, instanceId } = await readyEntityForce();
+        const snapshot = entityRuntimeSnapshot(force, instanceId);
+        const positionId = [...snapshot.index.crewPositions.keys()][0]!;
+
+        expect((await force.dispatchUnitCommand(instanceId, {
+            type: 'set-crew-state',
+
+            positionId,
+            wounds: 0,
+            unconscious: false,
+            ejected: false,
+            dead: true,
+        })).accepted).toBeTrue();
+
+        expect(force.getUnitConditions(instanceId)).toEqual(['abandoned', 'immobile']);
+        expect(force.getUnitDestroyed(instanceId)).toBeFalse();
+        expect(force.getInventoryControlTargetRoster()[0]?.tnCalculator.immobile).toBeTrue();
+    });
+
+    it('always persists current semantic history and starts reloaded undo empty', async () => {
+        const { force, armorFaceId, reload } = await readyCloneForce();
+        const beforeSave = await force.serializeForPersistence();
+        const instanceId = beforeSave.cbt!.roster.groups[0].members[0].instanceId;
+        const before = mekRuntimeSnapshot(force, instanceId);
+        const damaged = await force.dispatchUnitCommand(instanceId, {
+            type: 'damage-armor',
+
+            faceId: armorFaceId,
+            amount: 1,
+            target: 'committed',
+        });
+        expect(damaged.accepted).toBeTrue();
+        expect(force.getRuntimeUndoState()).toEqual({ canUndo: true, canRedo: false });
+        const current = (await force.serializeForPersistence()).cbt!.history;
+        expect(current.u).toEqual([instanceId]);
+        expect(current.t[0].p.flat().map(message => message[0])).toEqual([
+            RUNTIME_HISTORY_MESSAGE.DAMAGE_ARMOR,
+        ]);
+
+        const beforeEndTurn = mekRuntimeSnapshot(force, instanceId);
+        const ended = await force.dispatchUnitCommand(instanceId, {
+            type: 'end-turn',
+
+            policy: 'automatic',
+        });
+        expect(ended.accepted).toBeTrue();
+        expect(force.getRuntimeUndoState()).toEqual({ canUndo: true, canRedo: false });
+        const saved = await force.serializeForPersistence() as SerializedCBTForce;
+        expect(saved.cbt.history.t.length).toBe(1);
+        expect(saved.cbt.history.t[0].p.flat().map(message => message[0])).toEqual([
+            RUNTIME_HISTORY_MESSAGE.DAMAGE_ARMOR,
+            RUNTIME_HISTORY_MESSAGE.TURN_ENDED,
+        ]);
+        const savedDamage = saved.cbt.history.t[0].p.flat()[0];
+        expect(savedDamage?.[1] as number).toBe(0);
+        expect(String(savedDamage?.[2])).toMatch(/^f:/);
+        expect(saved.cbt.history.u).toEqual([instanceId]);
+        expect(JSON.stringify(saved.cbt)).not.toContain('before');
+        expect(JSON.stringify(saved.cbt)).not.toContain('after');
+
+        const restored = await reload(saved);
+        expect(restored.getRuntimeUndoState()).toEqual({ canUndo: false, canRedo: false });
+        expect(restored.getRuntimeHistory().map(row => row.event.message[0])).toEqual([
+            RUNTIME_HISTORY_MESSAGE.DAMAGE_ARMOR,
+            RUNTIME_HISTORY_MESSAGE.TURN_ENDED,
+        ]);
+    });
+
+    it('replaces a committed pending marker instead of showing a commit log row', async () => {
+        const { force, armorFaceId, reload } = await readyCloneForce();
+        const saved = await force.serializeForPersistence();
+        const instanceId = saved.cbt!.roster.groups[0].members[0]!.instanceId;
+        let snapshot = mekRuntimeSnapshot(force, instanceId);
+        expect((await force.dispatchUnitCommand(instanceId, {
+            type: 'damage-armor',
+
+            faceId: armorFaceId,
+            amount: 1,
+            target: 'pending',
+        })).accepted).toBeTrue();
+        let damage = force.getRuntimeHistory().find(row =>
+            row.event.message[0] === RUNTIME_HISTORY_MESSAGE.DAMAGE_ARMOR)!.event.message;
+        expect(String(damage[damage.length - 1])).toBe('pending');
+
+        snapshot = mekRuntimeSnapshot(force, instanceId);
+        expect((await force.dispatchUnitCommand(instanceId, {
+            type: 'end-phase',
+
+        })).accepted).toBeTrue();
+
+        const visible = force.getRuntimeHistory();
+        expect(visible.map(row => row.event.message[0])).toEqual([
+            RUNTIME_HISTORY_MESSAGE.DAMAGE_ARMOR,
+        ]);
+        damage = visible[0].event.message;
+        expect(String(damage[damage.length - 1])).not.toBe('pending');
+
+        const restored = await reload(await force.serializeForPersistence() as SerializedCBTForce);
+        expect(restored.getRuntimeHistory().map(row => row.event.message[0])).toEqual([
+            RUNTIME_HISTORY_MESSAGE.DAMAGE_ARMOR,
+        ]);
+    });
+
+    it('groups independently advanced units by their matching numbered turns', async () => {
+        const { force, armorFaceId } = await readyCloneForce();
+        const saved = await force.serializeForPersistence();
+        const firstId = saved.cbt!.roster.groups[0].members[0]!.instanceId;
+        const secondId = saved.cbt!.roster.groups[0].members[1]!.instanceId;
+        const damage = async (instanceId: typeof firstId, key: string) => {
+            const snapshot = mekRuntimeSnapshot(force, instanceId);
+            return force.dispatchUnitCommand(instanceId, {
+                type: 'damage-armor',
+
+                faceId: armorFaceId,
+                amount: 1,
+                target: 'committed',
+            });
+        };
+        const endTurn = async (instanceId: typeof firstId, key: string) => {
+            const snapshot = mekRuntimeSnapshot(force, instanceId);
+            return force.dispatchUnitCommand(instanceId, {
+                type: 'end-turn',
+
+                policy: 'automatic',
+            });
+        };
+
+        expect((await damage(firstId, 'independent:first:t1')).accepted).toBeTrue();
+        expect((await endTurn(firstId, 'independent:first:t1')).accepted).toBeTrue();
+        expect((await damage(secondId, 'independent:second:t1')).accepted).toBeTrue();
+        expect((await damage(firstId, 'independent:first:t2')).accepted).toBeTrue();
+
+        const damageRows = force.getRuntimeHistory().filter(row =>
+            row.applied && row.event.message[0] === RUNTIME_HISTORY_MESSAGE.DAMAGE_ARMOR);
+        expect(damageRows.map(row => `${String(row.event.message[1])}@${row.event.turn}`)).toEqual([
+            `${firstId}@1`,
+            `${secondId}@1`,
+            `${firstId}@2`,
+        ]);
+        expect((await force.serializeForPersistence()).cbt!.history.t.map(turn => turn.n)).toEqual([1, 2]);
+
+        expect((await endTurn(firstId, 'independent:first:t2')).accepted).toBeTrue();
+        const turnThree = mekRuntimeSnapshot(force, firstId);
+        expect((await force.dispatchUnitCommand(firstId, {
+            type: 'set-condition',
+
+            condition: 'immobile',
+            active: true,
+        })).accepted).toBeTrue();
+        expect((await force.serializeForPersistence()).cbt!.history.t.map(turn => turn.n)).toEqual([2, 3]);
+    });
+
+    it('drops Mek shutdown/startup button churn with no phase-level effect', async () => {
+        const { force } = await readyCloneForce();
+        const saved = await force.serializeForPersistence();
+        const instanceId = saved.cbt!.roster.groups[0].members[0]!.instanceId;
+        const declare = async (kind: 'shutdown' | 'startup', key: string) => {
+            const snapshot = mekRuntimeSnapshot(force, instanceId);
+            return force.dispatchUnitCommand(instanceId, {
+                type: 'declare-mek-action',
+
+                action: { kind },
+            });
+        };
+
+        expect((await declare('shutdown', 'history:shutdown:1')).accepted).toBeTrue();
+        expect((await declare('startup', 'history:startup:1')).accepted).toBeTrue();
+        expect((await declare('shutdown', 'history:shutdown:2')).accepted).toBeTrue();
+        expect((await declare('startup', 'history:startup:2')).accepted).toBeTrue();
+
+        expect(force.getRuntimeHistory().filter(row =>
+            row.event.message[0] === RUNTIME_HISTORY_MESSAGE.MEK_ACTION_CHANGED)).toHaveSize(0);
+        const history = (await force.serializeForPersistence()).cbt!.history;
+        expect(history.t.flatMap(turn => turn.p.flat()).filter(message =>
+            message[0] === RUNTIME_HISTORY_MESSAGE.MEK_ACTION_CHANGED)).toHaveSize(0);
+        expect(force.getRuntimeUndoState()).toEqual({ canUndo: true, canRedo: false });
+    });
+
+    it('keeps shutdown and startup when they happen in different phases', async () => {
+        const { force } = await readyCloneForce();
+        const saved = await force.serializeForPersistence();
+        const instanceId = saved.cbt!.roster.groups[0].members[0]!.instanceId;
+        const declare = async (kind: 'shutdown' | 'startup', key: string) => {
+            const snapshot = mekRuntimeSnapshot(force, instanceId);
+            return force.dispatchUnitCommand(instanceId, {
+                type: 'declare-mek-action',
+
+                action: { kind },
+            });
+        };
+
+        expect((await declare('shutdown', 'history:phased:shutdown')).accepted).toBeTrue();
+        const shutdown = mekRuntimeSnapshot(force, instanceId);
+        const shutdownCheck = shutdown.query.mekPilotChecks()[0]!;
+        expect((await force.dispatchUnitCommand(instanceId, {
+            type: 'resolve-mek-pilot-check',
+
+            checkId: shutdownCheck.checkId,
+            evidence: { dice: [6, 6], claimedOutcome: 'success' },
+        })).accepted).toBeTrue();
+        const beforeBoundary = mekRuntimeSnapshot(force, instanceId);
+        expect((await force.dispatchUnitCommand(instanceId, {
+            type: 'end-phase',
+
+        })).accepted).toBeTrue();
+        expect((await declare('startup', 'history:phased:startup')).accepted).toBeTrue();
+
+        const actions = force.getRuntimeHistory().filter(row =>
+            row.event.message[0] === RUNTIME_HISTORY_MESSAGE.MEK_ACTION_CHANGED);
+        expect(actions.map(row => row.event.phase)).toEqual([1, 2]);
+        expect(JSON.stringify(actions.map(row => [...row.event.message]))).toBe(JSON.stringify([
+            [RUNTIME_HISTORY_MESSAGE.MEK_ACTION_CHANGED, instanceId, 0, 1],
+            [RUNTIME_HISTORY_MESSAGE.MEK_ACTION_CHANGED, instanceId, 1, 0],
+        ]));
+        const persisted = (await force.serializeForPersistence()).cbt!.history;
+        expect(persisted.t[0].p).toHaveSize(2);
+    });
+
+    it('folds Entity movement churn and advances Entity turns through the force owner', async () => {
+        const { force, instanceId } = await readyEntityForce();
+        const setMovement = async (movement: {
+            readonly mode: 'stationary';
+            readonly distance: 0;
+            readonly boosterComponentIds: readonly [];
+        } | null) => {
+            const snapshot = entityRuntimeSnapshot(force, instanceId);
+            return force.dispatchUnitCommand(instanceId, {
+                type: 'set-movement',
+
+                movement,
+            });
+        };
+
+        expect((await setMovement({
+            mode: 'stationary', distance: 0, boosterComponentIds: [],
+        })).accepted).toBeTrue();
+        expect((await setMovement(null)).accepted).toBeTrue();
+        expect(force.getRuntimeHistory().filter(row =>
+            row.event.message[0] === RUNTIME_HISTORY_MESSAGE.MOVEMENT_CHANGED)).toHaveSize(0);
+
+        const phase = entityRuntimeSnapshot(force, instanceId);
+        expect((await force.dispatchUnitCommand(instanceId, {
+            type: 'end-phase',
+
+        }))).toEqual(jasmine.objectContaining({ accepted: true, changed: true }));
+        expect((await setMovement({
+            mode: 'stationary', distance: 0, boosterComponentIds: [],
+        })).accepted).toBeTrue();
+        const movementRows = force.getRuntimeHistory().filter(row =>
+            row.event.message[0] === RUNTIME_HISTORY_MESSAGE.MOVEMENT_CHANGED);
+        expect(movementRows).toHaveSize(1);
+        expect(movementRows[0].event.phase).toBe(2);
+
+        const result = await force.endTurnForAllUnits();
+        expect(result.accepted).toBeTrue();
+        expect(result.results).toContain(jasmine.objectContaining({ instanceId, accepted: true }));
+        expect(entityRuntimeSnapshot(force, instanceId).state.turn).toEqual({
+            turnCounter: 1,
+            airborne: null,
+            movement: null,
+            weaponsHeat: 0,
+            settledHeat: jasmine.objectContaining({ size: 0 }),
+            cover: null,
+            spotting: false,
+            phaseStateChanged: false,
+            turnStep: 0,
+        });
+        const saved = await force.serializeForPersistence();
+        const entity = saved.cbt!.units.find(row => row.instanceId === instanceId)!;
+        expect(isSerializedNonMekUnit(entity.unit)
+            ? entity.unit.turn?.turnCounter
+            : null).toBe(1);
+    });
+
+    it('logs each unit\'s settled heat when End Turn ends the turn for all units', async () => {
+        const { force } = await readyCloneForce();
+        const first = force.members()[0];
+        expect((await force.dispatchUnitCommand(first.id, { type: 'set-pending-heat', heat: 6 })).changed).toBeTrue();
+
+        expect((await force.endTurnForAllUnits()).accepted).toBeTrue();
+        expect(force.getUnitSnapshot(first.id)!.state.heat.current).toBe(6);
+        const ended = force.getRuntimeHistory().filter(row => row.event.message[0] === RUNTIME_HISTORY_MESSAGE.HEAT_CHANGED
+            || row.event.message[0] === RUNTIME_HISTORY_MESSAGE.TURN_ENDED);
+        // NEXT set, then the heat End Turn settled; the turn ending is logged on each unit it changed.
+        expect(JSON.stringify(ended.map(row => [...row.event.message]))).toBe(JSON.stringify([
+            [RUNTIME_HISTORY_MESSAGE.HEAT_CHANGED, first.id, 1, 0, 6],
+            [RUNTIME_HISTORY_MESSAGE.HEAT_CHANGED, first.id, 0, 0, 6],
+            [RUNTIME_HISTORY_MESSAGE.TURN_ENDED, first.id],
+            [RUNTIME_HISTORY_MESSAGE.TURN_ENDED, force.members()[1].id],
+        ]));
+    });
+
+    it('persists real-phase step progress and restarts it when the unit ends its turn', async () => {
+        for (const { force, reload } of [await readyCloneForce(), await readyEntityForce()]) {
+            const instanceId = force.members()[0].id;
+            const turnStep = (target: CBTForce) => target.getUnitSnapshot(instanceId)!.state.turn.turnStep;
+            expect((await force.dispatchUnitCommand(instanceId, { type: 'complete-turn-step', step: 0 })).changed)
+                .toBeTrue();
+            // Steps complete strictly in order.
+            expect((await force.dispatchUnitCommand(instanceId, { type: 'complete-turn-step', step: 0 })).changed)
+                .toBeFalse();
+            expect(turnStep(force)).toBe(1);
+
+            const saved = await force.serializeForPersistence() as SerializedCBTForce;
+            const restored = await reload(decodeForceFromStorage(encodeForceForStorage(saved)) as SerializedCBTForce);
+            expect(turnStep(restored)).toBe(1);
+
+            expect((await force.endTurnForAllUnits()).accepted).toBeTrue();
+            expect(turnStep(force)).toBe(0);
+        }
+    });
+
+    it('undoes everything a single step did on one unit at once', async () => {
+        const { force } = await readyCloneForce();
+        const instanceId = force.members()[0].id;
+        const unit = force.getUnitSnapshot(instanceId)!;
+        const armorFaceId = [...unit.index.armorFaces.keys()].find(faceId => unit.query.remainingArmor(faceId) > 3)!;
+        const armor = () => force.getUnitSnapshot(instanceId)!.query.remainingArmor(armorFaceId, 'preview');
+        const before = armor();
+
+        await force.runAsOneUndoStep(async () => {
+            for (let hit = 0; hit < 3; hit += 1) {
+                await force.dispatchUnitCommand(instanceId, {
+                    type: 'damage-armor', faceId: armorFaceId, amount: 1, target: 'pending',
+                });
+            }
+        });
+        expect(armor()).toBe(before - 3);
+
+        expect((await force.undoRuntimeCommand()).accepted).toBeTrue();
+        expect(armor()).toBe(before);
+    });
+
+    it('joins a game under way only by moving forward', async () => {
+        for (const { force } of [await readyCloneForce(), await readyEntityForce()]) {
+            const instanceId = force.members()[0].id;
+            const position = () => {
+                const turn = force.getUnitSnapshot(instanceId)!.state.turn;
+                return [turn.turnCounter, turn.turnStep];
+            };
+            expect((await force.dispatchUnitCommand(instanceId, { type: 'join-turn', turn: 2, step: 3 })).changed)
+                .toBeTrue();
+            expect(position()).toEqual([2, 3]);
+            expect((await force.dispatchUnitCommand(instanceId, { type: 'join-turn', turn: 1, step: 0 })).changed)
+                .toBeFalse();
+            expect(position()).toEqual([2, 3]);
+        }
+    });
+
+    it('marks a unit that joins after Movement, through the compact codec, until its turn ends', async () => {
+        for (const { force, reload } of [await readyCloneForce(), await readyEntityForce()]) {
+            const instanceId = force.members()[0].id;
+            await force.dispatchUnitCommand(instanceId, { type: 'join-turn', turn: 2, step: 3 });
+            expect(force.getUnitSnapshot(instanceId)!.state.turn.joinedStep).withContext('joined').toBe(3);
+
+            const saved = await force.serializeForPersistence() as SerializedCBTForce;
+            const restored = await reload(decodeForceFromStorage(encodeForceForStorage(saved)) as SerializedCBTForce);
+            expect(restored.getUnitSnapshot(restored.members()[0].id)!.state.turn.joinedStep).withContext('restored').toBe(3);
+
+            await force.dispatchUnitCommand(instanceId, { type: 'join-turn', turn: 3, step: 0 });
+            expect(force.getUnitSnapshot(instanceId)!.state.turn.joinedStep).toBeUndefined();
+        }
+    });
+
+    it('persists the crew owing a Core consciousness roll through the compact codec', async () => {
+        const { force, reload } = await readyCloneForce();
+        const instanceId = force.members()[0].id;
+        const pilotId = [...force.getUnitSnapshot(instanceId)!.index.crewPositions.keys()][0]!;
+        expect((await force.dispatchUnitCommand(instanceId, {
+            type: 'set-consciousness-rolls-due', positionIds: [pilotId],
+        })).changed).toBeTrue();
+
+        const saved = await force.serializeForPersistence() as SerializedCBTForce;
+        const restored = await reload(decodeForceFromStorage(encodeForceForStorage(saved)) as SerializedCBTForce);
+        expect(restored.getUnitSnapshot(instanceId)!.state.turn).toEqual(
+            jasmine.objectContaining({ consciousnessRollsDue: [pilotId] }));
+    });
+
+    it("keeps a flying vehicle's Elevation and erratic manoeuvres through the compact codec", async () => {
+        const entity = new TestTankEntity();
+        entity.originalWalkMP.set(4);
+        const { force, instanceId, reload } = await readyEntityForce({ supportsAirborne: true, entity });
+        const roundTrip = async () => entityRuntimeSnapshot(await reload(decodeForceFromStorage(
+            encodeForceForStorage(await force.serializeForPersistence() as SerializedCBTForce)) as SerializedCBTForce),
+        instanceId).state;
+        expect((await force.dispatchUnitCommand(instanceId, {
+            type: 'set-movement', movement: { mode: 'run', distance: 3, boosterComponentIds: [], erratic: true },
+        })).accepted).toBeTrue();
+        expect((await roundTrip()).turn.movement).toEqual(jasmine.objectContaining({ mode: 'run', distance: 3, erratic: true }));
+        expect((await force.dispatchUnitCommand(instanceId, { type: 'set-elevation', elevation: 2 })).accepted).toBeTrue();
+        const restored = await roundTrip();
+        expect([restored.elevationRecord, restored.turn.airborne]).toEqual([[{ turn: 1, value: 2 }], true]);
+        expect(force.getRuntimeHistory().map(row => formatRuntimeHistoryMessage(row.event.message, { unitLabel: () => 'WiGE',
+            omitUnitLabel: true }))).toContain('Elevation 0 → 2');
+    });
+
+    it('folds movement implicitly cleared by an Entity airborne change', async () => {
+        const { force, instanceId } = await readyEntityForce({ supportsAirborne: true });
+        let snapshot = entityRuntimeSnapshot(force, instanceId);
+        expect((await force.dispatchUnitCommand(instanceId, {
+            type: 'set-movement',
+
+            movement: { mode: 'stationary', distance: 0, boosterComponentIds: [] },
+        })).accepted).toBeTrue();
+
+        snapshot = entityRuntimeSnapshot(force, instanceId);
+        expect((await force.dispatchUnitCommand(instanceId, {
+            type: 'set-airborne',
+
+            airborne: true,
+        })).accepted).toBeTrue();
+        expect(entityRuntimeSnapshot(force, instanceId).state.turn.movement).toBeNull();
+        expect(force.getRuntimeHistory().filter(row =>
+            row.event.message[0] === RUNTIME_HISTORY_MESSAGE.MOVEMENT_CHANGED)).toEqual([]);
+        expect(force.getRuntimeHistory().filter(row =>
+            row.event.message[0] === RUNTIME_HISTORY_MESSAGE.AIRBORNE_CHANGED)).toHaveSize(1);
+
+        snapshot = entityRuntimeSnapshot(force, instanceId);
+        expect((await force.dispatchUnitCommand(instanceId, {
+            type: 'set-airborne',
+
+            airborne: null,
+        })).accepted).toBeTrue();
+        expect(force.getRuntimeHistory().filter(row =>
+            row.event.message[0] === RUNTIME_HISTORY_MESSAGE.MOVEMENT_CHANGED
+            || row.event.message[0] === RUNTIME_HISTORY_MESSAGE.AIRBORNE_CHANGED)).toEqual([]);
+    });
+
+    it('keeps target editing and deletion outside runtime undo and semantic history', async () => {
+        const { force, instanceId } = await readyEntityForce();
+        const registry = force.queryInventoryControlTargetRegistry();
+        const targetId = asEncounterTargetId('target:undo-entity');
+        expect(force.dispatchInventoryControlTargetRegistry({
+            kind: 'create-target',
+
+            target: {
+                id: targetId,
+                letter: 'A',
+                name: 'Undo target',
+                color: '#123456',
+            },
+        }).accepted).toBeTrue();
+        const targeting = force.getAttackerTargeting(instanceId)!;
+        expect((await force.dispatchAttackerTargeting(instanceId, {
+            type: 'edit-attacker-targeting',
+
+            edit: { kind: 'set-target-facts', targetId, facts: { distance: 6 } },
+        })).accepted).toBeTrue();
+        expect(force.getRuntimeUndoState()).toEqual({ canUndo: false, canRedo: false });
+        expect(force.getRuntimeHistory()).toEqual([]);
+        const beforeDelete = force.queryInventoryControlTargetRegistry();
+        expect(force.dispatchInventoryControlTargetRegistry({
+            kind: 'delete-target',
+
+            targetId,
+        }).accepted).toBeTrue();
+        expect(force.queryInventoryControlTargetRegistry().targets).toEqual([]);
+        expect(force.getAttackerTargeting(instanceId)?.state.targets.has(targetId)).toBeFalse();
+        expect(force.getRuntimeUndoState()).toEqual({ canUndo: false, canRedo: false });
+        expect(force.getRuntimeHistory()).toEqual([]);
+        expect((await force.undoRuntimeCommand()).accepted).toBeFalse();
+    });
+
+    it('does not roll operational targeting backward with an earlier unit undo', async () => {
+        const { force, instanceId } = await readyEntityForce();
+        const registry = force.queryInventoryControlTargetRegistry();
+        const targetId = asEncounterTargetId('target:operational-undo');
+        expect(force.dispatchInventoryControlTargetRegistry({
+            kind: 'create-target',
+
+            target: { id: targetId, letter: 'A', name: 'Target A', color: '#123456' },
+        }).accepted).toBeTrue();
+        const setDistance = async (distance: number, key: string) => {
+            const targeting = force.getAttackerTargeting(instanceId)!;
+            return force.dispatchAttackerTargeting(instanceId, {
+                type: 'edit-attacker-targeting',
+
+                edit: { kind: 'set-target-facts', targetId, facts: { distance } },
+            });
+        };
+        expect((await setDistance(6, 'targeting:distance:6')).accepted).toBeTrue();
+
+        let snapshot = entityRuntimeSnapshot(force, instanceId);
+        expect((await force.dispatchUnitCommand(instanceId, {
+            type: 'set-condition',
+
+            condition: 'immobile',
+            active: true,
+        })).accepted).toBeTrue();
+        expect((await setDistance(7, 'targeting:distance:7')).accepted).toBeTrue();
+
+        expect((await force.undoRuntimeCommand()).accepted).toBeTrue();
+        expect(force.getUnitConditions(instanceId)).toEqual([]);
+        expect(force.getAttackerTargeting(instanceId)?.state.targets.get(targetId)?.distance).toBe(7);
+
+        expect((await force.redoRuntimeCommand()).accepted).toBeTrue();
+        expect(force.getUnitConditions(instanceId)).toEqual(['immobile']);
+        expect(force.getAttackerTargeting(instanceId)?.state.targets.get(targetId)?.distance).toBe(7);
+        expect(force.getRuntimeHistory().map(row => row.event.message[0])).toEqual([
+            RUNTIME_HISTORY_MESSAGE.CONDITION_CHANGED,
+        ]);
+    });
+
 });

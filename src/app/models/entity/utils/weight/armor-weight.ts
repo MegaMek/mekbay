@@ -8,9 +8,9 @@ import type { MountedArmor } from '../../components';
 import { resolveArmorEquipment } from '../../types/armor';
 
 /**
- * Resolve the armor descriptor used by MegaMek's cached lab tonnage.
- * BLK loaders cache armor mass before unresolved armor technology is
- * normalized to the entity tech base for components and cost calculations.
+ * Resolve the armor descriptor used by MegaMek's lab mass and cost.
+ * An explicit unknown BLK armor tech level uses the Inner Sphere lookup,
+ * even when the containing unit has a Clan tech base.
  */
 export function resolveLabArmorEquipment(
   entity: BaseEntity,

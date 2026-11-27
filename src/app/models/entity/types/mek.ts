@@ -37,15 +37,27 @@ const MEK_LOCATION_LABELS: Readonly<Record<MekLocation, string>> = {
   LL: 'Left Leg',
   RL: 'Right Leg',
   CL: 'Center Leg',
-  FLL: 'Front Left Leg',
-  FRL: 'Front Right Leg',
-  RLL: 'Rear Left Leg',
-  RRL: 'Rear Right Leg',
+  // The rulebooks name quad legs side first; the codes keep MegaMek's front/rear-first order of unit files and saves.
+  FLL: 'Left Front Leg',
+  FRL: 'Right Front Leg',
+  RLL: 'Left Rear Leg',
+  RRL: 'Right Rear Leg',
+};
+
+const MEK_LOCATION_ABBREVIATIONS: Readonly<Partial<Record<MekLocation, string>>> = {
+  FLL: 'LFL',
+  FRL: 'RFL',
+  RLL: 'LRL',
 };
 
 /** Full display label for a canonical Mek location. */
 export function getMekLocationLabel(location: string | undefined): string | null {
   return location && isMekLocation(location) ? MEK_LOCATION_LABELS[location] : null;
+}
+
+/** Short display form of a location code, abbreviating quad legs as the rulebooks name them (LFL, RFL, LRL, RRL). */
+export function getMekLocationAbbreviation(location: string): string {
+  return isMekLocation(location) ? MEK_LOCATION_ABBREVIATIONS[location] ?? location : location;
 }
 
 // ============================================================================
@@ -61,7 +73,8 @@ export function getMekLocationLabel(location: string | undefined): string | null
  *
  * `transfersTo`  - next inward location for damage transfer when this
  *                  location's internal structure is destroyed.
- *                  `null` = terminal (CT destroyed → Mek destroyed).
+ *                  `null` = terminal: damage from a destroyed head or center
+ *                  torso does not transfer (TW and Core, Transferring Damage).
  *
  * `dependents`   - locations physically attached to this one that are
  *                  also destroyed when it is destroyed
@@ -87,7 +100,7 @@ export type MekTopology = Readonly<Partial<Record<MekLocation, LocTopology>>>;
  *       LL      RL
  */
 export const BIPED_TOPOLOGY = {
-  HD:  { transfersTo: 'CT',   dependents: [] },
+  HD:  { transfersTo: null,   dependents: [] },
   CT:  { transfersTo: null,   dependents: [] },
   RT:  { transfersTo: 'CT',   dependents: ['RA'] },
   LT:  { transfersTo: 'CT',   dependents: ['LA'] },
@@ -122,7 +135,7 @@ export const TRIPOD_TOPOLOGY = {
  *       RLL     RRL
  */
 export const QUAD_TOPOLOGY = {
-  HD:  { transfersTo: 'CT',   dependents: [] },
+  HD:  { transfersTo: null,   dependents: [] },
   CT:  { transfersTo: null,   dependents: [] },
   RT:  { transfersTo: 'CT',   dependents: ['FRL'] },
   LT:  { transfersTo: 'CT',   dependents: ['FLL'] },
@@ -159,6 +172,8 @@ export function getMekSplitPrimaryLocation(locationA: string, locationB: string)
 export const BIPED_LEG_LOCATIONS = ['LL', 'RL'] as const satisfies readonly MekLocation[];
 export const TRIPOD_LEG_LOCATIONS = ['LL', 'RL', 'CL'] as const satisfies readonly MekLocation[];
 export const QUAD_LEG_LOCATIONS = ['FLL', 'FRL', 'RLL', 'RRL'] as const satisfies readonly MekLocation[];
+export const QUAD_FRONT_LEG_LOCATIONS = ['FLL', 'FRL'] as const satisfies readonly MekLocation[];
+export const QUAD_REAR_LEG_LOCATIONS = ['RLL', 'RRL'] as const satisfies readonly MekLocation[];
 
 export const LEG_LOCATIONS: ReadonlySet<string> = new Set([
   ...TRIPOD_LEG_LOCATIONS,

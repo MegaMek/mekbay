@@ -1,128 +1,441 @@
 // Copyright (C) 2026 The MegaMek Team
 // SPDX-License-Identifier: GPL-3.0-or-later
-// Author: Drake
 
-import { Overlay } from '@angular/cdk/overlay';
-import { provideZonelessChangeDetection, signal } from '@angular/core';
+import { provideZonelessChangeDetection, signal, type WritableSignal } from '@angular/core';
 import { TestBed } from '@angular/core/testing';
-import { CBTForceUnit } from '../../models/cbt-force-unit.model';
-import type { CrewMemberState } from '../../models/crew-member.model';
-import type { ForceViewerBVPVDisplay } from '../../models/options.model';
-import type { CrewStateDefinition } from '../../models/rules/unit-type-rules';
-import { VEHICLE_CREW_STATE_DISPLAYS } from '../../models/rules/vehicle-rules';
+import { Subject } from 'rxjs';
+import type { CBTForce } from '../../models/cbt-force.model';
+import { GameSystem } from '../../models/common.model';
+import { CBTForceMember } from '../../models/force-member.model';
+import {
+    TestBipedMekEntity,
+    TestTankEntity,
+    TestProtoMekEntity,
+} from '../../models/entity/testing/test-entities';
+import { addTestEquipment } from '../../models/entity/testing/test-mounted-equipment';
+import { createEquipment, WeaponEquipment } from '../../models/equipment.model';
+import type { ForceUnit } from '../../models/force-unit.model';
+import { buildMekRuntimeIndex } from '../../models/runtime/mek-runtime-index';
+import { projectMekTurnPanel } from '../../models/runtime/mek-turn-panel';
+import { createDirectMekRuntimeFixture } from '../../models/runtime/testing/direct-mek-runtime-fixture';
+import { createNonMekRuntimeForTest } from '../../models/runtime/testing/unit-runtime-owner-fixture';
+import { CORE_2026_RULESET } from '../../models/cbt-ruleset.model';
+import { asUnitUuid } from '../../services/unit-catalog/unit-catalog.types';
+import { createUnitTagEcmCapabilitySummary } from '../../models/unit-capability-summary.model';
 import { OptionsService } from '../../services/options.service';
-import { SpriteStorageService } from '../../services/sprite-storage.service';
+import { projectRuntimePendingNotification } from '../unit-notification-badges/unit-notification-badges.component';
 import { UnitBlockComponent } from './unit-block.component';
 
-describe('UnitBlockComponent', () => {
-    const options = signal({
-        trackPhaseAndTurn: true,
-        unitDisplayName: 'chassisModel',
-        forceViewerBVPVDisplay: 'both' as ForceViewerBVPVDisplay,
-    });
+describe('UnitBlockComponent capability badges', () => {
+    let runtimeOptions: WritableSignal<{ readonly trackPhaseAndTurn: boolean }>;
 
-    beforeEach(() => {
-        options.update(current => ({ ...current, forceViewerBVPVDisplay: 'both' }));
-        TestBed.configureTestingModule({
+    beforeEach(async () => {
+        runtimeOptions = signal({ trackPhaseAndTurn: true });
+        await TestBed.configureTestingModule({
             imports: [UnitBlockComponent],
             providers: [
                 provideZonelessChangeDetection(),
-                {
-                    provide: OptionsService,
-                    useValue: { options },
-                },
-                { provide: Overlay, useValue: {} },
-                {
-                    provide: SpriteStorageService,
-                    useValue: { loading: signal(false) },
-                },
+                { provide: OptionsService, useValue: {
+                    options: runtimeOptions,
+                    cbtAutomationMode: () => 'ask',
+                } },
             ],
-        });
+        }).compileComponents();
     });
 
-    it('displays rounded pre-skill BV and collapses matching adjusted and base values', () => {
-        const adjustedBv = signal(2_251);
-        const forceUnit = Object.create(CBTForceUnit.prototype) as CBTForceUnit;
-        Object.assign(forceUnit, {
-            getBv: adjustedBv,
-            getPreSkillBv: signal(2_250.6),
-            baseAdjustedBv: signal(2_251),
+    it('keeps every crew station visible and displays effective rather than stored fixed piloting', () => {
+        const person = { id: 'pilot', name: 'Morgan', gunnery: 2, piloting: 2 };
+        const occupant = signal<typeof person | undefined>(person);
+        const force = {
+            changed: new Subject<void>(),
+            sessionChanged: new Subject<void>(),
+            getUnitCrewPolicy: () => ({ positions: [{ positionId: 'crew:0', label: 'Pilot' },
+                { positionId: 'crew:1', label: 'Gunner' }] }),
+            getAssignedPerson: (_unitId: string, positionId: string) => positionId === 'crew:0' ? occupant() : undefined,
+        } as unknown as CBTForce;
+        const fixture = TestBed.createComponent(UnitBlockComponent);
+        fixture.componentRef.setInput('forceUnit', new CBTForceMember('proto', force, new TestProtoMekEntity()));
+        expect(fixture.componentInstance.crewBadges().map(badge => [badge.positionId, badge.skills, badge.vacant]))
+            .toEqual([['crew:0', '2/5', false], ['crew:1', '—', true]]);
+        expect(person.piloting).toBe(2);
+        occupant.set(undefined);
+        expect(fixture.componentInstance.crewBadges().every(badge => badge.vacant)).toBeTrue();
+        fixture.destroy();
+    });
+
+    it('reads TAG and ECM display data only through the immutable unit summary', () => {
+        const summary = createUnitTagEcmCapabilitySummary({
+            tag: { label: 'LTAG', unavailable: true },
+            ecm: { mode: 'ecm-ghost', unavailable: false },
         });
+        const getTagEcmCapabilitySummary = jasmine.createSpy('getTagEcmCapabilitySummary')
+            .and.returnValue(summary);
+        const forceUnit = { getTagEcmCapabilitySummary } as unknown as ForceUnit;
         const fixture = TestBed.createComponent(UnitBlockComponent);
         fixture.componentRef.setInput('forceUnit', forceUnit);
 
-        expect(fixture.componentInstance.displayedBvPv()).toBe('2,251');
-
-        adjustedBv.set(2_971);
-        expect(fixture.componentInstance.displayedBvPv()).toBe('2,971 (2,251)');
-
-        options.update(current => ({ ...current, forceViewerBVPVDisplay: 'base' }));
-        expect(fixture.componentInstance.displayedBvPv()).toBe('2,251');
-
-        options.update(current => ({ ...current, forceViewerBVPVDisplay: 'adjusted' }));
-        expect(fixture.componentInstance.displayedBvPv()).toBe('2,971');
+        expect(fixture.componentInstance.tagDisplay()).toBe(summary.tag!);
+        expect(fixture.componentInstance.ecmDisplay()).toBe(summary.ecm!);
+        expect(getTagEcmCapabilitySummary).toHaveBeenCalledTimes(1);
     });
 
-    it('tracks phase-dirty state independently from assigned movement', () => {
-        const dirtyPhase = signal(false);
-        const moveMode = signal<'walk' | null>(null);
-        const defenderModifier = signal(4);
-        const forceUnit = Object.create(CBTForceUnit.prototype) as CBTForceUnit;
-        Object.assign(forceUnit, {
-            turnState: () => ({
-                dirtyPhase,
-                moveMode,
-                getTotalTargetModifierAsDefender: () => ({ modifier: defenderModifier() }),
-            }),
-        });
-
+    it('omits both badges when the authority reports no capabilities', () => {
+        const forceUnit = {
+            getTagEcmCapabilitySummary: () => createUnitTagEcmCapabilitySummary({}),
+        } as unknown as ForceUnit;
         const fixture = TestBed.createComponent(UnitBlockComponent);
         fixture.componentRef.setInput('forceUnit', forceUnit);
 
-        expect(fixture.componentInstance.dirty()).toBeFalse();
-        expect(fixture.componentInstance.movementIndicator()).toBeNull();
-
-        moveMode.set('walk');
-        expect(fixture.componentInstance.dirty()).toBeFalse();
-        expect(fixture.componentInstance.movementIndicator()).toEqual({ color: 'walk', letter: 'W4' });
-
-        defenderModifier.set(2);
-        expect(fixture.componentInstance.movementIndicator()).toEqual({ color: 'walk', letter: 'W2' });
-
-        dirtyPhase.set(true);
-        moveMode.set(null);
-        expect(fixture.componentInstance.dirty()).toBeTrue();
-        expect(fixture.componentInstance.movementIndicator()).toBeNull();
+        expect(fixture.componentInstance.tagDisplay()).toBeUndefined();
+        expect(fixture.componentInstance.ecmDisplay()).toBeNull();
     });
 
-    it('includes crew state and one aggregated NARC badge alongside unit conditions', () => {
-        const forceUnit = Object.create(CBTForceUnit.prototype) as CBTForceUnit;
-        const crewStates: CrewMemberState[] = ['stunned', 'stunned'];
-        Object.assign(forceUnit, {
-            getConditions: () => new Map([['jammed', undefined]]),
-            getCrewMembers: () => crewStates.map(state => ({ getState: () => state })),
-            getLocationCondition: (location: string, condition: string) =>
-                condition === 'narc' && (location === 'LT' || location === 'RT'),
-        });
-        Object.defineProperty(forceUnit, 'getLocations', {
-            value: () => ({ LT: {}, CT: {}, RT: {} }),
-        });
-        Object.defineProperty(forceUnit, 'rules', {
-            value: {
-                crewStateDefinition: (state: CrewMemberState): CrewStateDefinition | undefined =>
-                    VEHICLE_CREW_STATE_DISPLAYS.find(definition => definition.key === state),
-                locationConditionControls: [{ key: 'narc', label: 'NARC', color: '#f00', counted: true }],
+    it('projects CBT capability badges from Entity equipment and runtime state', () => {
+        const changed = new Subject<void>();
+        const entity = new TestBipedMekEntity();
+        addTestEquipment(entity, new WeaponEquipment({
+            id: 'Test Light TAG',
+            name: 'Test Light TAG',
+            type: 'weapon',
+            flags: ['F_TAG'],
+            weapon: { ammoType: 'NA', damage: 0, rackSize: 0, ranges: [3, 6, 9, 12] },
+        }));
+        addTestEquipment(entity, createEquipment({
+            id: 'Test ECM', name: 'Test ECM', type: 'misc', flags: ['F_ECM'],
+        }));
+        const index = buildMekRuntimeIndex(entity);
+        const getUnitSnapshot = jasmine.createSpy('getUnitSnapshot').and.returnValue({
+            index,
+            query: {
+                destroyed: () => false,
+                hasCondition: () => false,
+                componentStatus: () => 'available',
+                componentMode: () => undefined,
             },
         });
-
+        const force = { changed, sessionChanged: new Subject<void>(), getUnitSnapshot } as unknown as CBTForce;
+        const member = new CBTForceMember(
+            'unit:classic-capability-card',
+            force,
+            entity,
+        );
         const fixture = TestBed.createComponent(UnitBlockComponent);
-        fixture.componentRef.setInput('forceUnit', forceUnit);
+        fixture.componentRef.setInput('forceUnit', member);
+
+        expect(fixture.componentInstance.tagDisplay()).toEqual({ label: 'LTAG', unavailable: false });
+        expect(fixture.componentInstance.ecmDisplay()).toEqual({ mode: 'ecm', unavailable: false });
+        expect(getUnitSnapshot).toHaveBeenCalledWith(member.id);
+        fixture.destroy();
+    });
+
+    it('projects pending End Phase PSRs into the unit-card badge host', () => {
+        runtimeOptions.set({ trackPhaseAndTurn: false });
+        const runtime = createDirectMekRuntimeFixture('total-warfare');
+        const foot = [...runtime.index.slots.values()].find(candidate =>
+            runtime.index.locations.get(candidate.locationId)?.code === 'LL'
+            && candidate.componentIds.some(componentId => {
+                const component = runtime.index.components.get(componentId);
+                return component?.kind === 'system' && component.systemType === 'Foot Actuator';
+            }))!;
+        expect(runtime.instance.dispatch({
+            type: 'hit-critical',
+            slotId: foot.id,
+            hits: 1,
+            target: 'pending',
+        }).accepted).toBeTrue();
+        const changed = new Subject<void>();
+        const force = {
+            changed,
+            sessionChanged: new Subject<void>(),
+            getUnitSnapshot: (instanceId: string) => ({
+                instanceId,
+                entity: runtime.entity,
+                index: runtime.index,
+                sourceRef: runtime.identity,
+                ruleset: runtime.instance.ruleset(),
+                crewAssignment: runtime.instance.query().crewAssignment(),
+                state: runtime.instance.snapshot(),
+                query: runtime.instance.query(),
+            }),
+        } as unknown as CBTForce;
+        const member = new CBTForceMember('unit:pending-card', force, runtime.entity);
+        const fixture = TestBed.createComponent(UnitBlockComponent);
+        fixture.componentRef.setInput('forceUnit', member);
+
+        expect(projectRuntimePendingNotification(
+            fixture.componentInstance.notificationSnapshot(),
+        )).toEqual(jasmine.objectContaining({ kind: 'psr', count: 1 }));
+        fixture.destroy();
+    });
+
+    it('includes computed and transient V2 conditions in the unit-card badges', () => {
+        const changed = new Subject<void>();
+        const force = {
+            changed,
+            sessionChanged: new Subject<void>(),
+            getMekUnitStatusSnapshot: () => ({
+                conditions: ['prone', 'immobile', 'crippled', 'spotting'],
+                crew: [{ effectiveState: 'unconscious' }],
+                hasNarc: true,
+            }),
+            getMekTurnPanelSnapshot: () => ({
+                conditions: ['prone', 'immobile'],
+                turn: { spotting: true },
+            }),
+        } as unknown as CBTForce;
+        const member = new CBTForceMember(
+            'unit:condition-card',
+            force,
+            new TestBipedMekEntity(),
+        );
+        const fixture = TestBed.createComponent(UnitBlockComponent);
+        fixture.componentRef.setInput('forceUnit', member);
+
+        expect(fixture.componentInstance.activeConditions().map(condition => condition.key)).toEqual([
+            'immobile',
+            'prone',
+            'crippled',
+            'spotting',
+            'crew-unconscious',
+            'location-narc',
+        ]);
+        fixture.destroy();
+    });
+
+    it('projects the declared movement mode with the complete defender modifier', () => {
+        const changed = new Subject<void>();
+        const force = {
+            changed,
+            sessionChanged: new Subject<void>(),
+            getMekTurnPanelSnapshot: () => ({
+                movementState: {
+                    movement: { mode: 'walk', distance: 1, boosterComponentIds: [] },
+                },
+                defenseModifierTotal: { modifier: 0 },
+            }),
+        } as unknown as CBTForce;
+        const member = new CBTForceMember(
+            'unit:movement-card',
+            force,
+            new TestBipedMekEntity(),
+        );
+        const fixture = TestBed.createComponent(UnitBlockComponent);
+        fixture.componentRef.setInput('forceUnit', member);
+
+        expect(fixture.componentInstance.movementIndicator()).toEqual({
+            color: 'walk',
+            letter: 'W0',
+        });
+        fixture.destroy();
+    });
+
+    it('follows a vehicle movement badge through its runtime changes', () => {
+        const changed = new Subject<readonly string[] | null>();
+        const entity = new TestTankEntity();
+        entity.uuid.set(asUnitUuid('019f6767-0dcb-7bb8-992f-aef08202f5e1'));
+        entity.originalWalkMP.set(8);
+        const runtime = createNonMekRuntimeForTest('unit:vehicle-movement-card', {
+            entity: entity.uuid(),
+            ruleset: CORE_2026_RULESET,
+            initialStateProfile: { profileId: 'pristine-non-mek' },
+        }, entity, CORE_2026_RULESET);
+        const force = {
+            changed,
+            sessionChanged: new Subject<void>(),
+            gameSystem: GameSystem.CBT,
+            readOnly: () => false,
+            getUnitDestroyed: () => false,
+            getUnitCrewAssignment: () => ({ positions: [] }),
+            getUnitCrewPolicy: () => ({ positions: [] }),
+            getUnitAdjustedBattleValue: () => 0,
+            getUnitAdjustedPreSkillBattleValue: () => 0,
+            getUnitCurrentBaseBattleValue: () => 0,
+            getUnitPristineBattleValue: () => 0,
+            getUnitTagBattleValue: () => 0,
+            getUnitC3BattleValue: () => 0,
+            getUnitExternalStoresBattleValue: () => 0,
+            getUnitSkillBattleValue: () => 0,
+            getC3State: () => 'none',
+            isUnitCommander: () => false,
+            getUnitConditions: () => [],
+            getNonMekRecordSheetSnapshot: () => ({ unitType: 'Tank', crew: [] }),
+            getMekTurnPanelSnapshot: () => null,
+            getUnitSnapshot: () => ({
+                entity, index: runtime.getIndex(), state: runtime.snapshot(), query: runtime.query(),
+                ruleset: CORE_2026_RULESET,
+            }),
+        } as unknown as CBTForce;
+        const member = new CBTForceMember('unit:vehicle-movement-card', force, entity);
+        const fixture = TestBed.createComponent(UnitBlockComponent);
+        fixture.componentRef.setInput('forceUnit', member);
+        fixture.detectChanges();
+        const flank = (distance: number) => {
+            expect(runtime.dispatch({
+                type: 'set-movement', movement: { mode: 'run', distance, boosterComponentIds: [] },
+            }).accepted).toBeTrue();
+            changed.next([member.id]);
+        };
+
+        flank(4);
+        expect(fixture.componentInstance.movementIndicator()).toEqual({ color: 'run', letter: 'R1' });
+        flank(6);
+        expect(fixture.componentInstance.movementIndicator()).toEqual({ color: 'run', letter: 'R2' });
+        fixture.destroy();
+    });
+
+    it('clears the dirty marker after End Phase while retaining the declared movement', () => {
+        const runtime = createDirectMekRuntimeFixture();
+        const projectPanel = () => projectMekTurnPanel(
+            runtime.entity, runtime.index, runtime.instance.ruleset(), runtime.instance.query(),
+        );
+        const panel = signal(projectPanel());
+        const force = {
+            getMekTurnPanelSnapshot: panel,
+            getUnitSnapshot: () => {
+                panel();
+                return { query: runtime.instance.query() };
+            },
+        } as unknown as CBTForce;
+        const fixture = TestBed.createComponent(UnitBlockComponent);
+        fixture.componentRef.setInput('forceUnit', new CBTForceMember('unit:movement-dirty', force, runtime.entity));
+
+        expect(fixture.componentInstance.dirty()).toBeFalse();
+        expect(runtime.instance.dispatch({
+            type: 'declare-mek-movement',
+            declaration: {
+                mode: 'walk', distance: 0, boosterComponentIds: [],
+            },
+        }).accepted).toBeTrue();
+        panel.set(projectPanel());
+        expect(fixture.componentInstance.dirty()).toBeTrue();
+
+        expect(runtime.instance.dispatch({ type: 'end-phase' }).accepted).toBeTrue();
+        panel.set(projectPanel());
+        expect(fixture.componentInstance.dirty()).toBeFalse();
+        expect(fixture.componentInstance.movementIndicator()).toEqual({ color: 'walk', letter: 'W0' });
+
+        const face = [...runtime.index.armorFaces.values()].find(candidate => candidate.maximumPoints > 0)!;
+        expect(runtime.instance.dispatch({
+            type: 'damage-armor', faceId: face.id, amount: 1, target: 'pending',
+        }).accepted).toBeTrue();
+        panel.set(projectPanel());
+        expect(fixture.componentInstance.dirty()).toBeTrue();
+        runtimeOptions.set({ trackPhaseAndTurn: false });
+        expect(fixture.componentInstance.dirty()).toBeFalse();
+        fixture.destroy();
+    });
+
+    it('shows one direct Entity vehicle crew-state badge', () => {
+        const changed = new Subject<void>();
+        const force = {
+            changed,
+            sessionChanged: new Subject<void>(),
+            getUnitConditions: () => ['jammed'],
+            getNonMekRecordSheetSnapshot: () => ({
+                unitType: 'Tank',
+                crew: [
+                    { effectiveState: 'stunned' },
+                    { effectiveState: 'stunned' },
+                ],
+            }),
+        } as unknown as CBTForce;
+        const member = new CBTForceMember(
+            'unit:vehicle-condition-card',
+            force,
+            new TestTankEntity(),
+        );
+        const fixture = TestBed.createComponent(UnitBlockComponent);
+        fixture.componentRef.setInput('forceUnit', member);
 
         expect(fixture.componentInstance.activeConditions()).toEqual([
             { key: 'jammed', label: 'JAMMED', color: '#ff6be6' },
             { key: 'crew-stunned', label: 'STUNNED', color: '#ff5ce6' },
-            { key: 'location-narc', label: 'NARC', color: '#f00' },
         ]);
+        fixture.destroy();
     });
 
+    it('ignores runtime changes scoped to another unit', () => {
+        const changed = new Subject<readonly string[] | null>();
+        const getNonMekRecordSheetSnapshot = jasmine.createSpy('getNonMekRecordSheetSnapshot')
+            .and.returnValue({ unitType: 'Tank', crew: [] });
+        const force = {
+            changed,
+            sessionChanged: new Subject<void>(),
+            gameSystem: GameSystem.CBT,
+            readOnly: () => false,
+            getUnitDestroyed: () => false,
+            getUnitCrewAssignment: () => ({ positions: [] }),
+            getUnitCrewPolicy: () => ({ positions: [] }),
+            getUnitAdjustedBattleValue: () => 0,
+            getUnitAdjustedPreSkillBattleValue: () => 0,
+            getUnitCurrentBaseBattleValue: () => 0,
+            getUnitPristineBattleValue: () => 0,
+            getUnitTagBattleValue: () => 0,
+            getUnitC3BattleValue: () => 0,
+            getUnitExternalStoresBattleValue: () => 0,
+            getUnitSkillBattleValue: () => 0,
+            getC3State: () => 'none',
+            getUnitSnapshot: () => null,
+            isUnitCommander: () => false,
+            getUnitConditions: () => [],
+            getNonMekRecordSheetSnapshot,
+        } as unknown as CBTForce;
+        const member = new CBTForceMember(
+            'unit:scoped-card',
+            force,
+            new TestTankEntity(),
+        );
+        const fixture = TestBed.createComponent(UnitBlockComponent);
+        fixture.componentRef.setInput('forceUnit', member);
+        fixture.detectChanges();
+        fixture.componentInstance.activeConditions();
+        const initialCalls = getNonMekRecordSheetSnapshot.calls.count();
+
+        changed.next(['unit:other']);
+        fixture.detectChanges();
+        fixture.componentInstance.activeConditions();
+        expect(getNonMekRecordSheetSnapshot.calls.count()).toBe(initialCalls);
+
+        changed.next([member.id]);
+        fixture.detectChanges();
+        fixture.componentInstance.activeConditions();
+        expect(getNonMekRecordSheetSnapshot.calls.count()).toBe(initialCalls + 1);
+
+        changed.next(null);
+        fixture.detectChanges();
+        fixture.componentInstance.activeConditions();
+        expect(getNonMekRecordSheetSnapshot.calls.count()).toBe(initialCalls + 2);
+        fixture.destroy();
+    });
+});
+
+
+describe('UnitBlockComponent name wrapping', () => {
+    it('moves the whole pilot name below the chassis when the row is too narrow', async () => {
+        await TestBed.configureTestingModule({
+            imports: [UnitBlockComponent],
+            providers: [{ provide: OptionsService, useValue: { options: signal({ unitDisplayName: 'both' }) } }],
+        }).compileComponents();
+        const fixture = TestBed.createComponent(UnitBlockComponent);
+        fixture.componentInstance.unit = signal({ name: 'King Crab', chassis: 'King Crab', model: '', role: '', tons: 100 });
+        fixture.componentInstance.alias = signal('Pilot Name');
+        fixture.detectChanges();
+        const line = fixture.nativeElement.querySelector('.unit-name-line') as HTMLElement;
+        const chassis = line.querySelector('.chassis') as HTMLElement;
+        const pilot = line.querySelector('.unit-alias') as HTMLElement;
+        line.style.width = '400px';
+        const chassisWidth = chassis.getBoundingClientRect().width;
+        const pilotWidth = pilot.getBoundingClientRect().width;
+        const lineHeight = chassis.getBoundingClientRect().height;
+        expect(Math.abs(pilot.getBoundingClientRect().top - chassis.getBoundingClientRect().top)).toBeLessThan(3);
+
+        line.style.width = Math.ceil(Math.max(chassisWidth, pilotWidth) + 2) + 'px';
+        const chassisBounds = chassis.getBoundingClientRect();
+        const pilotBounds = pilot.getBoundingClientRect();
+        expect(pilotBounds.top).toBeGreaterThanOrEqual(chassisBounds.bottom);
+        expect(Math.abs(pilotBounds.left - chassisBounds.left)).toBeLessThan(1);
+        expect(chassisBounds.height).toBe(lineHeight);
+        expect(pilotBounds.width).toBeCloseTo(pilotWidth, 0);
+        fixture.destroy();
+    });
 });

@@ -62,7 +62,7 @@ export interface LoadedOrganization extends SerializedOrganization {
 /**
  * Enriched organization entry used for display in the load dialog.
  */
-export class LoadOrganizationEntry {
+export interface LoadOrganizationEntry {
     organizationId: string;
     name: string;
     timestamp: number;
@@ -72,16 +72,4 @@ export class LoadOrganizationEntry {
     cloud: boolean;
     local: boolean;
     owned: boolean;
-
-    constructor(data: Partial<LoadOrganizationEntry>) {
-        this.organizationId = data.organizationId ?? '';
-        this.name = data.name ?? '';
-        this.timestamp = data.timestamp ?? 0;
-        this.factionId = data.factionId;
-        this.forceCount = data.forceCount ?? 0;
-        this.groupCount = data.groupCount ?? 0;
-        this.cloud = data.cloud ?? false;
-        this.local = data.local ?? false;
-        this.owned = data.owned ?? true;
-    }
 }

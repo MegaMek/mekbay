@@ -1,5 +1,7 @@
 // Copyright (C) 2026 The MegaMek Team
 // SPDX-License-Identifier: GPL-3.0-or-later
+
+import { interiorBuildingDistance } from './rules/infantry-building-damage';
 // Author: Drake
 
 import type { MotiveModes } from './motiveModes.model';
@@ -9,10 +11,10 @@ import {
     resolveUnitWaterState,
     type UnitBuildingCoverState,
     type UnitBuildingLevel,
+    type UnitHeight,
     type UnitWaterDepth,
     type UnitWaterState,
 } from './unit-cover.model';
-import type { UnitHeight } from './unit-summary.model';
 
 export const TN_SKIDDING_MODIFIER = 2;
 export const TN_BATTLE_ARMOR_MODIFIER = 1;
@@ -118,7 +120,9 @@ export const TN_TARGET_MOVEMENT_BRACKETS: readonly TnTargetMovementBracket[] = [
 
 export type TnInterveningWoods = 'none' | 'light1' | 'light2';
 export type TnTargetHexCover = 'none' | 'light' | 'heavy';
-export type TnAttackDirection = 'front' | 'left' | 'rear' | 'right';
+export type TnAttackDirection = 'front' | 'left' | 'rear' | 'right' | 'front-left' | 'front-right' | 'rear-left' | 'rear-right' | 'above' | 'below';
+/** A successful TAG designation is reported manually for the particular spotter and its target. */
+export type SpottingMode = boolean | 'tag';
 export type TnSpotterMoveMode = 'stationary' | 'walk' | 'run' | 'jump';
 export type TnRangeBracket = 'short' | 'medium' | 'long' | 'extreme';
 
@@ -202,7 +206,17 @@ export interface TnTargetNumberCalculatorState {
     partialCover?: boolean;
     waterDepth?: UnitWaterDepth;
     buildingCover?: UnitBuildingLevel;
+    buildingCf?: number;
+    levelsBelowRoof?: number;
+    shelteringBuilding?: import('./unit-cover.model').ShelteringBuilding;
+    infantryBuildingType?: import('./rules/infantry-building-damage').InfantryBuildingType;
+    insideTargetBuilding?: true;
+    angelEcm?: boolean;
     attackDirection?: TnAttackDirection;
+    /** Target hex base level minus the attacker's hex base level. */
+    targetLevelDifference?: number;
+    /** Identifies a rotorcraft when the target selection combines VTOL and WiGE. */
+    vtol?: boolean;
     indirectFire?: boolean;
     secondaryTarget?: boolean;
     secondaryTargetSideBack?: boolean;
@@ -211,11 +225,18 @@ export interface TnTargetNumberCalculatorState {
     /** Applies the scenario/unit-size Large Target to-hit modifier. */
     largeTarget?: boolean;
     spotterMoveMode?: TnSpotterMoveMode;
-    spotterDeclaredAttacks?: boolean;
+    /** The spotter attacked in the Weapon Attack Phase; 'tag' also identifies it as this target's designator. */
+    spotterDeclaredAttacks?: SpottingMode;
     narcAboveWater?: boolean;
     narcUnderwater?: boolean;
     tagged?: boolean;
     ecmShielded?: boolean;
+    /** Infantry is swarming the target; it cannot be swarmed again (TW p. 220). No to-hit modifier of its own. */
+    swarmed?: boolean;
+    /** The target is infantry swarming a unit. No to-hit modifier of its own. */
+    swarming?: boolean;
+    /** Battle armor with magnetic claws, which make every roll to remove it 1 harder (TW p. 222). */
+    magneticClaws?: boolean;
     /** Range-dependent protection supplied by an active stealth system. */
     stealth?: TnStealthState;
     /** Identifies the selected system when its profile changes with movement. */
@@ -328,15 +349,21 @@ export function resolveTnTargetWaterState(
 }
 
 export function resolveTnTargetBuildingCoverState(
-    input: Pick<TnTargetNumberCalculatorState, 'buildingCover' | 'targetHeight' | 'largeTarget' | 'prone'> & { unitType?: TnTargetUnitType },
+    input: Pick<TnTargetNumberCalculatorState, 'buildingCover' | 'targetHeight' | 'largeTarget' | 'prone' | 'levelsBelowRoof'> & { unitType?: TnTargetUnitType },
+    rules: CBTGameRules = CORE_2026_GAME_RULES,
 ): UnitBuildingCoverState {
+    // TW p. 171: only a standing Mek immediately below the roof receives partial cover.
+    if (rules.id === 'total-warfare') {
+        return input.buildingCover && (input.levelsBelowRoof !== undefined ? input.levelsBelowRoof === 1 : input.buildingCover === 'building-1') && !input.prone && (input.unitType ?? 'mek-biped').startsWith('mek-')
+            ? { effect: 'partial', modifier: 1 } : { effect: 'none', modifier: 0 };
+    }
     return resolveUnitBuildingCoverState(
         input.buildingCover,
         resolveTnTargetHeight(input),
     );
 }
 
-function resolveTnTargetHeight(
+export function resolveTnTargetHeight(
     input: Pick<TnTargetNumberCalculatorState, 'targetHeight' | 'largeTarget' | 'prone'> & { unitType?: TnTargetUnitType },
 ): UnitHeight {
     const isMek = input.unitType?.startsWith('mek-') === true;
@@ -395,11 +422,20 @@ export function stealthDisallowsSecondaryTarget(
         || (!!stealth && typeof stealth === 'object' && stealth.secondaryTargetRestricted === true);
 }
 
-export function getIndirectFireModifier(indirectFire: boolean | null | undefined, spotterMoveMode: TnSpotterMoveMode | null | undefined, spotterDeclaredAttacks: boolean | null | undefined): number {
+function spotterAttackModifier(declaration: SpottingMode | null | undefined, tagged: boolean | undefined): number {
+    return declaration === true || (declaration === 'tag' && !tagged) ? 1 : 0;
+}
+
+export function getIndirectFireModifier(
+    indirectFire: boolean | null | undefined,
+    spotterMoveMode: TnSpotterMoveMode | null | undefined,
+    spotterDeclaredAttacks: SpottingMode | null | undefined,
+    tagged?: boolean,
+): number {
     if (!indirectFire) return 0;
     return TN_INDIRECT_FIRE_MODIFIER
         + getDefaultAttackerMovementModifier(spotterMoveMode ?? 'stationary')
-        + (spotterDeclaredAttacks ? 1 : 0);
+        + spotterAttackModifier(spotterDeclaredAttacks, tagged);
 }
 
 export function calculateTargetTnModifier(
@@ -423,7 +459,8 @@ export function calculateTargetTnModifierBreakdown(
     const staticTarget = isStaticTargetType(input.unitType);
     const prone = input.prone ?? false;
     const waterState = resolveTnTargetWaterState(input);
-    const buildingCoverState = resolveTnTargetBuildingCoverState(input);
+    const buildingCoverState = resolveTnTargetBuildingCoverState(input, gameRules);
+    const interior = gameRules.id === 'total-warfare' && input.insideTargetBuilding && input.buildingCover;
     const immobile = isTnTargetImmobile(input.unitType, input.immobile);
     const terrainTarget = isTerrainTargetType(input.unitType);
     const aerospaceTarget = input.unitType === 'aero';
@@ -449,8 +486,9 @@ export function calculateTargetTnModifierBreakdown(
     }
     add('prone', range <= ADJACENT_RANGE ? 'Prone (adjacent)' : 'Prone', !staticTarget && prone ? getTargetProneModifier(range) : 0);
     add('immobile', 'Immobile', immobile ? TN_IMMOBILE : 0);
+    // Not the target's own terrain, so semi-guided fire does not reduce it (Core p.193); the target hex's cover and
+    // its water or building partial cover do count as terrain (Core p.66)
     add('intervening-woods', 'Intervening Woods', getInterveningWoodsModifier(input.interveningWoods), {
-        adjustmentGroup: 'terrain',
         ignoredByNarcGuidance: true,
         ignoredBySemiGuidedGuidance: true,
     });
@@ -467,14 +505,13 @@ export function calculateTargetTnModifierBreakdown(
             });
         }
     }
-    add('building-cover', 'Heavy Cover (building)', !staticTarget && buildingCoverState.effect === 'heavy'
-        ? buildingCoverState.modifier
-        : 0, {
+    add('building-cover', interior ? 'Interior building hexes and levels' : 'Heavy Cover (building)', interior
+        ? interiorBuildingDistance(range, input.targetLevelDifference) : !staticTarget && buildingCoverState.effect === 'heavy' ? buildingCoverState.modifier : 0, {
             adjustmentGroup: 'terrain',
             ...(gameRules.narcIndirectFireIgnoresAllTerrain && { ignoredByNarcGuidance: true }),
             ignoredBySemiGuidedGuidance: true,
         });
-    const specialPartialCover = waterState.partiallyUnderwater || buildingCoverState.effect === 'partial';
+    const specialPartialCover = waterState.partiallyUnderwater || (!interior && buildingCoverState.effect === 'partial');
     const ordinaryPartialCoverAllowed = input.indirectFire
         ? gameRules.indirectFireUsesSpotterPartialCover
         : range > ADJACENT_RANGE;
@@ -501,7 +538,7 @@ export function calculateTargetTnModifierBreakdown(
         partialCoverSource,
         adjustmentGroup: partialCoverSource === 'manual' ? 'partial-cover' : 'terrain',
         ...(gameRules.narcIndirectFireIgnoresAllTerrain && { ignoredByNarcGuidance: true }),
-        ignoredBySemiGuidedGuidance: true,
+        ignoredBySemiGuidedGuidance: gameRules.semiGuidedIndirectIgnoresPartialCover,
     });
     add('secondary-target', 'Secondary Target', input.secondaryTarget ? TN_SECONDARY_TARGET_MODIFIER : 0);
     add('secondary-target-side-back', 'Secondary Target (side/back)', gameRules.supportsSecondaryTargetSideBack && !input.secondaryTarget && input.secondaryTargetSideBack
@@ -528,7 +565,9 @@ export function calculateTargetTnModifierBreakdown(
             ignoredBySemiGuidedGuidance: true,
         } as const;
         add('spotter-movement', spotterMoveLabel, spotterMovementModifier, ignoredSpotterModifier);
-        add('spotter-declared-attack', 'Spotter Declared Attack', input.spotterDeclaredAttacks ? 1 : 0, ignoredSpotterModifier);
+        add('spotter-declared-attack', 'Spotter Declared Attack', spotterAttackModifier(
+            input.spotterDeclaredAttacks, input.tagged && gameRules.allowsTagDesignation(input.unitType),
+        ), ignoredSpotterModifier);
     }
 
     return breakdown;
@@ -537,6 +576,8 @@ export function calculateTargetTnModifierBreakdown(
 export function getDefaultAttackerMovementModifier(moveMode: MotiveModes | null | undefined): number {
     switch (moveMode) {
         case 'walk': return 1;
+        // A Mek on its Tracks moves at its Walking MP and attacks as one that walked.
+        case 'tracked': return 1;
         case 'run': return 2;
         case 'jump':
         case 'UMU': return 3;

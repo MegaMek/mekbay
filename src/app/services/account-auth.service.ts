@@ -438,8 +438,10 @@ export class AccountAuthService {
                 provider,
             });
 
-            if (!result?.success) {
-                throw new Error(result?.error || `Failed to unlink ${label}.`);
+            if (result?.['success'] !== true) {
+                throw new Error(typeof result?.['error'] === 'string'
+                    ? result['error']
+                    : `Failed to unlink ${label}.`);
             }
 
             this.toastService.showToast(`${label} unlinked`, 'success');

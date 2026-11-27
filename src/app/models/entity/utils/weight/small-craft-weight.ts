@@ -2,22 +2,22 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 // Author: Drake
 
-import { EquipmentFlag } from '../../../equipment-flags.type';
 import { AmmoEquipment, ArmorEquipment, MiscEquipment, StructureEquipment, WeaponEquipment } from '../../../equipment.model';
 import { getBayConstructionWeight, isQuartersBay } from '../../bays/bay-definitions';
 import type { SmallCraftEntity } from '../../entities/aero/small-craft-entity';
 import { ceilToHalfTon, ceilToWholeTon } from './weight-rounding';
-
-const SYSTEM_FLAGS: EquipmentFlag[] = [
-  'F_LIGHT_FERRO', 'F_HEAVY_FERRO',
-  'F_REACTIVE', 'F_REFLECTIVE', 'F_HARDENED_ARMOR', 'F_PRIMITIVE_ARMOR',
-  'F_HEAT_SINK', 'F_DOUBLE_HEAT_SINK', 'F_IS_DOUBLE_HEAT_SINK_PROTOTYPE',
-] as const;
-const ALL_CRAFT_SLOT_FLAGS: EquipmentFlag[] = ['F_CHAFF_POD', 'F_SPACE_MINE_DISPENSER', 'F_MOBILE_HPG',
-  'F_RECON_CAMERA', 'F_HIRES_IMAGER', 'F_HYPERSPECTRAL_IMAGER', 'F_INFRARED_IMAGER',
-  'F_LOOKDOWN_RADAR'] as const;
-const SMALL_CRAFT_SLOT_FLAGS: EquipmentFlag[] = ['F_BAP', 'F_WATCHDOG', 'F_ECM', 'F_ANGEL_ECM',
-  'F_EW_EQUIPMENT', 'F_BOOBY_TRAP', 'F_SENSOR_DISPENSER'] as const;
+import { smallCraftArmorPointsPerTon } from '../large-craft-armor';
+import { isConstructionSystemEquipment } from '../../../construction-equipment.model';
+import { isNavalC3Equipment } from '../../../c3-network.model';
+import { isEcmEquipment } from '../../../ecm-mode.model';
+import {
+  usesLargeCraftAerospaceSupportSlot,
+  usesSmallCraftAerospaceSupportSlot,
+} from '../../../aerospace-support-equipment.model';
+import {
+  usesLargeCraftSensorSlot,
+  usesSmallCraftSensorSlot,
+} from '../../../sensor-equipment.model';
 
 export interface SmallCraftWeightBreakdown {
   readonly structure: number; readonly engine: number; readonly controls: number;
@@ -31,15 +31,27 @@ export function calculateSmallCraftEffectiveTonnage(entity: SmallCraftEntity): n
   return calculateSmallCraftWeightBreakdown(entity).rounded;
 }
 
+export function calculateSmallCraftEngineWeight(entity: SmallCraftEntity): number {
+  const multiplier = entity.techBase() === 'Clan' ? 0.061 : entity.entityType === 'DropShip'
+    ? dropShipEngineMultiplier(entity.effectiveOriginalBuildYear()) : smallCraftEngineMultiplier(entity.effectiveOriginalBuildYear());
+  return ceilToHalfTon(entity.tonnage() * entity.originalWalkMP() * multiplier);
+}
+
+export function calculateSmallCraftMinimumHeatSinks(entity: SmallCraftEntity, engine = calculateSmallCraftEngineWeight(entity)): number {
+  const primitive = entity.uniformArmor()?.type === 'PRIMITIVE_AERO';
+  const militaryDropship = entity.entityType === 'DropShip' && entity.designType() === 'Military';
+  return entity.motiveType() === 'Spheroid'
+    ? Math.floor(Math.sqrt(engine * (primitive ? 1.3 : militaryDropship ? 6.8 : 1.6)))
+    : Math.floor(engine / (primitive ? 75 : militaryDropship ? 20 : 60));
+}
+
 export function calculateSmallCraftWeightBreakdown(entity: SmallCraftEntity): SmallCraftWeightBreakdown {
   const dropShip = entity.entityType === 'DropShip';
   const spheroid = entity.motiveType() === 'Spheroid';
   const primitive = entity.uniformArmor()?.type === 'PRIMITIVE_AERO';
   const year = entity.effectiveOriginalBuildYear();
   const structure = ceilToHalfTon(entity.structuralIntegrity() * entity.tonnage() / (spheroid ? 500 : 200));
-  const engineMultiplier = entity.techBase() === 'Clan' ? 0.061
-    : dropShip ? dropShipEngineMultiplier(year) : smallCraftEngineMultiplier(year);
-  const engine = ceilToHalfTon(entity.tonnage() * entity.originalWalkMP() * engineMultiplier);
+  const engine = calculateSmallCraftEngineWeight(entity);
   const controlYear = primitive ? year : 2500;
   const controlsRaw = entity.tonnage() * (dropShip
     ? dropShipControlMultiplier(controlYear)
@@ -51,12 +63,7 @@ export function calculateSmallCraftWeightBreakdown(entity: SmallCraftEntity): Sm
     : 1;
   const fuelTonnage = Math.round(2 * entity.fuel() / (baseFuelPpt / primitiveFactor)) / 2;
   const fuel = ceilToHalfTon(fuelTonnage * 1.02);
-  let freeHeatSinks: number;
-  if (spheroid) {
-    freeHeatSinks = Math.floor(Math.sqrt(engine * (primitive ? 1.3 : dropShip && entity.designType() === 'Military' ? 6.8 : 1.6)));
-  } else {
-    freeHeatSinks = Math.floor(engine / (primitive ? 75 : dropShip && entity.designType() === 'Military' ? 20 : 60));
-  }
+  const freeHeatSinks = calculateSmallCraftMinimumHeatSinks(entity, engine);
   const heatSinks = Math.max(0, entity.heatSinkCount() - freeHeatSinks);
   const armor = calculateArmorWeight(entity, primitive, spheroid);
   const systems = 7 * (entity.lifeboats() + entity.escapePods()) + calculateExtraSlotWeight(entity);
@@ -72,11 +79,14 @@ export function calculateSmallCraftWeightBreakdown(entity: SmallCraftEntity): Sm
       }
     } else if (equipment instanceof WeaponEquipment) {
       weapons += requireTonnage(entity, mount);
-    } else if (equipment instanceof MiscEquipment && !equipment.hasAnyFlag([...SYSTEM_FLAGS])) {
+    } else if (equipment instanceof MiscEquipment
+      && !isConstructionSystemEquipment(equipment, 'small-craft')) {
       miscellaneous += requireTonnage(entity, mount);
     }
   }
   for (const equipment of entity.implicitSystemEquipment()) {
+    // SO:AA p. 99: military craft ECM is integral to the structure, not a design component.
+    if (isEcmEquipment(equipment)) continue;
     if (!equipment.hasFixedTonnage()) {
       throw new Error(`Unable to calculate implicit equipment tonnage for ${equipment.id} on ${entity.displayName()}`);
     }
@@ -105,8 +115,14 @@ function calculateExtraSlotWeight(entity: SmallCraftEntity): number {
     const equipment = mount.equipment;
     if (!equipment || mount.location === 'Unallocated' || mount.location === 'None') continue;
     const usesSlot = equipment instanceof WeaponEquipment
-      || equipment instanceof MiscEquipment && (equipment.hasAnyFlag([...ALL_CRAFT_SLOT_FLAGS])
-        || !dropShip && equipment.hasAnyFlag([...SMALL_CRAFT_SLOT_FLAGS]));
+      || equipment instanceof MiscEquipment && (
+        usesLargeCraftAerospaceSupportSlot(equipment)
+        || usesLargeCraftSensorSlot(equipment)
+        || !dropShip && (
+          usesSmallCraftAerospaceSupportSlot(equipment)
+          || usesSmallCraftSensorSlot(equipment)
+        )
+      );
     if (!usesSlot) continue;
     let arc = mount.location;
     if (spheroid && mount.rearMounted && (arc === 'Left Side' || arc === 'Right Side')) arc += ' Aft';
@@ -115,7 +131,7 @@ function calculateExtraSlotWeight(entity: SmallCraftEntity): number {
     current.tonnage += requireTonnage(entity, mount);
     arcs.set(arc, current);
   }
-  const navalC3Multiplier = entity.equipment().some(mount => mount.equipment?.hasFlag('F_NAVAL_C3')) ? 2 : 1;
+  const navalC3Multiplier = entity.equipment().some(mount => isNavalC3Equipment(mount.equipment)) ? 2 : 1;
   let total = 0;
   for (const arc of arcs.values()) {
     const excessGroups = Math.trunc((arc.count - 1) / 12);
@@ -130,12 +146,7 @@ function calculateArmorWeight(entity: SmallCraftEntity, primitive: boolean, sphe
   let points = entity.totalArmorPoints();
   if (primitive) points = Math.ceil(points / 0.66);
   const weightedPoints = Math.max(0, points - 4 * entity.structuralIntegrity());
-  let ppt = 16 * armor.pptMultiplier;
-  if (armor.pptDropship.length) {
-    const thresholds = spheroid ? [12500, 20000, 35000, 50000, 65000] : [6000, 9500, 12500, 17500, 25000];
-    const index = thresholds.findIndex(value => entity.tonnage() < value);
-    ppt = armor.pptDropship[index < 0 ? armor.pptDropship.length - 1 : Math.min(index, armor.pptDropship.length - 1)] ?? ppt;
-  }
+  const ppt = smallCraftArmorPointsPerTon(entity.tonnage(), spheroid, armor);
   return ceilToHalfTon(weightedPoints / ppt);
 }
 function smallCraftEngineMultiplier(y: number): number { return y >= 2500 ? .065 : y >= 2400 ? .078 : y >= 2300 ? .091 : y >= 2251 ? .0975 : y >= 2201 ? .1105 : y >= 2151 ? .1235 : .143; }

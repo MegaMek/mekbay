@@ -1,11 +1,9 @@
-// Copyright (C) 2026 The MegaMek Team
 // SPDX-License-Identifier: GPL-3.0-or-later
-// Author: Drake
 
 import { DIALOG_DATA, DialogRef } from '@angular/cdk/dialog';
 import { provideZonelessChangeDetection } from '@angular/core';
 import { ComponentFixture, TestBed } from '@angular/core/testing';
-import type { CBTForceUnit } from '../../models/cbt-force-unit.model';
+
 import {
     FallingDamageDialogComponent,
     type FallingDamageDialogData,
@@ -13,35 +11,18 @@ import {
 
 describe('FallingDamageDialogComponent', () => {
     let fixture: ComponentFixture<FallingDamageDialogComponent>;
-    let persistRolls: jasmine.Spy;
 
     beforeEach(async () => {
-        persistRolls = jasmine.createSpy('setPendingFallRolls');
-        const unit = {
-            gameRules: { id: 'core2026' },
-            turnState: () => ({ cover: () => undefined }),
-            getPendingFall: () => undefined,
-            setPendingFallRolls: persistRolls,
-            getNotificationDisplayName: () => 'Atlas AS7-D',
-            hasArmorType: () => false,
-            getUnit: () => ({
-                type: 'Mek',
-                subtype: 'Biped',
-                comp: [],
-                tons: 70,
-                armorType: 'Standard',
-            }),
-        } as unknown as CBTForceUnit;
         const data: FallingDamageDialogData = {
-            unit,
-            trigger: {
-                kind: 'falling',
-                id: 'fall:test',
-                source: 'psr',
-                levelsFallen: 0,
-            },
+            unitName: 'Atlas',
+            sourceMessage: 'A failed Piloting Skill Roll caused the Mek to fall.',
+            ruleset: 'total-warfare',
+            tons: 100,
+            levelsFallen: 0,
+            waterDepth: 0,
+            hitLocationTable: 'biped',
+            floatingCriticals: true,
         };
-
         await TestBed.configureTestingModule({
             imports: [FallingDamageDialogComponent],
             providers: [
@@ -54,65 +35,36 @@ describe('FallingDamageDialogComponent', () => {
         fixture.detectChanges();
     });
 
-    it('rolls and persists orientation plus every damage-group location as one action', () => {
-        const random = spyOn(Math, 'random').and.returnValues(
-            0, 0, 0, 0.999, 0.999,
-            0.999, 0.5, 0.5, 0, 0,
-        );
+    afterEach(() => TestBed.resetTestingModule());
 
-        fixture.componentInstance.rollAllResults();
+    it('does not enable ACCEPT when only the orientation is resolved', () => {
+        fixture.componentInstance.setOrientationRoll(1);
 
-        expect(fixture.componentInstance.orientationRoll()).toBe(1);
-        expect(fixture.componentInstance.groupRows().map(row => row.hitLocationRoll)).toEqual([2, 12]);
-        expect(fixture.componentInstance.groupRows().every(row => row.result?.location !== null)).toBeTrue();
+        expect(fixture.componentInstance.orientation()).not.toBeNull();
+        expect(fixture.componentInstance.groupRows().every(row => row.result === null)).toBeTrue();
+        expect(fixture.componentInstance.allResolved()).toBeFalse();
+    });
+
+    it('enables ACCEPT after every damage group has a location', () => {
+        fixture.componentInstance.rollAllResults(() => 0);
+
         expect(fixture.componentInstance.allResolved()).toBeTrue();
-        expect(persistRolls).toHaveBeenCalled();
-
-        fixture.componentInstance.rollAllResults();
-
-        expect(fixture.componentInstance.orientationRoll()).toBe(6);
-        expect(fixture.componentInstance.groupRows().map(row => row.hitLocationRoll)).toEqual([8, 2]);
-        expect(random).toHaveBeenCalledTimes(10);
+        expect(fixture.componentInstance.groupRows().every(row => row.result?.location)).toBeTrue();
     });
 
-    it('rolls only orientation from the orientation section button', () => {
-        fixture.componentInstance.setOrientationRoll(3);
-        fixture.componentInstance.setHitLocationRoll(0, 5);
-        fixture.componentInstance.setHitLocationRoll(1, 9);
-        persistRolls.calls.reset();
-        spyOn(Math, 'random').and.returnValue(0.999);
-
-        (fixture.nativeElement as HTMLElement)
-            .querySelector<HTMLButtonElement>('.orientation-roll-button')!.click();
-
-        expect(fixture.componentInstance.orientationRoll()).toBe(6);
-        expect(fixture.componentInstance.groupRows().map(row => row.hitLocationRoll)).toEqual([5, 9]);
-        expect(persistRolls).toHaveBeenCalledTimes(1);
-    });
-
-    it('rolls only hit locations from the hit-locations section button', () => {
-        fixture.componentInstance.setOrientationRoll(4);
-        fixture.componentInstance.setHitLocationRoll(0, 5);
-        fixture.componentInstance.setHitLocationRoll(1, 9);
+    it('previews and accepts the same rerolled location for a floating fall hit', () => {
+        const dialog = fixture.componentInstance;
+        dialog.setOrientationRoll(1);
+        dialog.setHitLocationRoll(0, 2);
+        dialog.setHitLocationRoll(1, 7);
+        expect(dialog.allResolved()).toBeFalse();
+        dialog.setHitLocationRoll(0, 12, true);
         fixture.detectChanges();
-        persistRolls.calls.reset();
-        const random = spyOn(Math, 'random').and.returnValues(0, 0, 0.999, 0.999);
-
-        (fixture.nativeElement as HTMLElement)
-            .querySelector<HTMLButtonElement>('.locations-roll-button')!.click();
-
-        expect(fixture.componentInstance.orientationRoll()).toBe(4);
-        expect(fixture.componentInstance.groupRows().map(row => row.hitLocationRoll)).toEqual([2, 12]);
-        expect(random).toHaveBeenCalledTimes(4);
-        expect(persistRolls).toHaveBeenCalledTimes(1);
-    });
-
-    it('shows a labeled roll-all button before the Orientation section', () => {
-        const element = fixture.nativeElement as HTMLElement;
-        const rollAll = element.querySelector<HTMLButtonElement>('.fall-roll-all')!;
-        const orientationHeading = element.querySelector<HTMLElement>('.fall-step');
-
-        expect(rollAll.textContent).toContain('ROLL ALL RESULTS');
-        expect(rollAll.nextElementSibling).toBe(orientationHeading);
+        expect(fixture.nativeElement.querySelector('.damage-location-primary').textContent).toContain('Head');
+        dialog.apply();
+        expect(TestBed.inject(DialogRef).close).toHaveBeenCalledWith(jasmine.objectContaining({
+            groups: [jasmine.objectContaining({ location: 'HD', throughArmorCritical: true }),
+                jasmine.objectContaining({ throughArmorCritical: false })],
+        }));
     });
 });

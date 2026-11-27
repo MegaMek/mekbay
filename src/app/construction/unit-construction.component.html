@@ -1,0 +1,3002 @@
+<div
+  #constructionShell
+  cdkScrollable
+  class="construction-shell"
+  [class.preview-open]="panel() === 'preview'"
+  [class.drawer-open]="equipmentDrawerActive() || detailsOverlayOpen()"
+  [class.dragging]="dragging() !== null"
+>
+  @let placing = canPlaceSelectedEquipment();
+  @let placementActive = placing || !!dragging();
+  @let placementName =
+    dragging()
+      ? dragLabel()
+      : placing && placementEquipment()
+        ? equipmentLabel(placementEquipment()!)
+        : 'selected equipment';
+  <ng-template #placementArrow>
+    <svg
+      class="placement-arrow"
+      viewBox="0 0 20 20"
+      fill="none"
+      stroke="currentColor"
+      stroke-width="1.6"
+      stroke-linecap="round"
+      stroke-linejoin="round"
+      aria-hidden="true"
+      focusable="false"
+    >
+      <path class="placement-arrow-shaft" d="M10 2v10m-4-4 4 4 4-4" />
+      <path d="M3 13v4h14v-4" />
+    </svg>
+  </ng-template>
+  <ng-template #emptySlotContent let-index let-ready="ready">
+    @if (index !== undefined) {
+      <small>{{ index + 1 }}</small>
+    }
+    <span>{{
+      ready ? (dragging() ? 'DROP HERE' : 'ADD HERE') : index !== undefined ? 'EMPTY SLOT' : 'DROP EQUIPMENT HERE'
+    }}</span>
+    @if (ready) {
+      <ng-container [ngTemplateOutlet]="placementArrow" />
+    } @else {
+      <b aria-hidden="true">+</b>
+    }
+  </ng-template>
+  <ng-template #techMismatch let-base>
+    <span
+      class="tech-warning"
+      role="img"
+      [title]="techBaseMismatchReason(base)"
+      [attr.aria-label]="techBaseMismatchReason(base)"
+      >TECH!</span
+    >
+  </ng-template>
+  <ng-template #equipmentWarningIcon let-mount let-location="location">
+    @if (mount && equipmentWarning(mount, location); as warning) {
+      <svg class="equipment-warning-icon" viewBox="0 0 24 24" role="img" [attr.aria-label]="warning" focusable="false">
+        <title>{{ warning }}</title>
+        <path d="M12 2 23 22H1Z" fill="currentColor" />
+        <path d="M12 8v6" stroke="#222" stroke-width="2" stroke-linecap="round" />
+        <circle cx="12" cy="18" r="1.2" fill="#222" />
+      </svg>
+    }
+  </ng-template>
+  <ng-template #slotlessMount let-mount let-location="location">
+    <div class="slot-target single-slot slotless-mount" aria-label="Installed equipment without critical slots">
+      <div class="installed-equipment" [class]="equipmentClass(mount.equipment)" [attr.data-mount-id]="mount.mountId">
+        <ng-container
+          [ngTemplateOutlet]="equipmentBlockContent"
+          [ngTemplateOutletContext]="{ equipment: mount.equipment, mount, span: 0, location }"
+        />
+      </div>
+    </div>
+  </ng-template>
+  <ng-template
+    #equipmentBlockContent
+    let-equipment="equipment"
+    let-mount="mount"
+    let-span="span"
+    let-location="location"
+    let-index="index"
+  >
+    @let display = mount ? mountedDisplay(mount) : { name: equipmentLabel(equipment), custom: false };
+    @let label = (display.custom ? '*' : '') + display.name;
+    @let mass = mount ? mountedMass(mount) : '';
+    <button
+      #mountedName
+      class="mounted-name"
+      [inspectorHoverDisabled]="!mount || mobileEquipment() || !!dragging()"
+      [inspectorHover]="inspector"
+      (inspect)="mount && inspectMount(mount, $event, location, true)"
+      (click)="mount && selectMount(mount, mountedName, location)"
+      [title]="
+        label +
+        (mass ? ' · ' + mass : '') +
+        (mount && spreadAllocation(mount) ? ' · Drag to move this block; inspect to split its slots.' : '')
+      "
+    >
+      @if (mount?.armored) {
+        <span class="armored-badge">ARMORED</span>
+      }
+      <span class="critical-ticks">
+        @for (tick of rowTicks(span); track $index) {
+          <i
+            [class.armored-tick]="mount?.armored"
+            [class.destroyed-tick]="location && runtimeDamage()?.criticalDestroyed(location, index + $index)"
+            [title]="
+              'Slot ' +
+              ((index ?? 0) + $index + 1) +
+              (location && runtimeDamage()?.criticalDestroyed(location, index + $index) ? ' · Destroyed' : '')
+            "
+          ></i>
+        }</span
+      ><span class="equipment-title"
+        ><span class="equipment-label" [class.customAmmoLoadout]="display.custom">{{ label }}</span>
+        <ng-container
+          [ngTemplateOutlet]="equipmentWarningIcon"
+          [ngTemplateOutletContext]="{ $implicit: mount, location }"
+        />
+        @if (showTechBases() && equipment && equipment.techBase !== 'All') {
+          <tech-base-badge [techBase]="equipment.techBase" />
+        }
+        @if (equipmentTechMismatch(equipment)) {
+          <ng-container
+            [ngTemplateOutlet]="techMismatch"
+            [ngTemplateOutletContext]="{ $implicit: equipment.techBase }"
+          />
+        }
+      </span>
+      @if (equipment?.isSpreadable && span > 1) {
+        <small class="spread-block-count">{{ span }} slots</small>
+      }
+      @if (mount?.omniPodMounted) {
+        <small>POD</small>
+      }
+      @if (mount && mountCondition(mount.mountId); as condition) {
+        <span class="condition-label">{{ condition }}</span>
+      }
+    </button>
+    @if (mount && (canUninstallMount(mount) || directRemoveActive(mount))) {
+      <button
+        class="uninstall-mount"
+        [class.direct-remove]="directRemoveActive(mount)"
+        (click)="uninstallOrRemove(mount, location, span, index, $event)"
+        [attr.aria-label]="
+          directRemoveActive(mount)
+            ? 'Remove ' + label + ' from the design'
+            : 'Uninstall ' + label + (spreadAllocation(mount) ? ' block from ' + locationLabel(location) : '')
+        "
+        [title]="
+          directRemoveActive(mount)
+            ? 'Remove · Delete ' + label + ' from the design'
+            : spreadAllocation(mount)
+              ? 'Uninstall this block · Return ' + span + (span === 1 ? ' slot' : ' slots') + ' to unallocated'
+              : 'Uninstall · Move to unallocated equipment'
+        "
+      >
+        @if (directRemoveActive(mount)) {
+          ×
+        } @else {
+          <ng-container [ngTemplateOutlet]="uninstallIcon" />
+        }
+      </button>
+    }
+  </ng-template>
+  <ng-template #uninstallIcon>
+    <svg
+      width="16"
+      height="16"
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke="currentColor"
+      stroke-width="1.8"
+      stroke-linecap="round"
+      stroke-linejoin="round"
+      aria-hidden="true"
+      focusable="false"
+    >
+      <path d="M12 3v12m-4-4 4 4 4-4M4 15v6h16v-6" />
+    </svg>
+  </ng-template>
+  <ng-template #equipmentInspectorDetails let-eq="equipment" let-mount="mount">
+    <div class="basic-info">
+      <div><span class="muted">Type: </span>{{ inspectorTypeLabel() }}</div>
+      @if (inspectorToHitModifier(); as modifier) {
+        <div><span class="muted">To-Hit: </span>{{ modifier }}</div>
+      }
+      @if (weapon(eq); as weapon) {
+        @if (weapon.ranges[0] > 0) {
+          <div><span class="muted">Range: </span>{{ equipmentRange(eq) }}</div>
+        }
+        @let damage = equipmentDamage(eq);
+        @if (damage !== '—') {
+          <div><span class="muted">Damage: </span>{{ damage }}</div>
+        }
+        @if (equipmentCategory(eq) === 'missile' && weapon.rackSize > 0) {
+          <div><span class="muted">Rack Size: </span>{{ weapon.rackSize }}</div>
+        }
+        @if (weapon.heat > 0) {
+          <div><span class="muted">Heat: </span>{{ inspectorHeat() }}</div>
+        }
+      }
+      @if (ammo(eq); as ammo) {
+        <div><span class="muted">Shots / bin: </span>{{ mount?.shotsCount ?? ammo.shots }}</div>
+      }
+    </div>
+    <details class="equipment-details">
+      <summary>Equipment details</summary>
+      <div class="equip-group">
+        <div class="equip-group-title">General</div>
+        <div class="equip-items">
+          @let bv = equipmentBV(eq, mount);
+          <div class="equip-item">
+            <span class="equip-label">BV:</span>
+            <span class="equip-value">{{ bv === 'variable' ? 'Variable' : (bv | number: '1.0-2') }}</span>
+          </div>
+          @let cost = mount ? mount.getCost(entity()) : eq.cost;
+          <div class="equip-item">
+            <span class="equip-label">Cost:</span>
+            <span class="equip-value">{{
+              cost === 'variable' ? 'Variable' : (cost | number: '1.0-0') + ' C-Bills'
+            }}</span>
+          </div>
+          @let mass = mount ? mountedMass(mount) : equipmentMass(eq);
+          @if (mass !== '') {
+            <div class="equip-item">
+              <span class="equip-label">Tonnage:</span>
+              <span class="equip-value">{{ mount ? mass : mass === 'Var.' ? 'Variable' : mass + ' t' }}</span>
+            </div>
+          }
+          <div class="equip-item">
+            <span class="equip-label">Criticals:</span>
+            <span class="equip-value">{{
+              mount ? (mount.getNumCriticalSlots(entity()) ?? '—') : equipmentSlots(eq)
+            }}</span>
+          </div>
+          @if (equipmentRefs(eq); as reference) {
+            <div class="equip-item">
+              <span class="equip-label">Reference:</span><span class="equip-value">{{ reference }}</span>
+            </div>
+          }
+        </div>
+      </div>
+      @for (group of inspectorTechnology(); track group.group) {
+        <div class="equip-group">
+          <div class="equip-group-title">{{ group.group }}</div>
+          <div class="equip-items">
+            @for (item of group.items; track item.label) {
+              @if (item.value !== '') {
+                <div class="equip-item">
+                  <span class="equip-label">{{ item.label }}:</span><span class="equip-value">{{ item.value }}</span>
+                </div>
+              }
+            }
+          </div>
+        </div>
+      }
+    </details>
+  </ng-template>
+  <ng-template
+    #equipmentDragPreview
+    let-equipment="equipment"
+    let-mount="mount"
+    let-span="span"
+    let-location="location"
+    let-index="index"
+  >
+    <div class="slot-target" [class.single-slot]="span === 1" [style.--slot-span]="span">
+      <div
+        class="installed-equipment"
+        [class]="equipmentClass(equipment)"
+        [class.tech-incompatible]="equipmentTechMismatch(equipment)"
+        [class.armored-equipment]="mount?.armored"
+        [class.hovered-equipment]="mount && hoveredMountId() === mount.mountId"
+        [class.selected-equipment]="inspectorOpen() && mount && selectedMountId() === mount.mountId"
+        [class.damaged-equipment]="mount && !!mountCondition(mount.mountId)"
+        [class.destroyed-equipment]="mount && mountCondition(mount.mountId) === 'Destroyed'"
+      >
+        <ng-container
+          [ngTemplateOutlet]="equipmentBlockContent"
+          [ngTemplateOutletContext]="{ equipment, mount, span, location, index }"
+        />
+      </div>
+    </div>
+  </ng-template>
+  <header class="workshop-header" [attr.inert]="equipmentDrawerActive() || detailsOverlayOpen() ? '' : null">
+    @if (mobileEquipment()) {
+      <button
+        #equipmentToggle
+        type="button"
+        class="bt-button equipment-toggle"
+        aria-label="Equipment warehouse"
+        title="Equipment warehouse"
+        aria-haspopup="dialog"
+        aria-controls="construction-equipment"
+        [attr.aria-expanded]="equipmentDrawerOpen()"
+        (click)="equipmentDrawerOpen.set(true)"
+      >
+        <svg
+          width="24"
+          height="24"
+          viewBox="0 0 24 24"
+          fill="none"
+          stroke="currentColor"
+          stroke-width="2"
+          stroke-linecap="round"
+          aria-hidden="true"
+          focusable="false"
+        >
+          <path d="M4 6h16M4 12h16M4 18h16" />
+        </svg>
+      </button>
+    }
+    <svg
+      class="workshop-icon"
+      width="28"
+      height="28"
+      viewBox="0 0 512 512"
+      fill="currentColor"
+      xmlns="http://www.w3.org/2000/svg"
+      role="img"
+      aria-label="Unit construction"
+      focusable="false"
+    >
+      <path
+        fill-rule="evenodd"
+        d="
+            M202.62 344.8 196.15 357.21A80.47 80.47 0 0 1 48.19 333.93L37.92 412.74H211.54Z
+            M212.88 59.09 66.45 280.94a69.94 69.94 0 0 0 120.6 70.91l99.39-191.06-54.79-52.08C217.36 93.97 212.5 77.52 212.88 59.09Z
+            M98.84 316.39a27.9 27.9 0 1 0 55.8 0 27.9 27.9 0 1 0-55.8 0Z
+            M11.83 512v-67.3a22.45 22.45 0 0 1 22.45-22.45H216.4a22.45 22.45 0 0 1 22.44 22.45V512Z
+            M328.5 19.54a60.54 60.54 0 0 0-89.08 82.01L389.37 244.01a60.73 60.73 0 0 1 81.13-54.71Z
+            M260.88 60.55a23.08 23.08 0 1 0 46.16 0 23.08 23.08 0 1 0-46.16 0Z
+            M431.67 328.98h39.15v36.25l-19.57 22.02-19.58-22.02Z
+            M399.87 318.62v-72.17a50.15 50.15 0 0 1 100.3 0v72.17Z
+            M430.45 244.91a19.58 19.58 0 1 0 39.16 0 19.58 19.58 0 1 0-39.16 0Z
+        "
+      />
+    </svg>
+    <div class="workspace-navigation">
+      <nav class="workspace-tabs" aria-label="Construction views">
+        <button
+          [class.active]="panel() === 'loadout'"
+          [attr.aria-pressed]="panel() === 'loadout'"
+          (click)="panel.set('loadout')"
+        >
+          LOADOUT
+        </button>
+        <button
+          [class.active]="panel() === 'systems'"
+          [attr.aria-pressed]="panel() === 'systems'"
+          (click)="panel.set('systems')"
+        >
+          CONFIGURATION
+        </button>
+        @if (building()) {
+          <button
+            [class.active]="panel() === 'topology'"
+            [attr.aria-pressed]="panel() === 'topology'"
+            (click)="panel.set('topology')"
+          >
+            TOPOLOGY
+          </button>
+        }
+        @if (showQuirks()) {
+          <button
+            [class.active]="panel() === 'quirks'"
+            [attr.aria-pressed]="panel() === 'quirks'"
+            (click)="panel.set('quirks')"
+          >
+            QUIRKS
+          </button>
+        }
+        <button
+          [class.active]="panel() === 'fluff'"
+          [attr.aria-pressed]="panel() === 'fluff'"
+          (click)="panel.set('fluff')"
+        >
+          INTEL
+        </button>
+        <button
+          [class.active]="panel() === 'preview'"
+          [attr.aria-pressed]="panel() === 'preview'"
+          (click)="panel.set('preview')"
+        >
+          PREVIEW
+        </button>
+      </nav>
+    </div>
+    <div class="construction-value">
+      <div class="bv-line">
+        @let delta = repairBVDelta();
+        @if (delta !== null) {
+          <small class="repair-gain" title="Battle Value gained from pending repairs"
+            >({{ delta >= 0 ? '+' : '' }}{{ delta | number: '1.0-0' }})</small
+          >
+        }
+        <button
+          class="bv-total"
+          [class.repair-gain]="pendingRepairQuote()"
+          (click)="showBreakdown('bv', $event)"
+          [disabled]="unitBV() === null"
+          aria-label="Show pristine Battle Value breakdown"
+          [attr.aria-expanded]="detailsView() === 'bv'"
+          aria-controls="construction-details"
+          title="Effective / pristine Battle Value; click for pristine design breakdown"
+        >
+          {{ effectiveBV() === null ? '—' : (effectiveBV() | number: '1.0-0') }}
+          @if (effectiveBV() !== unitBV() && unitBV() !== null) {
+            <small class="pristine-bv">/{{ unitBV() | number: '1.0-0' }}</small>
+          }
+          <small>BV <span class="info-notice" aria-hidden="true">i</span></small>
+        </button>
+      </div>
+      <div class="cost-line">
+        <button
+          class="cost-total"
+          (click)="showBreakdown('cost', $event)"
+          [disabled]="unitCost() === null"
+          aria-label="Show C-Bill cost breakdown"
+          [attr.aria-expanded]="detailsView() === 'cost'"
+          aria-controls="construction-details"
+          title="C-Bill cost breakdown"
+        >
+          {{ unitCost() === null ? '—' : (unitCost() | number: '1.0-0') }} C-Bills
+          <span class="info-notice" aria-hidden="true">i</span>
+        </button>
+        @if (pendingRepairQuote(); as quote) {
+          <span class="repair-cost" [title]="quote.basis"
+            >({{
+              quote.cost === null ? 'repair cost unavailable' : '+' + (quote.cost | number: '1.0-0') + ' repair'
+            }})</span
+          >
+        }
+        @if (pendingSupportPoints(); as sp) {
+          <span aria-hidden="true">·</span
+          ><span class="repair-sp" [title]="sp.basis">{{
+            sp.cost === null ? 'SP unavailable' : (sp.cost | number: '1.0-2') + ' SP'
+          }}</span>
+        }
+      </div>
+    </div>
+    <button
+      type="button"
+      class="bt-button icon-button history-toggle"
+      cdkOverlayOrigin
+      #historyOrigin="cdkOverlayOrigin"
+      [class.active]="historyOpen()"
+      aria-label="Edit history"
+      title="Edit history"
+      aria-haspopup="dialog"
+      aria-controls="construction-history"
+      [attr.aria-expanded]="historyOpen()"
+      (click)="historyOpen.set(!historyOpen())"
+    >
+      <svg
+        width="22"
+        height="22"
+        viewBox="0 0 24 24"
+        fill="none"
+        stroke="currentColor"
+        stroke-width="2"
+        aria-hidden="true"
+        focusable="false"
+      >
+        <path d="M3 12a9 9 0 1 0 3-6.7" />
+        <path d="M3 4v6h6" />
+        <path d="M12 7v5l3 2" />
+      </svg>
+    </button>
+    <!-- Stays open beside the workshop, like the tactical log, so each edit shows up as it is made. -->
+    <ng-template
+      cdkConnectedOverlay
+      [cdkConnectedOverlayOrigin]="historyOrigin"
+      [cdkConnectedOverlayOpen]="historyOpen()"
+      [cdkConnectedOverlayPositions]="historyPositions"
+      [cdkConnectedOverlayPush]="true"
+      [cdkConnectedOverlayViewportMargin]="4"
+      (overlayKeydown)="$event.key === 'Escape' && historyOpen.set(false)"
+      (detach)="historyOpen.set(false)"
+    >
+      <section
+        class="history-panel framed-borders has-shadow"
+        id="construction-history"
+        role="dialog"
+        aria-label="Edit history"
+      >
+        <header class="history-heading">
+          <h3>History</h3>
+          <button
+            type="button"
+            class="history-button"
+            (click)="undo()"
+            [disabled]="busy() || !canUndo()"
+            title="Undo last edit"
+            aria-label="Undo last edit"
+          >
+            <svg
+              viewBox="0 0 24 24"
+              fill="none"
+              stroke="currentColor"
+              stroke-width="2"
+              stroke-linecap="round"
+              stroke-linejoin="round"
+              aria-hidden="true"
+              focusable="false"
+            >
+              <path d="m9 4-5 5 5 5M4 9h10a6 6 0 0 1 0 12h-2" />
+            </svg>
+          </button>
+          <button
+            type="button"
+            class="history-button"
+            (click)="redo()"
+            [disabled]="busy() || !canRedo()"
+            title="Redo last edit"
+            aria-label="Redo last edit"
+          >
+            <svg
+              viewBox="0 0 24 24"
+              fill="none"
+              stroke="currentColor"
+              stroke-width="2"
+              stroke-linecap="round"
+              stroke-linejoin="round"
+              aria-hidden="true"
+              focusable="false"
+            >
+              <path d="m15 4 5 5-5 5M20 9H10a6 6 0 0 0 0 12h2" />
+            </svg>
+          </button>
+          <button
+            type="button"
+            class="close-button"
+            (click)="historyOpen.set(false)"
+            aria-label="Close edit history"
+          ></button>
+        </header>
+        <ol class="history-list">
+          @for (step of historyLog(); track $index) {
+            <li [class.undone]="!step.applied">
+              @for (change of step.changes; track $index) {
+                <span>{{ change }}</span>
+              }
+              @if (step.cost) {
+                <span class="repair-cost">{{ step.cost }}</span>
+              }
+            </li>
+          } @empty {
+            <li class="history-empty">No edits yet.</li>
+          }
+        </ol>
+      </section>
+    </ng-template>
+    <button
+      class="bt-button icon-button"
+      (click)="onShare()"
+      [disabled]="!canShare()"
+      aria-label="Share unit construction"
+      [title]="canShare() ? 'Share unit construction' : 'Save the design before sharing'"
+    >
+      <svg
+        fill="currentColor"
+        width="24"
+        height="24"
+        viewBox="0 0 24 24"
+        xmlns="http://www.w3.org/2000/svg"
+        aria-hidden="true"
+        focusable="false"
+      >
+        <path
+          fill-rule="evenodd"
+          clip-rule="evenodd"
+          d="M13.803 5.33333C13.803 3.49238 15.3022 2 17.1515 2C19.0008 2 20.5 3.49238 20.5 5.33333C20.5 7.17428 19.0008 8.66667 17.1515 8.66667C16.2177 8.66667 15.3738 8.28596 14.7671 7.67347L10.1317 10.8295C10.1745 11.0425 10.197 11.2625 10.197 11.4872C10.197 11.9322 10.109 12.3576 9.94959 12.7464L15.0323 16.0858C15.6092 15.6161 16.3473 15.3333 17.1515 15.3333C19.0008 15.3333 20.5 16.8257 20.5 18.6667C20.5 20.5076 19.0008 22 17.1515 22C15.3022 22 13.803 20.5076 13.803 18.6667C13.803 18.1845 13.9062 17.7255 14.0917 17.3111L9.05007 13.9987C8.46196 14.5098 7.6916 14.8205 6.84848 14.8205C4.99917 14.8205 3.5 13.3281 3.5 11.4872C3.5 9.64623 4.99917 8.15385 6.84848 8.15385C7.9119 8.15385 8.85853 8.64725 9.47145 9.41518L13.9639 6.35642C13.8594 6.03359 13.803 5.6896 13.803 5.33333Z"
+        />
+      </svg>
+    </button>
+    <button class="bt-button icon-button" (click)="close()" [disabled]="busy()" aria-label="Close unit construction">
+      ✕
+    </button>
+  </header>
+
+  @if (status()) {
+    <div class="status-message" [attr.inert]="detailsOverlayOpen() ? '' : null" role="status">
+      {{ status() }}<button (click)="status.set('')" aria-label="Dismiss message">✕</button>
+    </div>
+  }
+  <ng-template #validationList>
+    @for (message of validation().messages; track $index) {
+      <button
+        type="button"
+        [class.error]="message.severity === 'error'"
+        [class.warning]="message.severity === 'warning'"
+        [class.notice]="message.severity === 'info'"
+        (click)="navigateToIssue(message)"
+        title="Go to issue"
+      >
+        <b [attr.aria-label]="message.severity === 'info' ? 'Notice' : message.severity">{{
+          message.severity === 'error' ? '!' : message.severity === 'warning' ? '⚠' : 'i'
+        }}</b
+        ><span>{{ message.message }}</span
+        ><small>{{ message.location || message.category }}</small>
+      </button>
+    } @empty {
+      <p class="checks-clear">All implemented construction checks pass.</p>
+    }
+  </ng-template>
+  <main
+    class="workshop-body"
+    [class.details-open]="dockedDetailsOpen()"
+    [class.loadout-view]="panel() === 'loadout'"
+    [class.topology-view]="panel() === 'topology'"
+    [class.systems-view]="panel() === 'systems'"
+    [attr.inert]="busy() || (mobileEquipment() && inspectorOpen()) ? '' : null"
+    cdkDropListGroup
+  >
+    <ng-template #locationEquipment let-location>
+      @let placementReady = placementActive && (!dragging() || !dropPlans().get(location.id)?.issue);
+      <div
+        class="critical-grid"
+        [attr.data-location]="location.id"
+        [class.fixed-slots]="location.slotCapacity !== null"
+        cdkDropList
+        [cdkDropListData]="{ location: location.id }"
+        [cdkDropListSortingDisabled]="true"
+        [cdkDropListAutoScrollDisabled]="true"
+        [cdkDropListEnterPredicate]="acceptEquipmentDrop"
+        (cdkDropListDropped)="onDrop($event)"
+        [style.grid-template-rows]="
+          location.slotCapacity !== null
+            ? 'repeat(' + location.slotCapacity + ', minmax(var(--slot-height), auto))'
+            : null
+        "
+        [class.drop-rejected]="
+          dragging() && dragTarget()?.location === location.id && !!dropPlans().get(location.id)?.issue
+        "
+      >
+        @if (dragging() && dragTarget()?.location === location.id && dropPlans().get(location.id)?.issue) {
+          <div class="drop-reason" role="status">{{ dropPlans().get(location.id)?.issue }}</div>
+        }
+        @for (preview of dropPreview(); track preview.location + ':' + preview.index) {
+          @if (preview.location === location.id) {
+            <div class="slot-drop-preview" [style.grid-row]="preview.index + 1 + ' / span ' + preview.span">
+              <span class="drop-preview-label"
+                ><ng-container [ngTemplateOutlet]="placementArrow" />{{
+                  dragTarget()?.location === location.id && dragTarget()?.shareSlotIndex === preview.index
+                    ? 'SHARE SLOT'
+                    : 'DROP HERE'
+                }}</span
+              >
+              @if (preview.span > 1) {
+                <small>{{ dragLabel() }} · {{ preview.span }} slots</small>
+              }
+            </div>
+          }
+        }
+        @for (row of location.rows; track row.index) {
+          @if (row.system && row.componentId) {
+            @let destroyed = runtimeDamage()?.systemStatus(row.componentId) === 'destroyed';
+            <div
+              class="system-slot"
+              [class.tech-incompatible]="techBaseMismatch(systemTechBase(row.system))"
+              [style.grid-row]="row.index + 1 + ' / span ' + row.span"
+              [class.armored-equipment]="armoredSystemCount(location.id, row) > 0"
+              [style.--slot-span]="row.span"
+              [class.single-slot]="row.span === 1"
+              [class.hovered-equipment]="hoveredSystemId() === row.componentId"
+              (mouseenter)="hoveredSystemId.set(row.componentId)"
+              (mouseleave)="hoveredSystemId.set(null)"
+              [class.damaged-equipment]="destroyed"
+              [class.destroyed-equipment]="destroyed"
+            >
+              <div class="system-content">
+                @if (armoredSystemCount(location.id, row); as count) {
+                  <span class="armored-badge" [title]="count + ' armored critical slots'"
+                    >ARMORED{{ row.span > 1 ? ' ' + count + '/' + row.span : '' }}</span
+                  >
+                }
+                <span class="critical-ticks">
+                  @for (tick of rowTicks(row.span); track $index) {
+                    <i
+                      [class.armored-tick]="systemArmored(location.id, row.index + $index)"
+                      [class.destroyed-tick]="runtimeDamage()?.criticalDestroyed(location.id, row.index + $index)"
+                      [title]="
+                        'Slot ' +
+                        (row.index + $index + 1) +
+                        (runtimeDamage()?.criticalDestroyed(location.id, row.index + $index) ? ' · Destroyed' : '')
+                      "
+                    ></i>
+                  }
+                </span>
+                <button
+                  #systemName
+                  class="system-name"
+                  [inspectorHoverDisabled]="mobileEquipment() || !!dragging()"
+                  [inspectorHover]="inspector"
+                  (inspect)="inspectSystem(location.id, row, $event, true)"
+                  (click)="inspectSystem(location.id, row, systemName)"
+                  [title]="'Inspect ' + systemLabel(row.system)"
+                >
+                  <span class="equipment-label">{{ systemLabel(row.system) }}</span>
+                  @if (showTechBases() && systemTechBase(row.system) !== 'All') {
+                    <tech-base-badge [techBase]="systemTechBase(row.system)" />
+                  }
+                  @if (techBaseMismatch(systemTechBase(row.system))) {
+                    <ng-container
+                      [ngTemplateOutlet]="techMismatch"
+                      [ngTemplateOutletContext]="{ $implicit: systemTechBase(row.system) }"
+                    />
+                  }
+                </button>
+                @if (removableSystem(location.id, row.system)) {
+                  <button
+                    class="uninstall-mount"
+                    (click)="removeSystem(location.id, row.system, $event)"
+                    [attr.aria-label]="'Uninstall ' + systemLabel(row.system) + ' from ' + location.label"
+                    title="Uninstall · Disable this actuator"
+                  >
+                    <ng-container [ngTemplateOutlet]="uninstallIcon" />
+                  </button>
+                }
+                @if (destroyed) {
+                  <span class="condition-label">Destroyed</span>
+                }
+                @if (row.integralEquipment?.length) {
+                  <div class="integral-equipment">
+                    @for (group of row.integralEquipment; track group.mount.equipmentId) {
+                      <button
+                        #integralName
+                        [attr.data-mount-id]="group.mount.mountId"
+                        [class]="equipmentClass(group.mount.equipment)"
+                        [class.tech-incompatible]="equipmentTechMismatch(group.mount.equipment)"
+                        [inspectorHoverDisabled]="mobileEquipment() || !!dragging()"
+                        [inspectorHover]="inspector"
+                        (inspect)="inspectMount(group.mount, $event, location.id, true)"
+                        (click)="selectMount(group.mount, integralName, location.id)"
+                        [title]="'Integral equipment · ' + group.quantity + ' × ' + group.mount.displayName(true)"
+                      >
+                        <span class="integral-quantity">{{ group.quantity }}×</span>{{ group.mount.displayName(true) }}
+                        <ng-container
+                          [ngTemplateOutlet]="equipmentWarningIcon"
+                          [ngTemplateOutletContext]="{ $implicit: group.mount, location: location.id }"
+                        />
+                        @if (showTechBases() && group.mount.equipment && group.mount.equipment.techBase !== 'All') {
+                          <tech-base-badge [techBase]="group.mount.equipment.techBase" />
+                        }
+                        @if (group.mount.equipment && equipmentTechMismatch(group.mount.equipment)) {
+                          <ng-container
+                            [ngTemplateOutlet]="techMismatch"
+                            [ngTemplateOutletContext]="{ $implicit: group.mount.equipment.techBase }"
+                          />
+                        }
+                      </button>
+                    }
+                  </div>
+                }
+              </div>
+            </div>
+          } @else {
+            <div
+              class="slot-target"
+              [attr.data-slot-index]="row.index"
+              [style.grid-row]="
+                location.slotCapacity !== null ? previewRowIndex(location.id, row) + 1 + ' / span ' + row.span : null
+              "
+              [class.preview-covered]="!row.mount && previewOccupied(location.id, row.index)"
+              [style.--slot-span]="row.span"
+              [class.single-slot]="row.span === 1"
+              [class.shared-slot]="!!row.sharedMount"
+            >
+              @if (row.mount) {
+                @for (mount of row.sharedMount ? [row.mount, row.sharedMount] : [row.mount]; track mount.mountId) {
+                  @let display = mountedDisplay(mount);
+                  @let mountLabel = (display.custom ? '*' : '') + display.name;
+                  @if (
+                    dragging()?.mountId === mount.mountId &&
+                    dragging()?.sourceLocation === location.id &&
+                    (dragging()?.sourceSlotIndex === undefined || dragging()?.sourceSlotIndex === row.index) &&
+                    (dragTarget()?.location !== location.id || !dropArrangement())
+                  ) {
+                    <div class="slot-drag-origin" aria-hidden="true">
+                      <span>{{ mountLabel }}</span
+                      ><small>{{ row.span }} slot{{ row.span === 1 ? '' : 's' }}</small>
+                    </div>
+                  }
+                  <div
+                    class="installed-equipment"
+                    [attr.data-mount-id]="mount.mountId"
+                    [class.tech-incompatible]="equipmentTechMismatch(mount.equipment)"
+                    [class.armored-equipment]="mount.armored"
+                    [class]="equipmentClass(mount.equipment)"
+                    [class.hovered-equipment]="hoveredMountId() === mount.mountId"
+                    (mouseenter)="hoveredMountId.set(mount.mountId)"
+                    (mouseleave)="hoveredMountId.set(null)"
+                    [class.selected-equipment]="inspectorOpen() && selectedMountId() === mount.mountId"
+                    [class.damaged-equipment]="!!mountCondition(mount.mountId)"
+                    [class.destroyed-equipment]="mountCondition(mount.mountId) === 'Destroyed'"
+                    cdkDrag
+                    [cdkDragDisabled]="!canReorderMount(mount)"
+                    [cdkDragData]="{
+                      equipmentId: mount.equipmentId,
+                      mountId: mount.mountId,
+                      sourceLocation: location.id,
+                      sourceSlotIndex: mount.equipment?.isSpreadable ? row.index : undefined,
+                      slotCount: mount.equipment?.isSpreadable ? row.span : undefined,
+                    }"
+                    (cdkDragStarted)="
+                      startDrag({
+                        equipmentId: mount.equipmentId,
+                        mountId: mount.mountId,
+                        sourceLocation: location.id,
+                        sourceSlotIndex: mount.equipment?.isSpreadable ? row.index : undefined,
+                        slotCount: mount.equipment?.isSpreadable ? row.span : undefined,
+                      })
+                    "
+                    (cdkDragMoved)="dragMoved($event)"
+                    (cdkDragEnded)="dragEnded()"
+                    [cdkDragStartDelay]="{ touch: 180, mouse: 0 }"
+                    [cdkDragPreviewContainer]="constructionShell"
+                  >
+                    <ng-template cdkDragPlaceholder><div class="construction-drag-placeholder"></div></ng-template>
+                    <ng-template cdkDragPreview [matchSize]="true"
+                      ><div class="construction-drag-preview">
+                        <ng-container
+                          [ngTemplateOutlet]="equipmentDragPreview"
+                          [ngTemplateOutletContext]="{
+                            equipment: mount.equipment,
+                            mount,
+                            span: row.span,
+                            location: location.id,
+                            index: row.index,
+                          }"
+                        /></div
+                    ></ng-template>
+                    <ng-container
+                      [ngTemplateOutlet]="equipmentBlockContent"
+                      [ngTemplateOutletContext]="{
+                        equipment: mount.equipment,
+                        mount,
+                        span: row.span,
+                        location: location.id,
+                        index: row.index,
+                      }"
+                    />
+                  </div>
+                }
+              } @else {
+                <button
+                  class="empty-slot"
+                  [class.placement-ready]="placementReady"
+                  [disabled]="!placementReady"
+                  (click)="clickSlot(location.id, location.slotCapacity === null ? undefined : row.index)"
+                  [attr.aria-label]="'Install ' + placementName + ' in ' + location.label + ', slot ' + (row.index + 1)"
+                >
+                  <ng-container
+                    [ngTemplateOutlet]="emptySlotContent"
+                    [ngTemplateOutletContext]="{ $implicit: row.index, ready: placementReady }"
+                  />
+                </button>
+              }
+            </div>
+          }
+        }
+        @if (location.slotCapacity === null) {
+          <div class="slot-target">
+            <button
+              class="empty-slot inventory-drop"
+              [class.placement-ready]="placementReady"
+              [disabled]="!placementReady"
+              (click)="clickSlot(location.id)"
+              [attr.aria-label]="'Install ' + placementName + ' in ' + location.label"
+            >
+              <ng-container
+                [ngTemplateOutlet]="emptySlotContent"
+                [ngTemplateOutletContext]="{ ready: placementReady }"
+              />
+            </button>
+          </div>
+        }
+      </div>
+    </ng-template>
+    <div class="workshop-sidebar" [attr.inert]="detailsOverlayOpen() ? '' : null">
+      <section
+        class="design-summary framed-borders"
+        aria-label="Design summary"
+        [attr.inert]="busy() || equipmentDrawerActive() ? '' : null"
+      >
+        <div class="design-identity">
+          <div class="identity-line">
+            <span class="subtype">{{ entity().unitSubtype() }}</span>
+            @if (dirty()) {
+              <span class="save-state">● Unsaved</span>
+            }
+          </div>
+          <div class="design-name">
+            <button
+              type="button"
+              class="bt-button unit-icon-field"
+              [disabled]="!designEditing()"
+              aria-label="Change unit icon"
+              aria-haspopup="dialog"
+              title="Change unit icon"
+              (click)="selectIcon($event)"
+            >
+              <unit-icon [unit]="entity()" [width]="64" [height]="56" />
+            </button>
+            <div class="design-name-text">
+              <div class="design-model">{{ entity().model() }}</div>
+              <div class="design-chassis">{{ unitNames.chassis(entity()) }}</div>
+              <div class="design-tech">
+                Tech:
+                @if (designEditing() && techBaseOptions().length > 1) {
+                  <multiline-dropdown
+                    appearance="inline"
+                    label="Tech base"
+                    [expandPanelToContent]="true"
+                    [options]="techBaseOptions()"
+                    [value]="techBaseChoice()"
+                    (valueChange)="setTechBaseChoice($event)"
+                  />
+                } @else {
+                  {{ techBaseLabel() }}
+                }
+              </div>
+            </div>
+          </div>
+          @if (refitReference(); as reference) {
+            <div class="provenance" [title]="reference.uuid">Based on {{ reference.name }}</div>
+          }
+          @if (forceMember(); as member) {
+            @if (forceRefit()) {
+              <div class="force-refit-context">
+                <span>FORCE REFIT</span><span>{{ member.entity.displayName() }}</span>
+              </div>
+            }
+            <label class="design-edit-toggle"
+              ><input
+                class="bt-checkbox"
+                type="checkbox"
+                [ngModel]="editDesign()"
+                (ngModelChange)="setDesignEditing($event)"
+                [disabled]="busy() || member.force.readOnly()"
+              />
+              EDIT DESIGN</label
+            >
+            @if (!designEditing()) {
+              <p class="muted design-mode-note">
+                {{
+                  omniReconfiguration()
+                    ? reconfiguring()
+                      ? 'Omni reconfiguration: pod equipment and arm actuators can change. The base chassis stays fixed.'
+                      : 'Repair the unit fully before Omni reconfiguration.'
+                    : 'Fixed force design. Repairs and ammunition changes are available.'
+                }}
+              </p>
+            }
+          }
+        </div>
+        <div class="mass-summary" [class.overweight]="mass() !== null && mass()! > massCapacity()">
+          <span class="eyebrow">
+            <button
+              type="button"
+              class="info-notice-button"
+              (click)="showBreakdown('weight', $event)"
+              [disabled]="mass() === null"
+              aria-label="Show weight breakdown"
+              title="Weight breakdown"
+              [attr.aria-expanded]="detailsView() === 'weight'"
+              aria-controls="construction-details"
+            >
+              TONNAGE
+              <span class="info-notice" aria-hidden="true">i</span>
+            </button>
+          </span>
+          <span class="mass-value"
+            ><button
+              type="button"
+              class="mass-total"
+              (click)="showBreakdown('weight', $event)"
+              [disabled]="mass() === null"
+              title="Weight breakdown"
+            >
+              {{ mass() === null ? '—' : (mass() | number: '1.0-3') }}</button
+            ><small>
+              /
+              @if (tonnageField(); as field) {
+                @if (canEditField(field) && tonnageOptions(); as options) {
+                  <multiline-dropdown
+                    appearance="inline"
+                    label="Chassis tonnage"
+                    [expandPanelToContent]="true"
+                    [options]="options"
+                    [value]="'' + field.get()"
+                    (valueChange)="setField(field, $event)"
+                  />
+                } @else if (canEditField(field)) {
+                  <input
+                    #tonnageControl="ngModel"
+                    class="inline-number"
+                    type="number"
+                    aria-label="Chassis tonnage"
+                    [min]="field.min ?? 0"
+                    [step]="field.step ?? 1"
+                    [ngModel]="field.get()"
+                    (ngModelChange)="setField(field, $event, tonnageControl)"
+                  />
+                } @else {
+                  {{ massCapacity() | number: '1.0-3' }}
+                }
+              } @else {
+                {{ massCapacity() | number: '1.0-3' }}
+              }
+              t</small
+            ></span
+          >
+          <div class="meter"><i [style.width.%]="massRatio()"></i></div>
+          <span class="muted">{{
+            mass() === null
+              ? 'Construction mass unavailable'
+              : (massCapacity() - mass()! | number: '1.0-3') + ' t available'
+          }}</span>
+        </div>
+        <div class="summary-stats">
+          @for (spec of summaryStats(); track spec.label) {
+            <div class="stat-bar-row" [tooltip]="spec.description ?? null">
+              <div class="stat-bar">
+                <div class="stat-bar-fill" [style.width.%]="spec.percent"></div>
+                @if (spec.pendingRepair) {
+                  <div
+                    class="stat-bar-repair"
+                    [style.left.%]="spec.repairStart"
+                    [style.width.%]="spec.repairPercent"
+                  ></div>
+                }
+              </div>
+              <span class="stat-label">{{ spec.label }}</span
+              ><span class="stat-value"
+                >{{ spec.valueText ?? spec.value }}
+                @if (spec.pendingRepair) {
+                  <small class="repair-gain" [title]="spec.label + ' repair pending'"> +{{ spec.pendingRepair }}</small>
+                }
+              </span>
+            </div>
+          }
+        </div>
+        <div class="construction-tools">
+          @if (needsRepair()) {
+            <button
+              class="bt-button repair-all"
+              (click)="repairAll()"
+              [disabled]="busy() || forceMember()?.force?.readOnly()"
+            >
+              REPAIR ALL
+            </button>
+          }
+          <button class="bt-button" [disabled]="!designEditing()" (click)="fillArmor()">Fill armor</button>
+          <button class="bt-button" [disabled]="!designEditing()" (click)="maxArmor()">Max armor</button>
+          <button class="bt-button" [disabled]="!designEditing()" (click)="stripArmor()">Strip armor</button
+          ><button class="bt-button" [disabled]="!designEditing()" (click)="stripEquipment()">Strip equipment</button>
+        </div>
+      </section>
+
+      @if (equipmentDrawerActive()) {
+        <div class="equipment-backdrop" (click)="closeEquipmentDrawer()"></div>
+      }
+      @if (!mobileEquipment() || equipmentDrawerOpen()) {
+        <aside
+          class="warehouse"
+          id="construction-equipment"
+          [class.equipment-drawer]="mobileEquipment()"
+          [class.drawer-dragging]="mobileEquipment() && dragging() !== null"
+          [attr.role]="equipmentDrawerActive() ? 'dialog' : null"
+          [attr.aria-modal]="equipmentDrawerActive() ? true : null"
+          aria-label="Equipment warehouse"
+          [cdkTrapFocus]="equipmentDrawerActive()"
+          [cdkTrapFocusAutoCapture]="mobileEquipment()"
+        >
+          <div class="warehouse-heading">
+            @if (mobileEquipment()) {
+              <button
+                class="bt-button icon-button"
+                cdkFocusInitial
+                (click)="closeEquipmentDrawer()"
+                aria-label="Close equipment"
+              >
+                ✕
+              </button>
+            }
+            <h2>
+              Warehouse <span class="warehouse-count">({{ filteredEquipment().length | number }})</span>
+            </h2>
+            <label class="warehouse-platform-filter">
+              <input
+                class="bt-checkbox"
+                type="checkbox"
+                [ngModel]="showIncompatibleEquipment()"
+                (ngModelChange)="showIncompatibleEquipment.set($event)"
+              />
+              Show incompatible
+            </label>
+          </div>
+          <div class="warehouse-search-row">
+            <div class="warehouse-search bt-input">
+              <span aria-hidden="true">⌕</span
+              ><input
+                type="search"
+                aria-label="Search equipment"
+                placeholder="Search equipment…"
+                [ngModel]="query()"
+                (ngModelChange)="query.set($event)"
+              />
+            </div>
+            <button
+              class="bt-button warehouse-filter-toggle"
+              cdkOverlayOrigin
+              #warehouseFilterOrigin="cdkOverlayOrigin"
+              [class.active]="warehouseFilterCount() > 0"
+              aria-label="Equipment filters"
+              title="Equipment filters"
+              aria-haspopup="dialog"
+              aria-controls="construction-equipment-filters"
+              [attr.aria-expanded]="equipmentFiltersOpen()"
+              (click)="equipmentFiltersOpen.set(!equipmentFiltersOpen())"
+            >
+              <svg
+                width="24"
+                height="24"
+                viewBox="0 0 24 24"
+                fill="none"
+                stroke="currentColor"
+                stroke-width="1.5"
+                stroke-linecap="round"
+                stroke-linejoin="round"
+                aria-hidden="true"
+                focusable="false"
+              >
+                <path d="M4 4h16l-6 8v5l-4 3v-8z" />
+              </svg>
+            </button>
+          </div>
+          <ng-template
+            cdkConnectedOverlay
+            [cdkConnectedOverlayOrigin]="warehouseFilterOrigin"
+            [cdkConnectedOverlayOpen]="equipmentFiltersOpen()"
+            [cdkConnectedOverlayPositions]="warehouseFilterPositions"
+            [cdkConnectedOverlayPush]="true"
+            [cdkConnectedOverlayViewportMargin]="4"
+            (overlayOutsideClick)="closeWarehouseFilters($event)"
+            (overlayKeydown)="$event.key === 'Escape' && equipmentFiltersOpen.set(false)"
+            (detach)="equipmentFiltersOpen.set(false)"
+          >
+            <div
+              class="warehouse-filter-panel framed-borders has-shadow"
+              id="construction-equipment-filters"
+              role="dialog"
+              aria-label="Equipment filters"
+            >
+              <div class="warehouse-filter-heading">
+                <h3>Filters</h3>
+                <button
+                  type="button"
+                  class="bt-button"
+                  [disabled]="warehouseFilterCount() === 0"
+                  (click)="resetWarehouseFilters()"
+                >
+                  Reset
+                </button>
+              </div>
+              <div class="warehouse-filter-location">
+                <label>
+                  <input
+                    class="bt-checkbox"
+                    type="checkbox"
+                    [ngModel]="filterByLocation()"
+                    (ngModelChange)="filterByLocation.set($event)"
+                  />
+                  Fits in</label
+                >
+                <select
+                  class="bt-select"
+                  aria-label="Equipment destination"
+                  [disabled]="!filterByLocation()"
+                  [ngModel]="selectedLocation()"
+                  (ngModelChange)="selectedLocation.set($event)"
+                >
+                  @for (location of locations(); track location.id) {
+                    <option [value]="location.id">{{ location.label }}</option>
+                  }
+                </select>
+              </div>
+              <multi-select-dropdown
+                label="Tech base"
+                [options]="warehouseTechBaseOptions"
+                [selected]="$any(warehouseTechBases())"
+                (selectionChange)="warehouseTechBases.set($any($event))"
+              />
+              <multi-select-dropdown
+                label="Damage type"
+                [options]="warehouseWeaponTypeOptions()"
+                [selected]="$any(warehouseWeaponTypes())"
+                (selectionChange)="warehouseWeaponTypes.set($any($event))"
+              />
+              @for (filter of warehouseRangeFilters; track filter.id) {
+                @if (warehouseRangeBounds().get(filter.id); as bounds) {
+                  @let value = warehouseRanges()[filter.id] ?? bounds;
+                  <div class="warehouse-filter-range">
+                    <span class="warehouse-filter-range-label"
+                      >{{ filter.label }}
+                      <span class="warehouse-filter-range-values">({{ value[0] }}~{{ value[1] }})</span></span
+                    >
+                    <range-slider
+                      [min]="bounds[0]"
+                      [max]="bounds[1]"
+                      [value]="$any(value)"
+                      [stepSize]="filter.step"
+                      [interacted]="!!warehouseRanges()[filter.id]"
+                      (valueChange)="setWarehouseRange(filter.id, $event)"
+                    />
+                  </div>
+                }
+              }
+            </div>
+          </ng-template>
+          <div class="equipment-categories" aria-label="Equipment category">
+            @for (cat of categories; track cat.id) {
+              <button
+                [class.active]="category() === cat.id"
+                [class]="'category-' + cat.id"
+                [attr.aria-pressed]="category() === cat.id"
+                [title]="cat.label"
+                [attr.aria-label]="cat.label"
+                (click)="category.set(cat.id)"
+              >
+                @if (cat.icon) {
+                  <img [src]="'/images/' + cat.icon + '.svg'" alt="" />
+                } @else {
+                  ALL
+                }
+              </button>
+            }
+          </div>
+          <div class="equipment-table">
+            <div class="equipment-columns" aria-label="Sort equipment">
+              @for (column of equipmentColumns; track column.id) {
+                @let active = equipmentSort().column === column.id;
+                <button
+                  type="button"
+                  [class.sort-active]="active"
+                  [class.sort-desc]="equipmentSort().direction === 'desc'"
+                  [attr.aria-label]="'Sort by ' + column.label"
+                  [attr.aria-pressed]="active"
+                  [attr.aria-description]="
+                    active ? 'Sorted ' + (equipmentSort().direction === 'asc' ? 'ascending' : 'descending') : null
+                  "
+                  [title]="
+                    'Sort by ' +
+                    column.label +
+                    (active && equipmentSort().direction === 'asc' ? ' descending' : ' ascending')
+                  "
+                  (click)="sortEquipment(column.id)"
+                >
+                  {{ column.label }}
+                </button>
+              }
+            </div>
+            <cdk-virtual-scroll-viewport
+              class="equipment-list"
+              [itemSize]="equipmentRowHeight"
+              [style.--equipment-row-height.px]="equipmentRowHeight"
+              [class.dragging]="dragging() !== null"
+              cdkDropList
+              [cdkDropListSortingDisabled]="true"
+              [cdkDropListAutoScrollDisabled]="true"
+              [cdkDropListHasAnchor]="true"
+              cdkDropListElementContainer=".cdk-virtual-scroll-content-wrapper"
+              [cdkDropListEnterPredicate]="rejectWarehouseDrop"
+            >
+              <!-- Cached detached rows remain registered with CDK's drop list and break later drags. -->
+              <div
+                *cdkVirtualFor="let eq of filteredEquipment(); trackBy: trackEquipment; templateCacheSize: 0"
+                class="warehouse-item"
+                cdkDrag
+                [cdkDragDisabled]="!canInstall(eq)"
+                [cdkDragData]="{ equipmentId: eq.id }"
+                (cdkDragStarted)="startDrag({ equipmentId: eq.id })"
+                (cdkDragMoved)="dragMoved($event)"
+                (cdkDragEnded)="dragEnded()"
+                [cdkDragStartDelay]="{ touch: 200, mouse: 0 }"
+                [class.selected]="placementSourceSelected(eq.id)"
+                [cdkDragPreviewContainer]="constructionShell"
+              >
+                <ng-template cdkDragPlaceholder
+                  ><div class="construction-drag-placeholder warehouse-placeholder"></div
+                ></ng-template>
+                <ng-template cdkDragPreview
+                  ><div
+                    class="construction-drag-preview"
+                    [style.width.px]="dragPreviewWidth()"
+                    [style.translate]="dragPreviewOffset()"
+                  >
+                    <ng-container
+                      [ngTemplateOutlet]="equipmentDragPreview"
+                      [ngTemplateOutletContext]="{ equipment: eq, span: dragPreviewSlots(eq) }"
+                    /></div
+                ></ng-template>
+                <button
+                  #equipmentName
+                  type="button"
+                  class="warehouse-equipment"
+                  [class]="equipmentClass(eq)"
+                  [title]="equipmentLabel(eq)"
+                  [attr.aria-label]="equipmentLabel(eq)"
+                  [attr.aria-pressed]="placementSourceSelected(eq.id)"
+                  cdkDragHandle
+                  (pointerdown)="captureDragPreviewOrigin($event)"
+                  [inspectorHoverDisabled]="mobileEquipment() || !!dragging()"
+                  [inspectorHover]="inspector"
+                  (inspect)="inspectEquipment(eq, $event, true)"
+                  (click)="selectEquipment(eq, equipmentName)"
+                  (dblclick)="installSelected()"
+                >
+                  <span class="equipment-heading">
+                    <span class="equipment-name">
+                      <span class="equipment-title"
+                        ><span class="equipment-label">{{ equipmentLabel(eq) }}</span>
+                        @if (showTechBases() && eq.techBase !== 'All') {
+                          <tech-base-badge [techBase]="eq.techBase" />
+                        }
+                      </span>
+                    </span>
+                    <span class="equipment-number equipment-slots" title="Critical slots"
+                      ><span class="slot-icon" role="img" aria-label="Slots"></span
+                      ><span>{{ equipmentSlots(eq) }}</span></span
+                    >
+                    <span class="equipment-number equipment-tons" title="Tons"
+                      ><img src="/images/weight.svg" alt="Tons" /><span>{{ equipmentMass(eq) }}</span></span
+                    >
+                  </span>
+                  <span class="equipment-stats">
+                    <span class="equipment-number equipment-damage"
+                      ><small>Dmg</small><span>{{ equipmentDamage(eq) }}</span></span
+                    >
+                    <span class="equipment-number equipment-range"
+                      ><small>Range</small><span>{{ equipmentRange(eq) }}</span></span
+                    >
+                    @let bv = equipmentBV(eq);
+                    <span class="equipment-number equipment-bv"
+                      ><small>BV</small><span>{{ bv === 'variable' ? 'Var.' : (bv | number: '1.0-2') }}</span></span
+                    >
+                  </span>
+                </button>
+                <button
+                  class="install-button"
+                  [disabled]="!canInstall(eq)"
+                  (click)="install(eq)"
+                  [attr.aria-label]="'Install ' + eq.name + ' in ' + locationLabel(selectedLocation())"
+                  title="Install in selected location"
+                >
+                  +
+                </button>
+              </div>
+              @if (!filteredEquipment().length) {
+                <div class="empty-list">
+                  No matching equipment.<span>Try another category or location, or show incompatible equipment.</span>
+                </div>
+              }
+            </cdk-virtual-scroll-viewport>
+          </div>
+          <!-- Keep this drop target separate from the virtual catalog's source list. -->
+          <div
+            class="warehouse-drop-zone"
+            cdkDropList
+            [cdkDropListSortingDisabled]="true"
+            [cdkDropListAutoScrollDisabled]="true"
+            [cdkDropListEnterPredicate]="acceptWarehouseDrop"
+            (cdkDropListDropped)="onWarehouseDrop($event)"
+          >
+            <span>Drop here to remove</span>
+          </div>
+        </aside>
+      }
+    </div>
+    <section
+      class="construction-workspace"
+      cdkScrollable
+      [class.preview-workspace]="panel() === 'preview'"
+      [attr.inert]="equipmentDrawerActive() || detailsOverlayOpen() ? '' : null"
+    >
+      @if (panel() === 'preview') {
+        @if (previewEntity(); as preview) {
+          <construction-preview
+            [entity]="preview"
+            [unit]="designSummary()"
+            [unsaved]="dirty()"
+            [fluffImageUrl]="fluffImageUrl()"
+          ></construction-preview>
+        }
+      } @else if (panel() === 'topology') {
+        @if (building(); as buildingEntity) {
+          <construction-topology
+            [entity]="buildingEntity"
+            [(location)]="selectedLocation"
+            [disabled]="!designEditing()"
+            [dropLocation]="dragTarget()?.location ?? null"
+            [dropIssue]="dropPlans().get(dragTarget()?.location ?? '')?.issue ?? ''"
+            (equipmentDropped)="onTopologyDrop($event)"
+            (editRequested)="change($event)"
+          >
+            <div topologyEquipment>
+              @if (selectedConstructionLocation(); as location) {
+                <ng-container
+                  [ngTemplateOutlet]="locationEquipment"
+                  [ngTemplateOutletContext]="{ $implicit: location }"
+                />
+              }
+            </div>
+          </construction-topology>
+        }
+      } @else if (panel() === 'fluff') {
+        <construction-fluff
+          [entity]="entity()"
+          [textEditable]="designEditing()"
+          [disabled]="busy()"
+          [imageUrl]="fluffImageUrl()"
+          [hasCustomImage]="!!effectiveArtwork()?.fluff"
+          (imageChange)="changeArtwork($event)"
+          (editRequested)="change($event)"
+        >
+          <section fluff-sources class="system-panel framed-borders">
+            <h2>Sources &amp; publication</h2>
+            <div class="source-fields">
+              <sourcebook-picker
+                label="Source"
+                [value]="entity().source()"
+                [disabled]="!designEditing()"
+                (valueChange)="setSources('source', $event)"
+              />
+              <sourcebook-picker
+                label="Published"
+                [value]="entity().published()"
+                [disabled]="!designEditing()"
+                (valueChange)="setSources('published', $event)"
+              />
+            </div>
+          </section>
+        </construction-fluff>
+      } @else if (panel() === 'quirks') {
+        <construction-quirks
+          [entity]="entity()"
+          [attr.inert]="!designEditing() ? '' : null"
+          [class.design-locked]="!designEditing()"
+          (editRequested)="change($event)"
+        />
+      } @else if (panel() === 'systems') {
+        <div class="configuration-panels">
+          <div class="systems-grid">
+            @if (!isMek()) {
+              <ng-container [ngTemplateOutlet]="summaryPanel" />
+            }
+            @for (group of fieldGroups(); track group.name) {
+              <section #systemPanel class="system-panel framed-borders" [attr.data-system-group]="group.name">
+                <h2>{{ group.name === 'Systems' && building() ? 'Structure & Systems' : group.name }}</h2>
+                @if (group.name === 'Systems' && building(); as buildingEntity) {
+                  <construction-building-structure
+                    [entity]="buildingEntity"
+                    [disabled]="!designEditing()"
+                    (editRequested)="change($event)"
+                  />
+                }
+                <div
+                  class="system-fields"
+                  [class.special-fields]="group.name === 'Special'"
+                  [class.building-fields]="group.name === 'Systems' && building()"
+                >
+                  @for (field of group.fields; track field.id) {
+                    @if (field.id === 'year') {
+                      <div class="year-fields" data-field-id="year">
+                        <div class="year-heading">
+                          <label for="construction-introduction-year">{{ field.label }}</label>
+                          <button
+                            class="oem-year-toggle"
+                            type="button"
+                            aria-controls="construction-oem-year"
+                            aria-label="OEM year"
+                            [attr.aria-expanded]="oemYearVisible()"
+                            [tooltip]="oemYearField().hint ?? null"
+                            (click)="oemYearExpanded.set(!oemYearVisible())"
+                          >
+                            <span class="chevron" [class.collapsed]="!oemYearVisible()" aria-hidden="true"></span>
+                          </button>
+                        </div>
+                        <input
+                          id="construction-introduction-year"
+                          class="bt-input"
+                          type="number"
+                          [min]="field.min ?? 1"
+                          [max]="field.max ?? 9999"
+                          step="1"
+                          [ngModel]="field.get()"
+                          (ngModelChange)="setField(field, $event)"
+                          [disabled]="!canEditField(field)"
+                        />
+                        @if (oemYearVisible()) {
+                          <label
+                            class="oem-year-field"
+                            data-field-id="originalBuildYear"
+                            [tooltip]="oemYearField().hint ?? null"
+                            >OEM year
+                            <input
+                              id="construction-oem-year"
+                              class="bt-input"
+                              type="number"
+                              [attr.min]="oemYearField().min"
+                              [attr.max]="oemYearField().max"
+                              step="1"
+                              [placeholder]="entity().year().toString()"
+                              [ngModel]="oemYearField().get()"
+                              (ngModelChange)="setOemYear($event)"
+                              [disabled]="!designEditing()"
+                            />
+                          </label>
+                        }
+                      </div>
+                    } @else {
+                      <label
+                        [attr.data-field-id]="field.id"
+                        [class.full-row]="field.id === 'chassis' || field.id === 'model' || field.id === 'clanName'"
+                        [class.checkbox-field]="field.kind === 'boolean'"
+                        [title]="field.hint ?? ''"
+                      >
+                        @if (field.kind !== 'boolean') {
+                          <span>{{ field.label }}</span>
+                        }
+                        @switch (field.kind) {
+                          @case ('select') {
+                            <select
+                              class="bt-select"
+                              [class.danger]="field.invalid"
+                              [attr.aria-invalid]="field.invalid || null"
+                              [attr.aria-label]="field.label"
+                              [ngModel]="field.get()"
+                              (ngModelChange)="setField(field, $event)"
+                              [disabled]="!canEditField(field)"
+                            >
+                              @for (option of field.options; track option.value) {
+                                <option [ngValue]="option.value" [disabled]="option.disabled">
+                                  {{ option.label }}
+                                </option>
+                              }
+                            </select>
+                          }
+                          @case ('boolean') {
+                            <input
+                              class="bt-checkbox"
+                              type="checkbox"
+                              [attr.aria-label]="field.label"
+                              [ngModel]="field.get()"
+                              (ngModelChange)="setField(field, $event)"
+                              [disabled]="!canEditField(field)"
+                            /><span>{{ field.label }}</span>
+                          }
+                          @case ('number') {
+                            <input
+                              #numberControl="ngModel"
+                              class="bt-input"
+                              type="number"
+                              [attr.aria-label]="field.label"
+                              [min]="field.min ?? 0"
+                              [attr.max]="field.max"
+                              [step]="field.step ?? 1"
+                              [placeholder]="field.placeholder ?? ''"
+                              [ngModel]="field.get()"
+                              (ngModelChange)="setField(field, $event, numberControl)"
+                              [disabled]="!canEditField(field)"
+                            />
+                          }
+                          @default {
+                            <input
+                              class="bt-input"
+                              type="text"
+                              [attr.aria-label]="field.label"
+                              [ngModel]="field.get()"
+                              [ngModelOptions]="{ updateOn: 'blur' }"
+                              (ngModelChange)="setField(field, $event)"
+                              [disabled]="!canEditField(field)"
+                            />
+                          }
+                        }
+                        @if (field.hint) {
+                          <small>{{ field.hint }}</small>
+                        }
+                      </label>
+                    }
+                  }
+                </div>
+                @if (group.name === 'Chassis' && refitReference(); as reference) {
+                  <div class="refit-source">
+                    <span [title]="reference.uuid">Based on {{ reference.name }}</span>
+                    <button
+                      class="close-button"
+                      type="button"
+                      aria-label="Unlink source unit"
+                      title="Unlink source unit"
+                      [disabled]="busy() || !designEditing()"
+                      (click)="unlinkRefitSource()"
+                    ></button>
+                  </div>
+                }
+              </section>
+              @if (isMek() && group.name === 'Chassis') {
+                <ng-container [ngTemplateOutlet]="materialsPanel" />
+              }
+            }
+            @if (isMek()) {
+              <ng-container [ngTemplateOutlet]="summaryPanel" />
+            } @else {
+              <ng-container [ngTemplateOutlet]="materialsPanel" />
+            }
+            <ng-template #summaryPanel>
+              <section #systemPanel class="system-panel framed-borders" data-system-group="Summary">
+                <construction-summary [entity]="entity()" />
+              </section>
+            </ng-template>
+            <ng-template #materialsPanel>
+              @if (armorOptions().length || structureOptions().length) {
+                <section #systemPanel class="system-panel framed-borders" data-system-group="Materials">
+                  <h2>Materials</h2>
+                  <div class="system-fields">
+                    @if (armorOptions().length) {
+                      <label [class.full-row]="!structureOptions().length && !armorTechRating()"
+                        >Armor<select
+                          class="bt-select"
+                          aria-label="Armor material"
+                          [class.danger]="materialInvalid(entity().uniformArmor()?.armor)"
+                          [attr.aria-invalid]="materialInvalid(entity().uniformArmor()?.armor) || null"
+                          [ngModel]="entity().hasPatchworkArmor() ? 'patchwork' : entity().uniformArmor()?.armor?.id"
+                          (ngModelChange)="setArmorMaterial($event)"
+                          [disabled]="!designEditing()"
+                        >
+                          @if (supportsPatchwork()) {
+                            <option value="patchwork">Patchwork armor</option>
+                          }
+                          @for (armor of armorOptions(); track armor.id) {
+                            <option [value]="armor.id" [disabled]="materialInvalid(armor)">
+                              {{ materialLabel(armor) }}
+                            </option>
+                          }
+                        </select></label
+                      >
+                    }
+                    @if (armorTechRating(); as rating) {
+                      <label
+                        >Armor tech rating<select
+                          class="bt-select"
+                          aria-label="Armor tech rating"
+                          [ngModel]="rating"
+                          (ngModelChange)="setArmorTechRating($event)"
+                          [disabled]="!designEditing()"
+                        >
+                          @for (option of techRatings; track option) {
+                            <option [value]="option">{{ option }}</option>
+                          }
+                        </select></label
+                      >
+                    }
+                    @if (structureOptions().length) {
+                      <label
+                        >Structure<select
+                          class="bt-select"
+                          aria-label="Structure material"
+                          [class.danger]="
+                            !hybridStructure() && materialInvalid(entity().uniformStructureMaterial()?.structure)
+                          "
+                          [attr.aria-invalid]="
+                            (!hybridStructure() && materialInvalid(entity().uniformStructureMaterial()?.structure)) ||
+                            null
+                          "
+                          [ngModel]="hybridStructure() ? 'hybrid' : entity().uniformStructureMaterial()?.structure?.id"
+                          (ngModelChange)="setStructure($event)"
+                          [disabled]="!designEditing()"
+                        >
+                          @if (isMek()) {
+                            <option value="hybrid">Hybrid structure</option>
+                          }
+                          @for (structure of structureOptions(); track structure.id) {
+                            <option [value]="structure.id" [disabled]="materialInvalid(structure)">
+                              {{ materialLabel(structure) }}
+                            </option>
+                          }
+                        </select></label
+                      >
+                    }
+                  </div>
+                  @if (entity().hasPatchworkArmor() || hybridStructure()) {
+                    <p class="muted">
+                      Expand the chevron beside Structure in the loadout to edit a location’s materials.
+                    </p>
+                  }
+                </section>
+              }
+            </ng-template>
+          </div>
+          <construction-extras
+            [attr.inert]="!designEditing() ? '' : null"
+            [class.design-locked]="!designEditing()"
+            [entity]="entity()"
+            (editRequested)="change($event)"
+          />
+        </div>
+      } @else {
+        @for (group of locationGroups(); track group.id) {
+          @if (group.label) {
+            <h2 class="building-floor-title">{{ group.label }}</h2>
+          }
+          <div
+            class="location-grid"
+            [class.mek-grid]="isMek()"
+            [class.compact-grid]="isMek() && locationColumns().length === 3"
+            [class.list-grid]="!building() && locationLayout().kind === 'list'"
+            [class.building-grid]="!!building()"
+            [style.--location-columns]="group.columns.length"
+          >
+            @for (column of group.columns; track $index) {
+              <div class="location-column">
+                @for (location of column; track location.id) {
+                  <article
+                    class="location-card"
+                    [class.invalid-donor]="!!location.donorIssue"
+                    [attr.aria-invalid]="location.donorIssue ? true : null"
+                    [attr.title]="location.donorIssue ?? null"
+                    [class.selected-location]="selectedLocation() === location.id"
+                    [attr.data-location]="location.id"
+                  >
+                    @let caseState = locationCase().get(location.id);
+                    <button
+                      class="location-title"
+                      [attr.aria-pressed]="selectedLocation() === location.id"
+                      (click)="selectedLocation.set(location.id)"
+                    >
+                      <span class="location-name">{{ location.label }}</span>
+                      @if (caseState?.label) {
+                        <span
+                          class="case-badge"
+                          [class.automatic]="caseState?.automatic"
+                          [title]="caseState!.description"
+                          [attr.aria-label]="caseState!.description"
+                        >
+                          {{ caseState!.label }}
+                        </span>
+                      }
+                    </button>
+                    <ng-template #caseControl>
+                      @if (!isMek() && caseState?.configurable) {
+                        <label class="case-opt-out">
+                          <input
+                            class="bt-checkbox"
+                            type="checkbox"
+                            [attr.aria-label]="'Disable automatic Clan CASE in ' + location.label"
+                            [disabled]="
+                              !designEditing() || busy() || foreignDesign() || !!forceMember()?.force?.readOnly()
+                            "
+                            [ngModel]="caseState!.optedOut"
+                            (ngModelChange)="setClanCaseOptOut(location.id, $event)"
+                          />
+                          <span>Disable automatic Clan CASE</span>
+                        </label>
+                        <p class="case-description">{{ caseState!.description }}</p>
+                      }
+                    </ng-template>
+                    @if (entity().armorLocations.includes(location.id)) {
+                      <div class="location-defense">
+                        @if (entity().hasRearArmor(location.id)) {
+                          <div class="defense-label armor-total">
+                            <span>ARMOR</span
+                            ><b
+                              >{{ location.armor + location.rearArmor }}<small> / {{ location.maxArmor }}</small></b
+                            >
+                          </div>
+                        }
+                        <construction-armor-control
+                          [label]="entity().hasRearArmor(location.id) ? 'FRONT' : 'ARMOR'"
+                          [locationName]="location.label"
+                          [value]="location.armor"
+                          [capacity]="location.maxArmor"
+                          [reserved]="location.rearArmor"
+                          [damage]="armorDamage(location.id)"
+                          [disabled]="!designEditing()"
+                          [pendingRepair]="armorRepair(location.id)"
+                          [repairable]="!!forceMember()"
+                          [repairDisabled]="busy() || !!forceMember()?.force?.readOnly()"
+                          (repairRequested)="repairDefense(location.id, 'front')"
+                          (valueChange)="setArmor(location.id, 'front', $event)"
+                        />
+                        @if (entity().hasRearArmor(location.id)) {
+                          <construction-armor-control
+                            label="REAR"
+                            face="rear"
+                            [locationName]="location.label"
+                            [value]="location.rearArmor"
+                            [capacity]="location.maxArmor"
+                            [reserved]="location.armor"
+                            [damage]="armorDamage(location.id, 'rear')"
+                            [disabled]="!designEditing()"
+                            [pendingRepair]="armorRepair(location.id, 'rear')"
+                            [repairable]="!!forceMember()"
+                            [repairDisabled]="busy() || !!forceMember()?.force?.readOnly()"
+                            (repairRequested)="repairDefense(location.id, 'rear')"
+                            (valueChange)="setArmor(location.id, 'rear', $event)"
+                          />
+                        }
+                        @let configurableStructure =
+                          (supportsPatchwork() && armorOptions(location.id).length) ||
+                          structureOptions(location.id).length ||
+                          (!isMek() && caseState?.configurable);
+                        <ng-template #structureDisplay>
+                          <div class="defense-label structure-label">
+                            <span>STRUCTURE</span
+                            ><b
+                              [class.damaged-value]="
+                                internalRemaining(location.id, location.structure) < location.structure
+                              "
+                              >{{ internalRemaining(location.id, location.structure) }}
+                              @if (internalRemaining(location.id, location.structure) < location.structure) {
+                                <small> / {{ location.structure }}</small>
+                              }
+                              @if (internalRepair(location.id, location.structure); as repaired) {
+                                <small class="repair-gain" title="Structure repair pending">+{{ repaired }}</small>
+                              }
+                            </b>
+                            @if (
+                              forceMember() && internalRemaining(location.id, location.structure) < location.structure
+                            ) {
+                              <button
+                                class="bt-button tiny structure-repair-button"
+                                [disabled]="busy() || forceMember()?.force?.readOnly()"
+                                [attr.aria-label]="'Repair ' + location.label + ' structure'"
+                                title="Repair this location’s structure when you save"
+                                (click)="$event.preventDefault(); repairDefense(location.id, 'internal')"
+                              >
+                                Repair
+                              </button>
+                            }
+                            @if (configurableStructure) {
+                              <span class="structure-disclosure" aria-hidden="true"><span class="chevron"></span></span>
+                            }
+                          </div>
+                          @if (forceMember()) {
+                            <div
+                              class="structure-track"
+                              role="img"
+                              [attr.aria-label]="
+                                location.label +
+                                ' structure: ' +
+                                internalRemaining(location.id, location.structure) +
+                                ' of ' +
+                                location.structure +
+                                ', ' +
+                                internalRepair(location.id, location.structure) +
+                                ' repair pending'
+                              "
+                            >
+                              <span
+                                class="structure-fill"
+                                [style.width.%]="
+                                  defensePercent(internalRemaining(location.id, location.structure), location.structure)
+                                "
+                              ></span>
+                              <span
+                                class="structure-damage"
+                                [style.left.%]="
+                                  defensePercent(internalRemaining(location.id, location.structure), location.structure)
+                                "
+                                [style.width.%]="
+                                  defensePercent(
+                                    location.structure - internalRemaining(location.id, location.structure),
+                                    location.structure
+                                  )
+                                "
+                              ></span>
+                              <span
+                                class="structure-repair"
+                                [style.left.%]="
+                                  defensePercent(
+                                    internalRemaining(location.id, location.structure) -
+                                      internalRepair(location.id, location.structure),
+                                    location.structure
+                                  )
+                                "
+                                [style.width.%]="
+                                  defensePercent(internalRepair(location.id, location.structure), location.structure)
+                                "
+                              ></span>
+                            </div>
+                          }
+                        </ng-template>
+                        <div class="structure-defense">
+                          @if (configurableStructure) {
+                            <details class="location-config">
+                              <summary
+                                [attr.aria-label]="'Configure ' + location.label"
+                                [title]="isMek() ? 'Materials & structure' : 'Materials, structure & CASE'"
+                              >
+                                <ng-container [ngTemplateOutlet]="structureDisplay" />
+                              </summary>
+                              @if (
+                                supportsPatchwork() &&
+                                armorOptions(location.id).length &&
+                                entity().armorByLocation().has(location.id)
+                              ) {
+                                <label
+                                  >Armor<select
+                                    class="bt-select"
+                                    [class.danger]="
+                                      materialInvalid(entity().armorByLocation().get(location.id)?.armor, location.id)
+                                    "
+                                    [attr.aria-invalid]="
+                                      materialInvalid(
+                                        entity().armorByLocation().get(location.id)?.armor,
+                                        location.id
+                                      ) || null
+                                    "
+                                    [attr.aria-label]="location.label + ' armor material'"
+                                    [ngModel]="armorAt(location.id)"
+                                    (ngModelChange)="setArmorMaterial($event, location.id)"
+                                    [disabled]="!designEditing()"
+                                  >
+                                    @for (armor of armorOptions(location.id); track armor.id) {
+                                      <option [value]="armor.id" [disabled]="materialInvalid(armor, location.id)">
+                                        {{ materialLabel(armor, location.id) }}
+                                      </option>
+                                    }
+                                  </select></label
+                                >
+                                @if (armorTechRating(location.id); as rating) {
+                                  <label
+                                    >Armor tech rating<select
+                                      class="bt-select"
+                                      [attr.aria-label]="location.label + ' armor tech rating'"
+                                      [ngModel]="rating"
+                                      (ngModelChange)="setArmorTechRating($event, location.id)"
+                                      [disabled]="!designEditing()"
+                                    >
+                                      @for (option of techRatings; track option) {
+                                        <option [value]="option">{{ option }}</option>
+                                      }
+                                    </select></label
+                                  >
+                                }
+                              }
+                              @if (
+                                structureOptions(location.id).length && entity().structureByLocation().has(location.id)
+                              ) {
+                                <label
+                                  >Structure<select
+                                    class="bt-select"
+                                    [class.danger]="
+                                      materialInvalid(entity().structureByLocation().get(location.id)?.structure)
+                                    "
+                                    [attr.aria-invalid]="
+                                      materialInvalid(entity().structureByLocation().get(location.id)?.structure) ||
+                                      null
+                                    "
+                                    [attr.aria-label]="location.label + ' structure material'"
+                                    [ngModel]="structureAt(location.id)"
+                                    (ngModelChange)="setStructure($event, location.id)"
+                                    [disabled]="!designEditing()"
+                                  >
+                                    @for (structure of structureOptions(location.id); track structure.id) {
+                                      <option [value]="structure.id" [disabled]="materialInvalid(structure)">
+                                        {{ materialLabel(structure) }}
+                                      </option>
+                                    }
+                                  </select></label
+                                >
+                                @if (hybridStructure()) {
+                                  <label
+                                    >Donor chassis tonnage<input
+                                      class="bt-input"
+                                      type="number"
+                                      min="10"
+                                      max="200"
+                                      step="5"
+                                      [attr.aria-label]="location.label + ' donor structure tonnage'"
+                                      [ngModel]="donorTonnage(location.id)"
+                                      [ngModelOptions]="{ updateOn: 'blur' }"
+                                      (ngModelChange)="setStructure(structureAt(location.id), location.id, $event)"
+                                      [disabled]="!designEditing()"
+                                  /></label>
+                                  <label
+                                    >Donor chassis<input
+                                      class="bt-input"
+                                      type="text"
+                                      placeholder="Unspecified"
+                                      [attr.aria-label]="location.label + ' donor chassis'"
+                                      [ngModel]="donorAt(location.id)?.name ?? ''"
+                                      [ngModelOptions]="{ updateOn: 'blur' }"
+                                      (ngModelChange)="setDonor(location.id, 'name', $event)"
+                                      [disabled]="!designEditing()"
+                                  /></label>
+                                  <label
+                                    >Donor type<select
+                                      class="bt-select"
+                                      [attr.aria-label]="location.label + ' donor type'"
+                                      [ngModel]="donorAt(location.id)?.unitType ?? ''"
+                                      (ngModelChange)="setDonor(location.id, 'unitType', $event)"
+                                      [disabled]="!designEditing()"
+                                    >
+                                      <option value="">Unspecified</option>
+                                      <option value="BattleMek">BattleMek</option>
+                                      <option value="OmniMek">OmniMek</option>
+                                      <option value="IndustrialMek">IndustrialMek</option>
+                                    </select></label
+                                  >
+                                }
+                              }
+                              <ng-container [ngTemplateOutlet]="caseControl" />
+                            </details>
+                          } @else {
+                            <ng-container [ngTemplateOutlet]="structureDisplay" />
+                          }
+                        </div>
+                      </div>
+                    }
+                    @if (!isMek() && !entity().armorLocations.includes(location.id) && caseState?.configurable) {
+                      <details class="location-config location-case-config">
+                        <summary [attr.aria-label]="'Configure ' + location.label + ' CASE'">CASE options</summary>
+                        <ng-container [ngTemplateOutlet]="caseControl" />
+                      </details>
+                    }
+                    @if (isMek()) {
+                      <div class="location-controls">
+                        @for (actuator of locationActuators().get(location.id); track actuator.field.id) {
+                          @if (!actuator.field.get()) {
+                            <label class="location-actuator">
+                              <input
+                                class="bt-checkbox"
+                                type="checkbox"
+                                [attr.aria-label]="actuator.field.label"
+                                [ngModel]="actuator.field.get()"
+                                (ngModelChange)="setField(actuator.field, $event)"
+                                [disabled]="
+                                  !canEditField(actuator.field) ||
+                                  busy() ||
+                                  foreignDesign() ||
+                                  !!forceMember()?.force?.readOnly()
+                                "
+                              />
+                              <span>{{ actuator.label }}</span>
+                            </label>
+                          }
+                        }
+                        @if (caseState && caseState.options.length) {
+                          <label class="location-case-control">
+                            <span>CASE</span>
+                            <select
+                              class="bt-select"
+                              [class.warning]="!!caseState!.warning"
+                              [attr.aria-label]="location.label + ' CASE'"
+                              [attr.aria-describedby]="caseState!.warning ? 'case-warning-' + location.id : null"
+                              [ngModel]="caseState!.selection"
+                              (ngModelChange)="setLocationCase(location.id, $event)"
+                              [disabled]="
+                                !designEditing() || busy() || foreignDesign() || !!forceMember()?.force?.readOnly()
+                              "
+                            >
+                              @for (option of caseState!.options; track option.value) {
+                                <option [value]="option.value" [disabled]="option.disabled">{{ option.label }}</option>
+                              }
+                              @if (caseState!.selection === 'prototype') {
+                                <option value="prototype" disabled>CASE-P (installed)</option>
+                              }
+                            </select>
+                          </label>
+                          @if (caseState!.warning; as warning) {
+                            <p class="case-warning" [id]="'case-warning-' + location.id" role="status">
+                              Warning: {{ warning }}
+                            </p>
+                          }
+                        }
+                      </div>
+                    }
+                    @if (slotlessMounts().get(location.id); as mounts) {
+                      <div class="slotless-mounts">
+                        @for (mount of mounts; track mount.mountId) {
+                          <ng-container
+                            [ngTemplateOutlet]="slotlessMount"
+                            [ngTemplateOutletContext]="{ $implicit: mount, location: location.id }"
+                          />
+                        }
+                      </div>
+                    }
+                    <ng-container
+                      [ngTemplateOutlet]="locationEquipment"
+                      [ngTemplateOutletContext]="{ $implicit: location }"
+                    />
+                  </article>
+                }
+              </div>
+            }
+          </div>
+        }
+      }
+      @if (panel() === 'loadout') {
+        @if (bombStores(); as stores) {
+          <section class="bomb-stores-panel framed-borders" aria-label="Bombs">
+            <div class="bomb-stores-header">
+              <span>
+                Bombs · {{ stores.capacity.external }} external{{
+                  stores.capacity.internal > 0 ? ' / ' + stores.capacity.internal + ' internal' : ''
+                }}
+                hardpoints
+              </span>
+              @if (stores.staged && !forceMember()?.force?.readOnly()) {
+                <button class="bt-button" type="button" (click)="setRuntimeBombs()" [disabled]="busy()">
+                  SET BOMBS
+                </button>
+              }
+            </div>
+            @for (row of stores.rows; track row.id) {
+              <div class="bomb-stores-row">
+                <span>{{ row.name }}</span
+                ><small>{{ row.section }}</small
+                ><span>{{ row.carried }}/{{ row.count }}</span>
+              </div>
+            } @empty {
+              <small>{{ stores.staged ? 'No bombs loaded.' : 'Bombs are loaded on a force unit.' }}</small>
+            }
+          </section>
+        }
+      }
+      @if (panel() === 'loadout' || panel() === 'topology') {
+        <details
+          #unallocatedPanel
+          class="unallocated-panel framed-borders"
+          aria-label="Unallocated equipment"
+          [open]="unallocatedOpen()"
+          (toggle)="unallocatedOpen.set(unallocatedPanel.open)"
+        >
+          <summary>
+            <span class="chevron" aria-hidden="true"></span>
+            Unallocated equipment{{ unallocated().length > 0 ? ' (' + unallocated().length + ')' : '' }}
+            @if (removableUnallocated().length > 0) {
+              <button
+                type="button"
+                class="remove-all-unallocated bt-button danger"
+                [disabled]="busy()"
+                (click)="removeAllUnallocated($event)"
+                title="Remove all removable unallocated equipment"
+              >
+                Remove all
+              </button>
+            }
+          </summary>
+          <div
+            class="unallocated-drop-zone"
+            cdkDropList
+            [cdkDropListSortingDisabled]="true"
+            [cdkDropListAutoScrollDisabled]="true"
+            [cdkDropListEnterPredicate]="acceptUnallocatedDrop"
+            (cdkDropListDropped)="onUnallocatedDrop($event)"
+          >
+            @for (mount of unallocated(); track mount.mountId) {
+              @let spread = spreadAllocation(mount);
+              <div
+                class="unallocated-equipment"
+                [attr.data-mount-id]="mount.mountId"
+                [class.tech-incompatible]="equipmentTechMismatch(mount.equipment)"
+                cdkDrag
+                (pointerdown)="captureDragPreviewOrigin($event)"
+                [cdkDragDisabled]="!canEditMount(mount)"
+                [cdkDragPreviewContainer]="constructionShell"
+                [cdkDragData]="{ equipmentId: mount.equipmentId, mountId: mount.mountId }"
+                (cdkDragStarted)="startDrag({ equipmentId: mount.equipmentId, mountId: mount.mountId })"
+                (cdkDragMoved)="dragMoved($event)"
+                (cdkDragEnded)="dragEnded()"
+                [class]="equipmentClass(mount.equipment)"
+                [class.placement-selected]="placementSourceSelected(mount.equipmentId, mount.mountId)"
+              >
+                <button
+                  #unallocatedName
+                  class="unallocated-name"
+                  [attr.aria-pressed]="placementSourceSelected(mount.equipmentId, mount.mountId)"
+                  [inspectorHoverDisabled]="mobileEquipment() || !!dragging()"
+                  [inspectorHover]="inspector"
+                  (inspect)="inspectMount(mount, $event, undefined, true)"
+                  (click)="selectMount(mount, unallocatedName)"
+                  (dblclick)="installSelected()"
+                >
+                  <span class="equipment-title"
+                    ><span class="equipment-label">{{ mount.displayName(true) }}</span>
+                    <ng-container
+                      [ngTemplateOutlet]="equipmentWarningIcon"
+                      [ngTemplateOutletContext]="{ $implicit: mount }"
+                    />
+                    @if (showTechBases() && mount.equipment && mount.equipment.techBase !== 'All') {
+                      <tech-base-badge [techBase]="mount.equipment.techBase" />
+                    }
+                    @if (mount.equipment && equipmentTechMismatch(mount.equipment)) {
+                      <ng-container
+                        [ngTemplateOutlet]="techMismatch"
+                        [ngTemplateOutletContext]="{ $implicit: mount.equipment.techBase }"
+                      />
+                    }
+                  </span>
+                  @if (spread) {
+                    <span class="unallocated-slot-count"
+                      >{{ spread.remaining }} slot{{ spread.remaining === 1 ? '' : 's' }} unallocated</span
+                    >
+                  }
+                  @if (requiredMount(mount)) {
+                    <small>Required by chassis</small>
+                  }
+                </button>
+                @if (isMountUnallocated(mount) && canRemoveMount(mount)) {
+                  <button
+                    class="remove-mount"
+                    (click)="remove(mount, $event)"
+                    [attr.aria-label]="'Remove ' + mount.displayName(true)"
+                    title="Remove from design"
+                  >
+                    ×
+                  </button>
+                }
+                <ng-template cdkDragPlaceholder><div class="construction-drag-placeholder"></div></ng-template>
+                <ng-template cdkDragPreview
+                  ><div
+                    class="construction-drag-preview"
+                    [style.width.px]="dragPreviewWidth()"
+                    [style.translate]="dragPreviewOffset()"
+                  >
+                    @if (spread) {
+                      <div class="spread-pool-preview" [class]="equipmentClass(mount.equipment)">
+                        <b>{{ mount.displayName(true) }}</b>
+                        <span>{{ spread.remaining }} slots available · Drop to allocate</span>
+                      </div>
+                    } @else {
+                      <ng-container
+                        [ngTemplateOutlet]="equipmentDragPreview"
+                        [ngTemplateOutletContext]="{
+                          equipment: mount.equipment,
+                          mount,
+                          span: dragPreviewSlots(mount.equipment),
+                        }"
+                      />
+                    }</div
+                ></ng-template>
+              </div>
+            } @empty {
+              <p class="unallocated-empty">
+                Drag equipment here from the Warehouse or a location to leave it unallocated.
+              </p>
+            }
+          </div>
+        </details>
+      }
+    </section>
+    @if (detailsOverlayOpen()) {
+      <div class="details-backdrop" (click)="closeDetails()" aria-hidden="true"></div>
+    }
+    @if (detailsView() !== null) {
+      <aside
+        id="construction-details"
+        class="construction-details"
+        [class.details-overlay]="detailsOverlayOpen()"
+        [attr.role]="detailsOverlayOpen() ? 'dialog' : null"
+        [attr.aria-modal]="detailsOverlayOpen() ? true : null"
+        [attr.aria-label]="showValidation() ? 'Construction checks' : breakdown()?.title || 'Construction details'"
+        [cdkTrapFocus]="detailsOverlayOpen()"
+        [cdkTrapFocusAutoCapture]="detailsOverlayOpen()"
+        (keydown.escape)="$event.stopPropagation(); closeDetails()"
+      >
+        @if (showValidation()) {
+          <header class="details-heading">
+            <h2>Construction checks</h2>
+            <button
+              type="button"
+              class="close-button"
+              cdkFocusInitial
+              (click)="closeDetails()"
+              aria-label="Close construction checks"
+            ></button>
+          </header>
+          <section class="validation-panel" aria-label="Construction validation">
+            <ng-container *ngTemplateOutlet="validationList" />
+          </section>
+        } @else if (breakdown(); as data) {
+          <construction-breakdown [data]="data" (closed)="closeDetails()" />
+        } @else {
+          <header class="details-heading">
+            <h2>Breakdown unavailable</h2>
+            <button
+              type="button"
+              class="close-button"
+              cdkFocusInitial
+              (click)="closeDetails()"
+              aria-label="Close breakdown"
+            ></button>
+          </header>
+          <p class="details-unavailable">The breakdown cannot be calculated for the current configuration.</p>
+        }
+      </aside>
+    }
+  </main>
+
+  <footer
+    #constructionFooter
+    class="workshop-footer"
+    [attr.inert]="equipmentDrawerActive() || detailsOverlayOpen() ? '' : null"
+  >
+    <div class="file-actions">
+      <button class="bt-button" (click)="picker.set('new')" [disabled]="busy()">New</button>
+      <button class="bt-button" (click)="chooseUnit()" [disabled]="busy() || unitPickerOpen()">Open</button>
+      <input #nativeFile type="file" accept=".mtf,.blk" hidden (change)="importFile($event)" /><button
+        class="bt-button"
+        (click)="nativeFile.click()"
+        [disabled]="busy()"
+      >
+        Import
+      </button>
+      <button class="bt-button" (click)="exportDesign()">Export</button>
+    </div>
+    <span class="storage-note">{{
+      forceMember()
+        ? 'Applies to
+            this force unit'
+        : 'Saved to your custom unit library'
+    }}</span>
+    <div class="save-actions">
+      <button
+        class="validation-toggle"
+        [class.has-errors]="validationSeverity() === 'error'"
+        [class.has-warnings]="validationSeverity() === 'warning'"
+        [class.has-notices]="validationSeverity() === 'info'"
+        [class.active]="showValidation()"
+        [attr.aria-expanded]="showValidation()"
+        [attr.aria-label]="validationLabel()"
+        [title]="validationLabel()"
+        aria-controls="construction-details"
+        (click)="toggleDetails('issues', $event)"
+      >
+        <svg
+          viewBox="0 0 24 24"
+          fill="none"
+          stroke="currentColor"
+          stroke-width="2"
+          stroke-linecap="round"
+          stroke-linejoin="round"
+          aria-hidden="true"
+          focusable="false"
+        >
+          @if (validationSeverity() === 'error' || validationSeverity() === 'warning') {
+            <path d="M10.3 3.9 2.2 18a2 2 0 0 0 1.7 3h16.2a2 2 0 0 0 1.7-3L13.7 3.9a2 2 0 0 0-3.4 0Z" />
+            <path d="M12 9v4m0 4h.01" />
+          } @else if (validationSeverity() === 'info') {
+            <circle cx="12" cy="12" r="9" />
+            <path d="M12 11v6m0-10h.01" />
+          } @else {
+            <path d="m5 12 4 4L19 6" />
+          }
+        </svg>
+        <span>{{ validationLabel() }}</span>
+      </button>
+      @if (foreignDesign()) {
+        <span>Read-only design</span>
+        <button class="bt-button active" (click)="cloneToOwn()" [disabled]="busy()">CLONE TO OWN</button>
+      }
+      @if (savedUuid()) {
+        <button class="bt-button danger" (click)="deleteSaved()" [disabled]="busy()">DELETE</button>
+        @if (designChanged()) {
+          <button
+            class="bt-button"
+            (click)="save(true)"
+            [disabled]="!canSave()"
+            title="Create a separate refit and switch to it"
+          >
+            SAVE AS NEW
+          </button>
+        }
+      }
+      <button class="bt-button active save-button" (click)="save()" [disabled]="!canSave()">
+        {{ busy() ? 'Working…' : saveLabel() }}
+      </button>
+    </div>
+  </footer>
+
+  @if (inspectorOpen()) {
+    @if (mobileEquipment()) {
+      <div class="installed-inspector-backdrop mobile" (click)="closeInstalledInspector()"></div>
+    }
+    <section
+      #installedInspector
+      class="installed-inspector equipment-inspector framed-borders equipment-frame"
+      [class.mobile]="mobileEquipment()"
+      [class]="inspectorEquipment() ? equipmentClass(inspectorEquipment()!) : 'structural'"
+      [style.left.px]="mobileEquipment() ? null : inspectorPosition().x"
+      role="dialog"
+      [attr.aria-modal]="mobileEquipment() ? true : null"
+      aria-label="Component inspector"
+      [cdkTrapFocus]="inspector.isPinned()"
+      [cdkTrapFocusAutoCapture]="inspector.isPinned()"
+      (pointerenter)="$event.pointerType === 'mouse' && inspector.enter()"
+      (pointerleave)="$event.pointerType === 'mouse' && inspector.leave()"
+      (keydown.escape)="$event.preventDefault(); $event.stopPropagation(); cancelPlacement()"
+    >
+      <button
+        type="button"
+        class="close-button inspector-close"
+        (click)="closeInstalledInspector()"
+        aria-label="Close component inspector"
+      ></button>
+      @if (selectedMount(); as mount) {
+        @if (mount.equipment; as eq) {
+          @let spread = selectedSpread();
+          <div class="inspector-heading">
+            <div class="inspector-title">
+              <h3 class="equipment-title">
+                <span>{{ mount.displayName(true) }}</span>
+                <ng-container
+                  [ngTemplateOutlet]="equipmentWarningIcon"
+                  [ngTemplateOutletContext]="{ $implicit: mount, location: selectedMountLocation() }"
+                />
+                @if (showTechBases() && eq.techBase !== 'All') {
+                  <tech-base-badge [techBase]="eq.techBase" />
+                }
+              </h3>
+              <p class="inspector-subtitle muted">
+                {{ isMountUnallocated(mount) ? 'Unallocated' : 'Installed · ' + selectedMountLocations().join('/') }}
+                @if (mountedMass(mount)) {
+                  · {{ mountedMass(mount) }}
+                }
+              </p>
+              @if (equipmentTechMismatch(eq)) {
+                <p class="tech-warning-text">{{ techBaseMismatchReason(eq.techBase) }}</p>
+              }
+            </div>
+            @let location = selectedMountLocation();
+            @if (mountOrderPosition(mount, location); as position) {
+              <div class="mount-order-controls" role="group" [attr.aria-label]="'Order in ' + locationLabel(location)">
+                <button
+                  type="button"
+                  class="mount-order-button"
+                  (click)="reorderMount(mount, location, -1)"
+                  [disabled]="!canReorderMount(mount) || position.first"
+                  [attr.aria-label]="'Move up in ' + locationLabel(location)"
+                  [title]="'Move up in ' + locationLabel(location)"
+                >
+                  <span class="chevron chevron-dropdown" aria-hidden="true"></span>
+                </button>
+                <button
+                  type="button"
+                  class="mount-order-button"
+                  (click)="reorderMount(mount, location, 1)"
+                  [disabled]="!canReorderMount(mount) || position.last"
+                  [attr.aria-label]="'Move down in ' + locationLabel(location)"
+                  [title]="'Move down in ' + locationLabel(location)"
+                >
+                  <span class="chevron" aria-hidden="true"></span>
+                </button>
+              </div>
+            }
+          </div>
+          <ng-container
+            [ngTemplateOutlet]="equipmentInspectorDetails"
+            [ngTemplateOutletContext]="{ equipment: eq, mount }"
+          />
+          @if (spread) {
+            <section class="spread-allocation" aria-label="Critical slot allocation">
+              <div class="spread-heading">
+                <h4>Critical allocation</h4>
+                <span
+                  ><b>{{ spread.allocated }}</b> / {{ spread.total }} assigned</span
+                >
+              </div>
+              <progress
+                [value]="spread.allocated"
+                [max]="spread.total"
+                aria-label="Allocated critical slots"
+              ></progress>
+              <div class="spread-remainder" aria-live="polite">
+                <span [class.slots-remaining]="spread.remaining > 0">{{ spread.remaining }} unallocated</span>
+                @if (spread.remaining && spread.allocated) {
+                  <button
+                    class="bt-button spread-auto"
+                    (click)="autoAllocateSpread()"
+                    [disabled]="!canEditMount(mount) || !!spreadAutoIssue()"
+                    [title]="spreadAutoIssue() || 'Fill remaining slots without changing existing assignments'"
+                  >
+                    AUTO-ALLOCATE
+                  </button>
+                }
+              </div>
+              <p class="spread-help">
+                {{
+                  spread.prescribed
+                    ? 'Each location shows its required share.'
+                    : 'Choose a slot count for each location. Slots may be separated.'
+                }}
+                Use − to return slots to the unallocated pool.
+              </p>
+              <div class="spread-locations">
+                @for (location of spread.locations; track location.id) {
+                  @if (location.limit || location.count) {
+                    <div class="spread-location" [attr.data-spread-location]="location.id">
+                      <label [for]="'spread-slots-' + location.id"
+                        >{{ location.label }}
+                        <small>{{
+                          location.required !== null ? location.required + ' required' : location.free + ' free'
+                        }}</small>
+                      </label>
+                      <div class="spread-stepper">
+                        <button
+                          class="bt-button"
+                          (click)="setSpreadSlots(location.id, location.count - 1)"
+                          [disabled]="!canEditMount(mount) || location.count === 0"
+                          [attr.aria-label]="'Unallocate one slot from ' + location.label"
+                        >
+                          −
+                        </button>
+                        <input
+                          class="bt-input"
+                          type="number"
+                          min="0"
+                          step="1"
+                          [max]="location.maximum"
+                          [id]="'spread-slots-' + location.id"
+                          [value]="location.count"
+                          (change)="editSpreadSlots(location.id, $event)"
+                          [disabled]="!canEditMount(mount)"
+                          [attr.aria-label]="'Critical slots in ' + location.label"
+                        />
+                        <button
+                          class="bt-button"
+                          (click)="setSpreadSlots(location.id, location.count + 1)"
+                          [disabled]="!canEditMount(mount) || location.count >= location.maximum"
+                          [attr.aria-label]="'Allocate one slot to ' + location.label"
+                        >
+                          +
+                        </button>
+                      </div>
+                    </div>
+                  }
+                }
+              </div>
+            </section>
+          }
+          <div class="mount-controls">
+            @if (selectedRuntimeAmmo(); as ammo) {
+              <div class="runtime-ammo">
+                <span
+                  >{{ ammo.data.currentAmmo.name }} · {{ ammo.data.quantity }} / {{ ammo.data.maxQuantity }} shots</span
+                >
+                <button class="bt-button" (click)="setRuntimeAmmo()" [disabled]="busy()">SET AMMO</button>
+              </div>
+            }
+            @if (!spread) {
+              <label
+                >{{ isMountUnallocated(mount) ? 'Install in' : 'Location'
+                }}<select
+                  class="bt-select"
+                  aria-label="Equipment location"
+                  [ngModel]="isMountUnallocated(mount) ? selectedLocation() : mount.location"
+                  (ngModelChange)="isMountUnallocated(mount) ? selectedLocation.set($event) : moveSelected($event)"
+                  [disabled]="!canEditMount(mount) || mount.allocation.kind === 'engine'"
+                >
+                  @for (location of locations(); track location.id) {
+                    <option [value]="location.id">{{ location.label }}</option>
+                  }
+                </select></label
+              >
+            }
+            @if (hasEditableSize(eq)) {
+              <label
+                >Size<input
+                  class="bt-input"
+                  type="number"
+                  min="0.001"
+                  step="0.5"
+                  [ngModel]="mount.size ?? 1"
+                  (ngModelChange)="updateMount(mount, { size: $event })"
+                  [disabled]="!canEditMount(mount)"
+              /></label>
+            }
+            @if (ammo(eq) && supportsAmmoQuantity()) {
+              <label
+                >Shots<input
+                  class="bt-input"
+                  type="number"
+                  min="0"
+                  [max]="building() ? ammo(eq)!.shots : null"
+                  [ngModel]="mount.shotsCount ?? ammo(eq)!.shots"
+                  (ngModelChange)="updateMount(mount, { shotsCount: $event })"
+                  [disabled]="!canEditMount(mount)"
+              /></label>
+            }
+            @if (weapon(eq) && !building()) {
+              <label class="check"
+                ><input
+                  class="bt-checkbox"
+                  type="checkbox"
+                  [ngModel]="mount.rearMounted"
+                  (ngModelChange)="updateMount(mount, { rearMounted: $event })"
+                  [disabled]="!canEditMount(mount)"
+                /><span>Rear mounted</span></label
+              >
+            }
+            @if (isMek() || mount.armored) {
+              @let armorIssue = componentArmorIssue(mount);
+              @if (!armorIssue || mount.armored) {
+                <label class="check"
+                  ><input
+                    class="bt-checkbox"
+                    type="checkbox"
+                    [ngModel]="mount.armored"
+                    (ngModelChange)="updateMount(mount, { armored: $event })"
+                    [disabled]="!designEditing()"
+                  />
+                  <span>Armored component</span></label
+                >
+                @if (armorIssue) {
+                  <p class="muted component-armor-note">{{ armorIssue }} Clear the armor to correct this draft.</p>
+                }
+              }
+            }
+            @if (isMek() && weapon(eq)) {
+              <label class="check"
+                ><input
+                  class="bt-checkbox"
+                  type="checkbox"
+                  [ngModel]="mount.turretMounted"
+                  (ngModelChange)="updateMount(mount, { turretMounted: $event })"
+                  [disabled]="!canEditMount(mount)"
+                /><span>Turret mounted</span></label
+              >
+            }
+            @if ((building() && weapon(eq)) || eq.hasFlag('F_VGL') || mount.facing !== undefined) {
+              <label
+                >Facing<select
+                  class="bt-select"
+                  [ngModel]="mount.facing ?? (building() ? -1 : 2)"
+                  (ngModelChange)="updateMount(mount, { facing: $event })"
+                  [disabled]="!canEditMount(mount)"
+                >
+                  @if (building()) {
+                    <option [ngValue]="-1">Unspecified</option>
+                    <option [ngValue]="0">Forward</option>
+                    <option [ngValue]="1">Front right</option>
+                    <option [ngValue]="2">Rear right</option>
+                    <option [ngValue]="3">Rear</option>
+                    <option [ngValue]="4">Rear left</option>
+                    <option [ngValue]="5">Front left</option>
+                  } @else {
+                    <option [ngValue]="0">Front left</option>
+                    <option [ngValue]="1">Front right</option>
+                    <option [ngValue]="2">Forward</option>
+                    <option [ngValue]="3">Rear</option>
+                    <option [ngValue]="4">Rear left</option>
+                    <option [ngValue]="5">Rear right</option>
+                  }
+                </select></label
+              >
+            }
+            @if ((isVehicle() || building()) && weapon(eq) && !mount.location.includes('Turret')) {
+              <label
+                >Weapon mount<select
+                  class="bt-select"
+                  [ngModel]="mount.turretType ?? ''"
+                  (ngModelChange)="updateMount(mount, { turretType: $event || undefined })"
+                  [disabled]="!canEditMount(mount)"
+                >
+                  <option value="">Fixed</option>
+                  <option value="sponson">{{ building() ? 'Roof turret' : 'Sponson turret' }}</option>
+                  <option value="pintle">Pintle mount</option>
+                </select></label
+              >
+            }
+            @if (entity().omni()) {
+              <label class="check"
+                ><input
+                  class="bt-checkbox"
+                  type="checkbox"
+                  [ngModel]="mount.omniPodMounted"
+                  (ngModelChange)="updateMount(mount, { omniPodMounted: $event })"
+                  [disabled]="!designEditing()"
+                /><span>OmniPod</span></label
+              >
+            }
+            @if (isBattleArmor()) {
+              <label
+                >Suit mount<select
+                  class="bt-select"
+                  aria-label="Battle armor equipment mount"
+                  [ngModel]="mount.baMountLocation ?? 'Body'"
+                  (ngModelChange)="updateMount(mount, { baMountLocation: $event })"
+                  [disabled]="!canEditMount(mount)"
+                >
+                  <option value="Body">Body</option>
+                  <option value="LA">Left arm</option>
+                  <option value="RA">Right arm</option>
+                  <option value="Turret">Turret</option>
+                </select></label
+              >
+              <label class="check"
+                ><input
+                  class="bt-checkbox"
+                  type="checkbox"
+                  [ngModel]="mount.isDWP ?? false"
+                  (ngModelChange)="updateMount(mount, { isDWP: $event })"
+                  [disabled]="!canEditMount(mount)"
+                /><span>Detachable pack</span></label
+              >
+              <label class="check"
+                ><input
+                  class="bt-checkbox"
+                  type="checkbox"
+                  [ngModel]="mount.isSSWM ?? false"
+                  (ngModelChange)="updateMount(mount, { isSSWM: $event })"
+                  [disabled]="!canEditMount(mount)"
+                /><span>Squad support</span></label
+              >
+              <label class="check"
+                ><input
+                  class="bt-checkbox"
+                  type="checkbox"
+                  [ngModel]="mount.isAPM ?? false"
+                  (ngModelChange)="updateMount(mount, { isAPM: $event })"
+                  [disabled]="!canEditMount(mount)"
+                /><span>Anti-personnel</span></label
+              >
+            }
+            @if (entity().getLinkedMount(mount); as target) {
+              <label
+                >Linked equipment<span
+                  >{{ target.displayName(true) }} · {{ locationLabel(target.location)
+                  }}<small>Paired automatically from equipment placement.</small></span
+                ></label
+              >
+            }
+          </div>
+          <div class="equipment-actions">
+            @if (isMountUnallocated(mount)) {
+              <button
+                class="bt-button install-equipment"
+                [disabled]="!canEditMount(mount) || !!selectedMountInstallIssues().length"
+                (click)="spread ? autoAllocateSpread() : moveSelected(selectedLocation())"
+                [title]="
+                  spread ? 'Auto-allocate all required slots' : 'Install in ' + locationLabel(selectedLocation())
+                "
+              >
+                INSTALL
+              </button>
+            } @else if (!building()) {
+              <button
+                class="bt-button uninstall-equipment"
+                [disabled]="!canUninstallMount(mount)"
+                (click)="uninstall(mount)"
+                title="Move to unallocated equipment"
+              >
+                {{ spread ? 'UNINSTALL ALL' : 'UNINSTALL' }}
+              </button>
+            }
+            <button
+              class="bt-button danger remove-equipment"
+              [disabled]="!canRemoveMount(mount)"
+              (click)="remove(mount)"
+              title="Remove from design"
+            >
+              REMOVE
+            </button>
+          </div>
+          @if (requiredMount(mount)) {
+            <p class="muted">Required by the chassis configuration. Change the chassis material to remove it.</p>
+          }
+          @for (issue of selectedMountInstallIssues(); track $index) {
+            <p class="placement-issue">{{ issue }}</p>
+          }
+
+          @if (isMek() && eq.canSplit() && !eq.isSpreadable && splitTotal() > 1) {
+            <details class="split-controls">
+              <summary>Split allocation</summary>
+              <p>One contiguous block in each of two adjacent locations.</p>
+              <label
+                >First location<select
+                  class="bt-select"
+                  [ngModel]="splitLocation()"
+                  (ngModelChange)="setSplitLocation($event)"
+                  [disabled]="!canEditMount(mount)"
+                >
+                  @for (location of splitChoices(); track location.id) {
+                    <option [value]="location.id">{{ location.label }}</option>
+                  }
+                </select></label
+              >
+              <label
+                >Slots in first location<input
+                  class="bt-input"
+                  type="number"
+                  min="1"
+                  [max]="splitTotal() - 1"
+                  [ngModel]="splitCount()"
+                  (ngModelChange)="splitCount.set($event)"
+                  [disabled]="!canEditMount(mount)"
+              /></label>
+              <label
+                >Second location<select
+                  class="bt-select"
+                  [ngModel]="splitSecondLocation()"
+                  (ngModelChange)="splitSecondLocation.set($event)"
+                  [disabled]="!canEditMount(mount)"
+                >
+                  @for (location of splitSecondChoices(); track location.id) {
+                    <option [value]="location.id">{{ location.label }}</option>
+                  }
+                </select></label
+              >
+              <p>{{ splitTotal() - splitCount() }} slots in the second location.</p>
+              <button class="bt-button" [disabled]="!canEditMount(mount)" (click)="applySplit()">Apply split</button>
+            </details>
+          }
+        }
+      }
+      @if (selectedSystem(); as system) {
+        <div class="inspector-heading">
+          <h3 class="equipment-title">
+            <span>{{ systemLabel(system.system) }}</span>
+            @if (showTechBases() && systemTechBase(system.system) !== 'All') {
+              <tech-base-badge [techBase]="systemTechBase(system.system)" />
+            }
+          </h3>
+        </div>
+        <p class="inspector-subtitle muted">
+          Built-in system · {{ selectedSystemSlots().length }} fixed critical slots
+        </p>
+        @if (techBaseMismatch(systemTechBase(system.system))) {
+          <p class="tech-warning-text">{{ techBaseMismatchReason(systemTechBase(system.system)) }}</p>
+        }
+        <p>{{ systemDescription(system.system) }}</p>
+        <div class="mount-controls">
+          @for (field of systemFields(); track field.id) {
+            <label [class.check]="field.kind === 'boolean'">
+              @if (field.kind !== 'boolean') {
+                <span>{{ field.label }}</span>
+              }
+              @switch (field.kind) {
+                @case ('select') {
+                  <select
+                    class="bt-select"
+                    [class.danger]="field.invalid"
+                    [attr.aria-invalid]="field.invalid || null"
+                    [attr.aria-label]="field.label"
+                    [ngModel]="field.get()"
+                    (ngModelChange)="setField(field, $event)"
+                    [disabled]="!canEditField(field)"
+                  >
+                    @for (option of field.options; track option.value) {
+                      <option [ngValue]="option.value" [disabled]="option.disabled">{{ option.label }}</option>
+                    }
+                  </select>
+                }
+                @case ('boolean') {
+                  <input
+                    class="bt-checkbox"
+                    type="checkbox"
+                    [attr.aria-label]="field.label"
+                    [ngModel]="field.get()"
+                    (ngModelChange)="setField(field, $event)"
+                    [disabled]="!canEditField(field)"
+                  /><span>{{ field.label }}</span>
+                }
+                @default {
+                  <input
+                    class="bt-input"
+                    type="number"
+                    [min]="field.min ?? 0"
+                    [attr.max]="field.max"
+                    [step]="field.step ?? 1"
+                    [ngModel]="field.get()"
+                    (ngModelChange)="setField(field, $event)"
+                    [disabled]="!canEditField(field)"
+                  />
+                }
+              }
+            </label>
+          }
+        </div>
+        <fieldset class="system-armor-controls">
+          <legend>Component armor</legend>
+          @let armorIssue = componentArmorIssue(system.system);
+          @if (armorIssue) {
+            <p class="muted">{{ armorIssue }}</p>
+          }
+          @let slots = selectedSystemSlots();
+          @let armoredSlots = selectedSystemArmoredSlots();
+          @if (slots.length && (!armorIssue || armoredSlots)) {
+            <label
+              ><input
+                class="bt-checkbox"
+                type="checkbox"
+                [ngModel]="armoredSlots > 0"
+                (ngModelChange)="setSystemArmored(slots[0].location, slots[0].index, $event)"
+                [disabled]="!designEditing()"
+              />
+              Armored · all {{ slots.length }} critical slots
+              @if (armoredSlots && armoredSlots < slots.length) {
+                ({{ armoredSlots }} armored)
+              }
+            </label>
+          }
+        </fieldset>
+        @if (removableSystem(system.location, system.system)) {
+          <button
+            class="bt-button"
+            (click)="removeSystem(system.location, system.system)"
+            title="Disable this actuator"
+          >
+            UNINSTALL
+          </button>
+        }
+      }
+      @if (!selectedMount() && !selectedSystem()) {
+        @if (selectedEquipment(); as eq) {
+          <div class="inspector-heading">
+            <h3 class="equipment-title">
+              <span>{{ equipmentLabel(eq) }}</span>
+              @if (showTechBases() && eq.techBase !== 'All') {
+                <tech-base-badge [techBase]="eq.techBase" />
+              }
+            </h3>
+          </div>
+          <ng-container [ngTemplateOutlet]="equipmentInspectorDetails" [ngTemplateOutletContext]="{ equipment: eq }" />
+          <div class="mount-controls">
+            <label>
+              <span>Location</span>
+              <select
+                class="bt-select"
+                aria-label="Install equipment location"
+                [ngModel]="selectedLocation()"
+                (ngModelChange)="selectedLocation.set($event)"
+              >
+                @for (location of locations(); track location.id) {
+                  <option [value]="location.id">{{ location.label }}</option>
+                }
+              </select>
+            </label>
+          </div>
+          <button class="bt-button inspector-install" [disabled]="!canInstall(eq)" (click)="install(eq)">
+            + Install in {{ locationLabel(selectedLocation()) }}
+          </button>
+          @if (mobileEquipment()) {
+            <button class="bt-button inspector-place" (click)="closeInstalledInspector()">Place in loadout →</button>
+          }
+          @for (issue of selectedIssues(); track issue) {
+            <p class="placement-issue">{{ issue }}</p>
+          }
+        }
+      }
+      @if (selectedRepairQuote(); as quote) {
+        <div class="component-repair">
+          <strong>{{ repairPrice(quote) }}</strong>
+          <strong [title]="quote.spBasis">{{ repairSPPrice(quote) }}</strong>
+          <small>{{ quote.basis }}</small>
+          <button class="bt-button" (click)="repairSelected()" [disabled]="busy() || forceMember()!.force.readOnly()">
+            Repair component
+          </button>
+        </div>
+      }
+    </section>
+  }
+
+  @if (picker()) {
+    <div class="picker-backdrop" (click)="picker.set(null)"></div>
+    <section
+      class="design-picker glass framed-borders has-shadow"
+      role="dialog"
+      aria-modal="true"
+      cdkTrapFocus
+      [cdkTrapFocusAutoCapture]="true"
+      aria-label="New design"
+    >
+      <header>
+        <div>
+          <span class="eyebrow">UNIT CONSTRUCTION</span>
+          <h2>Start a new design</h2>
+        </div>
+        <button type="button" class="close-button" (click)="picker.set(null)" aria-label="Close unit picker"></button>
+      </header>
+      <div class="new-type-grid">
+        @for (type of unitTypes(); track type.id) {
+          <button
+            class="bt-button"
+            [class.active]="newType() === type.id"
+            [attr.aria-pressed]="newType() === type.id"
+            (click)="newType.set(type.id)"
+          >
+            <unit-icon [unit]="type.design" aria-hidden="true" [width]="42" [height]="36" />
+            {{ type.label }}
+          </button>
+        }
+      </div>
+      <footer><button class="bt-button active save-button" (click)="createNew()">Create design →</button></footer>
+    </section>
+  }
+</div>

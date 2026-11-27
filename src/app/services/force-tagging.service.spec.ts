@@ -7,10 +7,10 @@ import { provideZonelessChangeDetection } from '@angular/core';
 import { TestBed } from '@angular/core/testing';
 import { Subject } from 'rxjs';
 import { ForceTagSelectorComponent } from '../components/force-tag-selector/force-tag-selector.component';
-import { ForceBuilderService } from './force-builder.service';
-import { DataService } from './data.service';
 import { DialogsService } from './dialogs.service';
+import { ForcePersistenceService } from './force-persistence.service';
 import { ForceTaggingService } from './force-tagging.service';
+import { ForceWorkspaceStateService } from './force-workspace-state.service';
 import { OverlayManagerService } from './overlay-manager.service';
 
 describe('ForceTaggingService', () => {
@@ -25,7 +25,7 @@ describe('ForceTaggingService', () => {
     let forceTagSelector: ForceTagSelectorComponent;
     let closed: Subject<void>;
 
-    const dataServiceMock = {
+    const forcePersistenceMock = {
         getCachedForceTagLabels: jasmine.createSpy('getCachedForceTagLabels'),
         updateForceTags: jasmine.createSpy('updateForceTags'),
     };
@@ -40,7 +40,7 @@ describe('ForceTaggingService', () => {
         unblockClose: jasmine.createSpy('unblockClose'),
     };
     const dialogsServiceMock = {
-        createDialog: jasmine.createSpy('createDialog'),
+        prompt: jasmine.createSpy('prompt'),
         showError: jasmine.createSpy('showError'),
     };
     const overlayMock = {
@@ -57,8 +57,8 @@ describe('ForceTaggingService', () => {
             providers: [
                 provideZonelessChangeDetection(),
                 ForceTaggingService,
-                { provide: DataService, useValue: dataServiceMock },
-                { provide: ForceBuilderService, useValue: forceBuilderServiceMock },
+                { provide: ForcePersistenceService, useValue: forcePersistenceMock },
+                { provide: ForceWorkspaceStateService, useValue: forceBuilderServiceMock },
                 { provide: OverlayManagerService, useValue: overlayManagerMock },
                 { provide: DialogsService, useValue: dialogsServiceMock },
                 { provide: Overlay, useValue: overlayMock },
@@ -69,10 +69,10 @@ describe('ForceTaggingService', () => {
         forceTagSelector = fixture.componentInstance;
         closed = new Subject<void>();
 
-        dataServiceMock.getCachedForceTagLabels.calls.reset();
-        dataServiceMock.getCachedForceTagLabels.and.returnValue([]);
-        dataServiceMock.updateForceTags.calls.reset();
-        dataServiceMock.updateForceTags.and.resolveTo({ tags: [], timestamp: null });
+        forcePersistenceMock.getCachedForceTagLabels.calls.reset();
+        forcePersistenceMock.getCachedForceTagLabels.and.returnValue([]);
+        forcePersistenceMock.updateForceTags.calls.reset();
+        forcePersistenceMock.updateForceTags.and.resolveTo({ tags: [], timestamp: null });
         forceBuilderServiceMock.loadedForces.calls.reset();
         forceBuilderServiceMock.loadedForces.and.returnValue([]);
         overlayManagerMock.has.calls.reset();
@@ -85,12 +85,24 @@ describe('ForceTaggingService', () => {
         });
         overlayManagerMock.blockCloseUntil.calls.reset();
         overlayManagerMock.unblockClose.calls.reset();
-        dialogsServiceMock.createDialog.calls.reset();
+        dialogsServiceMock.prompt.calls.reset();
         dialogsServiceMock.showError.calls.reset();
         overlayMock.scrollStrategies.close.calls.reset();
         overlayMock.scrollStrategies.close.and.returnValue({});
 
         service = TestBed.inject(ForceTaggingService);
+    });
+
+    it('creates a mixed-case force tag with the standard text prompt', async () => {
+        const force = { instanceId: 'force-1', owned: true };
+        dialogsServiceMock.prompt.and.resolveTo('RoS-GUARDS');
+
+        await service.openForceTagSelector([force], null, { updateCloud: false });
+        forceTagSelector.onAddNewTag();
+        await new Promise<void>(resolve => setTimeout(resolve, 0));
+
+        expect(dialogsServiceMock.prompt).toHaveBeenCalledWith('Enter the new tag name:', 'Add New Tag to Force');
+        expect(forcePersistenceMock.updateForceTags).toHaveBeenCalledWith('force-1', ['RoS-GUARDS'], false);
     });
 
     it('passes every available force tag label to the selector when there are more than 32 labels', async () => {

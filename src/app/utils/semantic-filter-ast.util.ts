@@ -2,6 +2,8 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 // Author: Drake
 
+import type { AvailabilityFilterScope } from '../models/megamek/availability.model';
+
 /**
  * AST-based Semantic Filter Parser with Nested Bracket Support
  * 
@@ -29,17 +31,20 @@
  */
 
 import type { GameSystem } from '../models/common.model';
-import { ADVANCED_FILTERS, type AdvFilterConfig, AdvFilterType, type AvailabilityFilterScope, FORMATION_TARGET_FILTER_KEY, getBooleanFilterUnitValue, parseBooleanFilterSemanticValue } from '../services/unit-search-filters.model';
+import { ADVANCED_FILTERS, type AdvFilterConfig, AdvFilterType, FORMATION_TARGET_FILTER_KEY, getBooleanFilterUnitValue, parseBooleanFilterSemanticValue } from '../services/unit-search-filters.model';
 import { type SemanticOperator, type SemanticToken, buildSemanticKeyMap, VIRTUAL_SEMANTIC_KEYS, parseValues, parseValueWithQuantity, type QuantityConstraint } from './semantic-filter.util';
 import { normalizeLooseText, wildcardToRegex } from './string.util';
 import { usesIndexedDropdownUniverse } from './unit-search-filter-config.util';
 import { checkQuantityConstraint as checkQuantityConstraintCore, isEmbeddedApostrophe, unitMatchesRulesRefsSelection } from './unit-search-shared.util';
 import { isASDamageSemanticKey, parseASDamageValue } from './as-damage.util';
 import {
+    compileASSpecialQueries,
     buildIndexedASSpecialSelectionCandidates,
     evaluateASSpecialsFilter,
+    type CompiledASSpecialQuery,
     type ParsedASSpecials,
 } from './as-special-filter.util';
+import type { UnitUuid } from '../services/unit-catalog/unit-catalog.types';
 
 // ============================================================================
 // Helpers
@@ -47,13 +52,6 @@ import {
 
 /** Characters that have special meaning in the lexer and can be escaped with backslash */
 const ESCAPABLE_CHARS = new Set(['(', ')', '=', '>', '<', '!', '&', '"', "'", '\\']);
-
-/**
- * Check if a character at position is escaped (preceded by backslash and is escapable).
- */
-function isEscapedChar(input: string, pos: number): boolean {
-    return pos > 0 && input[pos - 1] === '\\' && ESCAPABLE_CHARS.has(input[pos]);
-}
 
 /**
  * Check if position starts an escape sequence (backslash followed by escapable char).
@@ -141,7 +139,7 @@ export type ASTNode = FilterASTNode | TextASTNode | GroupASTNode;
 export interface ParseResult {
     ast: GroupASTNode;      // Root is always a group
     textSearch: string;     // Extracted text portions
-    tokens: SemanticToken[]; // Flat list of all filter tokens (for compatibility)
+    tokens: SemanticToken[]; // Flat filter-token projection consumed by search state.
     errors: ParseError[];
 }
 
@@ -357,11 +355,11 @@ function tryParseFilterToken(
         }
     }
 
-    if (operator === '==' && (!conf || (conf.type !== AdvFilterType.DROPDOWN && conf.type !== AdvFilterType.SEMANTIC && conf.type !== AdvFilterType.BOOLEAN))) {
+    if (operator === '==' && (!conf || conf.numeric || (conf.type !== AdvFilterType.DROPDOWN && conf.type !== AdvFilterType.SEMANTIC && conf.type !== AdvFilterType.BOOLEAN))) {
         return null;
     }
     
-    if (operator === '&=' && conf && conf.type !== AdvFilterType.DROPDOWN && conf.type !== AdvFilterType.SEMANTIC) {
+    if (operator === '&=' && conf && (conf.numeric || (conf.type !== AdvFilterType.DROPDOWN && conf.type !== AdvFilterType.SEMANTIC))) {
         return null;
     }
     
@@ -446,10 +444,6 @@ class Parser {
 
     private current(): LexToken {
         return this.tokens[this.pos] || this.tokens[this.tokens.length - 1];
-    }
-
-    private peek(offset: number = 0): LexToken {
-        return this.tokens[this.pos + offset] || this.tokens[this.tokens.length - 1];
     }
 
     private advance(): LexToken {
@@ -1020,15 +1014,6 @@ export function tokenizeForHighlight(input: string, gameSystem: GameSystem): Hig
 }
 
 /**
- * Get error ranges for highlighting in UI.
- * Returns array of [start, end] positions that should be colored red.
- */
-export function getErrorRanges(input: string, gameSystem: GameSystem): [number, number][] {
-    const errors = validateSemanticQuery(input, gameSystem);
-    return errors.map(e => [e.start, e.end]);
-}
-
-/**
  * Check if AST contains any OR operators (needs special evaluation).
  */
 export function hasOrOperators(ast: GroupASTNode): boolean {
@@ -1075,29 +1060,29 @@ export function isComplexQuery(ast: GroupASTNode): boolean {
  * Context for evaluating filters against a unit.
  * Contains helper functions for getting property values.
  */
-export interface EvaluatorContext {
+export interface EvaluatorContext<TUnit extends object = object> {
     /** Get a property value from a unit by key path (e.g., 'as.PV', 'bv') */
-    getProperty: (unit: any, key: string) => any;
+    getProperty: (unit: TUnit, key: string) => unknown;
     /** Get the unit UUID used by indexed candidate postings. */
-    getUnitId: (unit: any) => string;
+    getUnitId: (unit: TUnit) => UnitUuid;
     /** Get adjusted BV for a unit (with pilot skill modifiers) */
-    getAdjustedBV?: (unit: any) => number;
+    getAdjustedBV?: (unit: TUnit) => number;
     /** Get adjusted PV for a unit (with pilot skill modifiers) */
-    getAdjustedPV?: (unit: any) => number;
+    getAdjustedPV?: (unit: TUnit) => number;
     /** Current game system */
     gameSystem: GameSystem;
     /** Match text against a unit's searchable text (chassis, model, etc.) */
-    matchesText?: (unit: any, text: string) => boolean;
+    matchesText?: (unit: TUnit, text: string) => boolean;
     /** Get item counts for a countable filter (e.g., equipment). Returns name -> count mapping. */
-    getCountableValues?: (unit: any, filterKey: string) => Map<string, number> | null;
+    getCountableValues?: (unit: TUnit, filterKey: string) => Map<string, number> | null;
     /** Check if a unit belongs to a specific era (external filter) */
-    unitBelongsToEra?: (unit: any, eraName: string, scope?: AvailabilityFilterScope) => boolean;
+    unitBelongsToEra?: (unit: TUnit, eraName: string, scope?: AvailabilityFilterScope) => boolean;
     /** Check if a unit belongs to a specific faction (external filter) */
-    unitBelongsToFaction?: (unit: any, factionName: string, eraNames?: readonly string[]) => boolean;
+    unitBelongsToFaction?: (unit: TUnit, factionName: string, eraNames?: readonly string[]) => boolean;
     /** Check if a unit matches a MegaMek availability source (requisition or salvage). */
-    unitMatchesAvailabilityFrom?: (unit: any, availabilityFromName: string, scope?: AvailabilityFilterScope) => boolean;
+    unitMatchesAvailabilityFrom?: (unit: TUnit, availabilityFromName: string, scope?: AvailabilityFilterScope) => boolean;
     /** Check if a unit matches a MegaMek availability rarity in the active scope. */
-    unitMatchesAvailabilityRarity?: (unit: any, rarityName: string, scope?: AvailabilityFilterScope) => boolean;
+    unitMatchesAvailabilityRarity?: (unit: TUnit, rarityName: string, scope?: AvailabilityFilterScope) => boolean;
     /** Get all era names (for wildcard expansion) */
     getAllEraNames?: () => string[];
     /** Get all faction names (for wildcard expansion) */
@@ -1107,11 +1092,11 @@ export interface EvaluatorContext {
     /** Get all availability rarity names (for wildcard expansion). */
     getAllAvailabilityRarityNames?: () => string[];
     /** Check if a unit belongs to a specific force pack (external filter) */
-    unitBelongsToForcePack?: (unit: any, packName: string) => boolean;
+    unitBelongsToForcePack?: (unit: TUnit, packName: string) => boolean;
     /** Get all force pack names (for wildcard expansion) */
     getAllForcePackNames?: () => string[];
     /** Check if adding a unit would preserve a target formation search. */
-    unitMatchesFormationTarget?: (unit: any, formationName: string) => boolean;
+    unitMatchesFormationTarget?: (unit: TUnit, formationName: string) => boolean;
     /** Get all formation target names (for wildcard expansion). */
     getAllFormationNames?: () => string[];
     /** 
@@ -1120,7 +1105,7 @@ export interface EvaluatorContext {
      * If motive filter is active, returns only values for selected modes.
      * If no motive filter, returns all movement values.
      */
-    getASMovementValues?: (unit: any) => number[];
+    getASMovementValues?: (unit: TUnit) => number[];
     /**
      * Get display/alternative name for a value in a given filter.
      * Allows matching by both the stored key and its display name.
@@ -1131,11 +1116,11 @@ export interface EvaluatorContext {
      */
     getDisplayName?: (filterKey: string, value: string) => string | undefined;
     /** Get indexed unit UUIDs for an exact stored filter value. */
-    getIndexedUnitIds?: (filterKey: string, value: string, scope?: AvailabilityFilterScope) => ReadonlySet<string> | undefined;
+    getIndexedUnitIds?: (filterKey: string, value: string, scope?: AvailabilityFilterScope) => ReadonlySet<UnitUuid> | undefined;
     /** Get all stored values available in an index for a filter key. */
     getIndexedFilterValues?: (filterKey: string) => readonly string[];
     /** Get pre-parsed Alpha Strike special tuples for a unit. */
-    getIndexedASSpecials?: (unitUuid: string) => ParsedASSpecials | undefined;
+    getIndexedASSpecials?: (unitUuid: UnitUuid) => ParsedASSpecials | undefined;
 }
 
 type ParsedRangeValue =
@@ -1145,8 +1130,9 @@ type ParsedRangeValue =
 const RANGE_VALUE_PATTERN = /^(-?\d+(?:\.\d+)?)[-~](-?\d+(?:\.\d+)?)$/;
 const AS_DAMAGE_RANGE_VALUE_PATTERN = /^(0\*|-?\d+(?:\.\d+)?)[-~](0\*|-?\d+(?:\.\d+)?)$/i;
 const FILTER_CONFIGS_BY_SEMANTIC_KEY = new Map<string, AdvFilterConfig[]>();
-const sortedFilterConfigsCache = new WeakMap<EvaluatorContext, Map<string, readonly AdvFilterConfig[]>>();
+const sortedFilterConfigsCache = new WeakMap<object, Map<string, readonly AdvFilterConfig[]>>();
 const parsedRangeValuesCache = new WeakMap<SemanticToken, ParsedRangeValue[]>();
+const compiledASSpecialQueriesCache = new WeakMap<readonly string[], readonly CompiledASSpecialQuery[]>();
 
 for (const filterConfig of ADVANCED_FILTERS) {
     const semanticKey = (filterConfig.semanticKey || filterConfig.key).toLowerCase();
@@ -1158,7 +1144,7 @@ for (const filterConfig of ADVANCED_FILTERS) {
     }
 }
 
-function getSortedFilterConfigs(context: EvaluatorContext, semanticKey: string): readonly AdvFilterConfig[] {
+function getSortedFilterConfigs<TUnit extends object>(context: EvaluatorContext<TUnit>, semanticKey: string): readonly AdvFilterConfig[] {
     semanticKey = semanticKey.toLowerCase();
     let contextCache = sortedFilterConfigsCache.get(context);
     if (!contextCache) {
@@ -1234,19 +1220,19 @@ function getParsedRangeValues(filter: SemanticToken): ParsedRangeValue[] {
 interface ExternalFilterRuntimeCache {
     allNamesByKey: Map<string, string[]>;
     expandedValuesByKey: Map<string, Map<string, string[]>>;
-    unitMatchedNamesByKey: WeakMap<any, Map<string, Set<string>>>;
+    unitMatchedNamesByKey: WeakMap<object, Map<string, Set<string>>>;
     indexedResultsByKey: Map<string, { mode: 'match' | 'exclude'; unitIds: Set<string> }>;
 }
 
-const externalFilterRuntimeCache = new WeakMap<EvaluatorContext, ExternalFilterRuntimeCache>();
+const externalFilterRuntimeCache = new WeakMap<object, ExternalFilterRuntimeCache>();
 
-function getExternalFilterRuntimeCache(context: EvaluatorContext): ExternalFilterRuntimeCache {
+function getExternalFilterRuntimeCache<TUnit extends object>(context: EvaluatorContext<TUnit>): ExternalFilterRuntimeCache {
     let cache = externalFilterRuntimeCache.get(context);
     if (!cache) {
         cache = {
             allNamesByKey: new Map<string, string[]>(),
             expandedValuesByKey: new Map<string, Map<string, string[]>>(),
-            unitMatchedNamesByKey: new WeakMap<any, Map<string, Set<string>>>(),
+            unitMatchedNamesByKey: new WeakMap<object, Map<string, Set<string>>>(),
             indexedResultsByKey: new Map<string, { mode: 'match' | 'exclude'; unitIds: Set<string> }>(),
         };
         externalFilterRuntimeCache.set(context, cache);
@@ -1254,8 +1240,8 @@ function getExternalFilterRuntimeCache(context: EvaluatorContext): ExternalFilte
     return cache;
 }
 
-function getCachedExternalNames(
-    context: EvaluatorContext,
+function getCachedExternalNames<TUnit extends object>(
+    context: EvaluatorContext<TUnit>,
     filterKey: string,
     getAllNames?: () => string[]
 ): string[] {
@@ -1270,8 +1256,8 @@ function getCachedExternalNames(
     return names;
 }
 
-function expandExternalFilterValue(
-    context: EvaluatorContext,
+function expandExternalFilterValue<TUnit extends object>(
+    context: EvaluatorContext<TUnit>,
     filterKey: string,
     value: string,
     allNames: string[]
@@ -1309,9 +1295,9 @@ function expandExternalFilterValue(
     return expanded;
 }
 
-function getUnitMatchedExternalNames(
-    context: EvaluatorContext,
-    unit: any,
+function getUnitMatchedExternalNames<TUnit extends object>(
+    context: EvaluatorContext<TUnit>,
+    unit: TUnit,
     filterKey: string,
     allNames: string[],
     checkMembership: (name: string) => boolean,
@@ -1379,9 +1365,9 @@ function buildIndexedExternalFilterCacheKey(
         : `${filterKey}\u0003${operator}\u0003${normalizedValues}`;
 }
 
-function addIndexedExternalUnitIds(
+function addIndexedExternalUnitIds<TUnit extends object>(
     target: Set<string>,
-    context: EvaluatorContext,
+    context: EvaluatorContext<TUnit>,
     filterKey: string,
     names: Iterable<string>,
     activeScope?: AvailabilityFilterScope,
@@ -1398,8 +1384,8 @@ function addIndexedExternalUnitIds(
     }
 }
 
-function buildIndexedExternalUnitIdSet(
-    context: EvaluatorContext,
+function buildIndexedExternalUnitIdSet<TUnit extends object>(
+    context: EvaluatorContext<TUnit>,
     filterKey: string,
     names: Iterable<string>,
     activeScope?: AvailabilityFilterScope,
@@ -1409,8 +1395,8 @@ function buildIndexedExternalUnitIdSet(
     return unitIds;
 }
 
-function getIndexedExternalFilterResult(
-    context: EvaluatorContext,
+function getIndexedExternalFilterResult<TUnit extends object>(
+    context: EvaluatorContext<TUnit>,
     filterKey: string,
     operator: SemanticOperator,
     values: readonly string[],
@@ -1515,8 +1501,8 @@ function getIndexedExternalFilterResult(
     return result;
 }
 
-function getAllScopedNamesGetter(
-    context: EvaluatorContext,
+function getAllScopedNamesGetter<TUnit extends object>(
+    context: EvaluatorContext<TUnit>,
     filterKey: 'era' | 'faction' | 'availabilityFrom',
 ): (() => string[]) | undefined {
     switch (filterKey) {
@@ -1529,9 +1515,9 @@ function getAllScopedNamesGetter(
     }
 }
 
-function getPositiveScopedNamesFromFilter(
+function getPositiveScopedNamesFromFilter<TUnit extends object>(
     filter: SemanticToken,
-    context: EvaluatorContext,
+    context: EvaluatorContext<TUnit>,
     filterKey: 'era' | 'faction' | 'availabilityFrom',
 ): string[] | null {
     const isScopedFilter = getSortedFilterConfigs(context, filter.field).some(conf => conf.key === filterKey);
@@ -1551,9 +1537,9 @@ function getPositiveScopedNamesFromFilter(
     return expandedNames.size > 0 ? Array.from(expandedNames) : null;
 }
 
-function collectScopedNames(
+function collectScopedNames<TUnit extends object>(
     node: ASTNode,
-    context: EvaluatorContext,
+    context: EvaluatorContext<TUnit>,
     filterKey: 'era' | 'faction' | 'availabilityFrom',
 ): string[] | null {
     if (node.type === 'filter') {
@@ -1616,9 +1602,9 @@ function mergeActiveNames(
     return intersection;
 }
 
-function getAndGroupAvailabilityScope(
+function getAndGroupAvailabilityScope<TUnit extends object>(
     group: GroupASTNode,
-    context: EvaluatorContext,
+    context: EvaluatorContext<TUnit>,
     activeScope?: AvailabilityFilterScope,
 ): AvailabilityFilterScope {
     return {
@@ -1634,12 +1620,12 @@ function getAndGroupAvailabilityScope(
  * Evaluate a single filter config against a unit.
  * Returns true if the unit matches the filter config.
  */
-function evaluateSingleFilterConfig(
+function evaluateSingleFilterConfig<TUnit extends object>(
     conf: AdvFilterConfig,
     operator: SemanticOperator,
     values: string[],
-    unit: any,
-    context: EvaluatorContext,
+    unit: TUnit,
+    context: EvaluatorContext<TUnit>,
     parsedRangeValues: ParsedRangeValue[],
     activeScope?: AvailabilityFilterScope,
 ): boolean {
@@ -1649,7 +1635,7 @@ function evaluateSingleFilterConfig(
     }
     
     // Get unit value for this filter
-    let unitValue: any;
+    let unitValue: unknown;
     if (conf.key === 'bv' && context.getAdjustedBV) {
         unitValue = context.getAdjustedBV(unit);
     } else if (conf.key === 'as.PV' && context.getAdjustedPV) {
@@ -1670,7 +1656,7 @@ function evaluateSingleFilterConfig(
     }
     
     // Handle different filter types
-    if (conf.type === AdvFilterType.RANGE) {
+    if (conf.type === AdvFilterType.RANGE || conf.numeric) {
         return evaluateRangeFilter(unitValue, operator, parsedRangeValues, conf);
     } else if (conf.type === AdvFilterType.BOOLEAN) {
         return evaluateBooleanFilter(unitValue, operator, values, conf);
@@ -1684,7 +1670,7 @@ function evaluateSingleFilterConfig(
 }
 
 function evaluateBooleanFilter(
-    unitValue: any,
+    unitValue: unknown,
     operator: SemanticOperator,
     values: string[],
     conf: AdvFilterConfig,
@@ -1716,10 +1702,10 @@ function evaluateBooleanFilter(
  * For filters with duplicate semantic keys (e.g., 'type' for both CLASSIC and ALPHA_STRIKE),
  * this checks ALL matching configs and returns true if ANY match.
  */
-function evaluateFilter(
+function evaluateFilter<TUnit extends object>(
     filter: SemanticToken,
-    unit: any,
-    context: EvaluatorContext,
+    unit: TUnit,
+    context: EvaluatorContext<TUnit>,
     activeScope?: AvailabilityFilterScope,
 ): boolean {
     const sortedFilters = getSortedFilterConfigs(context, filter.field);
@@ -1743,10 +1729,10 @@ function evaluateFilter(
     }
 }
 
-function matchIndexedStoredValues(
+function matchIndexedStoredValues<TUnit extends object>(
     filterKey: string,
     rawValue: string,
-    context: EvaluatorContext
+    context: EvaluatorContext<TUnit>
 ): string[] {
     const storedValues = context.getIndexedFilterValues?.(filterKey) ?? [];
     if (storedValues.length === 0) {
@@ -1785,10 +1771,10 @@ function matchIndexedStoredValues(
     return matchedValues;
 }
 
-function buildIndexedASSpecialCandidateSet(
+function buildIndexedASSpecialCandidateSet<TUnit extends object>(
     operator: SemanticOperator,
     values: string[],
-    context: EvaluatorContext,
+    context: EvaluatorContext<TUnit>,
     activeScope?: AvailabilityFilterScope,
 ): Set<string> | null {
     if (operator === '!=' || (operator !== '=' && operator !== '==' && operator !== '&=')) {
@@ -1806,11 +1792,11 @@ function buildIndexedASSpecialCandidateSet(
     );
 }
 
-function buildIndexedCandidateSetForConfig(
+function buildIndexedCandidateSetForConfig<TUnit extends object>(
     conf: AdvFilterConfig,
     operator: SemanticOperator,
     values: string[],
-    context: EvaluatorContext,
+    context: EvaluatorContext<TUnit>,
     activeScope?: AvailabilityFilterScope,
 ): Set<string> | null {
     if (!context.getIndexedUnitIds || !context.getIndexedFilterValues) {
@@ -1823,7 +1809,11 @@ function buildIndexedCandidateSetForConfig(
         return buildIndexedBooleanCandidateSet(conf, operator, values, context, activeScope);
     }
 
-    if (conf.type !== AdvFilterType.DROPDOWN || conf.countable) {
+    if (conf.type === AdvFilterType.DROPDOWN && conf.countable) {
+        return buildIndexedCountableCandidateSet(conf, operator, values, context, activeScope);
+    }
+
+    if (conf.type !== AdvFilterType.DROPDOWN) {
         return null;
     }
 
@@ -1892,11 +1882,61 @@ function buildIndexedCandidateSetForConfig(
     return null;
 }
 
-function buildIndexedBooleanCandidateSet(
+function buildIndexedCountableCandidateSet<TUnit extends object>(
     conf: AdvFilterConfig,
     operator: SemanticOperator,
     values: string[],
-    context: EvaluatorContext,
+    context: EvaluatorContext<TUnit>,
+    activeScope?: AvailabilityFilterScope,
+): Set<string> | null {
+    if (operator !== '=' && operator !== '==' && operator !== '&=') {
+        return null;
+    }
+
+    const indexedValues = context.getIndexedFilterValues?.(conf.key) ?? [];
+    if (indexedValues.length === 0) {
+        return null;
+    }
+
+    const candidatesForValue = (value: string): Set<string> => {
+        const parsed = parseValueWithQuantity(value);
+        const normalizedName = conf.valueNormalizer?.(parsed.name) ?? parsed.name;
+        const candidates = new Set<string>();
+        for (const storedValue of matchIndexedStoredValues(conf.key, normalizedName, context)) {
+            for (const unitId of context.getIndexedUnitIds?.(conf.key, storedValue, activeScope) ?? []) {
+                candidates.add(unitId);
+            }
+        }
+        return candidates;
+    };
+
+    if (operator === '&=') {
+        let candidates: Set<string> | null = null;
+        for (const value of values) {
+            const valueCandidates = candidatesForValue(value);
+            if (candidates === null) {
+                candidates = valueCandidates;
+                continue;
+            }
+            for (const unitId of candidates) {
+                if (!valueCandidates.has(unitId)) candidates.delete(unitId);
+            }
+        }
+        return candidates ?? new Set<string>();
+    }
+
+    const candidates = new Set<string>();
+    for (const value of values) {
+        for (const unitId of candidatesForValue(value)) candidates.add(unitId);
+    }
+    return candidates;
+}
+
+function buildIndexedBooleanCandidateSet<TUnit extends object>(
+    conf: AdvFilterConfig,
+    operator: SemanticOperator,
+    values: string[],
+    context: EvaluatorContext<TUnit>,
     activeScope?: AvailabilityFilterScope,
 ): Set<string> | null {
     if (operator === '&=') {
@@ -1944,28 +1984,15 @@ function buildIndexedBooleanCandidateSet(
     return candidateIds;
 }
 
-function getIndexedCandidateIdsForFilter(
+function getIndexedCandidateIdsForFilter<TUnit extends object>(
     filter: SemanticToken,
-    context: EvaluatorContext,
+    context: EvaluatorContext<TUnit>,
     activeScope?: AvailabilityFilterScope,
 ): Set<string> | null {
-    const matchingFilters = ADVANCED_FILTERS.filter(f =>
-        (f.semanticKey || f.key).toLowerCase() === filter.field.toLowerCase()
-    );
-    if (matchingFilters.length === 0) {
+    const sortedFilters = getSortedFilterConfigs(context, filter.field);
+    if (sortedFilters.length === 0) {
         return null;
     }
-
-    const sortedFilters: typeof matchingFilters = [];
-    const gameAgnostic: typeof matchingFilters = [];
-    const otherGame: typeof matchingFilters = [];
-    for (const f of matchingFilters) {
-        if (f.game === context.gameSystem) sortedFilters.push(f);
-        else if (!f.game) gameAgnostic.push(f);
-        else otherGame.push(f);
-    }
-    for (const f of gameAgnostic) sortedFilters.push(f);
-    for (const f of otherGame) sortedFilters.push(f);
 
     const candidateSets: Set<string>[] = [];
     for (const conf of sortedFilters) {
@@ -1985,9 +2012,9 @@ function getIndexedCandidateIdsForFilter(
     return combined;
 }
 
-function getIndexedCandidateIdsForNode(
+function getIndexedCandidateIdsForNode<TUnit extends object>(
     node: ASTNode,
-    context: EvaluatorContext,
+    context: EvaluatorContext<TUnit>,
     activeScope?: AvailabilityFilterScope,
 ): Set<string> | null {
     switch (node.type) {
@@ -2047,12 +2074,12 @@ function getIndexedCandidateIdsForNode(
  * Evaluate an external filter (era, faction) that uses ID-based lookups.
  * Supports wildcards (e.g., "Capel*" to match "Capellan Confederation").
  */
-function evaluateExternalFilter(
-    unit: any,
+function evaluateExternalFilter<TUnit extends object>(
+    unit: TUnit,
     operator: SemanticOperator,
     values: string[],
     conf: AdvFilterConfig,
-    context: EvaluatorContext,
+    context: EvaluatorContext<TUnit>,
     activeScope?: AvailabilityFilterScope,
 ): boolean {
     // Determine the membership check function and all names getter based on filter key
@@ -2170,14 +2197,14 @@ function evaluateExternalFilter(
  * Evaluate a range filter (numeric comparison).
  */
 function evaluateRangeFilter(
-    unitValue: any,
+    unitValue: unknown,
     operator: SemanticOperator,
     parsedValues: ParsedRangeValue[],
     conf: AdvFilterConfig
 ): boolean {
     if (unitValue == null) return conf.includeMissing === true;
     
-    const numValue = typeof unitValue === 'number' ? unitValue : parseFloat(unitValue);
+    const numValue = typeof unitValue === 'number' ? unitValue : Number.parseFloat(String(unitValue));
     if (isNaN(numValue)) return false;
     
     // Handle ignored values
@@ -2307,19 +2334,24 @@ function checkQuantityConstraint(
 /**
  * Evaluate a dropdown filter (string matching with quantity support).
  */
-function evaluateDropdownFilter(
-    unit: any,
-    unitValue: any,
+function evaluateDropdownFilter<TUnit extends object>(
+    unit: TUnit,
+    unitValue: unknown,
     operator: SemanticOperator,
     values: string[],
     conf: AdvFilterConfig,
-    context: EvaluatorContext
+    context: EvaluatorContext<TUnit>
 ): boolean {
     if (conf.key === 'as.specials') {
+        let queries = compiledASSpecialQueriesCache.get(values);
+        if (!queries) {
+            queries = compileASSpecialQueries(values);
+            compiledASSpecialQueriesCache.set(values, queries);
+        }
         return evaluateASSpecialsFilter(
             unitValue,
             operator,
-            values,
+            queries,
             context.getIndexedASSpecials?.(context.getUnitId(unit)),
         );
     }
@@ -2467,7 +2499,7 @@ function evaluateDropdownFilter(
  * Evaluate a semantic filter (exact text match with wildcards).
  */
 function evaluateSemanticFilter(
-    unitValue: any,
+    unitValue: unknown,
     operator: SemanticOperator,
     values: string[]
 ): boolean {
@@ -2496,164 +2528,80 @@ function evaluateSemanticFilter(
     return operator === '!=';
 }
 
+interface PreparedASTNode<TUnit> {
+    matches(unit: TUnit): boolean;
+    matchingText(unit: TUnit): string[];
+}
+
 /**
- * Evaluate an AST node against a unit.
- * Returns true if the unit matches the node's criteria.
+ * Resolve query facts once, including inherited availability scopes and escaped
+ * text. Closures retain query data only; unit facts are read on each evaluation.
  */
-export function evaluateASTNode(
+function prepareASTNode<TUnit extends object>(
     node: ASTNode,
-    unit: any,
-    context: EvaluatorContext,
+    context: EvaluatorContext<TUnit>,
     activeScope?: AvailabilityFilterScope,
-): boolean {
-    switch (node.type) {
-        case 'text':
-            // Text nodes filter by matching against unit's searchable text
-            // Unescape the text value before matching (e.g., \( -> ()
-            if (context.matchesText) {
-                return context.matchesText(unit, unescapeText(node.value));
-            }
-            // If no text matcher provided, pass through
-            return true;
-            
-        case 'filter':
-            return evaluateFilter(node.token, unit, context, activeScope);
-            
-        case 'group':
-            return evaluateGroup(node, unit, context, activeScope);
-            
-        default:
-            return true;
-    }
-}
-
-/**
- * Evaluate a group node against a unit.
- */
-function evaluateGroup(
-    group: GroupASTNode,
-    unit: any,
-    context: EvaluatorContext,
-    activeScope?: AvailabilityFilterScope,
-): boolean {
-    if (group.children.length === 0) return true;
-    
-    if (group.operator === 'AND') {
-        const nextActiveScope = getAndGroupAvailabilityScope(group, context, activeScope);
-        // All children must match
-        return group.children.every(child => evaluateASTNode(child, unit, context, nextActiveScope));
-    } else {
-        // OR: At least one child must match
-        return group.children.some(child => evaluateASTNode(child, unit, context, activeScope));
-    }
-}
-
-/**
- * Filter units using an AST.
- * This is the main entry point for AST-based filtering.
- */
-export function filterUnitsWithAST(
-    units: any[],
-    ast: GroupASTNode,
-    context: EvaluatorContext,
-    initialScope?: AvailabilityFilterScope,
-): any[] {
-    // If AST has no children, return all units
-    if (ast.children.length === 0) return units;
-    
-    // Check if AST has any meaningful nodes (filters or text when matcher is provided)
-    const hasFilters = hasFilterNodes(ast);
-    const hasText = context.matchesText && hasTextNodes(ast);
-    if (!hasFilters && !hasText) return units;
-
-    let candidateUnits = units;
-    if (context.getIndexedUnitIds && context.getIndexedFilterValues) {
-        const candidateIds = getIndexedCandidateIdsForNode(ast, context, initialScope);
-        if (candidateIds) {
-            candidateUnits = units.filter(unit => {
-                const unitId = context.getUnitId(unit);
-                return candidateIds.has(unitId);
-            });
-        }
-    }
-
-    return candidateUnits.filter(unit => evaluateASTNode(ast, unit, context, initialScope));
-}
-
-/**
- * Check if AST contains any filter nodes.
- */
-function hasFilterNodes(node: ASTNode): boolean {
-    if (node.type === 'filter') return true;
-    if (node.type === 'group') {
-        return node.children.some(child => hasFilterNodes(child));
-    }
-    return false;
-}
-
-/**
- * Check if AST contains any text nodes.
- */
-function hasTextNodes(node: ASTNode): boolean {
-    if (node.type === 'text') return true;
-    if (node.type === 'group') {
-        return node.children.some(child => hasTextNodes(child));
-    }
-    return false;
-}
-
-/**
- * Extract text nodes from AST that would match a unit.
- * For OR groups, returns only the text from the matching branch.
- * This is used for relevance scoring with complex queries.
- */
-export function getMatchingTextForUnit(
-    ast: GroupASTNode,
-    unit: any,
-    context: EvaluatorContext,
-    initialScope?: AvailabilityFilterScope,
-): string[] {
-    return collectMatchingText(ast, unit, context, initialScope);
-}
-
-function collectMatchingText(
-    node: ASTNode,
-    unit: any,
-    context: EvaluatorContext,
-    activeScope?: AvailabilityFilterScope,
-): string[] {
+): PreparedASTNode<TUnit> {
     if (node.type === 'text') {
-        // Check if this text node matches the unit (use unescaped value for matching)
-        const unescapedValue = unescapeText(node.value);
-        if (context.matchesText && context.matchesText(unit, unescapedValue)) {
-            return [unescapedValue];
-        }
-        return [];
+        const text = unescapeText(node.value);
+        return {
+            matches: unit => context.matchesText?.(unit, text) ?? true,
+            matchingText: unit => context.matchesText?.(unit, text) ? [text] : [],
+        };
     }
-    
     if (node.type === 'filter') {
-        return [];
+        return {
+            matches: unit => evaluateFilter(node.token, unit, context, activeScope),
+            matchingText: () => [],
+        };
     }
-    
-    if (node.type === 'group') {
-        if (node.operator === 'AND') {
-            const nextActiveScope = getAndGroupAvailabilityScope(node, context, activeScope);
-            // For AND, collect all matching text from all children
-            const texts: string[] = [];
-            for (const child of node.children) {
-                texts.push(...collectMatchingText(child, unit, context, nextActiveScope));
-            }
-            return texts;
-        } else {
-            // For OR, find the first matching child and return its text
-            for (const child of node.children) {
-                if (evaluateASTNode(child, unit, context, activeScope)) {
-                    return collectMatchingText(child, unit, context, activeScope);
-                }
-            }
-            return [];
-        }
+    if (node.children.length === 0) {
+        return { matches: () => true, matchingText: () => [] };
     }
-    
-    return [];
+
+    const isAnd = node.operator === 'AND';
+    const scope = isAnd ? getAndGroupAvailabilityScope(node, context, activeScope) : activeScope;
+    const children = node.children.map(child => prepareASTNode(child, context, scope));
+    return {
+        matches: isAnd
+            ? unit => children.every(child => child.matches(unit))
+            : unit => children.some(child => child.matches(unit)),
+        matchingText: isAnd
+            ? unit => children.flatMap(child => child.matchingText(unit))
+            // Relevance uses the first matching OR branch, as filtering does.
+            : unit => children.find(child => child.matches(unit))?.matchingText(unit) ?? [],
+    };
+}
+
+/**
+ * One search owns this evaluation and its candidate postings. Filtering and
+ * relevance read the same prepared scopes; nothing is retained across searches.
+ * Indexes narrow candidates only: the rule evaluator still verifies each unit.
+ */
+export function prepareASTSearch<TUnit extends object>(
+    ast: GroupASTNode,
+    context: EvaluatorContext<TUnit>,
+    initialScope?: AvailabilityFilterScope,
+): { filter(units: TUnit[]): TUnit[]; matchingText(unit: TUnit): string[] } {
+    const evaluation = prepareASTNode(ast, context, initialScope);
+    const candidateIds = context.getIndexedUnitIds && context.getIndexedFilterValues
+        ? getIndexedCandidateIdsForNode(ast, context, initialScope)
+        : null;
+    const isInactive = ast.children.length === 0
+        || (!hasFilterNodes(ast) && !(context.matchesText && hasTextNodes(ast)));
+    return {
+        filter: units => isInactive ? units : units.filter(unit =>
+            (candidateIds === null || candidateIds.has(context.getUnitId(unit))) && evaluation.matches(unit)),
+        matchingText: evaluation.matchingText,
+    };
+}
+
+function hasFilterNodes(node: ASTNode): boolean {
+    return node.type === 'filter'
+        || (node.type === 'group' && node.children.some(hasFilterNodes));
+}
+
+function hasTextNodes(node: ASTNode): boolean {
+    return node.type === 'text'
+        || (node.type === 'group' && node.children.some(hasTextNodes));
 }

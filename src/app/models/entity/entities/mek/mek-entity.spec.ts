@@ -10,16 +10,18 @@ import {
   STANDARD_STRUCTURE_EQUIPMENT,
 } from '../../components';
 import { BaseEntity } from '../../base-entity';
-import { BV_MOVEMENT_CALCULATION, EntityMountedEquipment } from '../../types';
+import { AS_MOVEMENT_CALCULATION, BV_MOVEMENT_CALCULATION, STANDARD_MOVEMENT_CALCULATION, EntityMountedEquipment } from '../../types';
 import {
   TestBipedMekEntity as BipedMekEntity,
   TestLamEntity as LamEntity,
   TestQuadMekEntity as QuadMekEntity,
+  TestTripodMekEntity as TripodMekEntity,
 } from '../../testing/test-entities';
 import { addTestEquipment, addTestEquipmentWithFlags } from '../../testing/test-mounted-equipment';
 import { EquipmentRegistry } from '../../../equipment-lookup';
 import { TEST_EQUIPMENT_REGISTRY } from '../../testing/test-equipment-registry';
 import { EquipmentFlag } from '../../../equipment-flags.type';
+import { wholeJumpJetMp } from '../../../jump-equipment.model';
 
 const TEST_IS_ENDO_STRUCTURE = new StructureEquipment({
   id: 'IS Endo Steel',
@@ -398,7 +400,7 @@ describe('MekEntity jumpMP', () => {
     expect(entity.jumpMP()).toBe(8);
     expect(entity.installedJumpJetMP()).toBe(6);
 
-    addTestEquipmentWithFlags(entity, ['F_SHIELD','S_SHIELD_MEDIUM'], { location: 'CT' });
+    addTestEquipmentWithFlags(entity, ['F_SHIELD', 'S_SHIELD_MEDIUM'], { location: 'CT' });
     expect(entity.jumpMP()).toBe(7);
     expect(entity.installedJumpJetMP()).toBe(6);
 
@@ -406,7 +408,7 @@ describe('MekEntity jumpMP', () => {
     expect(entity.jumpMP()).toBe(6);
     expect(entity.installedJumpJetMP()).toBe(6);
 
-    addTestEquipmentWithFlags(entity, ['F_SHIELD','S_SHIELD_LARGE'], { location: 'CT' });
+    addTestEquipmentWithFlags(entity, ['F_SHIELD', 'S_SHIELD_LARGE'], { location: 'CT' });
     expect(entity.jumpMP()).toBe(0);
     expect(entity.installedJumpJetMP()).toBe(6);
   });
@@ -420,7 +422,7 @@ describe('MekEntity jumpMP', () => {
     expect(entity.installedUmuMP()).toBe(4);
     expect(entity.umuMP()).toBe(4);
 
-    addTestEquipmentWithFlags(entity, ['F_SHIELD','S_SHIELD_LARGE'], { location: 'CT' });
+    addTestEquipmentWithFlags(entity, ['F_SHIELD', 'S_SHIELD_LARGE'], { location: 'CT' });
     expect(entity.installedUmuMP()).toBe(4);
     expect(entity.umuMP()).toBe(0);
   });
@@ -448,6 +450,26 @@ describe('MekEntity jumpMP', () => {
 
     expect(entity.installedJumpJetMP()).toBe(1);
     expect(entity.jumpMP()).toBe(1);
+  });
+
+  it('drops a FrankenMek\'s fractional Jumping MP as the game does for its surviving jets (CO p. 213)', () => {
+    // CO p. 213: six half-ton jets give a 60-ton FrankenMek 3 Jumping MP; with five, the half MP is dropped.
+    const entity = new BipedMekEntity();
+    entity.setTonnage(60);
+    entity.originalWalkMP.set(5);
+    entity.setStructureAt('CT', standardStructure(60));
+    entity.setStructureAt('LT', standardStructure(55));
+    const jumpJet = new MiscEquipment({
+      id: 'FrankenJumpJet', name: 'Jump Jet', type: 'misc',
+      stats: { tonnage: 'variable' }, flags: ['F_JUMP_JET'],
+    });
+    for (let count = 0; count < 5; count++) addTestEquipment(entity, jumpJet, { location: 'LT' });
+    const jets = entity.equipment().filter(mount => mount.equipment === jumpJet)
+      .map(mount => ({ mpContribution: entity.jumpJetMpContribution(mount) }));
+
+    expect(jets.map(jet => jet.mpContribution)).toEqual(Array(5).fill(0.5));
+    expect(entity.installedJumpJetMP()).toBe(2);
+    expect(wholeJumpJetMp(jets)).toBe(entity.installedJumpJetMP());
   });
 
   it('calculates maximum jump directly when modular armor reduces normal jump to zero', () => {
@@ -492,8 +514,8 @@ describe('MekEntity jumpMP', () => {
   it('applies static shield, modular armor, and chain drape walk penalties', () => {
     const entity = new BipedMekEntity();
     entity.originalWalkMP.set(8);
-    addTestEquipmentWithFlags(entity, ['F_SHIELD','S_SHIELD_MEDIUM'], { location: 'CT' });
-    addTestEquipmentWithFlags(entity, ['F_SHIELD','S_SHIELD_LARGE'], { location: 'CT' });
+    addTestEquipmentWithFlags(entity, ['F_SHIELD', 'S_SHIELD_MEDIUM'], { location: 'CT' });
+    addTestEquipmentWithFlags(entity, ['F_SHIELD', 'S_SHIELD_LARGE'], { location: 'CT' });
     addTestEquipmentWithFlags(entity, 'F_MODULAR_ARMOR', { location: 'CT' });
     addTestEquipmentWithFlags(entity, 'F_MODULAR_ARMOR', { location: 'CT' });
     addTestEquipmentWithFlags(entity, 'F_CHAIN_DRAPE', { location: 'CT' });
@@ -503,6 +525,41 @@ describe('MekEntity jumpMP', () => {
     expect(entity.maxWalkMP()).toBe(5);
     expect(entity.maxRunMP()).toBe(8);
   });
+
+  for (const Entity of [BipedMekEntity, TripodMekEntity]) {
+    it(`caps only CORE shield walking penalties for ${Entity.name}`, () => {
+      const entity = new Entity();
+      addTestEquipmentWithFlags(entity, ['F_SHIELD', 'S_SHIELD_MEDIUM'], { location: 'RA' });
+      addTestEquipmentWithFlags(entity, ['F_SHIELD', 'S_SHIELD_LARGE'], { location: 'LA' });
+      const core = { ...STANDARD_MOVEMENT_CALCULATION, ruleset: 'core-2026' as const };
+      const tw = { ...STANDARD_MOVEMENT_CALCULATION, ruleset: 'total-warfare' as const };
+
+      for (const [baseWalkMp, coreWalkMp, twWalkMp] of [[0, 0, 0], [1, 1, 0], [2, 1, 0], [4, 2, 2]]) {
+        entity.originalWalkMP.set(baseWalkMp);
+        expect(entity.computeWalkMP(core)).withContext(`CORE base ${baseWalkMp}`)
+          .toBe(coreWalkMp);
+        expect(entity.computeWalkMP(tw)).withContext(`TW base ${baseWalkMp}`)
+          .toBe(twWalkMp);
+        expect(entity.computeWalkMP(AS_MOVEMENT_CALCULATION)).withContext(`AS base ${baseWalkMp}`)
+          .toBe(twWalkMp);
+      }
+      entity.originalWalkMP.set(2);
+      expect(entity.computeRunMP(core)).toBe(2);
+      expect(entity.computeRunMP(tw)).toBe(0);
+      expect(entity.computeWalkMP({ ...core, ignoreShield: true })).toBe(2);
+    });
+  }
+
+  for (const equipmentFlag of ['F_MODULAR_ARMOR', 'F_CHAIN_DRAPE'] as const) {
+    it(`allows ${equipmentFlag} to reduce CORE walking MP below the shield minimum`, () => {
+      const entity = new BipedMekEntity();
+      entity.originalWalkMP.set(2);
+      addTestEquipmentWithFlags(entity, ['F_SHIELD', 'S_SHIELD_MEDIUM'], { location: 'RA' });
+      addTestEquipmentWithFlags(entity, equipmentFlag, { location: 'CT' });
+
+      expect(entity.computeWalkMP({ ...STANDARD_MOVEMENT_CALCULATION, ruleset: 'core-2026' })).toBe(0);
+    });
+  }
 
   it('uses TSM and movement boosters for maximum movement', () => {
     const entity = new BipedMekEntity();
@@ -519,7 +576,7 @@ describe('MekEntity jumpMP', () => {
   it('does not apply shield walk penalties to quad Meks', () => {
     const entity = new QuadMekEntity();
     entity.originalWalkMP.set(6);
-    addTestEquipmentWithFlags(entity, ['F_SHIELD','S_SHIELD_MEDIUM'], { location: 'CT' });
+    addTestEquipmentWithFlags(entity, ['F_SHIELD', 'S_SHIELD_MEDIUM'], { location: 'CT' });
 
     expect(entity.walkMP()).toBe(6);
   });
@@ -548,7 +605,8 @@ describe('MekEntity weapons', () => {
     expect(entity.physicalWeapons().some(weapon =>
       'mountId' in weapon && weapon.mountId === hatchetMount.mountId)).toBeTrue();
     expect(entity.physicalWeapons()[0] as EntityMountedEquipment).toBe(hatchetMount);
-    expect(entity.physicalWeapons().filter(weapon => 'source' in weapon).length).toBe(6);
+    // A brush off joins the left arm's punch; the hatchet arm brushes nothing off (TW p. 221).
+    expect(entity.physicalWeapons().filter(weapon => 'source' in weapon).length).toBe(8);
 
     entity.setEquipment([]);
     addTestEquipment(entity, heatSink, { location: 'CT' });
@@ -563,12 +621,12 @@ describe('MekEntity weapons', () => {
 
     const attacks = entity.intrinsicWeapons();
     expect(attacks.map(attack => attack.name)).toEqual([
-      'Punch', 'Punch', 'Club', 'Kick', 'Charge', 'Push',
+      'Punch', 'Brush Off', 'Punch', 'Brush Off', 'Kick', 'Club/Improvised', 'Charge', 'Push', 'Thrash',
     ]);
     expect(attacks.find(attack => attack.id === 'intrinsic:punch:LA')?.damage).toEqual({
       kind: 'fixed', value: 6,
     });
-    expect(attacks.find(attack => attack.id === 'intrinsic:kick')?.hitModifiers).toEqual([-2]);
+    expect(attacks.find(attack => attack.id === 'intrinsic:kick')?.hitModifierAdjustment).toBe(0);
     expect(attacks.every(attack => attack.source === 'intrinsic')).toBeTrue();
   });
 
@@ -583,13 +641,13 @@ describe('MekEntity weapons', () => {
     addTestEquipmentWithFlags(entity, 'F_TALON', { location: 'LL' });
     addTestEquipmentWithFlags(entity, 'F_TALON', { location: 'RL' });
     addTestEquipmentWithFlags(entity, 'F_JUMP_JET', { location: 'CT' });
-    addTestEquipmentWithFlags(entity, ['F_SHIELD','S_SHIELD_LARGE'], { location: 'CT' });
+    addTestEquipmentWithFlags(entity, ['F_SHIELD', 'S_SHIELD_LARGE'], { location: 'CT' });
 
     const attacks = entity.intrinsicWeapons();
     expect(attacks.find(attack => attack.id === 'intrinsic:punch:LA')).toEqual(
       jasmine.objectContaining({
         damage: { kind: 'fixed', value: 3, boostedValue: 6 },
-        hitModifiers: [2],
+        hitModifierAdjustment: 2,
       }),
     );
     expect(attacks.some(attack => attack.id === 'intrinsic:punch:RA')).toBeFalse();
@@ -603,15 +661,12 @@ describe('MekEntity weapons', () => {
     expect(entity.jumpMP()).toBe(0);
   });
 
-  it('represents LAM mode damage as an explicit alternate', () => {
+  it("gives a LAM a 'Mech's punch and kick, and the AirMech Ram", () => {
     const entity = new LamEntity();
     entity.setTonnage(55);
 
-    expect(entity.intrinsicWeapons().find(attack => attack.kind === 'kick')?.damage).toEqual({
-      kind: 'fixed',
-      value: 11,
-      alternatives: { airmek: { kind: 'fixed', value: 6 } },
-    });
+    expect(entity.intrinsicWeapons().find(attack => attack.kind === 'kick')?.damage).toEqual({ kind: 'fixed', value: 11 });
+    expect(entity.intrinsicWeapons().find(attack => attack.kind === 'punch')?.damage).toEqual({ kind: 'fixed', value: 6 });
     expect(entity.intrinsicWeapons().some(attack => attack.kind === 'airmek-ram')).toBeTrue();
   });
 
@@ -687,6 +742,47 @@ describe('MekEntity integral heat sinks', () => {
     expect(entity.integralHeatSinks()?.count).toBe(5);
     expect(entity.equipment().filter(mount => mount.allocation.kind === 'unallocated').length).toBe(5);
     expect(entity.totalHeatSinks()).toBe(10);
+  });
+
+  it('keeps other-type external sinks through engine and count changes', () => {
+    const entity = new BipedMekEntity();
+    entity.mountedEngine.set(new MountedEngine({ type: 'Fusion', rating: 300, techBase: 'IS' }));
+    const singleHeatSink = new MiscEquipment({
+      id: 'Heat Sink', name: 'Heat Sink', type: 'misc', flags: ['F_HEAT_SINK'],
+    });
+    const prototype = new MiscEquipment({
+      id: 'ISDoubleHeatSinkPrototype', name: 'Double Heat Sink Prototype', type: 'misc',
+      flags: ['F_IS_DOUBLE_HEAT_SINK_PROTOTYPE'],
+    });
+    const prototypeMounts = ['LT', 'RT'].map(location => new EntityMountedEquipment({
+      mountId: `prototype-${location}`,
+      equipmentId: prototype.id,
+      equipment: prototype,
+      allocation: { kind: 'location', location },
+      rearMounted: false,
+      turretMounted: false,
+      omniPodMounted: false,
+      armored: false,
+    }));
+    entity.heatSinkEquipment.set(singleHeatSink);
+    entity.setEquipment(prototypeMounts);
+    entity.initializeParsedHeatSinkMounts(18);
+    const prototypesInstalled = () => entity.equipment().filter(mount => mount.equipment === prototype);
+
+    entity.configureEngine(new MountedEngine({ type: 'Fusion', rating: 250, techBase: 'IS' }));
+
+    expect(prototypesInstalled()).toEqual(prototypeMounts);
+    expect(entity.integralHeatSinks()?.count).toBe(10);
+    expect(entity.totalHeatSinks()).toBe(18);
+
+    entity.configureHeatSinks(singleHeatSink, 14);
+
+    expect(prototypesInstalled()).toEqual(prototypeMounts);
+    expect(entity.totalHeatSinks()).toBe(14);
+
+    entity.configureHeatSinks(prototype, 14);
+
+    expect(prototypesInstalled().length).toBe(14);
   });
 
   it('represents Omni base-chassis sinks as engine-integrated mounts', () => {

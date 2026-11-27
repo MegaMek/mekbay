@@ -17,13 +17,13 @@ export type SarnaPageTitleLookupType = typeof SARNA_PAGE_TITLE_LOOKUP_TYPES[numb
 export type SarnaPageTitlesByType = Partial<Record<SarnaPageTitleLookupType, string[]>>;
 
 export interface SarnaPageTitlesData {
-    etag: string;
+    assetHash: string;
     titlesByType: SarnaPageTitlesByType;
 }
 
 export type SarnaLookupUnit = Pick<UnitSummary, 'chassis' | 'type'> & Partial<Pick<UnitSummary, 'subtype' | 'omni'>>;
 
-export const SARNA_PAGE_TITLE_LOOKUP_TYPE_BY_UNIT_TYPE: Record<UnitType, SarnaPageTitleLookupType> = {
+export const SARNA_PAGE_TITLE_LOOKUP_TYPE_BY_UNIT_TYPE: Partial<Record<UnitType, SarnaPageTitleLookupType>> = {
     Aero: 'Aero',
     'Handheld Weapon': 'Handheld Weapon',
     Infantry: 'Infantry',

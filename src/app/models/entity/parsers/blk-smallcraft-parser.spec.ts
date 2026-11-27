@@ -39,7 +39,7 @@ describe('BLK Small Craft parser', () => {
     });
   }
 
-  it('materializes the standard crew and quarters when parsing a craft above 25 tons', () => {
+  it('preserves authored crew and transporters above 25 tons without construction reconciliation', () => {
     const standardArmor = new ArmorEquipment({
       id: 'Standard Armor', name: 'Standard', type: 'armor',
       armor: { type: 'STANDARD' }, tech: { base: 'All' },
@@ -50,15 +50,19 @@ describe('BLK Small Craft parser', () => {
 
     const entity = parseBlkSmallCraft(new BuildingBlock(smallCraftBlk(0.48, 30)), context);
 
-    expect(entity.crew()).toBe(3);
-    expect(entity.officers()).toBe(1);
+    expect(entity.crew()).toBe(1);
+    expect(entity.officers()).toBe(0);
     expect(entity.transporters().filter(transporter => transporter.kind === 'bay').map(transporter =>
       transporter.kind === 'bay' ? [transporter.configuration.type, transporter.capacity] : [])).toEqual([
       ['cargo', 0.48],
-      ['first-class-quarters', 1],
-      ['second-class-quarters', 0],
-      ['crew-quarters', 2],
     ]);
+    const written = writeBlkSmallCraft(entity);
+    expect(written).toContain('<crew>\n1\n</crew>');
+    expect(written).not.toContain('crewquarters');
+
+    entity.setTonnage(35);
+    expect(entity.crew()).toBe(3);
+    expect(entity.officers()).toBe(1);
   });
 });
 

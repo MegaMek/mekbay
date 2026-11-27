@@ -13,7 +13,7 @@ import {
 } from './heat-damage';
 
 describe('Alpha Strike weapon heat damage', () => {
-  it('uses exported Alpha Strike heat damage without Classic weapon inference', () => {
+  it('uses exported Alpha Strike heat damage without CBT weapon inference', () => {
     expect(alphaStrikeHeatDamageForWeapon(weapon('flamer', ['F_FLAMER'], {
       alphaStrike: { heatDamage: [2, 0, 0, 0] },
     }))).toEqual([2, 0, 0]);

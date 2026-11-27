@@ -11,10 +11,14 @@ describe('clusterHits', () => {
     expect(clusterHits(7, 40)).toBe(24);
   });
 
-  it('returns zero for unsupported or invalid rack sizes', () => {
+  it('returns zero for invalid rack sizes', () => {
     expect(clusterHits(7, 0)).toBe(0);
-    expect(clusterHits(7, 31)).toBe(0);
     expect(clusterHits(7, 2.5)).toBe(0);
+  });
+
+  it('splits sizes the table lacks at its largest smaller row, reading both parts on one roll', () => {
+    expect(clusterHits(7, 31)).toBe(clusterHits(7, 30) + clusterHits(7, 1));
+    expect(clusterHits(7, 45)).toBe(clusterHits(7, 40) + clusterHits(7, 5));
   });
 
   it('rejects rolls outside the 2d6 result range', () => {

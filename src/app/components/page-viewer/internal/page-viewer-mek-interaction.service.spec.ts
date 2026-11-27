@@ -1,0 +1,1019 @@
+// Copyright (C) 2026 The MegaMek Team
+// SPDX-License-Identifier: GPL-3.0-or-later
+
+import { ComponentFixture,TestBed } from '@angular/core/testing';
+import { Subject,of } from 'rxjs';
+import { createUnitEditContextFixture } from '../../../models/runtime/testing/unit-edit-context-fixture';
+import { createDirectHotLoadedAmmoRuntimeFixture } from '../../../models/runtime/testing/direct-mek-runtime-fixture';
+import type { RecordSheetInteraction } from '../record-sheet-interaction';
+
+import type { CBTEquipmentChoiceCommand } from '../../../models/cbt-force.types';
+import type { ComponentId } from '../../../models/entity/entity-identifiers';
+import { TestBipedMekEntity } from '../../../models/entity/testing/test-entities';
+import { createTestEquipmentRegistry } from '../../../models/entity/testing/test-equipment-registry';
+import { EntityMountedEquipment } from '../../../models/entity/types/equipment';
+import { AmmoEquipment, WeaponEquipment } from '../../../models/equipment.model';
+import { SetAmmoDialogComponent } from '../../set-ammo-dialog/set-ammo.dialog.component';
+import { CBTForceMember,type CBTMekForceMember } from '../../../models/force-member.model';
+import type { EquipmentPanelSnapshot } from '../../../models/runtime/equipment-panel';
+import type { MekRecordSheetSnapshot } from '../../../models/runtime/mek-record-sheet';
+import type { MekLocationConditionKey } from '../../../models/runtime/runtime-state';
+import type { UnitConditionKey } from '../../../models/unit-condition.model';
+import { DialogsService } from '../../../services/dialogs.service';
+import { ForcePilotEditorService } from '../../../services/force-pilot-editor.service';
+import { OptionsService } from '../../../services/options.service';
+import { OverlayManagerService } from '../../../services/overlay-manager.service';
+import type { ChoicePickerConfig,DirectionalPickerConfig,NumericPickerConfig } from '../../../services/picker-factory.service';
+import { PickerFactoryService } from '../../../services/picker-factory.service';
+import { ToastService } from '../../../services/toast.service';
+import { asUnitUuid } from '../../../services/unit-catalog/unit-catalog.types';
+import { MekCriticalChanceDialogComponent } from '../mek-critical-chance-dialog.component';
+import { MekCriticalRollDialogComponent } from '../mek-critical-roll-dialog.component';
+import { PageViewerZoomPanService } from '../page-viewer-zoom-pan.service';
+import { UnitStateDropdownComponent } from '../unit-state-dropdown.component';
+import { PageViewerMekInteractionService } from './page-viewer-mek-interaction.service';
+import { PageViewerOverlayService } from './page-viewer-overlay.service';
+import { BOUND_OPTIONAL_RULE_DEFAULTS } from '../../../models/runtime/bound-optional-rules';
+
+const editContext = createUnitEditContextFixture();
+
+describe('PageViewerMekInteractionService', () => {
+    let service: PageViewerMekInteractionService;
+    let numericConfig: NumericPickerConfig | null;
+    let choiceConfig: ChoicePickerConfig | null;
+    let directionalConfig: DirectionalPickerConfig | null;
+    let revision: number;
+    let floatingCriticals = false;
+    let waterCover = false;
+    let currentSnapshot: MekRecordSheetSnapshot;
+    let panel: EquipmentPanelSnapshot;
+    let force: any;
+    let member: CBTMekForceMember;
+    let dialogs: jasmine.SpyObj<DialogsService>;
+    let overlayManager: ReturnType<typeof overlayManagerStub>;
+    let dropdownFixture: ComponentFixture<UnitStateDropdownComponent>;
+
+    it('declares sheet movement using runtime minimum MP and active boosters, toggles it off, and rejects stale edits', async () => {
+        currentSnapshot = { ...currentSnapshot, movementSelection: {
+            selectedMode: null, airborne: false, options: [{ mode: 'run', modifier: 2, legal: true, minimumMp: 1 }],
+        } };
+        force.getMekTurnPanelSnapshot = jasmine.createSpy().and.returnValue({ activeBoosterComponentIds: ['booster'] });
+        service.handle(member, { kind: 'movement', mode: 'run', context: currentSnapshot.editContext }, new Event('click'));
+        await Promise.resolve();
+        expect(force.dispatchUnitCommand.calls.mostRecent().args[1]).toEqual({
+            type: 'declare-mek-movement', declaration: { mode: 'run', distance: 1,
+                boosterComponentIds: ['booster'] },
+        });
+        const previousContext = editContext(revision - 1);
+        currentSnapshot = { ...currentSnapshot, movementSelection: { ...currentSnapshot.movementSelection, selectedMode: 'run' } };
+        member.bindRuntime(currentSnapshot.editContext.owner, revision);
+        service.handle(member, { kind: 'movement', mode: 'run', context: currentSnapshot.editContext }, new Event('click'));
+        await Promise.resolve();
+        expect(force.dispatchUnitCommand.calls.mostRecent().args[1]).toEqual({ type: 'clear-mek-movement' });
+        member.bindRuntime(currentSnapshot.editContext.owner, revision);
+        service.handle(member, { kind: 'movement', mode: 'run', context: previousContext }, new Event('click'));
+        await Promise.resolve();
+        expect(force.dispatchUnitCommand).toHaveBeenCalledTimes(2);
+    });
+
+    beforeEach(() => {
+        floatingCriticals = false;
+        waterCover = false;
+        numericConfig = null;
+        choiceConfig = null;
+        directionalConfig = null;
+        revision = 1;
+        currentSnapshot = recordSheetSnapshot(revision);
+        panel = equipmentPanel(revision);
+        const directUnitSnapshot = () => ({
+            entity: Object.assign(Object.create(member.entity), {
+                totalHeatSinks: () => currentSnapshot.heatSinks.count,
+                bulkHeatSinkCount: () => currentSnapshot.heatSinks.count,
+            }),
+            state: editContext(revision).state,
+            editContext: editContext(revision),
+            index: { locations: new Map([['loc-ct', { code: 'CT' }]]) },
+            query: {
+                stateRevision: revision, editContext: editContext(revision),
+                boundRules: () => BOUND_OPTIONAL_RULE_DEFAULTS,
+                turnState: () => ({ cover: waterCover ? 'underwater-depth-1' : null }),
+                crewState: (positionId: string) => currentSnapshot.crew
+                    .find(row => row.positionId === positionId)?.state
+                    ?? { wounds: 0, unconscious: false, ejected: false },
+                hasCondition: (condition: UnitConditionKey) => currentSnapshot.conditions.includes(condition),
+                heatState: () => currentSnapshot.heat,
+                locationCondition: (locationId: string, condition: MekLocationConditionKey, perspective: string) => {
+                    const row = currentSnapshot.locations.find(location => location.locationId === locationId)
+                        ?.conditions.find(candidate => candidate.condition === condition);
+                    return perspective === 'preview' ? row?.preview ?? 0 : row?.committed ?? 0;
+                },
+                ammoLoadout: (componentId: string) => {
+                    const ammo = currentSnapshot.criticalSlots.flatMap(slot => slot.components)
+                        .find(component => component.componentId === componentId)?.ammo;
+                    if (!ammo) throw new Error(`Unknown ammo ${componentId}`);
+                    return ammo;
+                },
+                ammoCapacity: (componentId: string) => {
+                    const ammo = currentSnapshot.criticalSlots.flatMap(slot => slot.components)
+                        .find(component => component.componentId === componentId)?.ammo;
+                    if (!ammo) throw new Error(`Unknown ammo ${componentId}`);
+                    return ammo.capacity;
+                },
+                remainingAmmo: (componentId: string) => {
+                    const ammo = currentSnapshot.criticalSlots.flatMap(slot => slot.components)
+                        .find(component => component.componentId === componentId)?.ammo;
+                    if (!ammo) throw new Error(`Unknown ammo ${componentId}`);
+                    return ammo.remaining;
+                },
+                mekCriticalChance: () => ({
+                    locationId: 'loc-ct', locationCode: 'CT', canBlowOff: false,
+                    industrialMek: false, modifiers: [],
+                }),
+                mekBlowOff: () => ({ kind: 'blown-off', locationId: 'loc-ct' }),
+                    locationStatus: () => 'available',
+            },
+        });
+        force = {
+            era: () => null,
+            getMekRecordSheetSnapshot: jasmine.createSpy().and.callFake(() => currentSnapshot),
+            getEquipmentPanelSnapshot: jasmine.createSpy().and.callFake(() => panel),
+            dispatchUnitCommand: jasmine.createSpy().and.callFake(async (_unitId: string, command: any) => {
+                revision++;
+                currentSnapshot = { ...currentSnapshot, stateRevision: revision, editContext: editContext(revision) } as MekRecordSheetSnapshot;
+                panel = { ...panel, stateRevision: revision } as EquipmentPanelSnapshot;
+                return { accepted: true, changed: true, state: editContext(revision).state };
+            }),
+            getEquipmentInteractions: jasmine.createSpy().and.returnValue([]),
+            dispatchEquipmentChoice: jasmine.createSpy().and.resolveTo({ accepted: true, changed: true, context: editContext(1) }),
+            getUnitCrewProfile: jasmine.createSpy().and.returnValue({
+                positions: [{ positionId: 'crew-0', name: 'Morgan', gunnery: 3, piloting: 4 }],
+            }),
+            replaceUnitCrewProfile: jasmine.createSpy().and.resolveTo({ positions: [] }),
+            getAssignedPerson: jasmine.createSpy().and.returnValue(null),
+            getAttackerTargeting: jasmine.createSpy().and.returnValue({
+                instanceId: 'unit-1', stateRevision: 1, editContext: editContext(1), registryRevision: 2,
+                state: { components: new Map(), actions: new Map(), targets: new Map() },
+            }),
+            dispatchAttackerTargeting: jasmine.createSpy().and.resolveTo({
+                accepted: true, idempotent: false, currentRevision: 2,
+            }),
+            getRosterGroupId: () => 'group-1',
+            getUnitSnapshot: jasmine.createSpy().and.callFake(directUnitSnapshot),
+        };
+        const entity = new TestBipedMekEntity();
+        entity.chassis.set('Atlas');
+        entity.model.set('AS7-D');
+        member = new CBTForceMember('unit-1' as never, force, entity) as CBTMekForceMember;
+        dialogs = jasmine.createSpyObj<DialogsService>('DialogsService', ['createDialog', 'prompt']);
+        overlayManager = overlayManagerStub();
+        TestBed.configureTestingModule({
+            imports: [UnitStateDropdownComponent],
+            providers: [
+                PageViewerMekInteractionService,
+                { provide: DialogsService, useValue: dialogs },
+                {
+                    provide: OptionsService,
+                    useValue: {
+                        options: () => ({ pickerStyle: 'default', colorScheme: 'default', trackPhaseAndTurn: true,
+                            CBTOptionalRules: { floatingCriticals } }),
+                        cbtAutomationMode: () => 'no',
+                    },
+                },
+                {
+                    provide: PickerFactoryService,
+                    useValue: {
+                        createNumericPicker: (config: NumericPickerConfig) => {
+                            numericConfig = config;
+                            return { component: {}, setPosition: () => undefined, destroy: () => undefined };
+                        },
+                        createChoicePicker: (config: ChoicePickerConfig) => {
+                            choiceConfig = config;
+                            return { component: { values: { set: () => undefined } }, setPosition: () => undefined, destroy: () => undefined };
+                        },
+                        createDirectionalPicker: (config: DirectionalPickerConfig) => {
+                            directionalConfig = config;
+                            return { component: { values: { set: () => undefined } }, setPosition: () => undefined, destroy: () => undefined };
+                        },
+                    },
+                },
+                { provide: OverlayManagerService, useValue: overlayManager },
+                PageViewerOverlayService,
+                { provide: ToastService, useValue: jasmine.createSpyObj('ToastService', ['showToast']) },
+                { provide: ForcePilotEditorService, useValue: jasmine.createSpyObj('ForcePilotEditorService', ['editStation']) },
+                { provide: PageViewerZoomPanService, useValue: jasmine.createSpyObj('PageViewerZoomPanService', ['cancelGesture']) },
+            ],
+        });
+        dropdownFixture = TestBed.createComponent(UnitStateDropdownComponent);
+        overlayManager.createManagedOverlay.and.returnValue({
+            componentRef: dropdownFixture.componentRef,
+            closed: new Subject<void>(),
+        } as ReturnType<OverlayManagerService['createManagedOverlay']>);
+        service = TestBed.inject(PageViewerMekInteractionService);
+        const overlays = TestBed.inject(PageViewerOverlayService);
+        spyOn(overlays, 'openEquipment');
+    });
+
+    afterEach(() => dropdownFixture.destroy());
+
+    it('rejects a damage picker opened before the unit owner was replaced at the same numeric revision', async () => {
+        service.handle(member, {
+            kind: 'armor', faceId: 'face-ct', locationId: 'loc-ct', context: editContext(1),
+        } as unknown as RecordSheetInteraction, anchoredMouseEvent());
+        const original = force.getUnitSnapshot('unit-1');
+        const replacement = createUnitEditContextFixture()(1);
+        force.getUnitSnapshot.and.returnValue({ ...original, state: replacement.state, editContext: replacement });
+        currentSnapshot = { ...currentSnapshot, editContext: replacement };
+        numericConfig!.onPick({ value: 1 });
+        await settleAsyncHandlers();
+        expect(force.dispatchUnitCommand).not.toHaveBeenCalled();
+    });
+
+    it('does not adopt a replacement owner between accepted armor damage and its internal overflow', async () => {
+        const original = force.getUnitSnapshot('unit-1');
+        const replacement = createUnitEditContextFixture()(2);
+        force.dispatchUnitCommand.and.callFake(async () => {
+            revision = 2;
+            currentSnapshot = { ...recordSheetSnapshot(2), editContext: replacement };
+            force.getUnitSnapshot.and.returnValue({ ...original, state: replacement.state, editContext: replacement });
+            return { accepted: true, changed: true, state: editContext(2).state };
+        });
+        service.handle(member, {
+            kind: 'armor', faceId: 'face-ct', locationId: 'loc-ct', context: editContext(1),
+        } as unknown as RecordSheetInteraction, anchoredMouseEvent());
+        numericConfig!.onPick({ value: 5 });
+        await settleAsyncHandlers();
+        expect(force.dispatchUnitCommand.calls.count()).toBe(1);
+        expect(force.dispatchUnitCommand.calls.argsFor(0)[1].type).toBe('damage-armor');
+    });
+
+    it('retains the opening heat context through asynchronous input instead of replacing it with current state', async () => {
+        const closed = new Subject<number | null>();
+        dialogs.createDialog.and.returnValue({ closed } as never);
+        service.handle(member, { kind: 'heat-overflow', context: editContext(1) }, anchoredMouseEvent());
+        revision = 2;
+        currentSnapshot = recordSheetSnapshot(2);
+        closed.next(35);
+        closed.complete();
+        await settleAsyncHandlers();
+        expect(force.dispatchUnitCommand).not.toHaveBeenCalled();
+    });
+
+    it('uses the original radial damage picker and atomically continues armor overflow into internal damage', async () => {
+        service.handle(member, {
+            kind: 'armor', faceId: 'face-ct', locationId: 'loc-ct', button: 'primary', context: editContext(1),
+        } as unknown as RecordSheetInteraction, anchoredMouseEvent());
+
+        expect(numericConfig).toEqual(jasmine.objectContaining({ min: -7, max: 5, threshold: 3, selected: 0 }));
+        numericConfig!.onPick({ value: 5 });
+        await settleAsyncHandlers();
+
+        const commands = force.dispatchUnitCommand.calls.allArgs().map((args: any[]) => args[1]);
+        expect(commands[0]).toEqual(jasmine.objectContaining({
+            type: 'damage-armor', faceId: 'face-ct', amount: 3, target: 'pending',
+        }));
+        expect(commands[1]).toEqual(jasmine.objectContaining({
+            type: 'damage-internal', locationId: 'loc-ct', amount: 2, target: 'pending',
+            armorDamagedBySameHit: true,
+        }));
+        expect(commands[1].hitArc).toBeUndefined();
+        expect(TestBed.inject(ToastService).showToast)
+            .toHaveBeenCalledWith(jasmine.stringMatching(/^\+5 armor hits in CT/), 'error', jasmine.any(String));
+    });
+
+    it('sets a whole heat from the overflow prompt', async () => {
+        const closed = new Subject<number | null>();
+        dialogs.createDialog.and.returnValue({ closed } as never);
+        service.handle(member, { kind: 'heat-overflow', context: editContext(1) }, anchoredMouseEvent());
+        closed.next(3.7);
+        closed.complete();
+        await settleAsyncHandlers();
+        expect(force.dispatchUnitCommand).toHaveBeenCalledOnceWith('unit-1', { type: 'set-pending-heat', heat: 3 }, editContext(1));
+    });
+
+    it('keeps a selected weapon selected when its mode button changes the mode', async () => {
+        panel = {
+            ...panel,
+            components: panel.components.map(row => ({
+                ...row, mode: 'normal', modes: ['normal', 'rapid'], weapon: { ...row.weapon, selection: { kind: 'selected' } },
+            })),
+        } as EquipmentPanelSnapshot;
+        service.handle(member, {
+            kind: 'inventory-selection', componentIds: ['weapon-1'], mode: 'rapid', context: editContext(1),
+        } as unknown as RecordSheetInteraction, anchoredMouseEvent());
+        await settleAsyncHandlers();
+        expect(force.dispatchAttackerTargeting).toHaveBeenCalledWith('unit-1', jasmine.objectContaining({
+            edit: { kind: 'set-component-selection', componentId: 'weapon-1', selection: { kind: 'selected' } },
+        }), jasmine.any(Object), 2);
+    });
+
+    it('uses the original critical choice picker and dispatches typed equipment choices', async () => {
+        const command: CBTEquipmentChoiceCommand = {
+            instanceId: 'unit-1',
+            entityUuid: asUnitUuid('019f6767-0dcb-7bb8-992f-aef08202f5e1'),
+            componentId: 'ammo-1' as ComponentId,
+            handlerId: 'special-handler',
+            value: 'special',
+        };
+        force.getEquipmentInteractions.and.returnValue([{
+            componentId: 'ammo-1', componentLabel: 'Ammo',
+            choices: [{
+                command,
+                interactionKind: 'inventory-mode',
+                label: 'Special mode',
+                active: false,
+                disabled: false,
+            }],
+        }]);
+        service.handle(member, {
+            kind: 'critical', slotId: 'slot-ct-0', componentIds: ['ammo-1'], button: 'primary', context: editContext(1),
+        } as unknown as RecordSheetInteraction, anchoredMouseEvent());
+
+        expect(choiceConfig).toEqual(jasmine.objectContaining({
+            style: 'linear', targetType: 'crit', title: 'Ammo (AC/20)',
+        }));
+        expect(choiceConfig!.values.slice(0, 4).map(choice => choice.label))
+            .toEqual(['-1', '+1', 'Critical Hit', 'Set Ammo']);
+        const handler = choiceConfig!.values.find(choice => choice.label === 'Special mode')!;
+        choiceConfig!.onPick(handler);
+        await settleAsyncHandlers();
+        expect(force.dispatchEquipmentChoice).toHaveBeenCalledWith(command, editContext(1));
+    });
+
+    for (const outcome of ['selected', 'cancelled', 'stale', 'intrinsic'] as const) {
+        it(`opens Set Ammo for the clicked slot and handles a ${outcome} selection`, async () => {
+            const era = { id: 1, name: 'Test Era', years: { from: 2900, to: 3000 }, factions: [], units: [] };
+            force.era = () => era;
+            const ammo = new AmmoEquipment({ id: 'standard', name: 'AC/20 Ammo', type: 'ammo',
+                ammo: { type: 'AC', rackSize: 20, shots: 5 } });
+            const flak = new AmmoEquipment({ id: 'flak', name: 'Flak AC/20 Ammo', type: 'ammo',
+                ammo: { type: 'AC', rackSize: 20, shots: 5, munitionType: ['M_FLAK'] } });
+            const entity = new TestBipedMekEntity(createTestEquipmentRegistry({ standard: ammo, flak }));
+            const intrinsic = outcome === 'intrinsic';
+            const equipment = intrinsic ? new WeaponEquipment({ id: 'one-shot-ac', name: 'One-Shot AC/20', type: 'weapon',
+                flags: ['F_ONE_SHOT'], weapon: { ammoType: 'AC', rackSize: 20 } }) : ammo;
+            const mount = new EntityMountedEquipment({ mountId: 'ammo-1', equipmentId: equipment.id, equipment,
+                allocation: { kind: 'location', location: 'CT', placements: [{ location: 'CT', slotIndex: 0 }] },
+                rearMounted: false, turretMounted: false, omniPodMounted: false, armored: false });
+            entity.setEquipment([mount]);
+            const source = force.getUnitSnapshot(member.id);
+            force.getUnitSnapshot.and.callFake(() => ({
+                ...source, entity, ruleset: 'core-2026', editContext: editContext(revision),
+                index: { ...source.index, components: new Map([['ammo-1', { kind: 'equipment', mount }]]) },
+                query: { ...source.query, ammoEquipment: () => ammo, remainingAmmo: () => intrinsic ? 1 : 3 },
+            }));
+            const closed = new Subject<{ name: string; quantity: number } | null>();
+            dialogs.createDialog.and.returnValue({ closed } as never);
+            service.handle(member, {
+                kind: 'critical', slotId: 'slot-ct-0', componentIds: ['ammo-1'], button: 'primary', context: editContext(1),
+            } as unknown as RecordSheetInteraction, anchoredMouseEvent());
+            choiceConfig!.onPick(choiceConfig!.values.find(choice => choice.label === 'Set Ammo')!);
+            expect(dialogs.createDialog).toHaveBeenCalledWith(SetAmmoDialogComponent, {
+                data: jasmine.objectContaining({ era, originalAmmo: ammo, currentAmmo: ammo, originalTotalAmmo: intrinsic ? 1 : 5,
+                    quantity: intrinsic ? 1 : 3, maxQuantity: intrinsic ? 1 : 5, ammoOptions: jasmine.arrayContaining([ammo, flak]) }),
+            });
+            expect(TestBed.inject(PageViewerOverlayService).openEquipment).not.toHaveBeenCalled();
+            if (outcome === 'stale') revision++;
+            closed.next(outcome === 'cancelled' ? null : { name: flak.id, quantity: intrinsic ? 1 : 2 });
+            closed.complete();
+            await settleAsyncHandlers();
+            if (outcome === 'selected' || intrinsic) expect(force.dispatchUnitCommand).toHaveBeenCalledOnceWith(member.id, {
+                type: 'configure-ammo-source', componentId: 'ammo-1', munitionKey: 'flak', remaining: intrinsic ? 1 : 2,
+            }, editContext(1));
+            else expect(force.dispatchUnitCommand).not.toHaveBeenCalled();
+        });
+    }
+
+    it('ignores an unhittable critical interaction even if stale SVG emits it', () => {
+        const slot = currentSnapshot.criticalSlots[0]!;
+        currentSnapshot = {
+            ...currentSnapshot,
+            criticalSlots: currentSnapshot.criticalSlots.map(slot => ({ ...slot, hittable: false })),
+        };
+
+        service.handle(member, {
+            kind: 'critical',
+            slotId: slot.slotId,
+            componentIds: slot.components.map(component => component.componentId),
+            button: 'primary',
+            context: editContext(1),
+        }, anchoredMouseEvent());
+
+        expect(choiceConfig).toBeNull();
+        expect(force.getEquipmentInteractions).not.toHaveBeenCalled();
+        expect(force.dispatchUnitCommand).not.toHaveBeenCalled();
+    });
+
+    it('ports the production location critical actions to the direct V2 dialogs', () => {
+        dialogs.createDialog.and.returnValues(
+            { closed: of({ kind: 'critical-hits', count: 2 }) } as any,
+            { closed: of(undefined) } as any,
+        );
+        service.handle(member, {
+            kind: 'location-condition-menu', locationId: 'loc-ct', context: editContext(1),
+        } as unknown as RecordSheetInteraction, anchoredMouseEvent());
+        dropdownFixture.detectChanges();
+
+        const choices = dropdownFixture.componentInstance.choices();
+        expect(choices.map(choice => choice.label)).toContain('Critical Chance');
+        expect(choices.map(choice => choice.label)).toContain('Critical Roll');
+
+        dropdownFixture.componentInstance.selected.emit('critical-chance');
+
+        expect(overlayManager.closeManagedOverlay).toHaveBeenCalledWith('record-sheet-location-condition');
+        expect(dialogs.createDialog.calls.argsFor(0)).toEqual([
+            MekCriticalChanceDialogComponent,
+            jasmine.objectContaining({
+                data: jasmine.objectContaining({ locationLabel: 'Center Torso', canBlowOff: false }),
+            }),
+        ]);
+        expect(dialogs.createDialog.calls.argsFor(1)).toEqual([
+            MekCriticalRollDialogComponent,
+            jasmine.objectContaining({
+                data: jasmine.objectContaining({
+                    member,
+                    locationId: 'loc-ct',
+                    requiredHits: 2,
+                    target: 'pending',
+                }),
+            }),
+        ]);
+    });
+
+    it('ports every production Mek condition-menu control of its Core unit (no skidding) through direct sparse state', () => {
+        service.handle(member, {
+            kind: 'condition-menu', context: editContext(1),
+        } as unknown as RecordSheetInteraction, anchoredMouseEvent());
+        dropdownFixture.detectChanges();
+
+        expect(dropdownFixture.componentInstance.choices().map(choice => choice.label)).toEqual([
+            'SWARMED',
+            'TAGGED',
+            'ECM SHIELDED',
+            'JAMMED',
+        ]);
+
+        dropdownFixture.componentInstance.selected.emit('ecm-shielded');
+
+        expect(force.dispatchUnitCommand).toHaveBeenCalledWith('unit-1', jasmine.objectContaining({
+            type: 'set-condition',
+            condition: 'ecm-shielded',
+            active: true,
+        }), jasmine.any(Object));
+    });
+
+    it('applies a production blow-off result through one atomic V2 command', async () => {
+        dialogs.createDialog.and.returnValue({ closed: of({ kind: 'blown-off' }) } as any);
+        service.handle(member, {
+            kind: 'location-condition-menu', locationId: 'loc-ct', context: editContext(1),
+        } as unknown as RecordSheetInteraction, anchoredMouseEvent());
+        dropdownFixture.componentInstance.selected.emit('critical-chance');
+        await settleAsyncHandlers();
+
+        expect(force.dispatchUnitCommand).toHaveBeenCalledWith('unit-1', jasmine.objectContaining({
+            type: 'apply-mek-blow-off',
+            locationId: 'loc-ct',
+            target: 'pending',
+        }), jasmine.any(Object));
+    });
+
+    it('restores handler-authored dropdowns, colors, tones, and typed commands on the sheet', async () => {
+        const standardCommand: CBTEquipmentChoiceCommand = {
+            instanceId: 'unit-1',
+            entityUuid: asUnitUuid('019f6767-0dcb-7bb8-992f-aef08202f5e1'),
+            componentId: 'ammo-1' as ComponentId,
+            handlerId: 'ecm-handler',
+            value: 'standard',
+        };
+        const eccmCommand: CBTEquipmentChoiceCommand = {
+            ...standardCommand,
+            value: 'eccm',
+        };
+        force.getEquipmentInteractions.and.returnValue([{
+            componentId: 'ammo-1', componentLabel: 'Ammo',
+            choices: [{
+                command: standardCommand, interactionKind: 'ecm-mode', groupLabel: 'ECM Mode',
+                label: 'Standard', shortLabel: 'STD', active: true, disabled: false,
+                displayType: 'dropdown', selectionTone: 'muted', keepOpen: true,
+                colors: { selected: '#123456', selectedText: '#ffffff' },
+            }, {
+                command: eccmCommand, interactionKind: 'ecm-mode', groupLabel: 'ECM Mode',
+                label: 'ECCM', active: false, disabled: false, displayType: 'dropdown',
+                selectionTone: 'muted', keepOpen: true,
+                colors: { selected: '#123456', selectedText: '#ffffff' },
+            }],
+        }]);
+        service.handle(member, {
+            kind: 'critical', slotId: 'slot-ct-0', componentIds: ['ammo-1'], button: 'primary', context: editContext(1),
+        } as unknown as RecordSheetInteraction, anchoredMouseEvent());
+
+        const dropdown = choiceConfig!.values.find(choice => choice.label === 'ECM Mode')!;
+        expect(dropdown).toEqual(jasmine.objectContaining({
+            displayType: 'dropdown', selectionTone: 'muted', keepOpen: true,
+            colors: { selected: '#123456', selectedText: '#ffffff' },
+        }));
+        expect(dropdown.choices?.map(choice => choice.label)).toEqual(['STD', 'ECCM']);
+        choiceConfig!.onPick({ ...dropdown, value: dropdown.choices![1].value, label: 'ECCM' });
+        await settleAsyncHandlers();
+        expect(force.dispatchEquipmentChoice).toHaveBeenCalledWith(eccmCommand, editContext(1));
+    });
+
+    it('keeps authored system-hit controls as direct toggles instead of opening the slot picker', async () => {
+        service.handle(member, {
+            kind: 'system-critical', slotId: 'slot-ct-0', system: 'Engine', level: 1, context: editContext(1),
+        } as unknown as RecordSheetInteraction, anchoredMouseEvent());
+        await settleAsyncHandlers();
+
+        expect(choiceConfig).toBeNull();
+        expect(force.dispatchUnitCommand).toHaveBeenCalledWith('unit-1', jasmine.objectContaining({
+            type: 'hit-critical', slotId: 'slot-ct-0', hits: 1, target: 'pending',
+        }), jasmine.any(Object));
+    });
+
+    it('hands a crew control to the editor for that seat', async () => {
+        const pilotEditor = TestBed.inject(ForcePilotEditorService) as jasmine.SpyObj<ForcePilotEditorService>;
+        pilotEditor.editStation.and.resolveTo();
+        service.handle(member, {
+            kind: 'crew-profile', positionId: 'crew-0', context: editContext(1),
+        } as unknown as RecordSheetInteraction, anchoredMouseEvent());
+        await settleAsyncHandlers();
+
+        expect(pilotEditor.editStation).toHaveBeenCalledOnceWith(force, member.id, 'crew-0');
+    });
+
+    it('does not offer ejection for a torso-mounted cockpit', () => {
+        force.getUnitSnapshot.and.returnValue({
+            entity: { entityType: 'Mek', mountedCockpit: () => ({ canEject: false }) },
+        });
+
+        service.handle(member, {
+            kind: 'crew-state-menu', positionId: 'crew-0', context: editContext(1),
+        } as RecordSheetInteraction, anchoredMouseEvent());
+        dropdownFixture.detectChanges();
+
+        expect(dropdownFixture.componentInstance.choices().map(choice => choice.key))
+            .not.toContain('ejected');
+    });
+
+    it('offers command-console crew swapping only while both cockpits are operational', () => {
+        currentSnapshot = {
+            ...currentSnapshot,
+            crew: [
+                { ...currentSnapshot.crew[0]!, occurrence: 0, effectiveState: 'active' },
+                {
+                    ...currentSnapshot.crew[0]!, positionId: 'crew-1', positionKey: 'crew:1', occurrence: 1,
+                    effectiveState: 'dead',
+                },
+            ],
+        } as unknown as MekRecordSheetSnapshot;
+
+        service.handle(member, {
+            kind: 'crew-state-menu', positionId: 'crew-0', context: editContext(1),
+        } as RecordSheetInteraction, anchoredMouseEvent());
+        dropdownFixture.detectChanges();
+
+        expect(dropdownFixture.componentInstance.choices().map(choice => choice.key))
+            .not.toContain('swap');
+    });
+
+    it('preserves the authored cumulative Sensors control as one atomic owner command', async () => {
+        currentSnapshot = {
+            ...currentSnapshot,
+            criticalSlots: [
+                {
+                    slotId: 'sensor-1', locationId: 'loc-ct', locationCode: 'CT', slotIndex: 0,
+                    armored: false, hitCapacity: 1, committedHits: 0, previewHits: 0,
+                    components: [{ componentId: 'system:sensor', label: 'Sensors', system: 'Sensors', status: 'available' }],
+                },
+                {
+                    slotId: 'sensor-2', locationId: 'loc-ct', locationCode: 'CT', slotIndex: 1,
+                    armored: false, hitCapacity: 1, committedHits: 0, previewHits: 0,
+                    components: [{ componentId: 'system:sensor', label: 'Sensors', system: 'Sensors', status: 'available' }],
+                },
+            ],
+        } as unknown as MekRecordSheetSnapshot;
+        service.handle(member, {
+            kind: 'system-critical', slotId: 'sensor-2', system: 'Sensors', level: 2, context: editContext(1),
+        } as unknown as RecordSheetInteraction, anchoredMouseEvent());
+        await settleAsyncHandlers();
+
+        expect(force.dispatchUnitCommand).toHaveBeenCalledWith('unit-1', jasmine.objectContaining({
+            type: 'set-system-critical-level', system: 'Sensors', level: 2,
+            target: 'pending',
+        }), jasmine.any(Object));
+    });
+
+    it('publishes and clears the original heat-drag overlay state', () => {
+        const marker = document.createElementNS('http://www.w3.org/2000/svg', 'rect');
+        service.handle(member, {
+            kind: 'heat-preview', heat: 6, baselineHeat: 2, element: marker, context: editContext(1),
+        } as unknown as RecordSheetInteraction, anchoredMouseEvent());
+
+        expect(TestBed.inject(PageViewerOverlayService).heatPreview('unit-1')).toEqual({ element: marker, heat: 6, baselineHeat: 2 });
+
+        service.handle(member, {
+            kind: 'heat-preview-end', context: editContext(1),
+        } as unknown as RecordSheetInteraction, anchoredMouseEvent());
+        expect(TestBed.inject(PageViewerOverlayService).heatPreview('unit-1')).toBeNull();
+    });
+
+    it('picks the active heat sinks and dispatches the resulting disabled count', async () => {
+        currentSnapshot = {
+            ...currentSnapshot,
+            heat: { ...currentSnapshot.heat, heatsinksOff: 3 },
+        } as MekRecordSheetSnapshot;
+        service.handle(member, {
+            kind: 'heat-sinks-off', context: editContext(1),
+        } as RecordSheetInteraction, anchoredMouseEvent());
+
+        expect(numericConfig).toEqual(jasmine.objectContaining({
+            min: 0, max: 10, selected: 7, title: 'Active Heatsinks',
+        }));
+        numericConfig!.onPick({ value: 5 });
+        await settleAsyncHandlers();
+        expect(force.dispatchUnitCommand).toHaveBeenCalledWith('unit-1', jasmine.objectContaining({
+            type: 'set-heatsinks-off', heatsinksOff: 5,
+        }), jasmine.any(Object));
+    });
+
+    it('toggles manual shutdown state without declaring a PSR action', async () => {
+        service.handle(member, {
+            kind: 'shutdown', context: editContext(1),
+        } as RecordSheetInteraction, anchoredMouseEvent());
+        await settleAsyncHandlers();
+
+        expect(force.dispatchUnitCommand.calls.argsFor(0)[1]).toEqual(jasmine.objectContaining({
+            type: 'set-mek-shutdown-state',
+            shutdown: true,
+        }));
+
+        currentSnapshot = {
+            ...currentSnapshot,
+            conditions: ['shutdown'],
+        } as MekRecordSheetSnapshot;
+        service.handle(member, {
+            kind: 'shutdown', context: editContext(2),
+        } as RecordSheetInteraction, anchoredMouseEvent());
+        await settleAsyncHandlers();
+
+        expect(force.dispatchUnitCommand.calls.argsFor(1)[1]).toEqual(jasmine.objectContaining({
+            type: 'set-mek-shutdown-state',
+            shutdown: false,
+        }));
+    });
+
+    it('edits one crew skill through the crew-profile CAS boundary', async () => {
+        service.handle(member, {
+            kind: 'crew-skill', positionId: 'crew-0', skill: 'gunnery', context: editContext(1),
+        } as unknown as RecordSheetInteraction, anchoredMouseEvent());
+
+        expect(choiceConfig).toEqual(jasmine.objectContaining({ selected: 3, suggestedStyle: 'radial', targetType: 'skill' }));
+        choiceConfig!.onPick({ label: '2', value: 2 });
+        await settleAsyncHandlers();
+        expect(force.replaceUnitCrewProfile).toHaveBeenCalledWith('unit-1', [
+            { positionId: 'crew-0', name: 'Morgan', gunnery: 2, piloting: 4 },
+        ], editContext(1));
+    });
+
+    it('moves the person identity when the sheet swaps into a vacant second station', async () => {
+        const first = currentSnapshot.crew[0];
+        currentSnapshot = { ...currentSnapshot, crew: [first,
+            { ...first, positionId: 'crew-1', occurrence: 1, effectiveState: 'vacant' },
+        ] } as MekRecordSheetSnapshot;
+        force.getAssignedPerson = jasmine.createSpy().and.returnValue({ id: 'person-morgan' });
+        force.assignPersonToUnit = jasmine.createSpy().and.resolveTo(true);
+        const controls = service as unknown as {
+            swapCrewPositions(member: CBTMekForceMember, occurrence: number, context: typeof currentSnapshot.editContext): Promise<void>;
+        };
+        await controls.swapCrewPositions(member, 0, editContext(1));
+        expect(force.assignPersonToUnit).toHaveBeenCalledWith('person-morgan', 'unit-1', 'crew-1');
+        expect(force.replaceUnitCrewProfile).not.toHaveBeenCalled();
+    });
+
+    it('retains the original target registry across an awaited inventory-mode edit', async () => {
+        const targeting = force.getAttackerTargeting('unit-1');
+        panel = { ...panel, components: panel.components.map(row => ({ ...row, mode: 'normal', modes: ['normal', 'rapid'] })) };
+        force.dispatchUnitCommand.and.callFake(async () => {
+            revision = 2;
+            currentSnapshot = recordSheetSnapshot(2);
+            force.getAttackerTargeting.and.returnValue({ ...targeting, registryRevision: 3 });
+            return { accepted: true, changed: true, state: editContext(2).state };
+        });
+        service.handle(member, {
+            kind: 'inventory-selection', componentIds: ['weapon-1'], mode: 'rapid', context: editContext(1),
+        } as unknown as RecordSheetInteraction, anchoredMouseEvent());
+        await settleAsyncHandlers();
+        expect(force.dispatchUnitCommand).toHaveBeenCalledOnceWith('unit-1', {
+            type: 'set-component-mode', componentId: 'weapon-1', mode: 'rapid',
+        }, editContext(1));
+        expect(force.dispatchAttackerTargeting).not.toHaveBeenCalled();
+    });
+
+    it('routes an inventory range button to the attacker-targeting owner', async () => {
+        service.handle(member, {
+            kind: 'inventory-selection', componentIds: ['weapon-1'], range: 'medium', context: editContext(1),
+        } as unknown as RecordSheetInteraction, anchoredMouseEvent());
+        await settleAsyncHandlers();
+
+        expect(force.dispatchAttackerTargeting).toHaveBeenCalledWith('unit-1', jasmine.objectContaining({
+            type: 'edit-attacker-targeting',
+            edit: { kind: 'set-component-selection', componentId: 'weapon-1', selection: { kind: 'manual-range', range: 'medium' } },
+        }), editContext(1), 2);
+    });
+
+    describe('a divisible inventory row counting three weapons', () => {
+        const weaponIds = ['weapon-1', 'weapon-2', 'weapon-3'];
+        const select = (mode?: string) => service.handle(member, {
+            kind: 'inventory-selection', componentIds: weaponIds, divisible: true, ...(mode ? { mode } : {}), context: editContext(1),
+        } as unknown as RecordSheetInteraction, anchoredMouseEvent());
+
+        beforeEach(() => {
+            panel = { ...panel, components: weaponIds.map(componentId => ({
+                ...panel.components[0], componentId, mode: 'normal', modes: ['normal', 'rapid'],
+            })) } as unknown as EquipmentPanelSnapshot;
+        });
+
+        it('asks how many in a vertical list on the full count and selects that many', async () => {
+            select();
+
+            expect(choiceConfig).toEqual(jasmine.objectContaining({
+                title: 'How many weapons?', selected: 3, style: 'linear', horizontal: false, position: { x: 10, y: 20 },
+            }));
+            expect(choiceConfig!.values.map(choice => choice.value)).toEqual([1, 2, 3]);
+            expect(force.dispatchAttackerTargeting).not.toHaveBeenCalled();
+            choiceConfig!.onPick({ label: '2', value: 2 });
+            await settleAsyncHandlers();
+            expect(force.dispatchAttackerTargeting).toHaveBeenCalledOnceWith('unit-1', jasmine.objectContaining({
+                edit: { kind: 'set-component-selections', componentIds: ['weapon-1', 'weapon-2'], selection: { kind: 'selected' } },
+            }), editContext(1), 2);
+        });
+
+        it('asks how many in the target menu and gives only those the target and the mode', async () => {
+            panel = { ...panel, targets: ['target-a', 'target-b'].map((targetId, index) => ({
+                targetId, letter: 'AB'[index], name: `Target ${'AB'[index]}`, color: '#fff',
+            })) } as unknown as EquipmentPanelSnapshot;
+            force.getWeaponAttackContext = jasmine.createSpy().and.returnValue(null);
+            const picked = new Subject<string | null>();
+            const inputs = new Map<string, unknown>();
+            overlayManager.createManagedOverlay.and.returnValue({
+                componentRef: {
+                    setInput: (name: string, value: unknown) => inputs.set(name, value),
+                    changeDetectorRef: { detectChanges: () => undefined },
+                    instance: { selected: picked, quantity: () => 2 },
+                },
+                closed: new Subject<void>(),
+            } as never);
+
+            select('rapid');
+
+            expect(choiceConfig).toBeNull();
+            expect(inputs.get('quantityMax')).toBe(3);
+            expect(inputs.get('quantity')).toBe(3);
+            expect(force.dispatchUnitCommand).not.toHaveBeenCalled();
+            picked.next('target-b');
+            await settleAsyncHandlers();
+            expect(force.dispatchUnitCommand.calls.allArgs().map(([, command]: [string, unknown]) => command)).toEqual([
+                { type: 'set-component-mode', componentId: 'weapon-1', mode: 'rapid' },
+                { type: 'set-component-mode', componentId: 'weapon-2', mode: 'rapid' },
+            ]);
+            expect(force.dispatchAttackerTargeting).toHaveBeenCalledOnceWith('unit-1', jasmine.objectContaining({
+                edit: { kind: 'set-component-selections', componentIds: ['weapon-1', 'weapon-2'],
+                    selection: { kind: 'target', targetId: 'target-b' } },
+            }), jasmine.any(Object), 2);
+        });
+    });
+
+    it('routes an authored physical-attack row through the typed action-selection owner', async () => {
+        panel = {
+            ...panel,
+            physicalAttacks: [{
+                target: { kind: 'intrinsic', actionId: 'Kick' },
+                label: 'Kick', locationIds: [], locationCodes: [], available: true, selectable: true,
+                effect: { kind: 'damage', damage: 10, maximumDamage: 10 },
+            }],
+        } as unknown as EquipmentPanelSnapshot;
+
+        service.handle(member, {
+            kind: 'action-selection',
+            target: { kind: 'intrinsic', actionId: 'Kick' },
+            context: editContext(1),
+        } as unknown as RecordSheetInteraction, anchoredMouseEvent());
+        await settleAsyncHandlers();
+
+        expect(force.dispatchAttackerTargeting).toHaveBeenCalledWith('unit-1', jasmine.objectContaining({
+            type: 'edit-attacker-targeting',
+            edit: {
+                kind: 'set-action-selection',
+                target: { kind: 'intrinsic', actionId: 'Kick' },
+                selection: { kind: 'selected' },
+            },
+        }), editContext(1), undefined);
+    });
+
+    it('opens the reference-table dialog with the unit and active ruleset', () => {
+        dialogs.createDialog.and.returnValue({ closed: { subscribe: () => undefined } } as any);
+        service.handle(member, {
+            kind: 'reference-table', context: editContext(1),
+        } as RecordSheetInteraction, anchoredMouseEvent());
+
+        expect(dialogs.createDialog).toHaveBeenCalledWith(jasmine.any(Function), jasmine.objectContaining({
+            data: jasmine.objectContaining({
+                unit: member.entity,
+                gameRules: jasmine.objectContaining({ id: 'core-2026' }),
+            }),
+        }));
+    });
+
+    it('keeps hot-load cluster controls after the last flight until the bin designation is cleared', () => {
+        const runtime = createDirectHotLoadedAmmoRuntimeFixture(true);
+        const ammoId = runtime.equipmentComponent('Test Artemis Ammo').id;
+        const weaponId = runtime.equipmentComponent('Test Artemis Launcher').id;
+        runtime.instance.dispatch({ type: 'configure-ammo-source', componentId: ammoId,
+            munitionKey: 'Test Artemis Ammo', remaining: 1, hotLoaded: true });
+        expect(runtime.instance.dispatch({ type: 'fire-weapons', selections: [{
+            weaponId, ammoSourceId: ammoId, expectedMunitionKey: 'Test Artemis Ammo',
+        }] }).changed).toBeTrue();
+        expect(runtime.instance.query().remainingAmmo(ammoId)).toBe(0);
+        force.getUnitSnapshot.and.callFake(() => ({
+            state: runtime.instance.snapshot(), query: runtime.instance.query(),
+        }));
+        const open = () => service.handle(member, {
+            kind: 'reference-table', context: editContext(1),
+        } as RecordSheetInteraction, anchoredMouseEvent());
+
+        open();
+        expect(dialogs.createDialog.calls.mostRecent().args[1]?.data)
+            .toEqual(jasmine.objectContaining({ hasHotLoadedAmmo: true }));
+        runtime.instance.dispatch({ type: 'set-component-status', componentId: ammoId,
+            status: 'destroyed', target: 'committed' });
+        open();
+        expect(dialogs.createDialog.calls.mostRecent().args[1]?.data)
+            .toEqual(jasmine.objectContaining({ hasHotLoadedAmmo: true }));
+        runtime.instance.dispatch({ type: 'reset-ammo-loadout' });
+        open();
+        expect(dialogs.createDialog.calls.mostRecent().args[1]?.data)
+            .toEqual(jasmine.objectContaining({ hasHotLoadedAmmo: false }));
+    });
+
+    it('rolls and highlights a through-armor hit selected from the directional picker', () => {
+        const svg = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
+        svg.innerHTML = '<g data-mekbay-paperdoll="1" data-mekbay-paperdoll-view="front" '
+            + 'data-type="armor" data-art-x="10" data-art-y="20" '
+            + 'data-art-width="200" data-art-height="300">'
+            + '<g data-mekbay-random-hit="1"><circle class="mek-random-hit-area"></circle></g>'
+            + '<path class="unitLocation armor" data-loc="CT"></path></g>';
+        const control = svg.querySelector<SVGElement>('[data-mekbay-random-hit="1"]')!;
+        const event = new PointerEvent('pointerdown', { button: 0 });
+        spyOn(Math, 'random').and.returnValues(0, 0);
+
+        service.handle(member, {
+            kind: 'random-hit', element: control, context: editContext(1),
+        } as RecordSheetInteraction, event);
+        directionalConfig!.onPick({ label: 'Front', value: 'front' });
+
+        expect(svg.querySelector('.unitLocation')?.classList).toContain('random-hit-location-highlight');
+        expect(svg.querySelector('.mek-random-hit-result-location')?.textContent).toBe('CT');
+        const throughArmor = svg.querySelector<SVGTextElement>('.mek-random-hit-result-through-armor')!;
+        expect(throughArmor.textContent).toBe('THROUGH ARMOR');
+        expect(throughArmor.getAttribute('x')).toBe('110');
+        expect(throughArmor.getAttribute('y')).toBe('140');
+        expect(throughArmor.getAttribute('role')).toBe('button');
+        expect(throughArmor.getAttribute('tabindex')).toBe('0');
+        expect(svg.lastElementChild?.classList).toContain('mek-random-hit-result');
+
+        throughArmor.dispatchEvent(new PointerEvent('pointerdown', { button: 0 }));
+
+        expect(svg.querySelector('.mek-random-hit-result')).toBeNull();
+        expect(svg.querySelector('.unitLocation')?.classList.contains('random-hit-location-highlight')).toBeFalse();
+
+        service.handle(member, {
+            kind: 'random-hit', element: control, context: editContext(1),
+        } as RecordSheetInteraction, new PointerEvent('pointerdown', { button: 0 }));
+
+        expect(svg.querySelector('.mek-random-hit-result')).toBeNull();
+        expect(svg.querySelector('.unitLocation')?.classList.contains('random-hit-location-highlight')).toBeFalse();
+    });
+
+    for (const covered of [false, true]) it(`floats a front through-armor hit to the head (partial cover: ${covered})`, () => {
+        floatingCriticals = true;
+        const svg = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
+        svg.innerHTML = '<g data-mekbay-random-hit="1"></g><g data-mekbay-paperdoll="1" data-type="armor">'
+            + '<path class="unitLocation armor" data-loc="HD"></path></g>';
+        const control = svg.querySelector<SVGElement>('[data-mekbay-random-hit="1"]')!;
+        waterCover = covered;
+        // The optional middle pair totals 5 (right leg), which Depth 1 water covers.
+        const rng = spyOn(Math, 'random').and.returnValues(0, 0, ...(covered ? [0, 0.55] : []), 0.99, 0.99);
+        service.handle(member, { kind: 'random-hit', element: control, context: editContext(1) },
+            new PointerEvent('pointerdown', { button: 0 }));
+        directionalConfig!.onPick({ label: 'Front', value: 'front' });
+        expect(rng).toHaveBeenCalledTimes(covered ? 6 : 4);
+        expect(svg.querySelector('.mek-random-hit-result-location')?.textContent).toBe('HD');
+        expect(svg.querySelector('.mek-random-hit-result-through-armor')?.textContent).toBe('THROUGH ARMOR');
+    });
+
+    it('transfers a random hit past a destroyed location', () => {
+        const runtime = force.getUnitSnapshot('unit-1');
+        force.getUnitSnapshot.and.returnValue({
+            ...runtime,
+            index: {
+                ...runtime.index,
+                locations: new Map([
+                    ['loc-la', { id: 'loc-la', code: 'LA' }],
+                    ['loc-lt', { id: 'loc-lt', code: 'LT' }],
+                ]),
+                damageTransferLocationIdByLocation: new Map([
+                    ['loc-la', 'loc-lt'],
+                    ['loc-lt', null],
+                ]),
+            },
+            query: {
+                ...runtime.query,
+                locationStatus: (locationId: string) => locationId === 'loc-la' ? 'destroyed' : 'available',
+            },
+        });
+        const svg = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
+        svg.innerHTML = '<g data-mekbay-random-hit="1"></g><g data-mekbay-paperdoll="1" data-type="armor">'
+            + '<path class="unitLocation armor" data-loc="LT"></path></g>';
+        const control = svg.querySelector<SVGElement>('[data-mekbay-random-hit="1"]')!;
+        spyOn(Math, 'random').and.returnValues(0.8, 0.8);
+
+        service.handle(member, {
+            kind: 'random-hit', element: control, context: editContext(1),
+        } as RecordSheetInteraction, new PointerEvent('pointerdown', { button: 0 }));
+        directionalConfig!.onPick({ label: 'Front', value: 'front' });
+
+        expect(svg.querySelector('.mek-random-hit-result-location')?.textContent).toBe('LT');
+        expect(svg.querySelector('.mek-random-hit-result-transferred-from')?.textContent).toBe('from LA');
+        expect(svg.querySelector('[data-loc="LT"]')?.classList).toContain('random-hit-location-highlight');
+    });
+});
+
+function anchoredMouseEvent(): MouseEvent {
+    const event = new MouseEvent('click', { clientX: 10, clientY: 20 });
+    Object.defineProperty(event, 'currentTarget', { value: document.createElementNS('http://www.w3.org/2000/svg', 'rect') });
+    return event;
+}
+
+async function settleAsyncHandlers(): Promise<void> {
+    await Promise.resolve();
+    await Promise.resolve();
+    await new Promise(resolve => setTimeout(resolve, 0));
+}
+
+function overlayManagerStub() {
+    return {
+        createManagedOverlay: jasmine.createSpy(),
+        closeManagedOverlay: jasmine.createSpy(),
+        closeAllManagedOverlays: jasmine.createSpy(),
+    };
+}
+
+function recordSheetSnapshot(stateRevision: number): MekRecordSheetSnapshot {
+    return {
+        stateRevision,
+        editContext: editContext(stateRevision),
+        identity: { form: 'biped' },
+        locations: [{
+            locationId: 'loc-ct', code: 'CT', maximumInternal: 10,
+            committedRemainingInternal: 2, previewRemainingInternal: 2, conditions: [],
+            armor: [{
+                faceId: 'face-ct', locationId: 'loc-ct', locationCode: 'CT', face: 'front',
+                maximum: 10, committedRemaining: 3, previewRemaining: 3,
+            }],
+        }],
+        criticalSlots: [{
+            slotId: 'slot-ct-0', locationId: 'loc-ct', locationCode: 'CT', slotIndex: 0,
+            hittable: true, armored: false, hitCapacity: 1, committedHits: 0, previewHits: 0,
+            components: [{
+                componentId: 'ammo-1', label: 'AC/20 Ammo', status: 'available',
+                ammo: { munitionKey: 'standard', displayName: 'AC/20 Ammo', capacity: 5, remaining: 3 },
+            }],
+        }],
+        crew: [{
+            positionId: 'crew-0', positionKey: 'crew:0', occurrence: 0, name: 'Morgan',
+            gunnery: 3, piloting: 4, state: { wounds: 0, unconscious: false, ejected: false },
+        }],
+        heatSinks: { count: 10, unavailableUnits: 0 },
+        heat: { current: 0, previous: 0, heatsinksOff: 0 },
+        conditions: [],
+        equipment: [{
+            componentId: 'weapon-1', label: 'AC/20', profile: {
+                type: 'weapon', flags: new Set(), modes: [],
+                weapon: { rapidFireCount: 0, ammoType: 'AC', rackSize: 20 },
+            }, locations: [{ locationId: 'loc-ct', code: 'CT' }], status: 'available', modes: [], jammed: false,
+            weapon: { heat: 7, damage: 20, ranges: [3, 6, 9, 12], minimumRange: 0, ammoSources: [], selectable: true },
+        }],
+    } as unknown as MekRecordSheetSnapshot;
+}
+
+function equipmentPanel(stateRevision: number): EquipmentPanelSnapshot {
+    return {
+        stateRevision,
+        targetRegistryRevision: 2,
+        targets: [],
+        physicalAttacks: [],
+        components: [{
+            componentId: 'weapon-1', label: 'AC/20', locations: [], status: 'available', modes: [], jammed: false,
+            weapon: { heat: 7, damage: 20, ranges: [3, 6, 9, 12], minimumRange: 0, ammoSources: [], selectable: true },
+        }],
+    } as unknown as EquipmentPanelSnapshot;
+}

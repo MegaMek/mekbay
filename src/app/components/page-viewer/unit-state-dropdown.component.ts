@@ -25,7 +25,6 @@ export interface UnitStateDropdownChoice {
 
 @Component({
     selector: 'unit-state-dropdown',
-    standalone: true,
     imports: [CdkMenuModule],
     changeDetection: ChangeDetectionStrategy.OnPush,
     template: `

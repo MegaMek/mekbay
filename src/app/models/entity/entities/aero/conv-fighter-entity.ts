@@ -10,6 +10,7 @@ import {
   type EntityFeature,
   type TechRatingSource,
 } from '../../types';
+import type { BombCapacity } from '../../../aerospace-bomb.model';
 import { AeroEntity } from './aero-entity';
 import { getConventionalFighterConstructionTech } from '../../components';
 import type { UnitSubtype } from '../../types';
@@ -27,6 +28,10 @@ export class ConvFighterEntity extends AeroEntity {
 
   override unitSubtype(): UnitSubtype {
     return this.withOmniSubtype('Conventional Fighter');
+  }
+
+  protected override computeBombCapacity(): BombCapacity {
+    return this.fighterBombCapacity();
   }
 
   override entityTechAdvancements(): readonly TechRatingSource[] {

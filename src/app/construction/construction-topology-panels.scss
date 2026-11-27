@@ -1,0 +1,46 @@
+.framed-borders {
+  --frame-color: #aaa;
+  background-color: var(--background-color-menu);
+  padding: 16px;
+  min-width: 0;
+}
+h2 {
+  margin: 0 0 12px;
+  font-size: 14px;
+  color: var(--bt-yellow);
+}
+label {
+  display: grid;
+  gap: 6px;
+  color: var(--text-color-secondary);
+  font-size: 11px;
+  min-width: 0;
+}
+.bt-input,
+.bt-select {
+  width: 100%;
+  min-width: 0;
+  font-size: 12px;
+}
+.bt-button {
+  font-size: 10px;
+  padding: 7px 10px;
+  text-transform: uppercase;
+}
+.hint {
+  color: var(--text-color-secondary);
+  font-size: 11px;
+  line-height: 1.5;
+  margin: 12px 0 0;
+}
+.native-location {
+  overflow-wrap: anywhere;
+  font-size: 11px;
+  color: var(--text-color-secondary);
+  margin: 0 0 12px;
+}
+@container building-topology (max-width: 580px) {
+  .framed-borders {
+    padding: 12px;
+  }
+}

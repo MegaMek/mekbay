@@ -117,7 +117,7 @@
     flex: 1 0 auto;
     min-width: 48px;
     height: 32px;
-    padding: 0 4px;
+    padding: 0 20px 0 4px;
     background-color: #222;
     text-align: center;
 }
@@ -252,6 +252,9 @@
     width: 12px;
     height: 8px;
     background: var(--bt-yellow);
+}
+
+.budget-mode-switch-control.animate-thumb .budget-mode-switch-thumb {
     transition: transform .12s, background-color .12s;
 }
 

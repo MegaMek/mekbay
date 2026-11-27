@@ -15,7 +15,6 @@ export {
   VALID_BA_MOTIVE_TYPES,
   VALID_AERO_MOTIVE_TYPES,
   VALID_SPACECRAFT_MOTIVE_TYPES,
-  VALID_FUEL_TYPES,
   VALID_SYSTEM_MANUFACTURER_KEYS,
   VALID_TECH_BASE_STRINGS,
   VALID_BA_WEIGHT_CLASSES,
@@ -29,36 +28,36 @@ export {
 
 export type ParseSeverity = 'error' | 'warning';
 
-export interface ParseDiagnostic {
-  severity: ParseSeverity;
+export interface EntityLoadIssue {
+  readonly code: string;
+  readonly severity: ParseSeverity;
   /** Which field/block produced the problem, e.g. 'engine_type', 'Front Equipment' */
-  field: string;
+  readonly field: string;
   /** Human-readable description */
-  message: string;
+  readonly message: string;
 }
 
-// ============================================================================
-// Equipment fallback hook
-// ============================================================================
-
-/**
- * A callback invoked when equipment cannot be found in the local DB.
- *
- * This is the extension point for future remote equipment retrieval
- * (e.g. fetching custom equipment from a remote server by UUID).
- *
- * Return the Equipment object on success, or `null` if the equipment
- * truly does not exist (which will be recorded as an error).
- */
-export type EquipmentFallbackFn = (
-  internalName: string,
-) => Equipment | null;
+export function isEntityLoadIssueArray(value: unknown): value is readonly EntityLoadIssue[] {
+  return (
+    Array.isArray(value) &&
+    value.every(
+      (issue) =>
+        issue !== null &&
+        typeof issue === 'object' &&
+        typeof issue.code === 'string' &&
+        issue.code.length > 0 &&
+        (issue.severity === 'error' || issue.severity === 'warning') &&
+        typeof issue.field === 'string' &&
+        typeof issue.message === 'string' &&
+        issue.message.length > 0,
+    )
+  );
+}
 
 export type SourcebookResolverFn = (abbrev: string) => Sourcebook | undefined;
 export type QuirkResolverFn = (key: string) => Quirk | undefined;
 
 export interface ParseContextOptions {
-  equipmentFallback?: EquipmentFallbackFn | null;
   sourcebookResolver?: SourcebookResolverFn | null;
   quirkResolver?: QuirkResolverFn | null;
 }
@@ -84,24 +83,16 @@ export class ParseContext {
   /** Canonical equipment collection and lookup index */
   readonly equipmentRegistry: EquipmentRegistry;
 
-  /** Optional fallback for custom/remote equipment lookup */
-  readonly equipmentFallback: EquipmentFallbackFn | null;
-
   readonly sourcebookResolver: SourcebookResolverFn | null;
 
   readonly quirkResolver: QuirkResolverFn | null;
 
   /** Accumulated diagnostics */
-  readonly diagnostics: ParseDiagnostic[] = [];
+  readonly diagnostics: EntityLoadIssue[] = [];
 
-  constructor(
-    fileName: string,
-    equipmentRegistry: EquipmentRegistry,
-    options: ParseContextOptions = {},
-  ) {
+  constructor(fileName: string, equipmentRegistry: EquipmentRegistry, options: ParseContextOptions = {}) {
     this.fileName = fileName;
     this.equipmentRegistry = equipmentRegistry;
-    this.equipmentFallback = options.equipmentFallback ?? null;
     this.sourcebookResolver = options.sourcebookResolver ?? null;
     this.quirkResolver = options.quirkResolver ?? null;
   }
@@ -110,14 +101,14 @@ export class ParseContext {
     return this.sourcebookResolver?.(abbrev) ?? { abbrev, canon: false, unresolved: true };
   }
 
-  resolveQuirk(rawKey: string, field = 'quirks'): EntityQuirk | null {
+  resolveQuirk(rawKey: string, field = 'quirks'): EntityQuirk {
     const separator = rawKey.indexOf(':');
     const key = separator >= 0 ? rawKey.slice(0, separator) : rawKey;
     const value = separator >= 0 ? rawKey.slice(separator + 1) : undefined;
-    const quirk = this.quirkResolver?.(key);
+    let quirk = this.quirkResolver?.(key);
     if (!quirk) {
-      this.error(field, `Unknown quirk key: "${key}"`);
-      return null;
+      this.warn(field, `Unknown quirk key: "${key}"; preserved but suppressed.`, 'QUIRK_NOT_FOUND');
+      quirk = { key, name: key, description: '', type: 'positive', unresolved: true };
     }
     return {
       quirk,
@@ -127,28 +118,28 @@ export class ParseContext {
 
   // ── Diagnostic helpers ──
 
-  error(field: string, message: string): void {
-    this.diagnostics.push({ severity: 'error', field, message });
+  error(field: string, message: string, code = 'ENTITY_PARSE_ERROR'): void {
+    this.diagnostics.push({ code, severity: 'error', field, message });
   }
 
-  warn(field: string, message: string): void {
-    this.diagnostics.push({ severity: 'warning', field, message });
+  warn(field: string, message: string, code = 'ENTITY_PARSE_WARNING'): void {
+    this.diagnostics.push({ code, severity: 'warning', field, message });
   }
 
-  get errors(): ParseDiagnostic[] {
-    return this.diagnostics.filter(d => d.severity === 'error');
+  get errors(): EntityLoadIssue[] {
+    return this.diagnostics.filter((d) => d.severity === 'error');
   }
 
-  get warnings(): ParseDiagnostic[] {
-    return this.diagnostics.filter(d => d.severity === 'warning');
+  get warnings(): EntityLoadIssue[] {
+    return this.diagnostics.filter((d) => d.severity === 'warning');
   }
 
   get hasErrors(): boolean {
-    return this.diagnostics.some(d => d.severity === 'error');
+    return this.diagnostics.some((d) => d.severity === 'error');
   }
 
   get hasWarnings(): boolean {
-    return this.diagnostics.some(d => d.severity === 'warning');
+    return this.diagnostics.some((d) => d.severity === 'warning');
   }
 
   // ── Validation helpers ──
@@ -205,35 +196,22 @@ export class ParseContext {
   // ── Equipment resolution with validation ──
 
   /**
-   * Resolve equipment by name, falling back to the optional hook, and recording
-   * an error if the equipment cannot be found at all.
+   * Resolve equipment by name and record an error if it is missing from the catalog.
    *
    * @param name       Internal name from the file
    * @param field      Diagnostic field label (e.g. "Front Equipment")
    * @param techBase   Entity's tech base for prefix resolution
    * @returns Resolved Equipment, or `null` if not found (error recorded)
    */
-  resolveEquipment(
-    name: string,
-    field: string,
-    techBase?: EntityTechBase,
-  ): Equipment | null {
+  resolveEquipment(name: string, field: string, techBase?: EntityTechBase): Equipment | null {
     if (!name || name === '-Empty-') return null;
 
-    // 1. Try the local DB and its derived lookup index
     const local = techBase
       ? this.equipmentRegistry.findForTechBase(name, techBase)
       : this.equipmentRegistry.findEquipment(name);
     if (local) return local;
 
-    // 2. Try fallback (future: remote/UUID lookup)
-    if (this.equipmentFallback) {
-      const fallback = this.equipmentFallback(name);
-      if (fallback) return fallback;
-    }
-
-    // 3. Not found - record error
-    this.error(field, `Equipment not found: "${name}"`);
+    this.error(field, `Equipment not found: "${name}"`, 'EQUIPMENT_NOT_FOUND');
     return null;
   }
 }

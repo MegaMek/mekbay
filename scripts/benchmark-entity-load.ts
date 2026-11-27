@@ -13,7 +13,7 @@
  *
  * Options:
  *   --input  PATH   Root directory of unit files (default: ..\..\mm-data\data\mekfiles)
- *   --type   TYPE   Filter by entity type: meks|fighters|vehicles|battlearmor|infantry|protomeks|dropships|smallcraft|jumpships|warship|spacestation|ge|handheld|convfighter
+ *   --type   TYPE   Filter by entity type: meks|fighters|vehicles|battlearmor|infantry|protomeks|dropships|smallcraft|jumpships|warship|spacestation|buildings|handheld|convfighter
  *   --verbose        Print every file result, not just failures
  */
 
@@ -22,16 +22,12 @@ import * as path from 'path';
 import { EquipmentRegistry } from '../src/app/models/equipment-lookup';
 import { createEquipment, type EquipmentMap, type RawEquipmentData } from '../src/app/models/equipment.model';
 import { parseEntity } from '../src/app/models/entity/parse-entity';
+import { nativeCapabilityForUnitTypeAlias } from '../src/app/models/entity/codec-capabilities';
 import { loadQuirkResolver } from './quirk-fixture';
 
 // ═══════════════════════════════════════════════════════════════════════════
 // Unsupported UnitTypes - skipped without counting as failures
 // ═══════════════════════════════════════════════════════════════════════════
-
-const SKIPPED_UNIT_TYPES = new Set([
-  'BuildingEntity',
-  'GunEmplacement',
-]);
 
 function peekBlkUnitType(content: string): string | null {
   const match = content.match(/<UnitType>\s*([^<\r\n]+)/i);
@@ -144,7 +140,7 @@ const TYPE_DIR_MAP: Record<string, string[]> = {
   jumpships:     ['jumpships'],
   warship:       ['warship'],
   spacestation:  ['spacestation'],
-  ge:            ['ge'],
+  buildings:     ['advancedbuildings'],
   handheld:      ['handheld'],
   convfighter:   ['convfighter'],
 };
@@ -259,7 +255,7 @@ function main(): void {
     if (file.toLowerCase().endsWith('.blk')) {
       const raw = fs.readFileSync(file, 'utf-8');
       const unitType = peekBlkUnitType(raw);
-      if (unitType && SKIPPED_UNIT_TYPES.has(unitType)) {
+      if (unitType && !nativeCapabilityForUnitTypeAlias(unitType)) {
         stats.skipped++;
         if (VERBOSE) {
           console.log(`  ⊘ SKIP   ${path.relative(INPUT_DIR, file)} (${unitType})`);

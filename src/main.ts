@@ -8,6 +8,13 @@ import { App } from './app/app';
 import { runServiceWorkerUpdateBootstrap } from './app/utils/service-worker-update-bootstrap.util';
 
 
-runServiceWorkerUpdateBootstrap()
-  .then(() => bootstrapApplication(App, appConfig))
+bootstrapApplication(App, appConfig)
+  .then(() => {
+    // Updating is important, but it must not hold the first render behind a
+    // service-worker round trip. The bootstrap shell and Angular app can paint
+    // before the update check starts its own task.
+    window.setTimeout(() => {
+      void runServiceWorkerUpdateBootstrap();
+    }, 0);
+  })
   .catch((err) => console.error(err));

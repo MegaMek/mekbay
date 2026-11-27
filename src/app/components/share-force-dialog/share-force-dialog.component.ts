@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 // Author: Drake
 
+import { OptionsService } from '../../services/options.service';
 import { ChangeDetectionStrategy, Component, inject, signal } from '@angular/core';
 import { DialogRef, DIALOG_DATA } from '@angular/cdk/dialog';
 import { ForceBuilderService } from '../../services/force-builder.service';
@@ -24,7 +25,6 @@ export interface ShareForceDialogData {
 
 @Component({
     selector: 'share-force-dialog',
-    standalone: true,
     changeDetection: ChangeDetectionStrategy.OnPush,
     imports: [ForcePreviewComponent],
     host: {
@@ -84,7 +84,7 @@ export interface ShareForceDialogData {
                             EXCEL
                         }
                     </button>
-                    @if (force.gameSystem === GameSystem.CLASSIC) {
+                    @if (force.gameSystem === GameSystem.CBT) {
                         <button class="bt-button export-btn" (click)="exportToMUL()" [disabled]="isExporting()">
                             @if (isExporting()) {
                                 EXPORTING...
@@ -174,6 +174,7 @@ export interface ShareForceDialogData {
 })
 
 export class ShareForceDialogComponent {
+    private readonly optionsService = inject(OptionsService);
     public dialogRef = inject<DialogRef<string | number | null, ShareForceDialogComponent>>(DialogRef);
     private data: ShareForceDialogData = inject(DIALOG_DATA);
     forceBuilderService = inject(ForceBuilderService);
@@ -201,8 +202,8 @@ export class ShareForceDialogComponent {
     }
 
     async exportToExcel() {
-        const forceUnits = this.force.units();
-        if (!forceUnits || forceUnits.length === 0) {
+        const members = this.force.members();
+        if (members.length === 0) {
             this.toastService.showToast('No units to export.', 'error');
             return;
         }
@@ -215,8 +216,8 @@ export class ShareForceDialogComponent {
         this.isExporting.set(true);
         try {
             const { exportForceToExcel } = await import('../../utils/excel-export.util');
-            await exportForceToExcel(this.force);
-            this.toastService.showToast(`Exported ${forceUnits.length} units to Excel.`, 'success');
+            await exportForceToExcel(this.force, members, undefined, this.optionsService.options().displayUnitNameFormat);
+            this.toastService.showToast(`Exported ${members.length} units to Excel.`, 'success');
         } catch (err) {
             console.error('Failed to export to Excel:', err);
             this.toastService.showToast('Failed to export to Excel.', 'error');
@@ -226,8 +227,8 @@ export class ShareForceDialogComponent {
     }
 
     async exportToCSV() {
-        const forceUnits = this.force.units();
-        if (!forceUnits || forceUnits.length === 0) {
+        const members = this.force.members();
+        if (members.length === 0) {
             this.toastService.showToast('No units to export.', 'error');
             return;
         }
@@ -240,8 +241,8 @@ export class ShareForceDialogComponent {
         this.isExporting.set(true);
         try {
             const { exportForceToCSV } = await import('../../utils/excel-export.util');
-            await exportForceToCSV(this.force);
-            this.toastService.showToast(`Exported ${forceUnits.length} units to CSV.`, 'success');
+            await exportForceToCSV(this.force, members, undefined, this.optionsService.options().displayUnitNameFormat);
+            this.toastService.showToast(`Exported ${members.length} units to CSV.`, 'success');
         } catch (err) {
             console.error('Failed to export to CSV:', err);
             this.toastService.showToast('Failed to export to CSV.', 'error');
@@ -251,11 +252,11 @@ export class ShareForceDialogComponent {
     }
 
     async exportToMUL() {
-        const forceUnits = this.force.units();
-        if (this.force.gameSystem !== GameSystem.CLASSIC) {
+        const members = this.force.members();
+        if (this.force.gameSystem !== GameSystem.CBT) {
             return;
         }
-        if (!forceUnits || forceUnits.length === 0) {
+        if (members.length === 0) {
             this.toastService.showToast('No units to export.', 'error');
             return;
         }
@@ -264,7 +265,7 @@ export class ShareForceDialogComponent {
         try {
             const { exportForceToMul } = await import('../../utils/mul-file.util');
             await exportForceToMul(this.force as CBTForce);
-            this.toastService.showToast(`Exported ${forceUnits.length} units to MUL.`, 'success');
+            this.toastService.showToast(`Exported ${members.length} units to MUL.`, 'success');
         } catch (err) {
             console.error('Failed to export to MUL:', err);
             this.toastService.showToast('Failed to export to MUL.', 'error');

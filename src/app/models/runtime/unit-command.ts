@@ -1,0 +1,459 @@
+// Copyright (C) 2026 The MegaMek Team
+// SPDX-License-Identifier: GPL-3.0-or-later
+
+import type { MekConversionMode } from '../mek-conversion-mode';
+import type { SpottingMode, TnAttackDirection } from '../target-number-calculator.model';
+import type { HeatAutomationPolicy } from './cbt-unit-runtime';
+
+import type { BombLoadChoice,BombSection } from '../aerospace-bomb.model';
+import type { VelocityRecordField } from '../aerospace-velocity-record.model';
+import type { ArmorFaceId,ComponentId,CrewPositionId,CriticalSlotId,LocationId,SystemDamageTrackId } from '../entity/entity-identifiers';
+import type { EquipmentStatus } from '../equipment-status.model';
+import type { PrototypeLaserHeatRoll } from '../prototype-laser-heat.model';
+import type { StealthState } from '../stealth-equipment.model';
+import type { SystemDamageKind } from '../rules/system-damage-rules';
+import type { DamageSource } from '../rules/armor-damage-rules';
+import type { UnitConditionKey } from '../unit-condition.model';
+import type { BOMBAST_LASER_CHARGING_STATE } from './component-bombast-laser';
+import type { PPC_CAPACITOR_CHARGING_STATE } from './component-ppc-capacitor';
+import type { MekShieldTrack } from './mek-shield-rules';
+import type { MekPendingFallConsequencesV2,MekTurnStateV2 } from './mek-turn-state-v2';
+import type { MekWeaponFireSelectionV2 } from './mek-weapon-fire-v2';
+import type { C3EmergencyMasterOperatingTurns,MekLocationConditionKey } from './runtime-state';
+
+import type { UnitCover } from '../unit-cover.model';
+import type { AttackerTargetingEdit } from './attacker-targeting-state';
+import type { MekRuleCheckKeyV2,MekRuleCheckOutcomeV2,MekRuleCheckTokenV2 } from './mek-destruction-state-v2';
+import type { MekActionDeclarationV2,MekMovementDeclarationV2,MekPhysicalAttackCheckTriggerKindV2,MekPilotCheckDiceEvidenceV2 } from './mek-movement-psr-v2';
+import type { NonMekControlRecoveryWorkflow,NonMekMovementDeclaration } from './non-mek-unit-instance';
+
+export interface CBTUnitAttackerTargetingCommand {
+    readonly type: 'edit-attacker-targeting';
+    readonly edit: AttackerTargetingEdit;
+}
+
+/** Fires the current targeting selection; no second weapon-selection payload exists. */
+export interface CBTUnitSelectedWeaponFireCommand {
+    readonly type: 'fire-selected-weapons';
+    /** Under the full phase system: the selected attacks of the phase being resolved; absent, every selected attack. */
+    readonly attacks?: 'weapons' | 'physical';
+    /** Weapons that failed to lock on (`locksOnTarget`): they count as fired but spend no ammo and make no heat. */
+    readonly noLock?: readonly ComponentId[];
+    readonly prototypeHeatRolls?: readonly PrototypeLaserHeatRoll[];
+}
+
+/** Detach queued edits without losing the runtime's custom immutable map implementation. */
+export function captureUnitCommand(command: CBTUnitCommand): CBTUnitCommand {
+    return structuredClone(command.type === 'replace-turn-state'
+        ? { ...command, turn: { ...command.turn, settledHeat: new Map(command.turn.settledHeat) } }
+        : command);
+}
+
+/** Authored unit edits. Shared operations have one contract; rules decide applicability. */
+export type CBTUnitCommand =
+    | {
+        readonly type: 'damage-armor';
+        readonly faceId: ArmorFaceId;
+        readonly amount: number;
+        readonly target: 'committed' | 'pending';
+    }
+    | {
+        readonly type: 'repair-armor';
+        readonly faceId: ArmorFaceId;
+        readonly amount: number;
+        readonly target: 'committed' | 'pending';
+    }
+    | {
+        readonly type: 'damage-internal';
+        readonly locationId: LocationId;
+        readonly amount: number;
+        readonly target: 'committed' | 'pending';
+        /** This same hit already damaged armor and initiated its breach check. */
+        readonly armorDamagedBySameHit?: boolean;
+    }
+    | {
+        readonly type: 'repair-internal';
+        readonly locationId: LocationId;
+        readonly amount: number;
+        readonly target: 'committed' | 'pending';
+    }
+    | {
+        readonly type: 'hit-critical';
+        readonly slotId: CriticalSlotId;
+        readonly hits: number;
+        readonly target: 'committed' | 'pending';
+    }
+    | {
+        readonly type: 'repair-critical';
+        readonly slotId: CriticalSlotId;
+        readonly hits: number;
+        readonly target: 'committed' | 'pending';
+    }
+    | {
+        readonly type: 'apply-mek-blow-off';
+        readonly locationId: LocationId;
+        readonly target: 'committed' | 'pending';
+    }
+    | {
+        readonly type: 'apply-mek-critical-roll';
+        readonly hotLoadExplosion?: import('./mek-critical-hit-v2').HotLoadExplosionRoll;
+        /** The 1D6 vent roll of prototype CASE the explosion meets (IO:AE p. 65); absent, it vents as CASE. */
+        readonly prototypeCaseRoll?: number;
+        readonly locationId: LocationId;
+        readonly results: readonly number[];
+        readonly target: 'committed' | 'pending';
+        /** Defaults to true. Automation can retain the critical while skipping its explosion. */
+        readonly applyExplosion?: boolean;
+        /** Defaults to true. Pilot-hit automation may review these injuries separately. */
+        readonly applyPilotHits?: boolean;
+        /** Resolves charged-component explosions now so one reviewed command owns the outcome. */
+        readonly settlePendingExplosion?: boolean;
+    }
+    | {
+        /** Sets the cumulative authored record-sheet system track atomically. */
+        readonly type: 'set-system-critical-level';
+        readonly system: string;
+        readonly level: number;
+        readonly target: 'committed' | 'pending';
+    }
+    | {
+        readonly type: 'set-component-status';
+        readonly componentId: ComponentId;
+        readonly status: EquipmentStatus;
+        readonly target: 'committed' | 'pending';
+        /** Allows explosion automation to leave vehicle launcher damage for manual resolution. */
+        readonly applyExplosion?: boolean;
+    }
+    | {
+        readonly type: 'damage-shield';
+        readonly componentId: ComponentId;
+        readonly track: MekShieldTrack;
+        readonly amount: number;
+        readonly target: 'committed' | 'pending';
+    }
+    | {
+        readonly type: 'repair-shield';
+        readonly componentId: ComponentId;
+        readonly track: MekShieldTrack;
+        readonly amount: number;
+        readonly target: 'committed' | 'pending';
+    }
+    | {
+        readonly type: 'set-component-mode';
+        readonly componentId: ComponentId;
+        readonly mode: string;
+    }
+    | {
+        readonly type: 'detonate-booby-trap';
+        readonly componentId: ComponentId;
+    }
+    | {
+        readonly type: 'set-stealth-state';
+        readonly componentId: ComponentId;
+        readonly state: StealthState;
+    }
+    | {
+        readonly type: 'toggle-gauss-power';
+        readonly componentId: ComponentId;
+    }
+    | {
+        readonly type: 'set-component-jammed';
+        readonly componentId: ComponentId;
+        readonly jammed: boolean;
+    }
+    | {
+        /** Clears the noted first hit on a non-Mek autocannon. */
+        readonly type: 'repair-autocannon-hit';
+        readonly componentId: ComponentId;
+        readonly target: 'committed' | 'pending';
+    }
+    | {
+        readonly type: 'edit-escalating-failure';
+        readonly componentId: ComponentId;
+        readonly edit:
+            | { readonly kind: 'select-sequence'; readonly index: number }
+            | { readonly kind: 'set-status'; readonly status: 'available' | 'disabled' };
+    }
+    | {
+        readonly type: 'set-ppc-capacitor-charge';
+        readonly capacitorId: ComponentId;
+        readonly weaponId: ComponentId;
+        readonly state: typeof PPC_CAPACITOR_CHARGING_STATE | null;
+    }
+    | {
+        readonly type: 'set-bombast-laser-charge';
+        readonly componentId: ComponentId;
+        readonly state: typeof BOMBAST_LASER_CHARGING_STATE | null;
+    }
+    | {
+        readonly type: 'edit-c3-emergency-master';
+        readonly componentId: ComponentId;
+        readonly edit:
+            | { readonly kind: 'toggle-requested'; readonly turningOn: boolean }
+            | { readonly kind: 'select-operating-turns'; readonly turns: C3EmergencyMasterOperatingTurns }
+            | { readonly kind: 'ensure-active-started'; readonly endpointRole: 'master' }
+            | { readonly kind: 'settle-active-end-turn'; readonly endpointRole: 'master' };
+    }
+    | {
+        readonly type: 'configure-ammo-source';
+        readonly componentId: ComponentId;
+        readonly munitionKey: string;
+        readonly remaining: number;
+        readonly hotLoaded?: boolean;
+    }
+    | {
+        readonly type: 'reset-ammo-loadout';
+    }
+    | {
+        /** Replaces the carried bombs; bombs already spent stay spent where the type remains. */
+        readonly type: 'configure-bombs';
+        readonly loads: readonly BombLoadChoice[];
+    }
+    | {
+        /** Each Crew Stunned critical costs a vehicle one additional turn beginning next turn (TW p.195). */
+        readonly type: 'stun-vehicle-crew';
+        readonly target?: 'pending' | 'committed';
+    }
+    | {
+        readonly type: 'destroy-bay-cargo';
+        readonly losses: readonly import('./internal-bay-loads').InternalBayLoad[];
+        readonly target: 'pending' | 'committed';
+    }
+    | {
+        readonly type: 'destroy-bay-cargo';
+        readonly bay: string;
+        readonly cargo: string;
+        readonly target: 'pending' | 'committed';
+    }
+    | {
+        readonly type: 'set-tractor';
+        readonly unitId: string | null;
+    }
+    | {
+        readonly type: 'set-internal-bay-loads';
+        readonly loads: readonly import('./internal-bay-loads').InternalBayLoad[];
+    }
+    | {
+        /** An infantry unit takes hold of the target it swarmed (its encounter target id), or lets go (null). */
+        readonly type: 'set-swarming';
+        readonly target: string | null;
+    }
+    | {
+        /**
+         * The Elevation recorded for `turn` (this turn when absent) on a flying unit's Elevation Track: 0 on the
+         * ground; null clears that turn's entry.
+         */
+        readonly type: 'set-elevation';
+        readonly elevation: number | null;
+        readonly turn?: number;
+    }
+    | {
+        /** Writes one aerospace velocity record cell; null clears it. */
+        readonly type: 'set-velocity-record';
+        readonly turn: number;
+        readonly field: VelocityRecordField;
+        readonly value: number | null;
+    }
+    | {
+        readonly type: 'set-bombs-spent';
+        readonly section: BombSection;
+        readonly bombId: string;
+        readonly spent: number;
+    }
+    | {
+        readonly type: 'engage-ams';
+        readonly componentId: ComponentId;
+        readonly arc: TnAttackDirection;
+    }
+    | {
+        readonly type: 'spend-ammo';
+        readonly componentId: ComponentId;
+        readonly amount: number;
+    }
+    | {
+        readonly type: 'activate-coolant-pod';
+        readonly componentId: ComponentId;
+    }
+    | {
+        readonly type: 'fire-weapons';
+        readonly selections: readonly MekWeaponFireSelectionV2[];
+        readonly prototypeHeatRolls?: readonly PrototypeLaserHeatRoll[];
+    }
+    | {
+        readonly type: 'set-heat';
+        readonly heat: number;
+    }
+    | {
+        readonly type: 'set-pending-heat';
+        readonly heat: number | null;
+        /** Heat resolution calculates the turn's heat, so NEXT follows the calculation (`withNextHeat`). */
+        readonly follow?: boolean;
+    }
+    | {
+        readonly type: 'set-heatsinks-off';
+        readonly heatsinksOff: number;
+    }
+    | {
+        /** APPLY HEAT: the player's arrow (NEXT) becomes the unit's heat and settles the turn so far. */
+        readonly type: 'apply-heat';
+    }
+    | {
+        /** Heat from outside sources such as inferno missiles (TW p. 159), capped per turn. */
+        readonly type: 'add-outside-heat';
+        /**
+         * Where the heat strikes, whose armor reduces it as it strikes (`struckOutsideHeat`); none for heat without a
+         * hit location.
+         */
+        readonly location?: Readonly<{ code: string; rear: boolean }>;
+        /** The weapon that delivered it, for armor that reflects some weapons' heat (`reflectedHeat`). */
+        readonly source?: DamageSource;
+        readonly amount: number;
+        readonly target: 'committed' | 'pending';
+    }
+    | {
+        /** Inferno missiles that struck a non-Mek, toward the turn's every-three effects (TW pp. 141-142). */
+        readonly type: 'add-inferno-missiles';
+        readonly count: number;
+        readonly target: 'committed' | 'pending';
+    }
+    | {
+        readonly type: 'set-condition';
+        readonly condition: UnitConditionKey;
+        readonly active: boolean;
+    }
+    | {
+        /** Rules-owned shutdown transition used by heat automation. */
+        readonly type: 'set-mek-shutdown-state';
+        readonly shutdown: boolean;
+    }
+    | {
+        readonly type: 'resolve-mek-rule-check';
+        readonly key: MekRuleCheckKeyV2;
+        readonly token: MekRuleCheckTokenV2;
+        readonly outcome: MekRuleCheckOutcomeV2;
+    }
+    | {
+        readonly type: 'set-location-condition';
+        readonly locationId: LocationId;
+        readonly condition: MekLocationConditionKey;
+        /** Zero removes the condition; positive values are sparse state. */
+        readonly value: number;
+        readonly target: 'committed' | 'pending';
+    }
+    | {
+        readonly type: 'set-crew-state';
+        /** Manual killed state for unit types whose crew rules support it. */
+        readonly dead?: boolean;
+        readonly positionId: CrewPositionId;
+        readonly wounds: number;
+        readonly unconscious: boolean;
+        readonly ejected: boolean;
+        /** Omitted preserves an existing schedule or queues a new loss for next turn. */
+        readonly recoveryReadyTurn?: number | null;
+    }
+    | {
+        readonly type: 'declare-mek-movement';
+        readonly declaration: MekMovementDeclarationV2;
+        /** The full phase system is on: the checks raised in the unit's Movement step are rolled at once. */
+        readonly realPhases?: true;
+        /**
+         * The battle armor swarming the 'Mech has magnetic claws, making a jump's roll to shake it off 1 harder
+         * (TW p. 222): the automation, which sees the infantry, says so.
+         */
+        readonly swarmerMagneticClaws?: true;
+    }
+    | { readonly type: 'clear-mek-movement' }
+    | {
+        readonly type: 'declare-mek-action';
+        readonly action: MekActionDeclarationV2;
+        /** As for `declare-mek-movement`. */
+        readonly realPhases?: true;
+    }
+    | { readonly type: 'clear-mek-action' }
+    | { readonly type: 'prepare-mek-stand' }
+    | {
+        readonly type: 'resolve-mek-stand-attempt';
+        readonly carefulStand: boolean;
+        readonly evidence?: MekPilotCheckDiceEvidenceV2;
+    }
+    | {
+        readonly type: 'adjust-mek-stand-attempts';
+        readonly delta: number;
+    }
+    | {
+        readonly type: 'resolve-mek-pilot-check';
+        readonly checkId: string;
+        readonly evidence: MekPilotCheckDiceEvidenceV2;
+    }
+    | {
+        readonly type: 'dismiss-mek-pilot-checks';
+        /** Omitted dismisses every pending check. */
+        readonly checkIds?: readonly string[];
+    }
+    | { readonly type: 'dismiss-mek-automatic-falls' }
+    | {
+        /**
+         * Records the piloting checks one physical attack caused this Mek, and the automatic
+         * 2-level fall of a missed death from above. Recording the same `attackId` again adds nothing.
+         */
+        readonly type: 'record-mek-physical-attack-checks';
+        readonly attackId: string;
+        readonly checks: readonly MekPhysicalAttackCheckTriggerKindV2[];
+        readonly missedDeathFromAbove?: true;
+    }
+    | {
+        readonly type: 'replace-turn-state';
+        readonly turn: MekTurnStateV2;
+        /** The player entered another water hex at the same depth. */
+        readonly enteredWaterHex?: true;
+        /** Stamped by the force: under the full phase system, a roll the turn's new facts raise is rolled at once. */
+        readonly realPhases?: true;
+    }
+    | {
+        readonly type: 'set-pending-fall-consequences';
+        readonly pending: MekPendingFallConsequencesV2 | null;
+    }
+    | {
+        /** Crew members owing one Core consciousness roll at the end of this phase; empty clears it. */
+        readonly type: 'set-consciousness-rolls-due';
+        readonly positionIds: readonly CrewPositionId[];
+    }
+    /**
+     * The game starts over: the unit returns to turn 1 Movement with its per-turn facts, turn-scoped
+     * conditions and uncommitted changes discarded. Committed damage and lasting conditions stay.
+     */
+    | { readonly type: 'reset-turn-state' }
+    | {
+        readonly type: 'end-phase';
+        /** Set only when End Turn is completing its prerequisite phase. */
+        readonly endTurnBoundary?: true;
+    }
+    | { readonly type: 'mark-end-turn-heat-staged' }
+    | { readonly type: 'end-turn'; readonly policy: HeatAutomationPolicy }
+    /** Real-phase mode: the unit finished `step` of its current turn (see turn-sequence). */
+    | { readonly type: 'complete-turn-step'; readonly step: number }
+    /** Real-phase mode: a unit added to a game under way moves forward to the game's position. */
+    | { readonly type: 'join-turn'; readonly turn: number; readonly step: number }
+    /**
+     * Real-phase mode: the unit goes back to act on an earlier `step` of its current turn. Only its
+     * position moves: nothing it did on the later steps is reverted or replayed.
+     */
+    | { readonly type: 'rewind-turn-step'; readonly step: number }
+    | { readonly type: 'commit-pending' }
+    | { readonly type: 'cancel-pending' }
+    | { readonly type: 'set-destroyed'; readonly destroyed: boolean; readonly target?: 'pending' | 'committed' }
+    | { readonly type: 'set-internal-damage'; readonly locationId: LocationId; readonly damage: number }
+    | { readonly type: 'set-armor-damage'; readonly faceId: ArmorFaceId; readonly damage: number }
+    | { readonly type: 'damage-track'; readonly damageTrackId: SystemDamageTrackId; readonly amount: number; readonly target: 'committed' | 'pending'; readonly timestamp: number }
+    | { readonly type: 'repair-damage-track'; readonly damageTrackId: SystemDamageTrackId; readonly amount: number; readonly target: 'committed' | 'pending' }
+    | { readonly type: 'set-system-damage-level'; readonly system: SystemDamageKind; readonly level: number; readonly target: 'committed' | 'pending'; readonly timestamp: number }
+    | { readonly type: 'set-component-statuses'; readonly componentIds: readonly ComponentId[]; readonly status: EquipmentStatus; readonly target: 'committed' | 'pending'; readonly applyExplosion?: boolean }
+    /** Applies one critical hit to each listed non-Mek mount. */
+    | { readonly type: 'hit-components'; readonly componentIds: readonly ComponentId[]; readonly target: 'committed' | 'pending'; readonly applyExplosion?: boolean }
+    | { readonly type: 'set-airborne'; readonly airborne: boolean | null }
+    /** Converts a LAM or QuadVee to one of its modes. */
+    | { readonly type: 'set-mek-conversion-mode'; readonly mode: MekConversionMode }
+    | { readonly type: 'set-movement'; readonly movement: NonMekMovementDeclaration | null }
+    | { readonly type: 'set-cover'; readonly cover: UnitCover | null }
+    | { readonly type: 'set-spotting'; readonly spotting: SpottingMode }
+    | { readonly type: 'set-control-recovery'; readonly workflow: NonMekControlRecoveryWorkflow | null };

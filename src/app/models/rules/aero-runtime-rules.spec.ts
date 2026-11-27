@@ -1,0 +1,213 @@
+// Copyright (C) 2026 The MegaMek Team
+// SPDX-License-Identifier: GPL-3.0-or-later
+
+import { asUnitUuid } from '../../services/unit-catalog/unit-catalog.types';
+import { CORE_2026_RULESET } from '../cbt-ruleset.model';
+import type { AeroEntity } from '../entity/entities/aero/aero-entity';
+import {
+TestAeroSpaceFighterEntity,
+TestDropShipEntity,
+TestJumpShipEntity,
+TestSmallCraftEntity,
+TestSpaceStationEntity,
+TestWarShipEntity,
+} from '../entity/testing/test-entities';
+import type { CBTNonMekUnit } from '../runtime/cbt-unit';
+
+import { isAeroEntity } from '../entity/utils/entity-type-guards';
+import { type InstanceBaselineRef } from '../runtime/runtime-state';
+import { aeroHeatEffects,projectAeroRuntimeRules } from './aero-runtime-rules';
+import { isCumulativeSystemDamage,systemDamageId } from './system-damage-rules';
+
+describe('Aero runtime rules', () => {
+    it('ports the production aerospace heat scale', () => {
+        expect(aeroHeatEffects(7)).toEqual({ fireModifier: 0, randomMovementTarget: 5 });
+        expect(aeroHeatEffects(8)).toEqual({ fireModifier: 1, randomMovementTarget: 5 });
+        expect(aeroHeatEffects(24)).toEqual({
+            fireModifier: 4,
+            randomMovementTarget: 8,
+            shutdownTarget: 8,
+            ammoExplosionTarget: 6,
+            pilotDamageTarget: 6,
+        });
+        expect(aeroHeatEffects(30)).toEqual({
+            fireModifier: 4,
+            randomMovementTarget: 10,
+            shutdownTarget: 100,
+            ammoExplosionTarget: 8,
+            pilotDamageTarget: 9,
+        });
+    });
+
+    it('commits preview heat and applies the named fire modifier and disabled sinks', () => {
+        const runtime = fighter('unit:aero-heat');
+        expect(runtime.dispatch({
+            type: 'set-pending-heat',
+            
+            heat: 24,
+
+        }).accepted).toBeTrue();
+        expect(runtime.snapshot().heat).toEqual({
+            current: 0,
+            previous: 0,
+            pendingOverride: 24,
+            heatsinksOff: 0,
+        });
+        expect(project(runtime).heat.effects.fireModifier).toBe(0);
+
+        expect(runtime.dispatch({
+            type: 'set-heatsinks-off',
+            
+            heatsinksOff: 2,
+        }).accepted).toBeTrue();
+        // The arrow waits for APPLY HEAT or End Turn, like a 'Mech's; End Phase leaves it.
+        expect(runtime.dispatch({ type: 'end-phase' }).accepted).toBeTrue();
+        expect(runtime.snapshot().heat.pendingOverride).toBe(24);
+        expect(runtime.dispatch({ type: 'apply-heat' }).accepted).toBeTrue();
+
+        const projection = project(runtime);
+        expect(runtime.snapshot().heat).toEqual({
+            current: 24,
+            previous: 0,
+            heatsinksOff: 2,
+        });
+        expect(projection.heat.dissipation).toBe(16);
+        expect(projection.modifiers.ranged).toEqual([{
+            label: 'Heat - Fire Modifier',
+            modifier: 4,
+            weakened: true,
+            kind: 'heat',
+        }]);
+        expect(projection.modifiers.physical).toEqual([]);
+    });
+
+    it('derives destruction from SI, the third engine hit, or pilot death but not from a lost fire control', () => {
+        const bySi = fighter('unit:aero-si');
+        const si = [...bySi.getIndex().locations.values()].find(location => location.code === 'SI')!;
+        bySi.dispatch({
+            type: 'set-internal-damage',
+
+            locationId: si.id,
+            damage: si.internalPoints,
+        });
+        expect(bySi.query().destroyed()).toBeTrue();
+
+        for (const [damageTrackId, destroyed] of [
+            [systemDamageId('engine', 3), true],
+            [systemDamageId('fire-control', 3), false],
+        ] as const) {
+            const runtime = fighter(`unit:aero-${damageTrackId}`);
+            runtime.dispatch({
+                type: 'damage-track',
+
+                damageTrackId,
+                amount: 1,
+                target: 'committed',
+                timestamp: 1,
+            });
+            expect(runtime.query().destroyed()).withContext(damageTrackId).toBe(destroyed);
+        }
+
+        const byPilot = fighter('unit:aero-pilot');
+        const pilot = [...byPilot.getIndex().crewPositions.keys()][0]!;
+        expect(byPilot.dispatch({
+            type: 'set-crew-state', positionId: pilot, wounds: 6, unconscious: false, ejected: false,
+        }).accepted).toBeTrue();
+        byPilot.dispatch({ type: 'end-phase' });
+        expect(byPilot.query().destroyed()).toBeTrue();
+    });
+
+    it('treats staged systems as hit counters: a level fills every earlier stage', () => {
+        const runtime = fighter('unit:aero-avionics-level');
+        const hitStages = () => [1, 2, 3].filter(stage =>
+            (runtime.snapshot().damageTracks.get(systemDamageId('avionics', stage))?.hits ?? 0) > 0);
+        const setLevel = (level: number) => runtime.dispatch({
+            type: 'set-system-damage-level', system: 'avionics', level, target: 'committed', timestamp: level,
+        });
+        expect(setLevel(2).accepted).toBeTrue();
+        expect(hitStages()).toEqual([1, 2]);
+        expect(setLevel(1).accepted).toBeTrue();
+        expect(hitStages()).toEqual([1]);
+        // Motive damage has its own table and location-scoped systems are independent boxes.
+        expect(isCumulativeSystemDamage({ system: 'motive', stage: 2 })).toBeFalse();
+        expect(isCumulativeSystemDamage({ system: 'stabilizer', stage: undefined })).toBeFalse();
+        expect(isCumulativeSystemDamage({ system: 'torso', stage: 2 })).toBeTrue();
+    });
+
+    it('keeps a large craft operational at three engine hits and destroys it at six', () => {
+        const entity = new TestDropShipEntity();
+        entity.structuralIntegrity.set(8);
+        const runtime = aero(entity, 'unit:large-engine');
+        for (const stage of [3, 6]) {
+            expect(runtime.dispatch({ type: 'damage-track', damageTrackId: systemDamageId('engine', stage),
+                amount: 1, target: 'committed', timestamp: stage }).accepted).toBeTrue();
+            expect(runtime.query().destroyed()).withContext(`Engine stage ${stage}`).toBe(stage === 6);
+        }
+    });
+
+    it('uses the same direct rules owner across fighters and every large-craft family', () => {
+        const families = [
+            new TestAeroSpaceFighterEntity(),
+            new TestSmallCraftEntity(),
+            new TestDropShipEntity(),
+            new TestJumpShipEntity(),
+            new TestWarShipEntity(),
+            new TestSpaceStationEntity(),
+        ];
+        for (const [index, entity] of families.entries()) {
+            entity.structuralIntegrity.set(4);
+            entity.heatSinkCount.set(10);
+            const runtime = aero(entity, `unit:aero-family-${index}`);
+            expect(project(runtime).heat.tracked)
+                .withContext(entity.entityType).toBe(entity.tracksHeat());
+
+            const si = [...runtime.getIndex().locations.values()]
+                .find(location => location.code === 'SI')!;
+            expect(runtime.dispatch({
+                type: 'set-internal-damage',
+                
+                locationId: si.id,
+                damage: si.internalPoints,
+            }).accepted).withContext(entity.entityType).toBeTrue();
+            expect(runtime.query().destroyed()).withContext(entity.entityType).toBeTrue();
+        }
+    });
+});
+
+const UUID = asUnitUuid('019f6767-0dcb-7bb8-992f-aef08202f5e2');
+
+function fighter(id: string): CBTNonMekUnit {
+    const entity = new TestAeroSpaceFighterEntity();
+    entity.structuralIntegrity.set(8);
+    entity.heatSinkCount.set(10);
+    entity.heatSinkType.set('Double');
+    return aero(entity, id);
+}
+
+function aero(entity: AeroEntity, id: string): CBTNonMekUnit {
+    entity.uuid.set(UUID);
+    return createNonMekRuntimeForTest(
+        id,
+        baseline(),
+        entity,
+        CORE_2026_RULESET,
+    );
+}
+
+function project(runtime: CBTNonMekUnit) {
+    const entity = runtime.getUnit();
+    if (!isAeroEntity(entity)) throw new Error('Expected aerospace fixture');
+    return projectAeroRuntimeRules(entity, runtime.getIndex(), runtime.snapshot(), runtime.ruleset());
+}
+
+function baseline(): InstanceBaselineRef {
+    return Object.freeze({
+        entity: UUID,
+        ruleset: CORE_2026_RULESET,
+        initialStateProfile: Object.freeze({
+            profileId: 'pristine-non-mek',
+        }),
+    });
+}
+
+import { createNonMekRuntimeForTest } from '../runtime/testing/unit-runtime-owner-fixture';

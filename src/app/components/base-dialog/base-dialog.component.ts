@@ -16,7 +16,6 @@ import {
     signal,
     viewChild
 } from '@angular/core';
-import { CommonModule } from '@angular/common';
 import { ComponentPortal } from '@angular/cdk/portal';
 import { outputToObservable, takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import { OverlayManagerService } from '../../services/overlay-manager.service';
@@ -27,12 +26,11 @@ const OVERFLOW_OVERLAY_KEY = 'tab-overflow-menu';
 
 @Component({
     selector: 'base-dialog',
-    imports: [CommonModule],
     changeDetection: ChangeDetectionStrategy.OnPush,
-    styleUrls: ['./base-dialog.component.scss'],
+    styleUrl: './base-dialog.component.scss',
     template: `
     <div class="modal-flex-center">
-      <div class="modal tv-fade" [class.auto-height]="autoHeight()" [class]="modalClass()" [ngClass]="modalClassFromTab()">
+      <div class="modal tv-fade" [class.auto-height]="autoHeight()" [class]="modalClasses()">
         <div class="modal-header" [class.tabbed]="isTabbed()">
           <ng-content select="[dialog-header]"></ng-content>
           @if (isTabbed()) {
@@ -54,7 +52,7 @@ const OVERFLOW_OVERLAY_KEY = 'tab-overflow-menu';
                       @if (isActiveTabInOverflow()) {
                         <span class="overflow-active-label">{{ activeTab() }}</span>
                       }
-                      <span class="overflow-icon">▾</span>
+                      <span class="chevron chevron-down overflow-icon" aria-hidden="true"></span>
                     </button>
                   }
                 } @else {
@@ -88,12 +86,17 @@ export class BaseDialogComponent implements AfterViewInit {
     private overlayManager = inject(OverlayManagerService);
     private injector = inject(Injector);
     
-    tabs = input<string[]>([]);
+    tabs = input<readonly string[]>([]);
     activeTab = input<string>();
     overflowToDropdown = input<boolean>(false);
     autoHeight = input<boolean>(false);
     modalClass = input<string>('');
     isTabbed = computed(() => this.tabs().length > 0);
+    modalClasses = computed(() => {
+        const tab = this.activeTab();
+        const activeTabClass = tab ? `activetab-${tab.toLowerCase()}` : '';
+        return [this.modalClass(), activeTabClass].filter(Boolean).join(' ');
+    });
     activeTabChange = output<string>();
 
     tabHeader = viewChild<ElementRef<HTMLDivElement>>('tabHeader');
@@ -194,7 +197,7 @@ export class BaseDialogComponent implements AfterViewInit {
         }
     }
 
-    private measureTabWidths(tabs: string[]): number[] {
+    private measureTabWidths(tabs: readonly string[]): number[] {
         // Create a hidden container to measure tab widths
         const measurer = document.createElement('div');
         measurer.style.cssText = 'position:absolute;visibility:hidden;white-space:nowrap;font-size:1em;';
@@ -251,9 +254,4 @@ export class BaseDialogComponent implements AfterViewInit {
         });
     }
     
-    modalClassFromTab(): string {
-        const tab = this.activeTab();
-        if (!tab) return '';
-        return `activetab-${tab.toLowerCase()}`;
-    }
 }

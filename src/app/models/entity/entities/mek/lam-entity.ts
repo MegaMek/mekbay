@@ -2,14 +2,14 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 // Author: Drake
 
-import { computed, signal } from '@angular/core';
-import { CriticalSlotView, MekConfig, type TechRatingSource } from '../../types';
+import { signal } from '@angular/core';
+import { CriticalSlotView, MekConfig, type MekSystemType, type TechRatingSource } from '../../types';
 import { getLamConstructionTech } from '../../components';
 import { BipedMekEntity } from './biped-mek-entity';
 
 /** Helper to create a system slot view. */
-function sys(systemType: string): CriticalSlotView {
-  return { type: 'system', systemType: systemType as any, armored: false, omniPod: false };
+function sys(systemType: MekSystemType): CriticalSlotView {
+  return { type: 'system', systemType, armored: false, omniPod: false };
 }
 
 /** Land-Air Mek - a biped Mek with LAM-specific fields. */
@@ -25,11 +25,9 @@ export class LamEntity extends BipedMekEntity {
     return this.lamType().toLowerCase() !== 'bimodal';
   }
 
-  /** Mirrors LandAirMek.getAirMekFlankMP(BV_CALCULATION). */
-  readonly bvAirMekFlankMP = computed(() => Math.ceil(this.maxJumpMP() * 3 * 1.5));
-
-  override airMekFlankMP(): number {
-    return this.bvAirMekFlankMP();
+  /** Mirrors LandAirMek.getAirMekFlankMP: AirMek cruise is jump MP x 3. */
+  override airMekFlankMP(jumpMP: number): number {
+    return Math.ceil(jumpMP * 3 * 1.5);
   }
 
   protected override constructionTechAdvancement(): TechRatingSource {
@@ -38,7 +36,7 @@ export class LamEntity extends BipedMekEntity {
     );
   }
 
-  protected override getSystemSlotsForLocation(loc: string): CriticalSlotView[] {
+  override getSystemSlotsForLocation(loc: string): CriticalSlotView[] {
     const base = super.getSystemSlotsForLocation(loc);
 
     if (loc === 'HD') {

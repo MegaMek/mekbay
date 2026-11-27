@@ -2,40 +2,23 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 // Author: Drake
 
-import type { Equipment } from './equipment.model';
-import type { EquipmentFlag } from './equipment-flags.type';
+export const EQUIPMENT_STATUSES = Object.freeze([
+    'available',
+    'disabled',
+    'destroyed',
+] as const);
 
-export type EquipmentStatus = 'available' | 'disabled' | 'destroyed';
+export type EquipmentStatus = typeof EQUIPMENT_STATUSES[number];
+export type UnavailableEquipmentStatus = Exclude<EquipmentStatus, 'available'>;
 
-export interface UnitSystemStatusFacts {
-    readonly engineHit: boolean;
+const EQUIPMENT_STATUS_SET: ReadonlySet<string> = new Set(EQUIPMENT_STATUSES);
+
+export function isEquipmentStatus(value: unknown): value is EquipmentStatus {
+    return typeof value === 'string' && EQUIPMENT_STATUS_SET.has(value);
 }
 
-export interface EquipmentStatusFacts {
-    readonly equipment: Equipment | null;
-    readonly equipmentId: string;
-    readonly equipmentFlags: ReadonlySet<EquipmentFlag>;
-    readonly mountState: EquipmentStatus;
-    readonly criticals: readonly MountedCriticalFact[];
-    readonly locationStates: ReadonlyMap<string, EquipmentStatus>;
-    readonly unitSystemFacts: UnitSystemStatusFacts;
-}
-
-export interface MountedCriticalFact {
-    readonly id: string;
-    readonly location: string | null;
-    readonly slot: number | null;
-    readonly status: EquipmentStatus;
-    readonly committedHits: number;
-    readonly armored: boolean;
-}
-
-export interface CriticalSlotStatusFacts {
-    readonly equipment: Equipment | null;
-    readonly equipmentId: string;
-    readonly slotState: EquipmentStatus;
-    readonly locationState: EquipmentStatus;
-    readonly unitSystemFacts: UnitSystemStatusFacts;
+export function isUnavailableEquipmentStatus(value: unknown): value is UnavailableEquipmentStatus {
+    return value === 'disabled' || value === 'destroyed';
 }
 
 export function combineEquipmentStatuses(statuses: readonly EquipmentStatus[]): EquipmentStatus {

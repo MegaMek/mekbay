@@ -4,13 +4,25 @@
 
 
 
+import type { DisplayUnitNameFormat } from '../models/options.model';
+import { formatUnitChassis } from './unit-display-name.util';
 import type { UnitSummary, AlphaStrikeArcStats } from '../models/unit-summary.model';
 import type { ForceUnit } from '../models/force-unit.model';
-import type { CBTForceUnit } from '../models/cbt-force-unit.model';
 import type { ASForceUnit } from '../models/as-force-unit.model';
-import type { Force, UnitGroup } from '../models/force.model';
+import type { Force } from '../models/force.model';
+import type { CBTForce } from '../models/cbt-force.model';
+import {
+    isCBTForceMember,
+    isCBTMekForceMember,
+    type CBTForceMember,
+    type ForceMember,
+} from '../models/force-member.model';
 import { GameSystem } from '../models/common.model';
 import { DEFAULT_GUNNERY_SKILL, DEFAULT_PILOTING_SKILL } from '../models/crew-member.model';
+import { hasNonMekRuntime } from '../models/cbt-unit-snapshot';
+import type { BaseEntity } from '../models/entity/base-entity';
+import type { CBTRuleset } from '../models/cbt-ruleset.model';
+import { BV_MOVEMENT_CALCULATION, STANDARD_MOVEMENT_CALCULATION } from '../models/entity/types/move';
 
 async function loadXlsx() {
     const { utils, writeFile } = await import('xlsx');
@@ -121,7 +133,7 @@ function unitToCBTRow(unit: UnitSummary): Record<string, unknown> {
         'firepower (no oneshots)': unit._mdSumNoPhysicalNoOneshots,
         maxRange: unit._maxRange,
         components: unit.comp?.map(c => `${c.q}x${c.n}:${c.l}`).join(', ') ?? '',
-        quirks: unit.quirks?.join(', ') ?? '',
+        quirks: unit.assignedQuirks.join(', '),
         cargo: unit.cargo?.map(c => `${c.type}(${c.capacity})(${c.doors})`).join(', ') ?? '',
         dropshipCapacity: unit.capital?.dropshipCapacity ?? '',
         escapePods: unit.capital?.escapePods ?? '',
@@ -134,6 +146,84 @@ function unitToCBTRow(unit: UnitSummary): Record<string, unknown> {
 
 function unitsToCBTRows(units: UnitSummary[]): Record<string, unknown>[] {
     return units.map(unitToCBTRow);
+}
+
+/** Loaded CBT export facts come only from the admitted Entity. */
+function entityToCBTRow(unit: BaseEntity, ruleset: CBTRuleset | undefined): Record<string, unknown> {
+    const engine = unit.mountedEngine();
+    const rangedWeapons = unit.rangedWeapons();
+    const firepower = rangedWeapons.reduce((total, mount) =>
+        total + unit.resolveMountedWeaponDamage(mount).maximum, 0);
+    const maxRange = rangedWeapons.reduce((maximum, mount) =>
+        Math.max(maximum, ...mount.equipment.ranges), 0);
+    return {
+        chassis: unit.fullChassis(),
+        model: unit.model(),
+        year: unit.year(),
+        cost: unit.cost(),
+        tonnage: unit.tonnage(),
+        weightClass: unit.weightClass(),
+        level: unit.staticTechLevel(),
+        techBase: unit.techBase(),
+        techRating: unit.techRating(),
+        type: unit.unitType(),
+        subtype: unit.unitSubtype(),
+        omni: unit.omni(),
+        engine: engine.type,
+        engineRating: engine.rating,
+        source: unit.source().map(source => source.abbrev).join(', '),
+        publishedRS: unit.published().map(source => source.abbrev).join(', '),
+        tags: '',
+        role: unit.role(),
+        armorType: unit.hasPatchworkArmor()
+            ? 'Patchwork'
+            : unit.uniformArmor()?.armor.name ?? '',
+        structureType: unit.uniformStructureMaterial()?.structure.name ?? '',
+        armor: unit.totalArmorPoints(),
+        armorPer: unit.maximumArmorPoints() > 0
+            ? unit.totalArmorPoints() / unit.maximumArmorPoints()
+            : 0,
+        structure: unit.totalInternalPoints(),
+        heat: unit.heatGeneration(),
+        dissipation: unit.heatDissipation(),
+        dissipationEfficiency: unit.heatGeneration() > 0
+            ? unit.heatDissipation() / unit.heatGeneration()
+            : '',
+        moveType: unit.motiveType(),
+        walk: unit.computeWalkMP({ ...STANDARD_MOVEMENT_CALCULATION, ruleset }),
+        maxWalk: unit.computeWalkMP({ ...BV_MOVEMENT_CALCULATION, ruleset }),
+        jump: unit.jumpMP(),
+        umu: unit.umuMP(),
+        c3: unit.c3System(),
+        dpt: firepower,
+        firepower,
+        'firepower (no oneshots)': firepower,
+        maxRange,
+        components: unit.equipment()
+            .map(mount => `${mount.displayName()}:${mount.location}`)
+            .join(', '),
+        quirks: unit.quirks()
+            .map(({ quirk, value }) => value ? `${quirk.name}=${value}` : quirk.name)
+            .join(', '),
+        cargo: unit.transporters()
+            .map(transporter => {
+                const capacity = transporter.kind === 'bay'
+                    ? transporter.capacity
+                    : transporter.kind === 'troop-space'
+                        ? transporter.totalSpace
+                        : transporter.kind === 'battle-armor-handles'
+                            ? transporter.troopers
+                            : 1;
+                return `${transporter.kind}(${capacity})`;
+            })
+            .join(', '),
+        dropshipCapacity: unit.dockingCollarCount(),
+        escapePods: '',
+        lifeBoats: '',
+        gravDecks: '',
+        sailIntegrity: '',
+        kfIntegrity: '',
+    };
 }
 
 /**
@@ -203,45 +293,63 @@ function unitsToASRows(units: UnitSummary[]): Record<string, unknown>[] {
 }
 
 /**
- * Converts a CBT ForceUnit to export row with additional state fields.
+ * Converts one canonical CBT member to an export row from Entity + runtime.
  */
-function forceUnitToCBTRow(forceUnit: ForceUnit, groupName: string): Record<string, unknown> {
-    const unit = forceUnit.getUnit();
-    const baseRow = unitToCBTRow(unit);
-    const cbtUnit = forceUnit as CBTForceUnit;
-    const crew = cbtUnit.getCrewMembers();
-    const pilot = crew.length > 0 ? crew[0] : null;
-    
-    // Sum armor damage across all locations
-    const locations = cbtUnit.getLocations();
-    let totalArmorDamage = 0;
-    let totalInternalDamage = 0;
-    for (const locData of Object.values(locations)) {
-        totalArmorDamage += (locData.armor ?? 0) + (locData.pendingArmor ?? 0);
-        totalInternalDamage += (locData.internal ?? 0) + (locData.pendingInternal ?? 0);
-    }
-    
-    // Insert force-specific fields
+function forceMemberToCBTRow(member: CBTForceMember, groupName: string): Record<string, unknown> {
+    const unit = member.entity;
+    const baseRow = entityToCBTRow(unit, member.ruleset() ?? undefined);
     const { chassis, model, ...rest } = baseRow;
-    const baseBvOfUnit = cbtUnit.getUnit().bv;
-    const baseBvOfCurrentUnit = cbtUnit.getBaseBv();
+    if (!isCBTMekForceMember(member)) {
+        const snapshot = member.force.getUnitSnapshot(member.id);
+        if (!snapshot || !hasNonMekRuntime(snapshot)) {
+            throw new Error(`CBT unit ${member.id} is no longer admitted`);
+        }
+        const crew = member.force.getUnitCrewAssignment(member.id)?.positions[0];
+        const crewState = crew ? snapshot.state.crew.get(crew.positionId) : undefined;
+        const pristineBv = member.pristineBattleValue();
+        const currentBv = member.adjustedBattleValue() ?? pristineBv;
+        return {
+            group: groupName,
+            chassis,
+            model,
+            pilot: crew?.name ?? '',
+            gunnery: crew?.gunnery ?? DEFAULT_GUNNERY_SKILL,
+            piloting: crew?.piloting ?? DEFAULT_PILOTING_SKILL,
+            wounds: crewState?.wounds ?? 0,
+            BV: pristineBv !== currentBv ? `${currentBv} (${pristineBv})` : currentBv,
+            totalBV: currentBv,
+            armorDamage: [...snapshot.state.locations.values()].reduce((total, location) => total
+                + location.armorDamage.reduce((sum, face) => sum + face.damage, 0), 0),
+            internalDamage: [...snapshot.state.locations.values()].reduce((total, location) =>
+                total + location.internalDamage, 0),
+            destroyed: snapshot.query.destroyed(),
+            ...rest,
+        };
+    }
+
+    const snapshot = member.force.getMekRecordSheetSnapshot(member.id);
+    if (!snapshot) throw new Error(`CBT Mek ${member.id} is no longer admitted`);
+    const pilot = snapshot.crew.find(position => position.occurrence === 0) ?? snapshot.crew[0];
+    const totalArmorDamage = snapshot.locations.reduce((total, location) => total
+        + location.armor.reduce((faceTotal, face) => faceTotal
+            + Math.max(0, face.maximum - face.committedRemaining), 0), 0);
+    const totalInternalDamage = snapshot.locations.reduce((total, location) => total
+        + Math.max(0, location.maximumInternal - location.committedRemainingInternal), 0);
+    const pristineBv = snapshot.battleValue.pristine ?? member.pristineBattleValue();
+    const currentBv = snapshot.battleValue.current ?? pristineBv;
     return {
         group: groupName,
         chassis,
         model,
-        pilot: pilot?.getName() ?? '',
-        gunnery: pilot?.getSkill('gunnery') ?? DEFAULT_GUNNERY_SKILL,
-        piloting: pilot?.getSkill('piloting') ?? DEFAULT_PILOTING_SKILL,
-        wounds: pilot?.getHits() ?? 0,
-        BV: (baseBvOfUnit !== baseBvOfCurrentUnit) ? `${baseBvOfCurrentUnit} (${baseBvOfUnit})` : baseBvOfUnit,
-        tagBV: cbtUnit.tagBV(),
-        C3BV: cbtUnit.c3Tax(),
-        externalStoresBV: cbtUnit.externalStoresBv(),
-        pilotBV: cbtUnit.pilotBV(),
-        totalBV: cbtUnit.getBv(),
+        pilot: pilot?.name ?? '',
+        gunnery: pilot?.gunnery ?? DEFAULT_GUNNERY_SKILL,
+        piloting: pilot?.piloting ?? DEFAULT_PILOTING_SKILL,
+        wounds: pilot?.state.wounds ?? 0,
+        BV: pristineBv !== currentBv ? `${currentBv} (${pristineBv})` : currentBv,
+        totalBV: snapshot.battleValue.adjusted ?? currentBv,
         armorDamage: totalArmorDamage,
         internalDamage: totalInternalDamage,
-        destroyed: forceUnit.destroyed,
+        destroyed: snapshot.destroyed,
         ...rest
     };
 }
@@ -250,7 +358,7 @@ function forceUnitToCBTRow(forceUnit: ForceUnit, groupName: string): Record<stri
  * Converts an AS ForceUnit to export row with additional state fields.
  */
 function forceUnitToASRow(forceUnit: ForceUnit, groupName: string): Record<string, unknown> {
-    const unit = forceUnit.getUnit();
+    const unit = forceUnit.getSummary();
     const baseRow = unitToASRow(unit);
     const asUnit = forceUnit as ASForceUnit;
     const state = asUnit.getState();
@@ -274,22 +382,28 @@ function forceUnitToASRow(forceUnit: ForceUnit, groupName: string): Record<strin
 /**
  * Converts force groups to rows.
  */
-function forceGroupsToRows(
-    groups: UnitGroup[],
-    gameSystem: GameSystem
-): Record<string, unknown>[] {
-    const rowConverter = gameSystem === GameSystem.ALPHA_STRIKE ? forceUnitToASRow : forceUnitToCBTRow;
-    return groups.flatMap(group => {
-        let groupName;
-        if (!group.activeFormation()) {
-            groupName = group.groupDisplayName();
-        } else {
-            groupName = group.groupDisplayName() + ' - ' + group.formationDisplayName();
-        }
-        if (group.activeFormation() && !group.hasValidFormation()) {
-            groupName += ' (Invalid Formation)';
-        }
-        return group.units().map(unit => rowConverter(unit, groupName));
+function forceMembersToRows(force: Force, members: readonly ForceMember[]): Record<string, unknown>[] {
+    if (force.gameSystem === GameSystem.AS) {
+        return members.map(member => {
+            if (isCBTForceMember(member)) throw new Error('A CBT runtime cannot be exported as Alpha Strike');
+            const group = member.getGroup();
+            let groupName = group?.groupDisplayName() ?? '';
+            if (group?.activeFormation()) groupName += ` - ${group.formationDisplayName()}`;
+            if (group?.activeFormation() && !group.hasValidFormation()) groupName += ' (Invalid Formation)';
+            return forceUnitToASRow(member, groupName);
+        });
+    }
+
+    const cbtForce = force as CBTForce;
+    const roster = cbtForce.queryCanonicalRoster();
+    if (roster.kind !== 'available') throw new Error(roster.message);
+    const groupNames = new Map(roster.snapshot.groups.map(group => [
+        group.groupId,
+        group.name?.trim() || group.groupId,
+    ] as const));
+    return members.map(member => {
+        if (!isCBTForceMember(member)) throw new Error('CBT force export requires canonical members');
+        return forceMemberToCBTRow(member, groupNames.get(member.rosterGroupId) ?? member.rosterGroupId);
     });
 }
 
@@ -303,7 +417,8 @@ function forceGroupsToRows(
 export async function exportUnitsToExcel(
     units: UnitSummary[],
     gameSystem: GameSystem,
-    filename?: string
+    filename?: string,
+    nameFormat: DisplayUnitNameFormat = 'innerSphereClan',
 ): Promise<void> {
     if (!units || units.length === 0) {
         throw new Error('No units to export');
@@ -311,9 +426,10 @@ export async function exportUnitsToExcel(
 
     const { utils, writeFile } = await loadXlsx();
 
-    const rows = gameSystem === GameSystem.ALPHA_STRIKE
+    const rows = gameSystem === GameSystem.AS
         ? unitsToASRows(units)
         : unitsToCBTRows(units);
+    rows.forEach((row, index) => { row['chassis'] = formatUnitChassis(units[index], nameFormat); });
 
     const worksheet = utils.json_to_sheet(rows);
     
@@ -332,10 +448,10 @@ export async function exportUnitsToExcel(
     }
 
     const workbook = utils.book_new();
-    const sheetName = gameSystem === GameSystem.ALPHA_STRIKE ? 'Alpha Strike Units' : 'BattleTech Units';
+    const sheetName = gameSystem === GameSystem.AS ? 'Alpha Strike Units' : 'BattleTech Units';
     utils.book_append_sheet(workbook, worksheet, sheetName);
 
-    const defaultFilename = gameSystem === GameSystem.ALPHA_STRIKE
+    const defaultFilename = gameSystem === GameSystem.AS
         ? 'mekbay-alpha-strike-units'
         : 'mekbay-battletech-units';
     const exportFilename = `${filename || defaultFilename}.xlsx`;
@@ -353,7 +469,8 @@ export async function exportUnitsToExcel(
 export async function exportUnitsToCSV(
     units: UnitSummary[],
     gameSystem: GameSystem,
-    filename?: string
+    filename?: string,
+    nameFormat: DisplayUnitNameFormat = 'innerSphereClan',
 ): Promise<void> {
     if (!units || units.length === 0) {
         throw new Error('No units to export');
@@ -361,16 +478,17 @@ export async function exportUnitsToCSV(
 
     const { utils, writeFile } = await loadXlsx();
 
-    const rows = gameSystem === GameSystem.ALPHA_STRIKE
+    const rows = gameSystem === GameSystem.AS
         ? unitsToASRows(units)
         : unitsToCBTRows(units);
+    rows.forEach((row, index) => { row['chassis'] = formatUnitChassis(units[index], nameFormat); });
 
     const worksheet = utils.json_to_sheet(rows);
     const workbook = utils.book_new();
-    const sheetName = gameSystem === GameSystem.ALPHA_STRIKE ? 'Alpha Strike Units' : 'BattleTech Units';
+    const sheetName = gameSystem === GameSystem.AS ? 'Alpha Strike Units' : 'BattleTech Units';
     utils.book_append_sheet(workbook, worksheet, sheetName);
 
-    const defaultFilename = gameSystem === GameSystem.ALPHA_STRIKE
+    const defaultFilename = gameSystem === GameSystem.AS
         ? 'mekbay-alpha-strike-units'
         : 'mekbay-battletech-units';
     const exportFilename = `${filename || defaultFilename}.csv`;
@@ -411,17 +529,21 @@ function createWorksheetWithAutoWidth(
  */
 export async function exportForceToExcel(
     force: Force,
-    filename?: string
+    members: readonly ForceMember[],
+    filename?: string,
+    nameFormat: DisplayUnitNameFormat = 'innerSphereClan',
 ): Promise<void> {
-    const groups = force.groups();
-    const totalUnits = groups.reduce((sum, g) => sum + g.units().length, 0);
-    if (totalUnits === 0) {
+    if (members.length === 0) {
         throw new Error('No units to export');
     }
 
     const { utils, writeFile } = await loadXlsx();
     const gameSystem = force.gameSystem;
-    const rows = forceGroupsToRows(groups, gameSystem);
+    const rows = forceMembersToRows(force, members);
+    rows.forEach((row, index) => {
+        const member = members[index];
+        row['chassis'] = formatUnitChassis(isCBTForceMember(member) ? member.entity : member.getSummary(), nameFormat);
+    });
 
     const worksheet = createWorksheetWithAutoWidth(rows, utils);
     const workbook = utils.book_new();
@@ -429,7 +551,7 @@ export async function exportForceToExcel(
     utils.book_append_sheet(workbook, worksheet, sheetName);
 
     const timestamp = new Date().toISOString().slice(0, 10);
-    const systemLabel = gameSystem === GameSystem.ALPHA_STRIKE ? 'as' : 'cbt';
+    const systemLabel = gameSystem === GameSystem.AS ? 'as' : 'cbt';
     const forceName = sanitizeFilename(force.displayName()) || 'force';
     const defaultFilename = `mekbay-${systemLabel}-${forceName}-${timestamp}`;
     const exportFilename = `${filename || defaultFilename}.xlsx`;
@@ -446,17 +568,21 @@ export async function exportForceToExcel(
  */
 export async function exportForceToCSV(
     force: Force,
-    filename?: string
+    members: readonly ForceMember[],
+    filename?: string,
+    nameFormat: DisplayUnitNameFormat = 'innerSphereClan',
 ): Promise<void> {
-    const groups = force.groups();
-    const totalUnits = groups.reduce((sum, g) => sum + g.units().length, 0);
-    if (totalUnits === 0) {
+    if (members.length === 0) {
         throw new Error('No units to export');
     }
 
     const { utils, writeFile } = await loadXlsx();
     const gameSystem = force.gameSystem;
-    const rows = forceGroupsToRows(groups, gameSystem);
+    const rows = forceMembersToRows(force, members);
+    rows.forEach((row, index) => {
+        const member = members[index];
+        row['chassis'] = formatUnitChassis(isCBTForceMember(member) ? member.entity : member.getSummary(), nameFormat);
+    });
 
     const worksheet = utils.json_to_sheet(rows);
     const workbook = utils.book_new();
@@ -464,7 +590,7 @@ export async function exportForceToCSV(
     utils.book_append_sheet(workbook, worksheet, sheetName);
 
     const timestamp = new Date().toISOString().slice(0, 10);
-    const systemLabel = gameSystem === GameSystem.ALPHA_STRIKE ? 'as' : 'cbt';
+    const systemLabel = gameSystem === GameSystem.AS ? 'as' : 'cbt';
     const forceName = sanitizeFilename(force.displayName()) || 'force';
     const defaultFilename = `mekbay-${systemLabel}-${forceName}-${timestamp}`;
     const exportFilename = `${filename || defaultFilename}.csv`;

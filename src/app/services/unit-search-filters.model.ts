@@ -46,6 +46,12 @@ export type DropdownPropertyShape = 'scalar' | 'array' | 'component' | 'countabl
 export type BooleanFilterSource = 'boolean' | 'nonEmptyArray' | 'truthy';
 export type TriStateBooleanFilterValue = null | 'or' | 'not';
 
+export function isFilterRangeValue(value: unknown): value is [number, number] {
+    return Array.isArray(value)
+        && value.length === 2
+        && value.every(bound => typeof bound === 'number' && Number.isFinite(bound));
+}
+
 export enum AdvFilterType {
     DROPDOWN = 'dropdown',
     RANGE = 'range',
@@ -62,13 +68,14 @@ export interface AdvFilterConfig {
     external?: boolean; // If true, this filter datasource is not from the local data, but from an external source (era, faction, etc.)
     curve?: number; // for range sliders, defines the curve of the slider
     includeMissing?: boolean; // Pass units without this measurement through the range filter
-    ignoreValues?: any[]; // Numeric values to ignore in the range filter
+    ignoreValues?: unknown[]; // Numeric values to ignore in the range filter
     multistate?: boolean; // if true, the filter (dropdown) can have multiple states (OR, AND, NOT)
     countable?: boolean; // if true, show amount next to options
     stepSize?: number; // for range sliders, defines the step size
     specialValues?: readonly number[]; // extra allowed slider stops between regular steps
     formatValue?: (value: number) => string; // for range sliders, maps internal numeric values to display labels
     semanticKey?: string; // Simplified key for semantic filter mode (e.g., 'tmm' instead of 'as.TMM')
+    numeric?: boolean; // Semantic-only field evaluated with numeric range operators
     booleanSource?: BooleanFilterSource; // How to derive a boolean filter value from the unit property
     valueNormalizer?: (value: string) => string; // Optional function to normalize semantic filter values
     displayNameFn?: (value: string) => string; // Optional function to map a raw option value to a human-readable display name
@@ -77,13 +84,6 @@ export interface AdvFilterConfig {
 // Use SemanticFilterState from semantic-filter.util as our FilterState
 export type FilterState = SemanticFilterState;
 
-export interface AvailabilityFilterScope {
-    eraNames?: readonly string[];
-    factionNames?: readonly string[];
-    availabilityFromNames?: readonly string[];
-    availabilityRarityNames?: readonly string[];
-    bridgeThroughMulMembership?: boolean;
-}
 
 export interface SearchTelemetryStage {
     name: string;
@@ -190,7 +190,7 @@ export interface SerializedSearchFilter {
     /** Sort direction */
     sortDir?: 'asc' | 'desc';
     /** Advanced filter values */
-    filters?: Record<string, any>;
+    filters?: Record<string, unknown>;
     /** Pilot gunnery skill for BV/PV calculations */
     gunnery?: number;
     /** Pilot piloting skill for BV calculations */
@@ -199,7 +199,7 @@ export interface SerializedSearchFilter {
     budgetMode?: Exclude<UnitSearchBudgetMode, null>;
     /** Force BV/PV limit. Only active with `budgetMode: 'force-limit'`. */
     bvLimit?: number;
-    /** Classic adjusted-BV normalization settings. */
+    /** CBT adjusted-BV normalization settings. */
     bvNormalization?: BvNormalizationSettings;
     /** Alpha Strike adjusted-PV normalization settings. */
     pvNormalization?: PvNormalizationSettings;
@@ -405,6 +405,7 @@ export interface SemanticFilterConfig {
     semanticKey?: string;
     availabilitySources?: readonly AvailabilitySource[];
     external?: boolean;
+    numeric?: boolean;
 }
 
 export const FORMATION_TARGET_FILTER_KEY = 'formationTarget';
@@ -433,29 +434,30 @@ export const DROPDOWN_FILTERS: readonly DropdownFilterConfig[] = Object.freeze([
         availabilitySource: 'context',
         propertyShape: 'scalar',
     },
-    { key: 'type', semanticKey: 'type', label: 'Type', game: GameSystem.CLASSIC, optionSource: 'indexed', availabilitySource: 'indexed', propertyShape: 'scalar' },
-    { key: 'as.TP', semanticKey: 'type', label: 'Type', game: GameSystem.ALPHA_STRIKE, optionSource: 'indexed', availabilitySource: 'indexed', propertyShape: 'scalar', displayNameFn: (v: string) => AS_TYPE_DISPLAY_NAMES[v] ? `${v} - ${AS_TYPE_DISPLAY_NAMES[v]}` : v },
-    { key: 'subtype', semanticKey: 'subtype', label: 'Subtype', game: GameSystem.CLASSIC, optionSource: 'indexed', availabilitySource: 'indexed', propertyShape: 'scalar' },
+    { key: 'type', semanticKey: 'type', label: 'Type', game: GameSystem.CBT, optionSource: 'indexed', availabilitySource: 'indexed', propertyShape: 'scalar' },
+    { key: 'as.TP', semanticKey: 'type', label: 'Type', game: GameSystem.AS, optionSource: 'indexed', availabilitySource: 'indexed', propertyShape: 'scalar', displayNameFn: (v: string) => AS_TYPE_DISPLAY_NAMES[v] ? `${v} - ${AS_TYPE_DISPLAY_NAMES[v]}` : v },
+    { key: 'subtype', semanticKey: 'subtype', label: 'Subtype', game: GameSystem.CBT, optionSource: 'indexed', availabilitySource: 'indexed', propertyShape: 'scalar' },
     { key: '_techBaseDisplay', semanticKey: 'tech', label: 'Tech', sortOptions: ['Inner Sphere', 'Clan', 'Mixed (Inner Sphere)', 'Mixed (Clan)'], optionSource: 'indexed', availabilitySource: 'indexed', propertyShape: 'scalar' },
     { key: 'role', semanticKey: 'role', label: 'Role', optionSource: 'indexed', availabilitySource: 'indexed', propertyShape: 'scalar' },
-    { key: 'weightClass', semanticKey: 'weight', label: 'Weight Class', game: GameSystem.CLASSIC, sortOptions: [...CBT_WEIGHT_CLASSES], optionSource: 'indexed', availabilitySource: 'indexed', propertyShape: 'scalar' },
-    { key: 'level', semanticKey: 'rules', label: 'Rules', game: GameSystem.CLASSIC, sortOptions: ['Introductory', 'Standard', 'Advanced', 'Experimental', 'Unofficial'], optionSource: 'indexed', availabilitySource: 'indexed', propertyShape: 'scalar' },
-    { key: 'c3', semanticKey: 'network', label: 'Network', game: GameSystem.CLASSIC, optionSource: 'indexed', availabilitySource: 'indexed', propertyShape: 'scalar' },
-    { key: 'moveType', semanticKey: 'motive', label: 'Motive', game: GameSystem.CLASSIC, optionSource: 'indexed', availabilitySource: 'indexed', propertyShape: 'scalar' },
-    { key: 'as._motive', semanticKey: 'motive', label: 'Motive', game: GameSystem.ALPHA_STRIKE, sortOptions: Object.values(AS_MOVEMENT_MODE_DISPLAY_NAMES), optionSource: 'indexed', availabilitySource: 'indexed', propertyShape: 'array', valueNormalizer: normalizeMotiveValue },
-    { key: 'as.specials', semanticKey: 'specials', label: 'Specials', multistate: true, game: GameSystem.ALPHA_STRIKE, optionSource: 'indexed', availabilitySource: 'indexed', propertyShape: 'array' },
-    { key: 'componentName', semanticKey: 'equipment', label: 'Equipment', multistate: true, countable: true, game: GameSystem.CLASSIC, optionSource: 'indexed', availabilitySource: 'context', propertyShape: 'component' },
-    { key: 'weaponType', semanticKey: 'weaponType', label: 'Weapon Type', multistate: true, countable: true, game: GameSystem.CLASSIC, sortOptions: [...WEAPON_TYPES], optionSource: 'indexed', availabilitySource: 'context', propertyShape: 'countable', valueNormalizer: normalizeWeaponType, displayNameFn: value => WEAPON_TYPE_DISPLAY_NAMES[value as keyof typeof WEAPON_TYPE_DISPLAY_NAMES] ?? value },
-    { key: 'features', semanticKey: 'features', label: 'Features', multistate: true, game: GameSystem.CLASSIC, optionSource: 'indexed', availabilitySource: 'indexed', propertyShape: 'array' },
-    { key: 'quirks', semanticKey: 'quirks', label: 'Quirks', multistate: true, game: GameSystem.CLASSIC, optionSource: 'indexed', availabilitySource: 'indexed', propertyShape: 'array' },
+    { key: 'weightClass', semanticKey: 'weight', label: 'Weight Class', game: GameSystem.CBT, sortOptions: [...CBT_WEIGHT_CLASSES], optionSource: 'indexed', availabilitySource: 'indexed', propertyShape: 'scalar' },
+    { key: 'level', semanticKey: 'rules', label: 'Rules', game: GameSystem.CBT, sortOptions: ['Introductory', 'Standard', 'Advanced', 'Experimental', 'Unofficial'], optionSource: 'indexed', availabilitySource: 'indexed', propertyShape: 'scalar' },
+    { key: 'c3', semanticKey: 'network', label: 'Network', game: GameSystem.CBT, optionSource: 'indexed', availabilitySource: 'indexed', propertyShape: 'scalar' },
+    { key: 'moveType', semanticKey: 'motive', label: 'Motive', game: GameSystem.CBT, optionSource: 'indexed', availabilitySource: 'indexed', propertyShape: 'scalar' },
+    { key: 'as._motive', semanticKey: 'motive', label: 'Motive', game: GameSystem.AS, sortOptions: Object.values(AS_MOVEMENT_MODE_DISPLAY_NAMES), optionSource: 'indexed', availabilitySource: 'indexed', propertyShape: 'array', valueNormalizer: normalizeMotiveValue },
+    { key: 'as.specials', semanticKey: 'specials', label: 'Specials', multistate: true, game: GameSystem.AS, optionSource: 'indexed', availabilitySource: 'indexed', propertyShape: 'array' },
+    { key: 'componentName', semanticKey: 'equipment', label: 'Equipment', multistate: true, countable: true, game: GameSystem.CBT, optionSource: 'indexed', availabilitySource: 'context', propertyShape: 'component' },
+    { key: 'weaponType', semanticKey: 'weaponType', label: 'Weapon Type', multistate: true, countable: true, game: GameSystem.CBT, sortOptions: [...WEAPON_TYPES], optionSource: 'indexed', availabilitySource: 'context', propertyShape: 'countable', valueNormalizer: normalizeWeaponType, displayNameFn: value => WEAPON_TYPE_DISPLAY_NAMES[value as keyof typeof WEAPON_TYPE_DISPLAY_NAMES] ?? value },
+    { key: 'features', semanticKey: 'features', label: 'Features', multistate: true, game: GameSystem.CBT, optionSource: 'indexed', availabilitySource: 'indexed', propertyShape: 'array' },
+    { key: 'quirks', semanticKey: 'quirks', label: 'Quirks', multistate: true, game: GameSystem.CBT, optionSource: 'indexed', availabilitySource: 'indexed', propertyShape: 'array' },
     { key: 'source', semanticKey: 'source', label: 'Source', multistate: true, optionSource: 'indexed', availabilitySource: 'indexed', propertyShape: 'array' },
-    { key: 'rulesRefs', semanticKey: 'rulesRefs', label: 'Rulebooks', game: GameSystem.CLASSIC, sortOptions: [...BASE_RULES_REFS, '*'], optionSource: 'indexed', availabilitySource: 'indexed', propertyShape: 'array' },
+    { key: 'rulesRefs', semanticKey: 'rulesRefs', label: 'Rulebooks', game: GameSystem.CBT, sortOptions: [...BASE_RULES_REFS, '*'], optionSource: 'indexed', availabilitySource: 'indexed', propertyShape: 'array' },
     { key: 'forcePack', semanticKey: 'pack', label: 'Force Packs', external: true, optionSource: 'external', availabilitySource: 'context', propertyShape: 'scalar' },
     { key: '_tags', semanticKey: 'tags', label: 'Tags', multistate: true, optionSource: 'indexed', availabilitySource: 'indexed', propertyShape: 'array' },
 ]);
 
 /** Boolean tri-state filters - shown before dropdown filters */
 export const BOOLEAN_FILTERS: readonly BooleanFilterConfig[] = Object.freeze([
+    { key: 'isCustom', semanticKey: 'custom', label: 'Custom', booleanSource: 'boolean' },
     {
         key: 'canon',
         semanticKey: 'canon',
@@ -465,60 +467,54 @@ export const BOOLEAN_FILTERS: readonly BooleanFilterConfig[] = Object.freeze([
     {
         key: 'published',
         semanticKey: 'published',
-        label: 'Published Record Sheet',
+        label: 'Published Sheets',
         booleanSource: 'nonEmptyArray',
-    },
-    {
-        key: 'serverHost',
-        semanticKey: 'custom',
-        label: 'Custom Unit',
-        booleanSource: 'truthy',
     },
 ]);
 
 /** Range filters - separated for clean iteration */
 export const RANGE_FILTERS: readonly RangeFilterConfig[] = Object.freeze([
-    { key: 'bv', semanticKey: 'bv', label: 'BV', curve: 0, game: GameSystem.CLASSIC },
-    { key: 'as.PV', semanticKey: 'pv', label: 'PV', curve: 0, game: GameSystem.ALPHA_STRIKE },
-    { key: 'tons', semanticKey: 'tons', label: 'Tons', curve: 0, stepSize: 5, game: GameSystem.CLASSIC },
-    { key: 'armor', semanticKey: 'armor', label: 'Armor', curve: 0, game: GameSystem.CLASSIC },
-    { key: 'armorPer', semanticKey: 'armorpct', label: 'Armor %', curve: 0, game: GameSystem.CLASSIC },
-    { key: 'internal', semanticKey: 'structure', label: 'Structure', curve: 0, game: GameSystem.CLASSIC },
-    { key: '_mdSumNoPhysical', semanticKey: 'firepower', label: 'Firepower', curve: 0, game: GameSystem.CLASSIC },
-    { key: 'dpt', semanticKey: 'dpt', label: 'Damage/Turn', curve: 0, game: GameSystem.CLASSIC },
-    { key: 'heat', semanticKey: 'heat', label: 'Heat', curve: 0, includeMissing: true, game: GameSystem.CLASSIC },
-    { key: 'dissipation', semanticKey: 'dissipation', label: 'Dissipation', curve: 0, includeMissing: true, game: GameSystem.CLASSIC },
-    { key: '_dissipationEfficiency', semanticKey: 'efficiency', label: 'Heat Efficiency', curve: 1, includeMissing: true, game: GameSystem.CLASSIC },
-    { key: '_maxRange', semanticKey: 'range', label: 'Range', curve: 0, game: GameSystem.CLASSIC },
-    { key: 'walk', semanticKey: 'walk', label: 'Walk MP', curve: 0.9, game: GameSystem.CLASSIC },
-    { key: 'run', semanticKey: 'run', label: 'Run MP', curve: 0.9, game: GameSystem.CLASSIC },
-    { key: 'run2', semanticKey: 'runMax', label: 'Run MP (max w/mod)', curve: 0.9, game: GameSystem.CLASSIC },
-    { key: 'jump', semanticKey: 'jump', label: 'Jump MP', curve: 0.9, game: GameSystem.CLASSIC },
-    { key: 'umu', semanticKey: 'umu', label: 'UMU MP', curve: 0.9, game: GameSystem.CLASSIC },
+    { key: 'bv', semanticKey: 'bv', label: 'BV', curve: 0, game: GameSystem.CBT },
+    { key: 'as.PV', semanticKey: 'pv', label: 'PV', curve: 0, game: GameSystem.AS },
+    { key: 'tons', semanticKey: 'tons', label: 'Tons', curve: 0, stepSize: 5, game: GameSystem.CBT },
+    { key: 'armor', semanticKey: 'armor', label: 'Armor', curve: 0, game: GameSystem.CBT },
+    { key: 'armorPer', semanticKey: 'armorpct', label: 'Armor %', curve: 0, game: GameSystem.CBT },
+    { key: 'internal', semanticKey: 'structure', label: 'Structure', curve: 0, game: GameSystem.CBT },
+    { key: '_mdSumNoPhysical', semanticKey: 'firepower', label: 'Firepower', curve: 0, game: GameSystem.CBT },
+    { key: 'dpt', semanticKey: 'dpt', label: 'Damage/Turn', curve: 0, game: GameSystem.CBT },
+    { key: 'heat', semanticKey: 'heat', label: 'Heat', curve: 0, includeMissing: true, game: GameSystem.CBT },
+    { key: 'dissipation', semanticKey: 'dissipation', label: 'Dissipation', curve: 0, includeMissing: true, game: GameSystem.CBT },
+    { key: '_dissipationEfficiency', semanticKey: 'efficiency', label: 'Heat Efficiency', curve: 1, includeMissing: true, game: GameSystem.CBT },
+    { key: '_maxRange', semanticKey: 'range', label: 'Range', curve: 0, game: GameSystem.CBT },
+    { key: 'walk', semanticKey: 'walk', label: 'Walk MP', curve: 0.9, game: GameSystem.CBT },
+    { key: 'run', semanticKey: 'run', label: 'Run MP', curve: 0.9, game: GameSystem.CBT },
+    { key: 'run2', semanticKey: 'runMax', label: 'Run MP (max w/mod)', curve: 0.9, game: GameSystem.CBT },
+    { key: 'jump', semanticKey: 'jump', label: 'Jump MP', curve: 0.9, game: GameSystem.CBT },
+    { key: 'umu', semanticKey: 'umu', label: 'UMU MP', curve: 0.9, game: GameSystem.CBT },
     { key: 'year', semanticKey: 'year', label: 'Intro Year', curve: 1 },
-    { key: 'cost', semanticKey: 'cost', label: 'Cost', curve: 0, game: GameSystem.CLASSIC },
-    { key: 'as.SZ', semanticKey: 'sz', label: 'Size', curve: 1, game: GameSystem.ALPHA_STRIKE },
-    { key: 'as.TMM', semanticKey: 'tmm', label: 'TMM', curve: 1, game: GameSystem.ALPHA_STRIKE },
-    { key: 'as._mv', semanticKey: 'mv', label: 'Movement', curve: 1, game: GameSystem.ALPHA_STRIKE },
-    { key: 'as.OV', semanticKey: 'ov', label: 'Overheat Value', curve: 1, game: GameSystem.ALPHA_STRIKE },
-    { key: 'as.Th', semanticKey: 'th', label: 'Threshold', curve: 1, ignoreValues: [-1], game: GameSystem.ALPHA_STRIKE },
-    { key: 'as.dmg._dmgS', semanticKey: 'dmgs', label: 'Damage (Short)', curve: 1, stepSize: 1, specialValues: [AS_DAMAGE_ZERO_STAR_VALUE], formatValue: formatASDamageValue, game: GameSystem.ALPHA_STRIKE },
-    { key: 'as.dmg._dmgM', semanticKey: 'dmgm', label: 'Damage (Medium)', curve: 1, stepSize: 1, specialValues: [AS_DAMAGE_ZERO_STAR_VALUE], formatValue: formatASDamageValue, game: GameSystem.ALPHA_STRIKE },
-    { key: 'as.dmg._dmgL', semanticKey: 'dmgl', label: 'Damage (Long)', curve: 1, stepSize: 1, specialValues: [AS_DAMAGE_ZERO_STAR_VALUE], formatValue: formatASDamageValue, game: GameSystem.ALPHA_STRIKE },
-    { key: 'as.dmg._dmgE', semanticKey: 'dmge', label: 'Damage (Extreme)', curve: 1, stepSize: 1, specialValues: [AS_DAMAGE_ZERO_STAR_VALUE], formatValue: formatASDamageValue, game: GameSystem.ALPHA_STRIKE },
-    { key: 'as.Arm', semanticKey: 'a', label: 'Armor', curve: 0, ignoreValues: [-1], game: GameSystem.ALPHA_STRIKE },
-    { key: 'as.Str', semanticKey: 's', label: 'Structure', curve: 0, ignoreValues: [-1], game: GameSystem.ALPHA_STRIKE },
+    { key: 'cost', semanticKey: 'cost', label: 'Cost', curve: 0, game: GameSystem.CBT },
+    { key: 'as.SZ', semanticKey: 'sz', label: 'Size', curve: 1, game: GameSystem.AS },
+    { key: 'as.TMM', semanticKey: 'tmm', label: 'TMM', curve: 1, game: GameSystem.AS },
+    { key: 'as._mv', semanticKey: 'mv', label: 'Movement', curve: 1, game: GameSystem.AS },
+    { key: 'as.OV', semanticKey: 'ov', label: 'Overheat Value', curve: 1, game: GameSystem.AS },
+    { key: 'as.Th', semanticKey: 'th', label: 'Threshold', curve: 1, ignoreValues: [-1], game: GameSystem.AS },
+    { key: 'as.dmg._dmgS', semanticKey: 'dmgs', label: 'Damage (Short)', curve: 1, stepSize: 1, specialValues: [AS_DAMAGE_ZERO_STAR_VALUE], formatValue: formatASDamageValue, game: GameSystem.AS },
+    { key: 'as.dmg._dmgM', semanticKey: 'dmgm', label: 'Damage (Medium)', curve: 1, stepSize: 1, specialValues: [AS_DAMAGE_ZERO_STAR_VALUE], formatValue: formatASDamageValue, game: GameSystem.AS },
+    { key: 'as.dmg._dmgL', semanticKey: 'dmgl', label: 'Damage (Long)', curve: 1, stepSize: 1, specialValues: [AS_DAMAGE_ZERO_STAR_VALUE], formatValue: formatASDamageValue, game: GameSystem.AS },
+    { key: 'as.dmg._dmgE', semanticKey: 'dmge', label: 'Damage (Extreme)', curve: 1, stepSize: 1, specialValues: [AS_DAMAGE_ZERO_STAR_VALUE], formatValue: formatASDamageValue, game: GameSystem.AS },
+    { key: 'as.Arm', semanticKey: 'a', label: 'Armor', curve: 0, ignoreValues: [-1], game: GameSystem.AS },
+    { key: 'as.Str', semanticKey: 's', label: 'Structure', curve: 0, ignoreValues: [-1], game: GameSystem.AS },
 ]);
 
 /** Semantic-only filters (not shown in UI, only for query parsing) */
 export const SEMANTIC_FILTERS: readonly SemanticFilterConfig[] = Object.freeze([
     { key: FORMATION_TARGET_FILTER_KEY, semanticKey: 'formation', label: 'Formation Target', external: true },
-    { key: 'name', semanticKey: 'name', label: 'Internal Name' },
     { key: 'chassis', semanticKey: 'chassis', label: 'Chassis' },
     { key: 'model', semanticKey: 'model', label: 'Model' },
+    { key: 'loadIssues.length', semanticKey: 'issues', label: 'Issue Count', numeric: true },
 ]);
 
-/** Combined ADVANCED_FILTERS for backwards compatibility and semantic parsing */
+/** One combined registry used by semantic parsing, filtering, and sort options. */
 export const ADVANCED_FILTERS: AdvFilterConfig[] = [
     ...BOOLEAN_FILTERS.map(f => ({ ...f, type: AdvFilterType.BOOLEAN as const })),
     ...DROPDOWN_FILTERS.map(f => ({ ...f, type: AdvFilterType.DROPDOWN as const })),
@@ -528,11 +524,6 @@ export const ADVANCED_FILTERS: AdvFilterConfig[] = [
 
 export const MEGAMEK_RARITY_PRODUCTION_SORT_KEY = 'mmRarityRequisition';
 export const MEGAMEK_RARITY_SALVAGE_SORT_KEY = 'mmRaritySalvage';
-export const MEGAMEK_RARITY_SORT_KEYS = [
-    MEGAMEK_RARITY_PRODUCTION_SORT_KEY,
-    MEGAMEK_RARITY_SALVAGE_SORT_KEY,
-] as const;
-
 export function isMegaMekRaritySortKey(key: string | null | undefined): key is MegaMekRaritySortKey {
     return key === MEGAMEK_RARITY_PRODUCTION_SORT_KEY || key === MEGAMEK_RARITY_SALVAGE_SORT_KEY;
 }
@@ -547,6 +538,7 @@ export const SORT_OPTIONS: SortOption[] = [
     { key: '', label: 'Relevance' },
     { key: 'name', label: 'Name' },
     ...ADVANCED_FILTERS
+        .filter(f => !f.numeric)
         .filter(f => f.type !== AdvFilterType.BOOLEAN)
         .filter(f => !['era', 'faction', 'availabilityRarity', 'availabilityFrom', 'forcePack', 'componentName', 'weaponType', 'source', 'rulesRefs', '_tags', 'as.specials', 'name', 'chassis', 'model', 'as._motive', 'quirks', 'features'].includes(f.key))
         .map(f => ({

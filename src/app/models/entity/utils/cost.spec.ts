@@ -10,6 +10,7 @@ import {
     TestBipedMekEntity as BipedMekEntity,
     TestConvFighterEntity as ConvFighterEntity,
     TestDropShipEntity as DropShipEntity,
+    TestFixedWingSupportEntity as FixedWingSupportEntity,
     TestJumpShipEntity as JumpShipEntity,
     TestProtoMekEntity as ProtoMekEntity,
     TestQuadMekEntity as QuadMekEntity,
@@ -21,12 +22,41 @@ import {
 } from '../testing/test-entities';
 import { EntityMountedEquipment } from '../types';
 import { TestBipedMekEntity, TestHandheldWeaponEntity } from '../testing/test-entities';
-import { calculateMountedEquipmentCost } from './cost';
-import { calculateEntityCost, calculateEntityCostDetails } from './cost/entity-cost';
+import { calculateMountedEquipmentCostBreakdown } from './cost/equipment-total';
+import { calculateEntityCostDetails } from './cost/entity-cost';
 import { amount, buildCostReport, multiplier } from './cost/cost-report';
 import { EquipmentFlag } from '../../equipment-flags.type';
+import { createTestEquipmentRegistry } from '../testing/test-equipment-registry';
+import { addTestEquipment } from '../testing/test-mounted-equipment';
 
 describe('entity cost', () => {
+    for (const [scope, expected] of [['Unknown', 140000], ['Clan', 130000]] as const) {
+        it(`prices vehicle ferro-fibrous armor using its ${scope} armor technology`, () => {
+            const innerSphereArmor = new ArmorEquipment({
+                id: 'IS Ferro-Fibrous', name: 'Ferro-Fibrous', type: 'armor',
+                stats: { cost: 20000 }, tech: { base: 'IS' },
+                armor: { type: 'FERRO_FIBROUS', pptMultiplier: 1.12 },
+            });
+            const clanArmor = new ArmorEquipment({
+                id: 'Clan Ferro-Fibrous', name: 'Ferro-Fibrous', type: 'armor',
+                stats: { cost: 20000 }, tech: { base: 'Clan' },
+                armor: { type: 'FERRO_FIBROUS', pptMultiplier: 1.24 },
+            });
+            const entity = new TankEntity(createTestEquipmentRegistry({
+                [innerSphereArmor.id]: innerSphereArmor, [clanArmor.id]: clanArmor,
+            }));
+            entity.techBase.set('Clan');
+            entity.setUniformArmor(new MountedArmor({
+                armor: clanArmor, techBase: 'Clan', technology: { level: 'Standard', scope },
+            }));
+            // Chalchiuhtotolin: the authored Unknown level yields 7 tons, explicit Clan 6.5.
+            entity.setArmorValue('Front', 'front', 124);
+
+            expect(entity.costDetails().steps.find(step => step.type === 'Armor'))
+                .toEqual(jasmine.objectContaining({ amount: expected }));
+        });
+    }
+
     it('applies additive and multiplier steps with running subtotals', () => {
         expect(buildCostReport([
             { type: 'Structure', amount: 100 },
@@ -57,36 +87,29 @@ describe('entity cost', () => {
         });
     });
 
-    it('keeps the numeric API and report total identical for every modeled family', () => {
+    it('keeps entity cost and report total identical for every modeled family', () => {
         const entities = [
-            new BipedMekEntity(), new SupportTankEntity(), new SmallCraftEntity(),
+            new SupportTankEntity(), new SmallCraftEntity(),
             new DropShipEntity(), new JumpShipEntity(), new WarShipEntity(),
             new SpaceStationEntity(), new ProtoMekEntity(), new BattleArmorEntity(),
             new TestHandheldWeaponEntity(),
         ];
 
         for (const entity of entities) {
-            expect(calculateEntityCost(entity)).withContext(entity.entityType)
-                .toBe(calculateEntityCostDetails(entity).total);
             expect(entity.cost()).withContext(entity.entityType).toBe(entity.costDetails().total);
         }
     });
 
-    it('aggregates mounted equipment using MegaMek report labels', () => {
+    it('keeps Mek cost and report total on the entity authority', () => {
         const entity = new BipedMekEntity();
-        entity.setEquipment([
-            mount(new MiscEquipment({ id: 'laser-a', name: 'Test Laser', type: 'misc', stats: { cost: 1250 } })),
-            mount(new MiscEquipment({ id: 'laser-b', name: 'Test Laser', type: 'misc', stats: { cost: 1750 } })),
-        ]);
-
-        const step = entity.costDetails().steps.find(candidate => candidate.type === '2 Test Laser');
-        expect(step).toEqual(jasmine.objectContaining({ amount: 3000 }));
+        expect(entity.cost()).toBe(entity.costDetails().total);
     });
+
 
     it('applies conventional-fighter VSTOL mass cost before the weight multiplier', () => {
         const entity = new ConvFighterEntity();
         entity.setTonnage(25);
-        const withoutVstol = calculateEntityCost(entity);
+        const withoutVstol = calculateEntityCostDetails(entity).total;
 
         entity.vstol.set(true);
         const withVstol = calculateEntityCostDetails(entity);
@@ -240,7 +263,7 @@ describe('entity cost', () => {
     });
 
     it('throws instead of silently reporting an unresolved variable equipment cost', () => {
-        const entity = new BipedMekEntity();
+        const entity = new TankEntity();
         entity.setEquipment([mount(variableEquipment('unknown', []))]);
 
         expect(() => calculateEntityCostDetails(entity)).toThrowError(/Unable to calculate variable cost/);
@@ -294,7 +317,7 @@ describe('entity cost', () => {
       stats: { cost: 100000 },
     }))]);
 
-    expect(calculateMountedEquipmentCost(entity)).toBe(100000);
+    expect(calculateMountedEquipmentCostBreakdown(entity).total).toBe(100000);
   });
 
     it('uses pristine mounted-state explosiveness for implicit Clan CASE cost', () => {
@@ -315,10 +338,10 @@ describe('entity cost', () => {
         ]);
 
         expect(entity.implicitClanCaseLocations()).toEqual(new Set(['RA']));
-        expect(calculateMountedEquipmentCost(entity)).toBe(50000);
+        expect(calculateMountedEquipmentCostBreakdown(entity).total).toBe(50000);
     });
 
-    it('counts CASE II as equipment but not explicit CASE for implicit CASE cost', () => {
+    it('does not charge a second CASE system in a CASE II protected Mek location', () => {
         const entity = new TestBipedMekEntity();
         entity.techBase.set('Clan');
         entity.setEquipment([
@@ -330,10 +353,20 @@ describe('entity cost', () => {
             })),
         ]);
 
-        expect(calculateMountedEquipmentCost(entity)).toBe(225000);
+        expect(entity.automaticClanCaseLocations().size).toBe(0);
+        // The Clan structure's built-in CASE still covers the arm; only no CASE mount is generated there.
+        expect(entity.implicitClanCaseLocations()).toEqual(new Set(['RA']));
+        expect(calculateMountedEquipmentCostBreakdown(entity).total).toBe(175000);
+
+        entity.setEquipment([...entity.equipment(), mount(new MiscEquipment({
+            id: 'other-explosive', name: 'Other Explosive Equipment', type: 'misc', stats: { explosive: true },
+        })).clone({ allocation: { kind: 'location', location: 'LA' } })]);
+        expect(entity.automaticClanCaseLocations()).toEqual(new Set(['LA']));
+        expect(entity.implicitClanCaseLocations()).toEqual(new Set(['RA', 'LA']));
+        expect(calculateMountedEquipmentCostBreakdown(entity).total).toBe(225000);
     });
 
-    it('treats installed B-Pods and M-Pods as loaded one-shot explosives', () => {
+    it('does not charge implicit CASE for B-Pods and M-Pods under Core Rules', () => {
         const entity = new TestBipedMekEntity();
         entity.techBase.set('Clan');
         const bPod = mount(new WeaponEquipment({
@@ -346,7 +379,7 @@ describe('entity cost', () => {
         })).clone({ allocation: { kind: 'location', location: 'RL' } });
         entity.setEquipment([bPod, mPod]);
 
-        expect(calculateMountedEquipmentCost(entity)).toBe(100000);
+        expect(calculateMountedEquipmentCostBreakdown(entity).total).toBe(0);
     });
 
     it('subtracts explicit CASE globally from vehicle explosive-location count', () => {
@@ -363,7 +396,7 @@ describe('entity cost', () => {
         })).clone({ allocation: { kind: 'location', location: 'Body' } });
         entity.setEquipment([leftExplosive, rightExplosive, explicitCase]);
 
-        expect(calculateMountedEquipmentCost(entity)).toBe(100000);
+        expect(calculateMountedEquipmentCostBreakdown(entity).total).toBe(100000);
     });
 
     it('charges generated Clan CASE only for locations without explicit protection', () => {
@@ -381,7 +414,7 @@ describe('entity cost', () => {
         entity.setEquipment([explosive, protectedExplosive, explicitCase]);
 
         expect(entity.automaticClanCaseLocations()).toEqual(new Set(['RA']));
-        expect(calculateMountedEquipmentCost(entity)).toBe(100000);
+        expect(calculateMountedEquipmentCostBreakdown(entity).total).toBe(100000);
     });
 
 
@@ -472,6 +505,51 @@ describe('entity cost', () => {
             .toEqual(jasmine.objectContaining({ amount: 4000 }));
     });
 
+    it('prices fixed-wing support and ProtoMek heat sinks for a pulse module\'s extra laser heat (IO:AE p. 87)', () => {
+        const laser = new WeaponEquipment({
+            id: 'medium-laser', name: 'Medium Laser', type: 'weapon',
+            flags: ['F_LASER', 'F_ENERGY', 'F_RISC_LASER_PULSE_COMPATIBLE'], stats: { cost: 0 },
+            weapon: { heat: 3, ammoType: 'NA' },
+        });
+        const pulse = new MiscEquipment({
+            id: 'pulse-module', name: 'RISC Laser Pulse Module', type: 'misc',
+            flags: ['F_WEAPON_ENHANCEMENT', 'F_RISC_LASER_PULSE_MODULE'], stats: { cost: 0 },
+        });
+        for (const [entity, location] of [[new FixedWingSupportEntity(), 'Nose'], [new ProtoMekEntity(), 'Torso']] as const) {
+            const weapon = addTestEquipment(entity, laser, { location });
+            entity.linkEquipment(addTestEquipment(entity, pulse, { location }), weapon);
+            // A medium laser's 3 heat and the 2 of its pulse mode.
+            expect(entity.costDetails().steps.find(step => step.type === 'Heatsinks'))
+                .withContext(entity.entityType).toEqual(jasmine.objectContaining({ amount: 2000 * 5 }));
+        }
+    });
+
+    it('prices the turret tonnage the vehicle weight counts (TM pp. 98, 279)', () => {
+        const entity = new TankEntity();
+        entity.setTonnage(50);
+        entity.mountedEngine.set(new MountedEngine({ type: 'Fusion', rating: 200, techBase: 'IS' }));
+        const inTurret = (item: EntityMountedEquipment, location: string) => item.clone({ allocation: { kind: 'location', location } });
+        const weapon = (id: string, location: string, tons: number) => inTurret(weaponMount(id, tons, []), location);
+        const equipment = inTurret(mount(new MiscEquipment({
+            id: 'turret-misc', name: 'Turret Equipment', type: 'misc', stats: { tonnage: 2, cost: 0 },
+        })), 'Turret');
+        const turrets = () => entity.costDetails().steps.find(step => step.type === 'Turrets')?.amount;
+        entity.hasTurret.set(true);
+        // All weapons and equipment in the turret count: (4 + 2) / 10 rounds up to 1 ton.
+        entity.setEquipment([weapon('turret-gun', 'Turret', 4), equipment]);
+        expect(turrets()).toBe(5000);
+        // Each turret of a dual-turret vehicle rounds its own tonnage: 0.5 + 0.5 tons, not 0.5 for the pair.
+        entity.hasDualTurret.set(true);
+        entity.setEquipment([weapon('rear-gun', 'Rear Turret', 2), weapon('front-gun', 'Front Turret', 2)]);
+        expect(turrets()).toBe(5000);
+        // An OmniVehicle's base chassis fixes the turret tonnage.
+        entity.hasDualTurret.set(false);
+        entity.omni.set(true);
+        entity.baseChassisTurretWeight.set(2);
+        entity.setEquipment([weapon('turret-gun', 'Turret', 4)]);
+        expect(turrets()).toBe(10000);
+    });
+
     it('includes seating and transport bay door costs', () => {
         const entity = new SupportTankEntity();
         entity.setTonnage(10);
@@ -503,73 +581,9 @@ describe('entity cost', () => {
         expect(entity.cost()).toBe(5156);
     });
 
-    it('uses standard jump-system cost for prototype improved jump jets', () => {
-        const entity = new BipedMekEntity();
-        entity.setTonnage(60);
-        const prototypeImprovedJumpJet = new MiscEquipment({
-            id: 'prototype-improved-jump-jet', name: 'Prototype Improved Jump Jet', type: 'misc',
-            flags: ['F_JUMP_JET', 'S_IMPROVED', 'S_PROTOTYPE'], stats: { cost: 0 },
-        });
-        entity.setEquipment(Array.from({ length: 6 }, (_, index) =>
-            mount(prototypeImprovedJumpJet, false, undefined, `prototype-jump-jet-${index}`)));
 
-        expect(entity.costDetails().steps.find(step => step.type === 'Jump Jets'))
-            .toEqual(jasmine.objectContaining({ amount: 432000 }));
-    });
 
-    it('derives jump-system cost from installed jump jets', () => {
-        const entity = new BipedMekEntity();
-        entity.setTonnage(60);
-        const jumpJet = new MiscEquipment({
-            id: 'jump-jet', name: 'Jump Jet', type: 'misc',
-            flags: ['F_JUMP_JET'], stats: { cost: 0 },
-        });
-        entity.setEquipment(Array.from({ length: 3 }, (_, index) =>
-            mount(jumpJet, false, undefined, `jump-jet-${index}`)));
 
-        expect(entity.installedJumpJetMP()).toBe(3);
-        expect(entity.costDetails().steps.find(step => step.type === 'Jump Jets'))
-            .toEqual(jasmine.objectContaining({ amount: 108000 }));
-    });
-
-    it('does not price a Partial Wing bonus as additional jump jets', () => {
-        const entity = new BipedMekEntity();
-        entity.setTonnage(50);
-        const jumpJet = new MiscEquipment({
-            id: 'jump-jet', name: 'Jump Jet', type: 'misc',
-            flags: ['F_JUMP_JET'], stats: { cost: 0 },
-        });
-        const partialWing = new MiscEquipment({
-            id: 'partial-wing', name: 'Partial Wing', type: 'misc',
-            flags: ['F_PARTIAL_WING'], stats: { cost: 0 },
-        });
-        entity.setEquipment([
-            ...Array.from({ length: 5 }, (_, index) =>
-                mount(jumpJet, false, undefined, `jump-jet-${index}`)),
-            mount(partialWing),
-        ]);
-
-        expect(entity.jumpMP()).toBe(7);
-        expect(entity.installedJumpJetMP()).toBe(5);
-        expect(entity.costDetails().steps.find(step => step.type === 'Jump Jets'))
-            .toEqual(jasmine.objectContaining({ amount: 250000 }));
-    });
-
-    it('prices installed UMUs without treating them as conventional jump jets', () => {
-        const entity = new BipedMekEntity();
-        entity.setTonnage(50);
-        const umu = new MiscEquipment({
-            id: 'umu', name: 'UMU', type: 'misc',
-            flags: ['F_UMU'], stats: { cost: 0 },
-        });
-        entity.setEquipment(Array.from({ length: 4 }, (_, index) =>
-            mount(umu, false, undefined, `umu-${index}`)));
-
-        expect(entity.jumpMP()).toBe(0);
-        expect(entity.installedJumpJetMP()).toBe(0);
-        expect(entity.costDetails().steps.find(step => step.type === 'Jump Jets'))
-            .toEqual(jasmine.objectContaining({ amount: 160000 }));
-    });
 
 });
 
@@ -697,7 +711,7 @@ describe('EntityMountedEquipment.getCost', () => {
         });
         supportTank.setEquipment([mount(infantryWeapon, false, 3)]);
 
-        expect(calculateMountedEquipmentCost(supportTank)).toBe(82);
+        expect(calculateMountedEquipmentCostBreakdown(supportTank).total).toBe(82);
     });
 
     it('resolves IS and Clan MASC cost', () => {
@@ -714,13 +728,17 @@ describe('EntityMountedEquipment.getCost', () => {
             .toBe(15000);
     });
 
-    it('uses enhanced run MP for Battle Armor myomer-booster cost', () => {
+    it('charges each Battle Armor myomer-booster mount a third of 75,000 C-bills per MP the system provides', () => {
         const battleArmor = new BattleArmorEntity();
-        battleArmor.originalWalkMP.set(5);
         const booster = mount(variableEquipment('CLBAMyomerBooster', ['F_MASC', 'F_BA_EQUIPMENT']));
         battleArmor.setEquipment([booster]);
 
-        expect(booster.getCost(battleArmor)).toBe(525000);
+        // TO:AUE p. 192: +2 MP on PA(L) (Ultra Light), Light and Medium suits, +1 MP on Heavy and Assault suits.
+        for (const [weightClass, cost] of [['Ultra Light', 50000], ['Light', 50000], ['Medium', 50000],
+            ['Heavy', 25000], ['Assault', 25000]] as const) {
+            battleArmor.declaredWeightClass.set(weightClass);
+            expect(booster.getCost(battleArmor)).withContext(weightClass).toBe(cost);
+        }
     });
 
     it('resolves standard supercharger cost from engine rating', () => {

@@ -2,20 +2,15 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 // Author: Drake
 
-import { EquipmentFlag } from '../../../equipment-flags.type';
-import { AmmoEquipment, ArmorEquipment, isBombEquipment, MiscEquipment, StructureEquipment, WeaponEquipment } from '../../../equipment.model';
+import { AmmoEquipment, ArmorEquipment, MiscEquipment, StructureEquipment, WeaponEquipment } from '../../../equipment.model';
+import { isBombEquipment } from '../../../aerospace-support-equipment.model';
 import { getBayConstructionWeight, isQuartersBay } from '../../bays/bay-definitions';
 import type { AeroEntity } from '../../entities/aero/aero-entity';
 import type { ConvFighterEntity } from '../../entities/aero/conv-fighter-entity';
 import { calculateHeatNeutralRequirement, calculatePowerAmplifierWeight } from '../cost/common';
 import { getEquipmentEngineWeight } from '../equipment-engine-weight';
 import { ceilToHalfTon } from './weight-rounding';
-
-const SYSTEM_MISC_FLAGS: EquipmentFlag[] = [
-  'F_LIGHT_FERRO', 'F_HEAVY_FERRO',
-  'F_REACTIVE', 'F_REFLECTIVE', 'F_HARDENED_ARMOR', 'F_HEAT_SINK',
-  'F_DOUBLE_HEAT_SINK', 'F_IS_DOUBLE_HEAT_SINK_PROTOTYPE',
-] as const;
+import { isConstructionSystemEquipment } from '../../../construction-equipment.model';
 
 export interface FighterWeightBreakdown {
   readonly engine: number;
@@ -66,7 +61,8 @@ export function calculateFighterWeightBreakdown(entity: AeroEntity): FighterWeig
       if (mount.location !== 'None' && !isBombEquipment(equipment)) ammo += requireTonnage(entity, mount);
     } else if (equipment instanceof WeaponEquipment) {
       if (!isBombEquipment(equipment)) weapons += requireTonnage(entity, mount);
-    } else if (equipment instanceof MiscEquipment && !equipment.hasAnyFlag([...SYSTEM_MISC_FLAGS])) {
+    } else if (equipment instanceof MiscEquipment
+      && !isConstructionSystemEquipment(equipment, 'fighter')) {
       miscellaneous += requireTonnage(entity, mount);
     }
   }

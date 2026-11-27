@@ -2,23 +2,22 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 // Author: Drake
 
+import { crewSkillsForUnit } from '../../models/unit-crew-policy';
+import { UnitNameService } from '../../services/unit-name.service';
 import { Component, inject, ElementRef, signal, ChangeDetectionStrategy, output, viewChild, effect, computed, type Signal, isSignal, DestroyRef } from '@angular/core';
-import { CommonModule } from '@angular/common';
 import { BaseDialogComponent } from '../base-dialog/base-dialog.component';
 import type { UnitSummary } from '../../models/unit-summary.model';
 import { DialogRef, DIALOG_DATA } from '@angular/cdk/dialog';
 import { firstValueFrom } from 'rxjs';
 import { ToastService } from '../../services/toast.service';
-import { ForceUnit } from '../../models/force-unit.model';
-import { ForceBuilderService } from '../../services/force-builder.service';
+import { ForceWorkspaceStateService } from '../../services/force-workspace-state.service';
+import { ForceWorkspaceCommandsService } from '../../services/force-workspace-commands.service';
 import { shareUrlWithClipboardFallback } from '../../utils/clipboard.util';
 import { FloatingOverlayService } from '../../services/floating-overlay.service';
 import { SwipeDirective, type SwipeEndEvent, type SwipeMoveEvent, type SwipeStartEvent } from '../../directives/swipe.directive';
 import { LongPressDirective } from '../../directives/long-press.directive';
-import { UnitIconComponent } from '../unit-icon/unit-icon.component';
-import { CBTForceUnit } from '../../models/cbt-force-unit.model';
 import { ASForceUnit } from '../../models/as-force-unit.model';
-import { GameSystem, getUnitServerHost } from '../../models/common.model';
+import { GameSystem } from '../../models/common.model';
 import { UnitDetailsGeneralTabComponent } from './tabs/unit-details-general-tab.component';
 import { UnitDetailsIntelTabComponent } from './tabs/unit-details-intel-tab.component';
 import { UnitDetailsFactionTabComponent } from './tabs/unit-details-factions-tab.component';
@@ -26,7 +25,7 @@ import { UnitDetailsSheetTabComponent } from './tabs/unit-details-sheet-tab.comp
 import { UnitDetailsVariantsTabComponent, type VariantsTabState, DEFAULT_VARIANTS_TAB_STATE } from './tabs/unit-details-variants-tab.component';
 import { GameService } from '../../services/game.service';
 import { UnitDetailsCardTabComponent } from './tabs/unit-details-card-tab.component';
-import { UnitTagsComponent, type TagClickEvent } from '../unit-tags/unit-tags.component';
+import type { TagClickEvent } from '../unit-tags/unit-tags.component';
 import { TaggingService } from '../../services/tagging.service';
 import { UrlService } from '../../services/url.service';
 import { DialogsService } from '../../services/dialogs.service';
@@ -35,11 +34,26 @@ import { buildUnitShareLinks } from '../../utils/force-url.util';
 import { ConfirmDialogComponent, type ConfirmDialogData } from '../confirm-dialog/confirm-dialog.component';
 import { KeyboardShortcutService } from '../../services/keyboard-shortcut.service';
 import { UnitDetailsFooterComponent } from '../unit-details-footer/unit-details-footer.component';
+import { CustomUnitActionsComponent } from '../custom-unit-actions/custom-unit-actions.component';
+import { UnitConstructionButtonComponent } from '../../construction/unit-construction-button.component';
 import { getNormalizationGunnery, getNormalizationPiloting, type UnitSearchNormalizationMatch } from '../../models/unit-search-result.model';
+import { UnitFluffImageService } from '../../services/catalogs/unit-fluff-image.service';
+import { UnitDetailsSummaryService } from '../../services/unit-details-summary.service';
+import { DataService } from '../../services/data.service';
+import {
+    CBTForceMember,
+    resolveForceMemberCatalogSummary,
+    type ForceMember,
+} from '../../models/force-member.model';
+import { DEFAULT_GUNNERY_SKILL, DEFAULT_PILOTING_SKILL } from '../../models/crew-member.model';
+import { effectiveEntityPilotingSkill } from '../../models/entity/utils/battle-value/skill-facts';
+import { OptionsService } from '../../services/options.service';
+import { forceMemberConditionDisplays } from '../../utils/force-member-conditions.util';
+import { UnitIdentityBarComponent, unitValueDisplay } from '../unit-identity-bar/unit-identity-bar.component';
 
 
 export interface UnitDetailsDialogData {
-    unitList: UnitSummary[] | Signal<ForceUnit[]>;
+    unitList: UnitSummary[] | Signal<ForceMember[]>;
     unitIndex: number;
     gunnerySkill?: number;
     pilotingSkill?: number;
@@ -50,9 +64,11 @@ export interface UnitDetailsDialogData {
     selectMode?: boolean;
     changeAction?: UnitDetailsChangeAction;
     showChangeButton?: boolean;
-    /** Override game system (used when the unit list has no ForceUnit context). */
+    /** Override game system when the unit list contains summaries. */
     gameSystem?: GameSystem;
 }
+
+type UnitDetailsListItem = UnitSummary | ForceMember;
 
 export interface UnitDetailsChangeAction {
     originalUnit: UnitSummary;
@@ -64,33 +80,41 @@ export interface UnitDetailsChangeAction {
 @Component({
     selector: 'unit-details-dialog',
     changeDetection: ChangeDetectionStrategy.OnPush,
-    imports: [CommonModule, BaseDialogComponent, SwipeDirective, LongPressDirective, UnitIconComponent, UnitDetailsGeneralTabComponent, UnitDetailsIntelTabComponent, UnitDetailsFactionTabComponent, UnitDetailsSheetTabComponent, UnitDetailsCardTabComponent, UnitDetailsVariantsTabComponent, UnitTagsComponent, UnitDetailsFooterComponent],
+    imports: [BaseDialogComponent, SwipeDirective, LongPressDirective, UnitDetailsGeneralTabComponent, UnitDetailsIntelTabComponent, UnitDetailsFactionTabComponent, UnitDetailsSheetTabComponent, UnitDetailsCardTabComponent, UnitDetailsVariantsTabComponent, UnitDetailsFooterComponent, UnitConstructionButtonComponent, CustomUnitActionsComponent, UnitIdentityBarComponent],
     templateUrl: './unit-details-dialog.component.html',
-    styleUrls: ['./unit-details-dialog.component.css'],
+    styleUrl: './unit-details-dialog.component.css',
     host: {
         '[class.fluff-background]': 'hostHasFluff',
         '[style.--fluff-bg]': 'hostFluffBg'
     }
 })
 export class UnitDetailsDialogComponent {
+    readonly unitNames = inject(UnitNameService);
     gameService = inject(GameService);
-    forceBuilderService = inject(ForceBuilderService);
+    protected readonly forceWorkspace = inject(ForceWorkspaceStateService);
+
+    private readonly forceCommands = inject(ForceWorkspaceCommandsService);
     private dialogRef = inject(DialogRef<void>);
     data = inject(DIALOG_DATA) as UnitDetailsDialogData;
     toastService = inject(ToastService);
-    layoutService = inject(LayoutService);
+    private readonly layoutService = inject(LayoutService);
     floatingOverlayService = inject(FloatingOverlayService);
     private taggingService = inject(TaggingService);
     private urlService = inject(UrlService);
     private dialogsService = inject(DialogsService);
     private keyboardShortcutService = inject(KeyboardShortcutService);
     private destroyRef = inject(DestroyRef);
+    private fluffImages = inject(UnitFluffImageService);
+    private detailsSummaries = inject(UnitDetailsSummaryService);
+    private dataService = inject(DataService);
+    private optionsService = inject(OptionsService);
     add = output<UnitSummary>();
     select = output<UnitSummary>();
-    change = output<{ oldUnit: ForceUnit; newUnit: UnitSummary }>();
+    change = output<{ oldUnit: ASForceUnit; newUnit: UnitSummary }>();
     indexChange = output<number>();
     baseDialogRef = viewChild('baseDialog', { read: ElementRef });
     sheetTabRef = viewChild<UnitDetailsSheetTabComponent>(UnitDetailsSheetTabComponent);
+    cardTabRef = viewChild(UnitDetailsCardTabComponent);
     currentPanelRef = viewChild<ElementRef<HTMLElement>>('currentPanel');
     incomingPanelRef = viewChild<ElementRef<HTMLElement>>('incomingPanel');
     shareButtonInActions = computed(() => this.layoutService.windowWidth() > 600);
@@ -102,7 +126,7 @@ export class UnitDetailsDialogComponent {
 
     isChangeDisabled = computed(() => {
         const action = this.activeChangeAction();
-        return !action || action.disabled?.() === true || action.originalUnit.name === this.unit.name;
+        return !action || action.disabled?.() === true || action.originalUnit.uuid === this.unit.uuid;
     });
 
     tabs = computed<string[]>(() => {
@@ -110,11 +134,27 @@ export class UnitDetailsDialogComponent {
     });
     activeTab = signal(this.deriveInitialIsAlphaStrike() ? 'Card' : 'General');
 
-    unitList = computed<UnitSummary[] | ForceUnit[]>(() => {
+    unitList = computed<UnitSummary[] | ForceMember[]>(() => {
         const input = this.data.unitList;
-        return isSignal(input) ? input() : input;
+        const entries = isSignal(input) ? input() : input;
+        // A construction refit replaces the immutable member handle under the same roster ID.
+        return entries.map(entry => entry instanceof CBTForceMember
+            ? entry.force.getCBTMembers().find(member => member.id === entry.id) ?? entry
+            : entry) as UnitSummary[] | ForceMember[];
     });
     unitIndex = signal(this.data.unitIndex);
+    readonly currentForceMember = computed<ForceMember | undefined>(() => {
+        const item = this.unitList()[this.unitIndex()];
+        return item instanceof ASForceUnit || item instanceof CBTForceMember ? item : undefined;
+    });
+    readonly constructionMember = computed(() => {
+        const member = this.currentForceMember();
+        return member instanceof CBTForceMember ? member : undefined;
+    });
+    private readonly resolvedActiveUnit = signal<{
+        readonly source: UnitDetailsListItem;
+        readonly summary: UnitSummary;
+    } | null>(null);
     prevUnit = computed<UnitSummary | null>(() => {
         if (!this.hasPrev) return null;
         return this.getUnitAtIndex(this.unitIndex() - 1);
@@ -123,43 +163,42 @@ export class UnitDetailsDialogComponent {
         if (!this.hasNext) return null;
         return this.getUnitAtIndex(this.unitIndex() + 1);
     });
-    /** Derives game system from the current unit's force (when ForceUnit), otherwise falls back to global. */
+    /** Derives game system from a force member, otherwise uses the explicit/global context. */
     currentGameSystem = computed<GameSystem>(() => {
         const list = this.unitList();
         const item = list[this.unitIndex()];
-        if (item instanceof ForceUnit) {
+        if (item instanceof ASForceUnit || item instanceof CBTForceMember) {
             return item.force.gameSystem;
         }
         return this.data.gameSystem ?? this.gameService.currentGameSystem();
     });
 
     isAlphaStrike = computed<boolean>(() => {
-        return this.currentGameSystem() === GameSystem.ALPHA_STRIKE;
+        return this.currentGameSystem() === GameSystem.AS;
     });
     readonly searchResultContext = computed<UnitSearchNormalizationMatch | null>(() => {
         const currentUnit = this.unitList()[this.unitIndex()];
-        const unitUuid = currentUnit instanceof ForceUnit ? currentUnit.getUnit().uuid : currentUnit?.uuid;
+        const unitUuid = currentUnit ? this.getUnitSummary(currentUnit).uuid : undefined;
         return unitUuid ? this.data.searchResultContexts?.get(unitUuid) ?? null : null;
     });
     gunnerySkill = computed<number | undefined>(() => {
         const currentUnit = this.unitList()[this.unitIndex()]
-        if (currentUnit instanceof CBTForceUnit) {
-            return currentUnit.gunnerySkill();
-        } else
-            if (currentUnit instanceof ASForceUnit) {
-                return currentUnit.getPilotSkill();
-            }
+        if (currentUnit instanceof CBTForceMember) {
+            return crewSkillsForUnit(currentUnit.force.getUnitCrewAssignment(currentUnit.id)?.positions[0],
+                currentUnit.entity.unitType(), currentUnit.entity.unitSubtype()).gunnery;
+        }
+        if (currentUnit instanceof ASForceUnit) return currentUnit.getPilotSkill();
         const context = this.searchResultContext();
         return context ? getNormalizationGunnery(context) : this.data.gunnerySkill;
     });
     pilotingSkill = computed<number | undefined>(() => {
         const currentUnit = this.unitList()[this.unitIndex()]
-        if (currentUnit instanceof CBTForceUnit) {
-            return currentUnit.pilotingSkill();
-        } else
-            if (currentUnit instanceof ASForceUnit) {
-                return currentUnit.getPilotSkill();
-            }
+        if (currentUnit instanceof CBTForceMember) {
+            return effectiveEntityPilotingSkill(currentUnit.entity,
+                crewSkillsForUnit(currentUnit.force.getUnitCrewAssignment(currentUnit.id)?.positions[0],
+                    currentUnit.entity.unitType(), currentUnit.entity.unitSubtype()).piloting);
+        }
+        if (currentUnit instanceof ASForceUnit) return currentUnit.getPilotSkill();
         const context = this.searchResultContext();
         return context ? getNormalizationPiloting(context) : this.data.pilotingSkill;
     });
@@ -167,6 +206,12 @@ export class UnitDetailsDialogComponent {
     // Swipe animation state
     isSwipeAnimating = signal(false);
     incomingUnit = signal<UnitSummary | null>(null);
+    private readonly incomingUnitIndex = signal<number | null>(null);
+    readonly incomingForceMember = computed<ForceMember | undefined>(() => {
+        const index = this.incomingUnitIndex();
+        const item = index === null || !this.incomingUnit() ? undefined : this.unitList()[index];
+        return item instanceof ASForceUnit || item instanceof CBTForceMember ? item : undefined;
+    });
     readonly incomingSearchResultContext = computed<UnitSearchNormalizationMatch | null>(() => {
         const unitUuid = this.incomingUnit()?.uuid;
         return unitUuid ? this.data.searchResultContexts?.get(unitUuid) ?? null : null;
@@ -210,20 +255,47 @@ export class UnitDetailsDialogComponent {
         return this.unit;
     });
 
+    /** The identity bar follows the header past the middle of a swipe. */
+    private readonly headerShowsIncoming = computed(() => this.headerUnit() !== this.unit);
+    private readonly headerForceMember = computed(() =>
+        this.headerShowsIncoming() ? this.incomingForceMember() : this.currentForceMember());
+
+    /** The header's value for the unit it shows, with what it differs from. */
+    readonly headerValue = computed(() => {
+        const incoming = this.headerShowsIncoming();
+        const member = this.headerForceMember();
+        return unitValueDisplay(
+            this.headerUnit(),
+            member,
+            this.optionsService.options().forceViewerBVPVDisplayDamage,
+            (incoming ? this.incomingSearchResultContext() : this.searchResultContext())?.adjustedValue,
+            incoming ? this.incomingGunnerySkill() : this.gunnerySkill(),
+            incoming ? this.incomingPilotingSkill() : this.pilotingSkill(),
+            member ? member.force.gameSystem === GameSystem.AS : this.gameService.isAlphaStrike(),
+        );
+    });
+
+    /** Force conditions, the same chips the sidebar shows; catalog units have none. */
+    readonly headerConditions = computed(() => {
+        const member = this.headerForceMember();
+        if (!member) return [];
+        // Follow this member's runtime so the chips change with damage and repairs.
+        if (member instanceof CBTForceMember) {
+            if (member.entity.entityType === 'Mek') member.mekRecordSheetSnapshot();
+            else member.nonMekRecordSheetSnapshot();
+        }
+        return forceMemberConditionDisplays(member);
+    });
+
     // Fluff background image URL - based on header unit (most visible during swipe)
     headerFluffImageUrl = computed(() => {
-        const unit = this.headerUnit();
-        if (!unit?.fluff?.img) return null;
-        if (unit.fluff.img.endsWith('hud.png')) return null; // Ignore HUD images
-        return `${getUnitServerHost(unit)}/images/fluff/${unit.fluff.img}`;
+        return this.fluffImages.resolveUrl(this.headerUnit());
     });
 
     get unit(): UnitSummary {
-        const currentUnit = this.unitList()[this.unitIndex()]
-        if (currentUnit instanceof ForceUnit) {
-            return currentUnit.getUnit();
-        }
-        return currentUnit;
+        const source = this.unitList()[this.unitIndex()];
+        const resolved = this.resolvedActiveUnit();
+        return resolved?.source === source ? resolved.summary : this.getUnitSummary(source);
     }
 
     /** Reads the game system directly from dialog data (used for field initializers before computeds are available). */
@@ -231,11 +303,11 @@ export class UnitDetailsDialogComponent {
         const input = this.data.unitList;
         const list = isSignal(input) ? input() : input;
         const item = list[this.data.unitIndex];
-        if (item instanceof ForceUnit) {
-            return item.force.gameSystem === GameSystem.ALPHA_STRIKE;
+        if (item instanceof ASForceUnit || item instanceof CBTForceMember) {
+            return item.force.gameSystem === GameSystem.AS;
         }
         if (this.data.gameSystem) {
-            return this.data.gameSystem === GameSystem.ALPHA_STRIKE;
+            return this.data.gameSystem === GameSystem.AS;
         }
         return this.gameService.isAlphaStrike();
     }
@@ -250,6 +322,18 @@ export class UnitDetailsDialogComponent {
     }
 
     constructor() {
+        effect(onCleanup => {
+            const current = this.unitList()[this.unitIndex()];
+            this.resolvedActiveUnit.set(null);
+            if (current instanceof ASForceUnit || current instanceof CBTForceMember) return;
+
+            let active = true;
+            void this.detailsSummaries.resolve(this.getUnitSummary(current)).then(summary => {
+                if (active) this.resolvedActiveUnit.set({ source: current, summary });
+            });
+            onCleanup(() => { active = false; });
+        });
+
         this.keyboardShortcutService.register({
             id: 'unit-details-dialog',
             dialogRef: this.dialogRef,
@@ -260,7 +344,7 @@ export class UnitDetailsDialogComponent {
             this.unit;
             const activeTab = this.activeTab();
             this.urlService.setQueryParams({
-                shareUnit: this.unit.name,
+                shareUnit: this.unit.uuid,
                 tab: activeTab,
             });
         });
@@ -311,9 +395,21 @@ export class UnitDetailsDialogComponent {
     }
 
     private getUnitAtIndex(index: number): UnitSummary {
-        const item = this.unitList()[index];
-        if (item instanceof ForceUnit) {
-            return item.getUnit();
+        return this.getUnitSummary(this.unitList()[index]);
+    }
+
+    private getUnitSummary(item: UnitDetailsListItem): UnitSummary {
+        if (item instanceof CBTForceMember) return this.detailsSummaries.resolveForceMember(item);
+        if (item instanceof ASForceUnit) {
+            const summary = resolveForceMemberCatalogSummary(
+                item,
+                uuid => this.dataService.getUnitByUuid(uuid),
+            );
+            if (!summary) {
+                const name = this.unitNames.name(item.getSummary());
+                throw new Error(`Catalog presentation is unavailable for ${name}`);
+            }
+            return summary;
         }
         return item;
     }
@@ -321,7 +417,6 @@ export class UnitDetailsDialogComponent {
     onPrev() {
         if (this.hasPrev && !this.isSwipeAnimating() && !this.isSwiping()) {
             // Emulate RIGHT swipe: current goes right, prev comes from left
-            // this.navigateToUnit(this.unitIndex() - 1, 'right');
             this.floatingOverlayService.hide();
             this.unitIndex.update(v => v - 1);
         }
@@ -330,59 +425,13 @@ export class UnitDetailsDialogComponent {
     onNext() {
         if (this.hasNext && !this.isSwipeAnimating() && !this.isSwiping()) {
             // Emulate LEFT swipe: current goes left, next comes from right
-            // this.navigateToUnit(this.unitIndex() + 1, 'left');
             this.floatingOverlayService.hide();
             this.unitIndex.update(v => v + 1);
         }
     }
 
-    /**
-     * Navigate to a new unit with animation.
-     * @param newIndex - The index of the unit to navigate to
-     * @param swipeDirection - 'left' means swiping left (current goes left, incoming from right)
-     *                        'right' means swiping right (current goes right, incoming from left)
-     */
-    private navigateToUnit(newIndex: number, swipeDirection: 'left' | 'right') {
-        this.floatingOverlayService.hide();
-
-        this.prepareIncomingUnit(this.getUnitAtIndex(newIndex));
-        this.isSwiping.set(false);
-
-        // Set initial positions for animation
-        if (swipeDirection === 'left') {
-            // Swiping left: current goes to -100%, incoming starts at 100% and goes to 0
-            this.currentPanelOffset.set('0');
-            this.incomingPanelOffset.set('100%');
-        } else {
-            // Swiping right: current goes to 100%, incoming starts at -100% and goes to 0
-            this.currentPanelOffset.set('0');
-            this.incomingPanelOffset.set('-100%');
-        }
-
-        // Trigger animation on next frame
-        requestAnimationFrame(async () => {
-            this.isSwipeAnimating.set(true);
-
-            if (swipeDirection === 'left') {
-                this.currentPanelOffset.set('-100%');
-                this.incomingPanelOffset.set('0');
-            } else {
-                this.currentPanelOffset.set('100%');
-                this.incomingPanelOffset.set('0');
-            }
-
-            await this.waitForTransitionEnd();
-            // After animation completes, update the actual unit
-            this.commitSwipeToIndex(newIndex);
-            this.isSwipeAnimating.set(false);
-            this.currentPanelOffset.set('0');
-            this.incomingPanelOffset.set('100%');
-            this.incomingUnit.set(null);
-        });
-    }
-
     async onSelect() {
-        const selectedUnit = (this.unit instanceof ForceUnit) ? this.unit.getUnit() : this.unit;
+        const selectedUnit = this.unit;
         this.select.emit(selectedUnit);
         this.onClose();
         return;
@@ -390,7 +439,7 @@ export class UnitDetailsDialogComponent {
 
 
     async onAdd(event?: MouseEvent) {
-        this._addUnit(event?.ctrlKey ?? false);
+        this._addUnit(!!event && (event.ctrlKey || event.metaKey));
     }
 
     async onAddLongPress() {
@@ -404,13 +453,13 @@ export class UnitDetailsDialogComponent {
      */
     private async resolveGameSystemForFirstUnit(): Promise<GameSystem | undefined | null> {
         // Only relevant when no force exists yet (first unit creates the force)
-        if (this.forceBuilderService.smartCurrentForce()) return undefined;
+        if (this.forceWorkspace.smartCurrentForce()) return undefined;
 
         const tab = this.activeTab();
         const gameSystem = this.gameService.currentGameSystem();
         const isMismatch =
-            (tab === 'Sheet' && gameSystem === GameSystem.ALPHA_STRIKE) ||
-            (tab === 'Card' && gameSystem === GameSystem.CLASSIC);
+            (tab === 'Sheet' && gameSystem === GameSystem.AS) ||
+            (tab === 'Card' && gameSystem === GameSystem.CBT);
         if (!isMismatch) return undefined;
 
         const ref = this.dialogsService.createDialog<GameSystem | undefined>(ConfirmDialogComponent, {
@@ -418,8 +467,8 @@ export class UnitDetailsDialogComponent {
                 title: 'Game System',
                 message: 'Which game system should the new force use?',
                 buttons: [
-                    { label: 'Classic BattleTech', value: GameSystem.CLASSIC },
-                    { label: 'Alpha Strike', value: GameSystem.ALPHA_STRIKE },
+                    { label: 'Classic BattleTech', value: GameSystem.CBT },
+                    { label: 'Alpha Strike', value: GameSystem.AS },
                 ]
             }
         });
@@ -433,20 +482,18 @@ export class UnitDetailsDialogComponent {
         const gameSystemOverride = await this.resolveGameSystemForFirstUnit();
         if (gameSystemOverride === null) return; // user cancelled
 
-        const selectedUnit = (this.unit instanceof ForceUnit) ? this.unit.getUnit() : this.unit;
+        const selectedUnit = this.unit;
+        const currentItem = this.unitList()[this.unitIndex()];
         let gunnery;
         let piloting;
-        if (this.unit instanceof CBTForceUnit) {
-            gunnery = this.unit.gunnerySkill();
-            piloting = this.unit.pilotingSkill();
-        } else if (this.unit instanceof ASForceUnit) {
-            gunnery = this.unit.getPilotSkill();
-            piloting = this.unit.getPilotSkill();
+        if (currentItem instanceof ASForceUnit) {
+            gunnery = currentItem.getPilotSkill();
+            piloting = currentItem.getPilotSkill();
         } else {
             gunnery = this.gunnerySkill();
             piloting = this.pilotingSkill();
         }
-        const addedUnit = await this.forceBuilderService.addUnit(
+        const addedUnit = await this.forceCommands.addUnit(
             selectedUnit,
             gunnery,
             piloting,
@@ -454,7 +501,7 @@ export class UnitDetailsDialogComponent {
             gameSystemOverride
         );
         if (addedUnit) {
-            this.toastService.showToast(`${selectedUnit.chassis} ${selectedUnit.model} added to the force.`, 'success');
+            this.toastService.showToast(`${this.unitNames.name(selectedUnit)} added to the force.`, 'success');
             this.add.emit(selectedUnit);
         }
         if (!keepOpen) {
@@ -471,7 +518,7 @@ export class UnitDetailsDialogComponent {
         const ref = this.dialogsService.createDialog<number | undefined>(ConfirmDialogComponent, {
             data: <ConfirmDialogData<number>>{
                 title: 'Add Multiple',
-                message: `How many copies of ${this.unit.chassis} ${this.unit.model}?`,
+                message: `How many copies of ${this.unitNames.name(this.unit)}?`,
                 buttons: [
                     { label: '1', value: 1, class: 'square' },
                     { label: '2', value: 2, class: 'square' },
@@ -485,16 +532,13 @@ export class UnitDetailsDialogComponent {
         const count = await firstValueFrom(ref.closed);
         if (count == null) return;
 
-        const selectedUnit = (this.unit instanceof ForceUnit) ? this.unit.getUnit() : this.unit;
+        const selectedUnit = this.unit;
         let gunnery: number | undefined;
         let piloting: number | undefined;
-        const currentUnit = this.unit;
-        if (currentUnit instanceof CBTForceUnit) {
-            gunnery = currentUnit.gunnerySkill();
-            piloting = currentUnit.pilotingSkill();
-        } else if (currentUnit instanceof ASForceUnit) {
-            gunnery = currentUnit.getPilotSkill();
-            piloting = currentUnit.getPilotSkill();
+        const currentItem = this.unitList()[this.unitIndex()];
+        if (currentItem instanceof ASForceUnit) {
+            gunnery = currentItem.getPilotSkill();
+            piloting = currentItem.getPilotSkill();
         } else {
             gunnery = this.gunnerySkill();
             piloting = this.pilotingSkill();
@@ -502,12 +546,12 @@ export class UnitDetailsDialogComponent {
 
         let addedCount = 0;
         for (let i = 0; i < count; i++) {
-            const added = await this.forceBuilderService.addUnit(selectedUnit, gunnery, piloting, undefined, gameSystemOverride);
+            const added = await this.forceCommands.addUnit(selectedUnit, gunnery, piloting, undefined, gameSystemOverride);
             if (added) addedCount++;
         }
         if (addedCount > 0) {
             this.toastService.showToast(
-                `${addedCount}x ${selectedUnit.chassis} ${selectedUnit.model} added to the force.`,
+                `${addedCount}x ${this.unitNames.name(selectedUnit)} added to the force.`,
                 'success'
             );
         }
@@ -527,20 +571,15 @@ export class UnitDetailsDialogComponent {
         this.dialogRef.close();
     }
 
-    formatThousands(value: number): string {
-        if (value === undefined || value === null) return '';
-        return value.toString().replace(/\B(?=(\d{3})+(?!\d))/g, ',');
-    }
-
     async onShare() {
         const { httpsUrl } = buildUnitShareLinks(
             window.location.origin,
             window.location.pathname,
             this.currentGameSystem(),
-            this.unit.name,
+            this.unit,
             this.activeTab(),
         );
-        const shareTitle = `${this.unit.chassis} ${this.unit.model}`;
+        const shareTitle = `${this.unitNames.name(this.unit)}`;
         const result = await shareUrlWithClipboardFallback({ title: shareTitle, url: httpsUrl });
         if (result === 'copied') {
             this.toastService.showToast('Unit links copied to clipboard.', 'success');
@@ -579,29 +618,29 @@ export class UnitDetailsDialogComponent {
 
     private variantChangeAction(): UnitDetailsChangeAction | undefined {
         const currentItem = this.unitList()[this.unitIndex()];
-        if (currentItem instanceof ForceUnit) {
+        if (currentItem instanceof ASForceUnit) {
             return this.forceUnitChangeAction(currentItem);
         }
 
         return this.data.showChangeButton === true ? undefined : this.data.changeAction;
     }
 
-    private forceUnitChangeAction(originalForceUnit: ForceUnit): UnitDetailsChangeAction {
+    private forceUnitChangeAction(originalForceUnit: ASForceUnit): UnitDetailsChangeAction {
         return {
-            originalUnit: originalForceUnit.getUnit(),
+            originalUnit: originalForceUnit.getSummary(),
             disabled: () => originalForceUnit.readOnly(),
             closeParentOnChange: true,
             apply: async (selectedUnit: UnitSummary) => {
-                const result = await this.forceBuilderService.replaceUnit(originalForceUnit, selectedUnit);
+                const result = await this.forceCommands.replaceAlphaStrikeUnit(originalForceUnit, selectedUnit);
                 if (!result) return false;
 
                 this.toastService.showToast(
-                    `Changed ${originalForceUnit.getUnit().chassis} ${originalForceUnit.getUnit().model} to ${selectedUnit.chassis} ${selectedUnit.model}.`,
+                    `Changed ${this.unitNames.name(originalForceUnit.getSummary())} to ${this.unitNames.name(selectedUnit)}.`,
                     'success'
                 );
                 this.change.emit({ oldUnit: originalForceUnit, newUnit: selectedUnit });
 
-                const newIndex = this.unitList().findIndex((unit) => unit instanceof ForceUnit && unit.id === result.id);
+                const newIndex = this.unitList().findIndex((unit) => unit instanceof ASForceUnit && unit.id === result.id);
                 if (newIndex >= 0) {
                     this.unitIndex.set(newIndex);
                 }
@@ -629,10 +668,14 @@ export class UnitDetailsDialogComponent {
     }
 
     public shouldBlockSwipe = (): boolean => {
+        // The faction matrix owns horizontal gestures for column scrolling.
+        if (this.activeTab() === 'Factions') return true;
+
         // Don't block if already swiping - only block before swipe starts
         if (this.isSwiping()) return false;
 
         if (this.activeTab() === 'Sheet' && this.isSheetSwipeBlocked()) return true;
+        if (this.activeTab() === 'Card' && this.cardTabRef()?.isZoomPanActive()) return true;
 
         // Block if animation is in progress
         if (this.isSwipeAnimating()) return true;
@@ -669,7 +712,7 @@ export class UnitDetailsDialogComponent {
             // Swiping right - show previous unit coming from the left
             const prevUnit = this.getUnitAtIndex(this.unitIndex() - 1);
             if (this.incomingUnit() !== prevUnit) {
-                this.prepareIncomingUnit(prevUnit);
+                this.prepareIncomingUnit(this.unitIndex() - 1);
             }
             // Current panel moves right by deltaX
             this.currentPanelOffset.set(`${deltaX}px`);
@@ -679,7 +722,7 @@ export class UnitDetailsDialogComponent {
             // Swiping left - show next unit coming from the right
             const nextUnit = this.getUnitAtIndex(this.unitIndex() + 1);
             if (this.incomingUnit() !== nextUnit) {
-                this.prepareIncomingUnit(nextUnit);
+                this.prepareIncomingUnit(this.unitIndex() + 1);
             }
             // Current panel moves left by deltaX (negative)
             this.currentPanelOffset.set(`${deltaX}px`);
@@ -729,10 +772,7 @@ export class UnitDetailsDialogComponent {
         const incoming = this.incomingUnit();
         if (incoming) {
             const currentIdx = this.unitIndex();
-            const incomingIdx = this.unitList().findIndex(u => {
-                const unit = u instanceof ForceUnit ? u.getUnit() : u;
-                return unit === incoming;
-            });
+            const incomingIdx = this.incomingUnitIndex() ?? currentIdx;
             if (incomingIdx < currentIdx) {
                 // Was coming from left, animate back to left
                 this.incomingPanelOffset.set('-100%');
@@ -800,9 +840,10 @@ export class UnitDetailsDialogComponent {
         setTimeout(() => this.resetSwipeState(), 100);
     }
 
-    private prepareIncomingUnit(unit: UnitSummary): void {
+    private prepareIncomingUnit(index: number): void {
         this.incomingPanelScrollTop.set(this.getIncomingPanelInitialScrollTop());
-        this.incomingUnit.set(unit);
+        this.incomingUnitIndex.set(index);
+        this.incomingUnit.set(this.getUnitAtIndex(index));
         requestAnimationFrame(() => this.syncIncomingPanelScrollTop());
     }
 

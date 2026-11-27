@@ -8,18 +8,25 @@ import {
   InfantryWeaponEquipment,
   MiscEquipment,
   WeaponEquipment,
+  type WeaponDamage,
 } from '../../../equipment.model';
 import {
   type UnitSubtype,
+  type EntityDamageLocation,
+  type EntityMountedEquipment,
+  type EntityMountedWeapon,
   type MovementCalculationOptions,
+  type PlatoonWeaponRole,
   type TechRatingSource,
   EntityType,
   EntityValidationMessage,
   InfantryMount,
   InfantrySpecialization,
+  locationArmor,
   MotiveType,
   WeightClass,
 } from '../../types';
+import { infantryArmorKitProfile, isAntiMekGearEquipment } from '../../../infantry-equipment.model';
 import { InfantryBaseEntity } from './infantry-base-entity';
 import { getInfantryTonnage } from '../../utils/infantry-tonnage';
 import {
@@ -32,56 +39,75 @@ import {
 // InfantryEntity - conventional infantry platoons
 // ============================================================================
 
+export const MAX_CONVENTIONAL_INFANTRY_STRENGTH = 30;
+const MAX_PRIMARY_DAMAGE_PER_TROOPER = 0.6;
+/** A disposable weapon attack deals three times the weapon's damage per trooper (TO:AuE p. 116). */
+export const DISPOSABLE_DAMAGE_MULTIPLIER = 3;
+
 export class InfantryEntity extends InfantryBaseEntity {
   override componentLocationOrder(): readonly string[] {
     return ['Infantry', 'Field Guns'];
   }
 
   override componentLocationLabel(location: string): string {
-    return ({ Infantry: 'TPRS', 'Field Guns': 'FGUN' })[location] ?? super.componentLocationLabel(location);
+    return { Infantry: 'TPRS', 'Field Guns': 'FGUN' }[location] ?? super.componentLocationLabel(location);
   }
   override readonly entityType: EntityType = 'Infantry';
 
+  /** Troopers riding vehicles, who lose double to attacks by non-infantry weapons (TW p. 217). */
+  isMechanized(): boolean {
+    return this.motiveType() !== 'Beast' && MECHANIZED_INFANTRY_MOTIVE_TYPES.has(this.motiveType());
+  }
+
   override unitSubtype(): UnitSubtype {
-    const qualifier = this.motiveType() !== 'Beast'
-      && MECHANIZED_INFANTRY_MOTIVE_TYPES.has(this.motiveType()) ? 'Mechanized '
-      : this.motiveType() === 'Motorized' ? 'Motorized '
-      : '';
+    const qualifier =
+      this.isMechanized()
+        ? 'Mechanized '
+        : this.motiveType() === 'Motorized'
+          ? 'Motorized '
+          : '';
     return this.withOmniSubtype(`${qualifier}Conventional Infantry`);
   }
 
   override entityTechAdvancements(): readonly TechRatingSource[] {
     const hasFieldEquipment = this.equipment().some(
-      mount => mount.allocation.kind === 'location' && mount.allocation.location === 'Field Guns',
+      (mount) => mount.allocation.kind === 'location' && mount.allocation.location === 'Field Guns',
     );
-    const sources: TechRatingSource[] = [
-      getConventionalInfantryConstructionTech(
-        this.motiveType(),
-        hasFieldEquipment,
-        this.effectiveEncumberingArmor(),
-      ),
+    return [
+      getConventionalInfantryConstructionTech(this.motiveType(), hasFieldEquipment, this.effectiveEncumberingArmor()),
       getInfantryMotiveTech(this.motiveType()),
       ...getInfantrySpecializationTech(this.specializations()),
     ];
-    // MegaMek represents the platoon's primary/secondary pair as one
-    // InfantryWeaponMounted and composes tech from its range weapon.
-    const rangeWeapon = this.rangeWeapon();
-    if (rangeWeapon) sources.push(rangeWeapon.tech);
-    return sources;
+  }
+
+  /**
+   * MegaMek represents the platoon's primary/secondary pair as one
+   * InfantryWeaponMounted and composes tech from its range weapon.
+   */
+  protected override mountContributesTech(mount: EntityMountedEquipment): boolean {
+    return !mount.platoonWeapon || mount.platoonWeapon === 'disposable' || mount.equipment === this.rangeWeapon();
   }
 
   // ═══════════════════════════════════════════════════════════════════════════
   //  SIGNALS
   // ═══════════════════════════════════════════════════════════════════════════
 
-  readonly primaryWeapon = signal<InfantryWeaponEquipment | null>(null);
-  readonly secondaryWeapon = signal<InfantryWeaponEquipment | null>(null);
+  /** Platoon weapons are canonical mounts, so generic equipment scans see them as MegaMek's do. */
+  readonly primaryWeapon = computed(() => this.findPlatoonWeapon('primary'));
+  readonly secondaryWeapon = computed(() => this.findPlatoonWeapon('secondary'));
+  readonly disposableWeapon = computed(() => this.findPlatoonWeapon('disposable'));
+  /** The platoon's SRM launchers carry Inferno munitions (TW p. 141); a pre-battle declaration kept in the file. */
+  readonly infernoSrmsDeclared = signal<boolean>(false);
+  /** The declaration only matters while a platoon weapon is an SRM launcher (MegaMek ConvInfantry.firesInfernoSrms). */
+  readonly firesInfernoSrms = computed(() => this.infernoSrmsDeclared() && this.hasSrmLauncher());
+
+  hasSrmLauncher(): boolean {
+    return [this.primaryWeapon(), this.secondaryWeapon()].some((weapon) => weapon?.hasFlag('F_SRM') === true);
+  }
   readonly secondaryCount = signal<number>(0);
   readonly rangeWeapon = computed<InfantryWeaponEquipment | null>(() => {
     const secondaryWeapon = this.secondaryWeapon();
-    return this.secondaryCount() > 1 && secondaryWeapon
-      ? secondaryWeapon
-      : this.primaryWeapon();
+    return this.secondaryCount() > 1 && secondaryWeapon ? secondaryWeapon : this.primaryWeapon();
   });
   readonly armorDivisor = signal<number>(1);
   override motiveType = signal<MotiveType>('Leg');
@@ -111,27 +137,27 @@ export class InfantryEntity extends InfantryBaseEntity {
   });
   readonly effectiveEncumberingArmor = computed(() => {
     const armorKit = this.armorKit();
-    return armorKit ? armorKit.hasFlag('S_ENCUMBERING') : this.encumberingArmor();
+    return infantryArmorKitProfile(armorKit)?.encumbering ?? this.encumberingArmor();
   });
   readonly effectiveSpaceSuit = computed(() => {
     const armorKit = this.armorKit();
-    return armorKit ? armorKit.hasFlag('S_SPACE_SUIT') : this.spaceSuit();
+    return infantryArmorKitProfile(armorKit)?.spaceSuit ?? this.spaceSuit();
   });
   readonly effectiveDEST = computed(() => {
     const armorKit = this.armorKit();
-    return armorKit ? armorKit.hasFlag('S_DEST') : this.hasDEST();
+    return infantryArmorKitProfile(armorKit)?.dest ?? this.hasDEST();
   });
   readonly effectiveSneakCamo = computed(() => {
     const armorKit = this.armorKit();
-    return armorKit ? armorKit.hasFlag('S_SNEAK_CAMO') : this.sneakCamo();
+    return infantryArmorKitProfile(armorKit)?.sneakCamo ?? this.sneakCamo();
   });
   readonly effectiveSneakIR = computed(() => {
     const armorKit = this.armorKit();
-    return armorKit ? armorKit.hasFlag('S_SNEAK_IR') : this.sneakIR();
+    return infantryArmorKitProfile(armorKit)?.sneakIr ?? this.sneakIR();
   });
   readonly effectiveSneakECM = computed(() => {
     const armorKit = this.armorKit();
-    return armorKit ? armorKit.hasFlag('S_SNEAK_ECM') : this.sneakECM();
+    return infantryArmorKitProfile(armorKit)?.sneakEcm ?? this.sneakECM();
   });
 
   // Manei Domini augmentations (pilot option names)
@@ -171,9 +197,15 @@ export class InfantryEntity extends InfantryBaseEntity {
     if (mount) return mount.movementMode === 'VTOL' ? mount.movementPoints : 0;
     if (this.motiveType() === 'UMU' || this.motiveType() === 'Submarine') return 0;
 
-    let jumpMP = this.augmentations().includes('pl_flight') ? 2 : this.motiveType() === 'Jump'
-      ? 3
-      : this.motiveType() === 'VTOL' ? (this.isMicrolite() ? 6 : 5) : 0;
+    let jumpMP = this.augmentations().includes('pl_flight')
+      ? 2
+      : this.motiveType() === 'Jump'
+        ? 3
+        : this.motiveType() === 'VTOL'
+          ? this.isMicrolite()
+            ? 6
+            : 5
+          : 0;
     if (this.hasSupportWeaponPenalty()) jumpMP = Math.max(jumpMP - 1, 0);
     else if (this.motiveType() === 'VTOL' && this.secondaryCount() > 0) jumpMP = Math.max(jumpMP - 1, 0);
     return jumpMP;
@@ -189,22 +221,83 @@ export class InfantryEntity extends InfantryBaseEntity {
   });
 
   private hasSupportWeaponPenalty(): boolean {
-    return this.secondaryCount() > 1
-      && !this.augmentations().some(augmentation => augmentation === 'tsm_implant' || augmentation === 'dermal_armor')
-      && !this.specializations().has('tag-troops')
-      && !!this.secondaryWeapon()?.hasFlag('F_INF_SUPPORT');
-  }
-
-  private hasFieldArtillery(): boolean {
-    return this.equipment().some(mount =>
-      mount.location === 'Field Guns'
-      && mount.equipment instanceof WeaponEquipment
-      && getAmmoCategory(mount.equipment.ammoType) === 'Artillery'
+    return (
+      this.secondaryCount() > 1 &&
+      !this.augmentations().some((augmentation) => augmentation === 'tsm_implant' || augmentation === 'dermal_armor') &&
+      !this.specializations().has('tag-troops') &&
+      !!this.secondaryWeapon()?.hasFlag('F_INF_SUPPORT')
     );
   }
 
-  override readonly canAntiMech = computed(() =>
-    this.equipment().some(mounted => mounted.equipment?.hasFlag('F_ANTI_MEK_GEAR')),
+  private hasFieldArtillery(): boolean {
+    return this.equipment().some(
+      (mount) =>
+        mount.location === 'Field Guns' &&
+        mount.equipment instanceof WeaponEquipment &&
+        getAmmoCategory(mount.equipment.ammoType) === 'Artillery',
+    );
+  }
+
+  /** Replace the platoon's primary, secondary or disposable weapon mount. */
+  setPlatoonWeapon(role: PlatoonWeaponRole, weapon: InfantryWeaponEquipment | null): void {
+    const current = this.equipment().find((mount) => mount.platoonWeapon === role);
+    if (current?.equipment === (weapon ?? undefined)) return;
+    const hadSrm = this.hasSrmLauncher();
+    if (current) this.removeEquipment(current);
+    if (weapon) this.addEquipment({
+      equipmentId: weapon.id,
+      equipment: weapon,
+      allocation: { kind: 'location', location: 'Infantry' },
+      rearMounted: false,
+      turretMounted: false,
+      omniPodMounted: false,
+      armored: false,
+      platoonWeapon: role,
+    });
+    // Removing the last SRM launcher ends its Inferno declaration; a later launcher starts standard.
+    if (hadSrm && !this.hasSrmLauncher()) this.infernoSrmsDeclared.set(false);
+  }
+
+  private findPlatoonWeapon(role: PlatoonWeaponRole): InfantryWeaponEquipment | null {
+    const equipment = this.equipment().find((mount) => mount.platoonWeapon === role)?.equipment;
+    return equipment instanceof WeaponEquipment && equipment.isInfantryWeapon() ? equipment : null;
+  }
+
+  /** Troopers carrying a platoon weapon at full strength; every trooper carries the disposable weapon. */
+  platoonWeaponTroopers(role: PlatoonWeaponRole): number {
+    const troopers = this.squadSize() * this.squadCount();
+    const secondary = this.secondaryCount() * this.squadCount();
+    return role === 'secondary' ? secondary : role === 'disposable' ? troopers : troopers - secondary;
+  }
+
+  /**
+   * ConvInfantry.getDamagePerTrooper: primary damage is capped; secondary damage is not. A disposable attack
+   * deals three times its weapon's damage per trooper (TO:AuE p. 116, MegaMek InfantryDisposableWeaponHandler).
+   */
+  platoonWeaponDamagePerTrooper(role: PlatoonWeaponRole): number {
+    if (role === 'secondary') return this.secondaryWeapon()?.infantry.damage ?? 0;
+    if (role === 'disposable') return DISPOSABLE_DAMAGE_MULTIPLIER * (this.disposableWeapon()?.infantry.damage ?? 0);
+    return Math.min(MAX_PRIMARY_DAMAGE_PER_TROOPER, this.primaryWeapon()?.infantry.damage ?? 0);
+  }
+
+  /** A platoon weapon deals its per-trooper damage once for each trooper carrying it. */
+  override resolveMountedWeaponDamage(mount: EntityMountedWeapon): WeaponDamage {
+    const role = mount.platoonWeapon;
+    if (!role) return super.resolveMountedWeaponDamage(mount);
+    const damage = this.platoonWeaponDamagePerTrooper(role) * Math.max(0, this.platoonWeaponTroopers(role));
+    return { values: [damage], maximum: damage };
+  }
+
+  readonly hasAntiMekGear = computed(() =>
+    this.equipment().some((mounted) => isAntiMekGearEquipment(mounted.equipment)),
+  );
+
+  /** Physical capability is independent of the gear that enables improved anti-Mek skill. */
+  override readonly canMakeAntiMekAttacks = computed(
+    () =>
+      !MECHANIZED_INFANTRY_MOTIVE_TYPES.has(this.motiveType()) &&
+      !this.effectiveEncumberingArmor() &&
+      !this.equipment().some((mount) => mount.location === 'Field Guns'),
   );
 
   /**
@@ -222,9 +315,16 @@ export class InfantryEntity extends InfantryBaseEntity {
     if (motive === 'Beast' && mountData) {
       if (mountData.custom) {
         const fields = [
-          mountData.name, mountData.size, mountData.weight, mountData.movementPoints,
-          mountData.movementMode, mountData.burstDamage, mountData.vehicleDamage,
-          mountData.damageDivisor, mountData.maxWaterDepth, mountData.secondaryGroundMP,
+          mountData.name,
+          mountData.size.toUpperCase().replace(/ /g, '_'),
+          mountData.weight,
+          mountData.movementPoints,
+          mountData.movementMode,
+          mountData.burstDamage,
+          mountData.vehicleDamage,
+          mountData.damageDivisor,
+          mountData.maxWaterDepth,
+          mountData.secondaryGroundMP,
           mountData.uwEndurance,
         ];
         return `Beast:Custom:${fields.join(',')}`;
@@ -257,6 +357,17 @@ export class InfantryEntity extends InfantryBaseEntity {
     return new Set(['Infantry', 'Field Guns']);
   }
 
+  override damageLocations(): readonly EntityDamageLocation[] {
+    return [
+      {
+        code: 'Infantry',
+        internalPoints: this.structureValues().get('Infantry') ?? 0,
+        armor: locationArmor(0),
+        soldierPips: true,
+      },
+    ];
+  }
+
   protected override computeWeightClass(): WeightClass {
     return 'Light';
   }
@@ -267,13 +378,16 @@ export class InfantryEntity extends InfantryBaseEntity {
 
   protected override computeStructureValues(_tonnage: number): Map<string, number> {
     const values = new Map<string, number>();
-    values.set('Infantry', this.squadSize() * this.squadCount());
+    const strength = this.squadSize() * this.squadCount();
+    // Preserve recognizable imported definitions while bounding their usable troop count.
+    values.set(
+      'Infantry',
+      Number.isFinite(strength) ? Math.max(0, Math.min(MAX_CONVENTIONAL_INFANTRY_STRENGTH, Math.floor(strength))) : 0,
+    );
     return values;
   }
 
-  protected override computeMaxArmor(
-    _structureValues: Map<string, number>,
-  ): Map<string, number> {
+  protected override computeMaxArmor(_structureValues: Map<string, number>): Map<string, number> {
     return new Map(); // Infantry armor is handled differently
   }
 
@@ -284,32 +398,50 @@ export class InfantryEntity extends InfantryBaseEntity {
 
     if (!this.primaryWeapon()) {
       msgs.push({
-        severity: 'error', category: 'general', code: 'INF_NO_PRIMARY_WEAPON',
+        severity: 'error',
+        category: 'general',
+        code: 'INF_NO_PRIMARY_WEAPON',
         message: 'Infantry must have a primary infantry weapon',
       });
     }
     if (!Number.isInteger(this.secondaryCount()) || this.secondaryCount() < 0) {
       msgs.push({
-        severity: 'error', category: 'general', code: 'INF_INVALID_SECONDARY_COUNT',
+        severity: 'error',
+        category: 'general',
+        code: 'INF_INVALID_SECONDARY_COUNT',
         message: 'Infantry secondary weapon count must be a non-negative integer',
       });
     } else if (this.secondaryCount() > 0 && !this.secondaryWeapon()) {
       msgs.push({
-        severity: 'error', category: 'general', code: 'INF_NO_SECONDARY_WEAPON',
+        severity: 'error',
+        category: 'general',
+        code: 'INF_NO_SECONDARY_WEAPON',
         message: 'Infantry with secondary weapons must specify a secondary infantry weapon',
       });
     }
 
-    if (this.squadSize() <= 0) {
+    if (!Number.isSafeInteger(this.squadSize()) || this.squadSize() <= 0) {
       msgs.push({
-        severity: 'error', category: 'general', code: 'INF_NO_SQUAD_SIZE',
-        message: 'Infantry squad size must be greater than 0',
+        severity: 'error',
+        category: 'general',
+        code: 'INF_NO_SQUAD_SIZE',
+        message: 'Infantry squad size must be a positive integer',
       });
     }
-    if (this.squadCount() <= 0) {
+    if (!Number.isSafeInteger(this.squadCount()) || this.squadCount() <= 0) {
       msgs.push({
-        severity: 'error', category: 'general', code: 'INF_NO_SQUAD_COUNT',
-        message: 'Infantry must have at least one squad',
+        severity: 'error',
+        category: 'general',
+        code: 'INF_NO_SQUAD_COUNT',
+        message: 'Infantry squad count must be a positive integer',
+      });
+    }
+    if (this.squadSize() * this.squadCount() > MAX_CONVENTIONAL_INFANTRY_STRENGTH) {
+      msgs.push({
+        severity: 'error',
+        category: 'general',
+        code: 'INF_TOO_MANY_TROOPERS',
+        message: `Conventional infantry cannot exceed ${MAX_CONVENTIONAL_INFANTRY_STRENGTH} troops`,
       });
     }
 

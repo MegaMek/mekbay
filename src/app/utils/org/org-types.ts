@@ -2,12 +2,16 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 // Author: Drake
 
-import type { ASUnitTypeCode, UnitSummary } from '../../models/unit-summary.model';
+import type {
+    AlphaStrikeUnitStats,
+    ASUnitTypeCode,
+    UnitSummary,
+} from '../../models/unit-summary.model';
+import type { UnitUuid } from '../../services/unit-catalog/unit-catalog.types';
 
 /*
  *
- * Pure type / interface definitions for the force-org system.
- * No runtime code — only types and interfaces live here.
+ * Organization contracts and the empty organization result.
  */
 
 export const EMPTY_RESULT: GroupSizeResult = {
@@ -98,6 +102,37 @@ export interface PointRange {
     max: number;
 }
 
+export type OrgTransportSpecial = 'MEC' | 'XMEC';
+
+/**
+ * Minimal structural input accepted by the organization solver.
+ *
+ * A UnitSummary satisfies this interface for unloaded catalog/generator work.
+ * Loaded CBT members instead compile it directly from Entity, so runtime
+ * organization logic never depends on or synthesizes catalog projections.
+ */
+interface OrgUnitData {
+    readonly uuid: UnitUuid;
+    readonly name: string;
+    readonly type: UnitSummary['type'];
+    readonly subtype: UnitSummary['subtype'];
+    readonly moveType: string;
+    readonly omni: number;
+    readonly tons: number;
+    readonly internal: number;
+    readonly squads: number;
+    readonly as: Pick<AlphaStrikeUnitStats, 'TP' | 'MVm'>;
+}
+
+export interface OrgEntityUnit extends OrgUnitData {
+    readonly transportSpecials: readonly OrgTransportSpecial[];
+}
+
+/** Existing catalog summaries retain their complete Alpha Strike specials list. */
+export type OrgUnit = OrgEntityUnit | (OrgUnitData & {
+    readonly as: Pick<AlphaStrikeUnitStats, 'TP' | 'MVm' | 'specials'>;
+});
+
 export interface GroupSizeResult {
     name: string;
     type: OrgType | null;
@@ -110,17 +145,17 @@ export interface GroupSizeResult {
     foreignDisplayName?: string;
     displayName?: string;
     children?: GroupSizeResult[];
-    units?: UnitSummary[];
+    units?: OrgUnit[];
     unitAllocations?: GroupUnitAllocation[];
-    formationMatchingIgnoredUnits?: UnitSummary[];
-    leftoverUnits?: UnitSummary[];
+    formationMatchingIgnoredUnits?: OrgUnit[];
+    leftoverUnits?: OrgUnit[];
     leftoverUnitAllocations?: GroupUnitAllocation[];
     tag?: OrgGroupTag;
     priority?: number;
 }
 
 export interface GroupUnitAllocation {
-    readonly unit: UnitSummary;
+    readonly unit: OrgUnit;
     readonly squads?: number;
 }
 
@@ -141,7 +176,7 @@ export interface OrgTypeModifier {
 // Declarative org model
 // -----------------------------------------------------------------------------
 
-export type OrgFactScalar = string | number | boolean;
+export type OrgFactScalar = string | number | boolean | null;
 export type BuiltInOrgSelectorName =
     | 'all'
     | 'aero'
@@ -191,7 +226,7 @@ export type BuiltInUnitClassKey =
     | 'CV'
     | 'CV:omni'
     | 'PM';
-export type DerivedUnitClassKey = Lowercase<UnitSummary['type']>;
+export type DerivedUnitClassKey = Lowercase<OrgUnit['type']>;
 export type UnitClassKey = BuiltInUnitClassKey | DerivedUnitClassKey;
 export type CIMoveClass =
     | 'foot'
@@ -248,13 +283,6 @@ export type BuiltInChildTypeCountKey =
     | `countsAs:${OrgType}`
     | `tag:${OrgGroupTag}`;
 export type OrgChildTypeCountKey = BuiltInChildTypeCountKey;
-export type BuiltInUnitNumericScalarName =
-    | 'id'
-    | 'tons'
-    | 'pv'
-    | 'bv'
-    | 'troopers';
-export type UnitNumericScalarName = BuiltInUnitNumericScalarName;
 export type OrgBucketValue = BuiltInUnitBucketValue | BuiltInGroupBucketValue;
 export type OrgPatternAliasName = string;
 export type OrgPatternReferenceName = OrgBucketName | OrgPatternAliasName;
@@ -264,8 +292,6 @@ export type OrgFactPath = BuiltInOrgFactPath;
 export interface UnitFactScalars {
     readonly uuid: UnitSummary['uuid'];
     readonly tons: number;
-    readonly pv: number;
-    readonly bv: number;
     readonly troopers: number;
     readonly omni: boolean;
     readonly isAero: boolean;
@@ -287,8 +313,10 @@ export interface UnitFactScalars {
  * Unit callbacks.
  */
 export interface UnitFacts {
-    readonly unit: UnitSummary;
+    readonly unit: OrgUnit;
     readonly factId: number;
+    /** Squad quantity available to this solve, including partial allocations. */
+    readonly squads: number;
     readonly classKey: UnitClassKey;
     readonly tags: ReadonlySet<UnitFactTag>;
     readonly scalars: UnitFactScalars;
@@ -316,7 +344,6 @@ export interface GroupFacts {
     readonly unitTypeCounts: ReadonlyMap<ASUnitTypeCode, number>;
     readonly unitClassCounts: ReadonlyMap<UnitClassKey, number>;
     readonly unitTagCounts: ReadonlyMap<UnitFactTag, number>;
-    readonly unitScalarSums: ReadonlyMap<UnitNumericScalarName, number>;
     readonly descendantUnitBucketCounts: ReadonlyMap<OrgUnitBucketName, ReadonlyMap<OrgBucketValue, number>>;
 }
 
@@ -360,7 +387,6 @@ export interface OrgChildRoleSpec {
 export interface OrgComposedCountAlternativeSpec {
     readonly childRoles: readonly OrgChildRoleSpec[];
     readonly modifiers: Record<string, number | OrgTypeModifier>;
-    readonly childBucketBy?: OrgGroupBucketName;
     readonly childMatchBucketBy?: OrgGroupBucketName;
 }
 
@@ -460,7 +486,6 @@ export interface OrgLeafPatternRule extends OrgRuleMetadata {
 export interface OrgComposedCountRule extends OrgRuleMetadata {
     readonly kind: 'composed-count';
     readonly childRoles: readonly OrgChildRoleSpec[];
-    readonly childBucketBy?: OrgGroupBucketName;
     readonly childMatchBucketBy?: OrgGroupBucketName;
     readonly requireRegularForPromotion?: boolean;
     readonly alternativeCompositions?: readonly OrgComposedCountAlternativeSpec[];
@@ -486,7 +511,6 @@ export interface OrgComposedPatternRule extends OrgRuleMetadata {
     readonly childRoles: readonly OrgChildRoleSpec[];
     readonly bucketBy: OrgUnitBucketName;
     readonly patterns: readonly OrgPatternSpec[];
-    readonly childBucketBy?: OrgGroupBucketName;
     readonly childMatchBucketBy?: OrgGroupBucketName;
     readonly constraints?: readonly OrgConstraintSpec[];
 }
@@ -518,8 +542,4 @@ export interface OrgRuleRegistry {
 export interface OrgDefinition {
     readonly rules: readonly OrgRuleDefinition[];
     readonly registry: OrgRuleRegistry;
-    readonly distanceFactor: number;
-    readonly minDistance: number;
-    readonly groupDistanceFactor: number;
-    readonly groupMinDistance: number;
 }

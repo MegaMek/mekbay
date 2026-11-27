@@ -1,0 +1,63 @@
+// Copyright (C) 2026 The MegaMek Team
+// SPDX-License-Identifier: GPL-3.0-or-later
+
+import type { UnitUuid } from '../services/unit-catalog/unit-catalog.types';
+import type { CBTRuleset } from './cbt-ruleset.model';
+import type { BaseEntity } from './entity/base-entity';
+import type { MekEntity } from './entity/entities/mek/mek-entity';
+import type { NativeUnitSourceHandle } from './native-unit-source-handle';
+import type { CBTUnitQueryPort,CBTUnitRuntimeIndex,CBTUnitRuntimeState } from './runtime/cbt-unit-runtime';
+import type { CrewAssignment } from './runtime/crew-assignment';
+import type { MekRuntimeIndex } from './runtime/mek-runtime-index';
+import type { NonMekRuntimeIndex } from './runtime/non-mek-runtime-index';
+import type { NonMekUnitRuntimeState } from './runtime/non-mek-unit-instance';
+import type { MekUnitRuntimeState } from './runtime/runtime-state';
+import type { UnitEditContext } from './runtime/unit-edit-context';
+import type { MekUnitQueryPort } from './runtime/unit-instance';
+
+/** Complete immutable read model for any force-owned CBT BaseEntity. */
+export interface CBTUnitSnapshot {
+    readonly editContext: UnitEditContext;
+    readonly instanceId: string;
+    readonly uuid: UnitUuid;
+    readonly entity: BaseEntity;
+    readonly index: CBTUnitRuntimeIndex;
+    readonly nativeSource?: NativeUnitSourceHandle;
+    readonly ruleset: CBTRuleset;
+    readonly crewAssignment: CrewAssignment;
+    readonly state: CBTUnitRuntimeState;
+    readonly query: CBTUnitQueryPort;
+}
+
+export type CBTMekUnitSnapshot = Readonly<
+    Omit<CBTUnitSnapshot, 'entity' | 'index' | 'state' | 'query'> & {
+        entity: MekEntity;
+        index: MekRuntimeIndex;
+        state: MekUnitRuntimeState;
+        query: MekUnitQueryPort;
+    }
+>;
+
+export type CBTNonMekUnitSnapshot = Readonly<
+    Omit<CBTUnitSnapshot, 'index' | 'state'> & {
+        index: NonMekRuntimeIndex;
+        state: NonMekUnitRuntimeState;
+    }
+>;
+
+/**
+ * Narrows the Mek mechanics capability. Critical slots and critical-hit state
+ * exist only behind this guard; the top-level BaseEntity snapshot stays unified.
+ */
+export function hasMekRuntime(
+    snapshot: CBTUnitSnapshot,
+): snapshot is CBTMekUnitSnapshot {
+    return snapshot.entity.entityType === 'Mek';
+}
+
+/** Narrows non-Mek mechanics without defining a parallel snapshot interface. */
+export function hasNonMekRuntime(
+    snapshot: CBTUnitSnapshot,
+): snapshot is CBTNonMekUnitSnapshot {
+    return snapshot.entity.entityType !== 'Mek';
+}

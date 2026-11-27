@@ -12,7 +12,9 @@ import {
   TestHandheldWeaponEntity as HandheldWeaponEntity,
   TestInfantryEntity as InfantryEntity,
   TestJumpShipEntity as JumpShipEntity,
+  TestLamEntity as LamEntity,
   TestProtoMekEntity as ProtoMekEntity,
+  TestQuadVeeEntity as QuadVeeEntity,
   TestSmallCraftEntity as SmallCraftEntity,
   TestSpaceStationEntity as SpaceStationEntity,
   TestSupportTankEntity as SupportTankEntity,
@@ -57,6 +59,11 @@ describe('Alpha Strike unit classification', () => {
     ]).toEqual([
       'BM', 'PM', 'CV', 'SV', 'BA', 'CI', 'SS', 'WS', 'JS', 'DS', 'DA', 'SC', 'SV', 'CF', 'AF', 'XX',
     ]);
+  });
+
+  it('classifies every Mek form through the entity family', () => {
+    expect([new BipedMekEntity(), new LamEntity(), new QuadVeeEntity()].map(alphaStrikeUnitType))
+      .toEqual(['BM', 'BM', 'BM']);
   });
 
   it('uses exact ordinary-ground and fighter size boundaries', () => {

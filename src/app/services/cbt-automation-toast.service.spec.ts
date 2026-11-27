@@ -1,57 +1,37 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
-// Author: Drake
 
 import { TestBed } from '@angular/core/testing';
+
 import { CBTAutomationToastService } from './cbt-automation-toast.service';
 import { ToastService } from './toast.service';
 
 describe('CBTAutomationToastService', () => {
     let service: CBTAutomationToastService;
     let showToast: jasmine.Spy;
-    const unit = {
-        id: 'unit:1',
-        getNotificationDisplayName: () => 'Atlas AS7-D',
-    };
 
     beforeEach(() => {
         showToast = jasmine.createSpy('showToast');
-        TestBed.configureTestingModule({
-            providers: [
-                CBTAutomationToastService,
-                { provide: ToastService, useValue: { showToast } },
-            ],
-        });
+        TestBed.configureTestingModule({ providers: [
+            CBTAutomationToastService,
+            { provide: ToastService, useValue: { showToast } },
+        ] });
         service = TestBed.inject(CBTAutomationToastService);
     });
 
-    it('omits the unit name when the unit is currently visible', () => {
+    it('omits the subject only while its runtime is visible', () => {
         const owner = {};
-        service.setVisibleUnitIds(owner, [unit.id]);
+        service.setVisibleUnitIds(owner, ['unit:1']);
+        service.show('unit:1', 'Atlas AS7-D', 'Check passed', 'success');
+        service.show('unit:2', 'Archer ARC-2R', 'Check failed', 'error');
 
-        service.show(unit, 'Piloting Skill Check: PASSED', 'success');
+        expect(showToast.calls.allArgs()).toEqual([
+            ['Check passed', 'success'],
+            ['Archer ARC-2R — Check failed', 'error'],
+        ]);
 
-        expect(showToast).toHaveBeenCalledOnceWith('Piloting Skill Check: PASSED', 'success');
-    });
-
-    it('includes the unit name when the unit is not currently visible', () => {
-        const owner = {};
-        service.setVisibleUnitIds(owner, ['unit:2']);
-
-        service.show(unit, 'Piloting Skill Check: FAILED', 'error');
-
-        expect(showToast).toHaveBeenCalledOnceWith(
-            'Atlas AS7-D — Piloting Skill Check: FAILED',
-            'error',
-        );
-    });
-
-    it('stops treating a unit as visible when its viewer is removed', () => {
-        const owner = {};
-        service.setVisibleUnitIds(owner, [unit.id]);
         service.clearVisibleUnitIds(owner);
-
-        service.show(unit, 'Fall resolved', 'error');
-
-        expect(showToast).toHaveBeenCalledOnceWith('Atlas AS7-D — Fall resolved', 'error');
+        service.show('unit:1', 'Atlas AS7-D', 'Fall resolved', 'error');
+        expect(showToast.calls.mostRecent().args)
+            .toEqual(['Atlas AS7-D — Fall resolved', 'error']);
     });
 });

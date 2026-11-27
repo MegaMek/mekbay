@@ -47,10 +47,12 @@ describe('MTF codec', () => {
   it('decodes and encodes armor lines', () => {
     expect(decodeMtfArmor('Ferro-Fibrous Armor (Clan)')).toEqual({
       type: 'Ferro-Fibrous',
-      clanTech: true,
+      techBase: 'Clan',
       patchwork: false,
     });
     expect(decodeMtfArmor('Patchwork Armor').patchwork).toBeTrue();
+    expect(decodeMtfArmor('Ferro-Fibrous(Inner Sphere)').techBase).toBe('IS');
+    expect(decodeMtfArmor('Ferro-Fibrous').techBase).toBeNull();
     expect(encodeMtfArmor('Ferro-Fibrous', 'Clan', false)).toBe('Ferro-Fibrous(Clan)');
     expect(encodeMtfArmor('Standard', 'IS', false)).toBe('Standard(Inner Sphere)');
     expect(encodeMtfArmor('ignored', 'IS', true)).toBe('Patchwork');

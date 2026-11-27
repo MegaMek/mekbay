@@ -37,7 +37,7 @@
             } @else if (compressedPills(); as compressed) {
                 @for (cp of compressed; track cp.state) {
                     <span class="pill"
-                          [ngClass]="{
+                          [class]="{
                             'pill-or': cp.state === 'or',
                             'pill-and': cp.state === 'and',
                             'pill-not': cp.state === 'not'
@@ -59,7 +59,7 @@
                 @for (option of selectedOptions(); track option.name) {
                     <span class="pill"
                           (click)="openAndScrollTo(option.name, $event)"
-                          [ngClass]="{
+                          [class]="{
                             'pill-or': option.state === 'or',
                             'pill-and': option.state === 'and',
                             'pill-not': option.state === 'not'
@@ -74,10 +74,7 @@
             }
         </div>
         @if (!semanticOnly()) {
-            <svg class="chevron" width="16" height="16" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
-                <path d="M6 9L12 15L18 9" stroke="currentColor" stroke-width="2" stroke-linecap="round"
-                    stroke-linejoin="round" />
-            </svg>
+            <span class="chevron chevron-dropdown" [class.collapsed]="!isOpen()" aria-hidden="true"></span>
         }
     </div>
 
@@ -168,7 +165,7 @@
                     @if (multiselect()) {
                         <input type="checkbox" [checked]="isSelected(option.name)" (change)="onOptionToggle(option.name)" />
                         <span class="custom-checkbox"
-                            [ngClass]="{
+                            [class]="{
                                 'checkbox-or': multistate() && isSelected(option.name) === 'or',
                                 'checkbox-and': multistate() && isSelected(option.name) === 'and',
                                 'checkbox-not': multistate() && isSelected(option.name) === 'not',
@@ -260,7 +257,7 @@
                             @if (multiselect()) {
                                 <input type="checkbox" [checked]="isSelected(option.name)" (change)="onOptionToggle(option.name)" />
                                 <span class="custom-checkbox"
-                                    [ngClass]="{
+                                    [class]="{
                                         'checkbox-or': multistate() && isSelected(option.name) === 'or',
                                         'checkbox-and': multistate() && isSelected(option.name) === 'and',
                                         'checkbox-not': multistate() && isSelected(option.name) === 'not',
@@ -310,7 +307,7 @@
                             }
                             @if (countable() && (getState(option.name) === 'and' || getState(option.name) === 'or')) {
                                 <div class="quantity-input">
-                                    <input type="number"
+                                <input type="number" 
                                         [value]="getCount(option.name)"
                                         min="1"
                                         class="quantity-field"

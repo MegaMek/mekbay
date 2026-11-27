@@ -2,10 +2,20 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 // Author: Drake
 
-import { AmmoEquipment, ArmorEquipment, MiscEquipment, StructureEquipment, WeaponEquipment } from '../../../equipment.model';
+import {
+  AmmoEquipment,
+  ArmorEquipment,
+  MiscEquipment,
+  StructureEquipment,
+  WeaponEquipment,
+} from '../../../equipment.model';
 import type { MekEntity } from '../../entities/mek/mek-entity';
+import { STRUCTURE_TYPE } from '../../types/structure';
 import { getBayConstructionWeight, isQuartersBay } from '../../bays/bay-definitions';
 import { ceilToHalfTon, ceilToWholeTon } from './weight-rounding';
+import { flamerRequiresPower } from '../../../flamer-mode.model';
+import { isPpcCapacitorEquipment, isPpcEquipment } from '../../../ppc-capacitor.model';
+import { isConstructionSystemEquipment } from '../../../construction-equipment.model';
 
 export interface MekWeightBreakdown {
   readonly engine: number;
@@ -24,31 +34,29 @@ export interface MekWeightBreakdown {
 }
 
 const STRUCTURE_DIVISORS: Readonly<Record<number, { normal: number; superHeavy: number }>> = {
-  0: { normal: 10, superHeavy: 5 },
-  1: { normal: 5, superHeavy: 2.5 },
-  2: { normal: 20, superHeavy: 10 },
-  3: { normal: 20, superHeavy: 20 },
-  4: { normal: 5, superHeavy: 5 },
-  5: { normal: 20, superHeavy: 20 },
-  6: { normal: 10 / 0.75, superHeavy: 10 / 1.5 },
+  [STRUCTURE_TYPE.STANDARD]: { normal: 10, superHeavy: 5 },
+  [STRUCTURE_TYPE.INDUSTRIAL]: { normal: 5, superHeavy: 2.5 },
+  [STRUCTURE_TYPE.ENDO_STEEL]: { normal: 20, superHeavy: 10 },
+  [STRUCTURE_TYPE.ENDO_STEEL_PROTOTYPE]: { normal: 20, superHeavy: 20 },
+  [STRUCTURE_TYPE.REINFORCED]: { normal: 5, superHeavy: 5 },
+  [STRUCTURE_TYPE.COMPOSITE]: { normal: 20, superHeavy: 20 },
+  [STRUCTURE_TYPE.ENDO_COMPOSITE]: { normal: 10 / 0.75, superHeavy: 10 / 1.5 },
 };
 
 const HYBRID_STRUCTURE_FRACTIONS: Readonly<Record<string, number>> = {
-  HD: 0.05, CT: 0.25, RT: 0.15, LT: 0.15,
-  RA: 0.1, LA: 0.1, RL: 0.1, LL: 0.1,
+  HD: 0.05,
+  CT: 0.25,
+  RT: 0.15,
+  LT: 0.15,
+  RA: 0.1,
+  LA: 0.1,
+  RL: 0.1,
+  LL: 0.1,
+  FRL: 0.1,
+  FLL: 0.1,
+  RRL: 0.1,
+  RLL: 0.1,
 };
-
-const SYSTEM_MISC_FLAGS = [
-  'F_ENDO_STEEL', 'F_ENDO_COMPOSITE', 'F_ENDO_STEEL_PROTO', 'F_COMPOSITE',
-  'F_INDUSTRIAL_STRUCTURE', 'F_REINFORCED', 'F_FERRO_FIBROUS',
-  'F_FERRO_FIBROUS_PROTO', 'F_FERRO_LAMELLOR', 'F_LIGHT_FERRO',
-  'F_HEAVY_FERRO', 'F_REACTIVE', 'F_REFLECTIVE', 'F_HARDENED_ARMOR',
-  'F_PRIMITIVE_ARMOR', 'F_COMMERCIAL_ARMOR', 'F_INDUSTRIAL_ARMOR',
-  'F_HEAVY_INDUSTRIAL_ARMOR', 'F_ANTI_PENETRATIVE_ABLATIVE',
-  'F_HEAT_DISSIPATING', 'F_IMPACT_RESISTANT', 'F_BALLISTIC_REINFORCED',
-  'F_ELECTRIC_DISCHARGE_ARMOR', 'F_HEAT_SINK', 'F_DOUBLE_HEAT_SINK',
-  'F_IS_DOUBLE_HEAT_SINK_PROTOTYPE', 'F_COMPACT_HEAT_SINK',
-] as const;
 
 export function calculateMekEffectiveTonnage(entity: MekEntity): number {
   return calculateMekWeightBreakdown(entity).rounded;
@@ -58,9 +66,7 @@ export function calculateMekWeightBreakdown(entity: MekEntity): MekWeightBreakdo
   const engine = entity.mountedEngine().installed ? entity.mountedEngine().getWeight() : 0;
   const structure = calculateMekStructureWeight(entity);
   const cockpit = entity.mountedCockpit().weight;
-  const gyro = ceilToHalfTon(
-    Math.ceil(entity.mountedEngine().rating / 100) * entity.mountedGyro().weightMultiplier,
-  );
+  const gyro = calculateMekGyroWeight(entity);
   const heatSinks = calculateMekHeatSinkWeight(entity);
   const armor = calculateMekArmorWeight(entity);
   const conversion = calculateMekConversionWeight(entity);
@@ -68,13 +74,38 @@ export function calculateMekWeightBreakdown(entity: MekEntity): MekWeightBreakdo
   const powerAmplifiers = calculateMekPowerAmplifierWeight(entity);
   const carryingSpace = calculateMekCarryingSpaceWeight(entity);
   const armoredComponents = calculateMekArmoredComponentWeight(entity);
-  const exact = engine + structure + cockpit + gyro + heatSinks + armor + conversion
-    + equipment + powerAmplifiers + carryingSpace + armoredComponents;
+  const exact =
+    engine +
+    structure +
+    cockpit +
+    gyro +
+    heatSinks +
+    armor +
+    conversion +
+    equipment +
+    powerAmplifiers +
+    carryingSpace +
+    armoredComponents;
   return {
-    engine, structure, cockpit, gyro, heatSinks, armor, conversion, equipment,
-    powerAmplifiers, carryingSpace, armoredComponents, exact,
+    engine,
+    structure,
+    cockpit,
+    gyro,
+    heatSinks,
+    armor,
+    conversion,
+    equipment,
+    powerAmplifiers,
+    carryingSpace,
+    armoredComponents,
+    exact,
     rounded: ceilToHalfTon(exact),
   };
+}
+
+/** Gyro mass the Mek sizes from its engine rating (TM p. 50, Master Engine Table). */
+export function calculateMekGyroWeight(entity: MekEntity, rating = entity.mountedEngine().rating): number {
+  return ceilToHalfTon(Math.ceil(rating / 100) * entity.mountedGyro().weightMultiplier);
 }
 
 export function calculateMekStructureWeight(entity: MekEntity): number {
@@ -93,9 +124,9 @@ export function calculateMekStructureWeight(entity: MekEntity): number {
 }
 
 function fullStructureWeight(entity: MekEntity, tonnage: number, typeId: number): number {
-  const divisor = STRUCTURE_DIVISORS[typeId] ?? STRUCTURE_DIVISORS[0];
+  const divisor = STRUCTURE_DIVISORS[typeId] ?? STRUCTURE_DIVISORS[STRUCTURE_TYPE.STANDARD];
   const tripodMultiplier = entity.motiveType() === 'Tripod' ? 1.1 : 1;
-  return ceilToHalfTon(tonnage * tripodMultiplier / (tonnage > 100 ? divisor.superHeavy : divisor.normal));
+  return ceilToHalfTon((tonnage * tripodMultiplier) / (tonnage > 100 ? divisor.superHeavy : divisor.normal));
 }
 
 export function calculateMekArmorWeight(entity: MekEntity): number {
@@ -114,30 +145,31 @@ function calculateMekHeatSinkWeight(entity: MekEntity): number {
     return sum + requireMountTonnage(entity, mount);
   }, 0);
   const free = entity.mountedEngine().weightFreeHeatSinks;
-  return Math.max(0, compactTonnage > 0
-    ? compactTonnage - free * 1.5
-    : entity.heatSinkCount() - free);
+  return Math.max(0, compactTonnage > 0 ? compactTonnage - free * 1.5 : entity.heatSinkCount() - free);
 }
 
-function calculateMekConversionWeight(entity: MekEntity): number {
+export function calculateMekConversionWeight(entity: MekEntity): number {
   if (entity.chassisConfig === 'LAM') {
-    const lamType = 'lamType' in entity && typeof entity.lamType === 'function'
-      ? String(entity.lamType()).toLowerCase()
-      : 'standard';
+    const lamType =
+      'lamType' in entity && typeof entity.lamType === 'function' ? String(entity.lamType()).toLowerCase() : 'standard';
     return ceilToWholeTon(entity.tonnage() * (lamType === 'bimodal' ? 0.15 : 0.1));
   }
   return entity.chassisConfig === 'QuadVee' ? ceilToWholeTon(entity.tonnage() * 0.1) : 0;
 }
 
 function calculateMekEquipmentWeight(entity: MekEntity): number {
-  return entity.equipment().reduce((total, mount) => {
+  return calculateMekEquipmentWeightDetails(entity).reduce((total, entry) => total + entry.tonnage, 0);
+}
+
+export function calculateMekEquipmentWeightDetails(entity: MekEntity) {
+  return entity.equipment().flatMap((mount) => {
     const equipment = mount.equipment;
     if (!equipment) throw new Error(`Unresolved equipment ${mount.equipmentId} on ${entity.displayName()}`);
-    if (equipment instanceof ArmorEquipment || equipment instanceof StructureEquipment) return total;
-    if (equipment instanceof MiscEquipment && equipment.hasAnyFlag([...SYSTEM_MISC_FLAGS])) return total;
-    if (equipment instanceof AmmoEquipment && mount.allocation.kind === 'unallocated') return total;
-    return total + requireMountTonnage(entity, mount);
-  }, 0);
+    if (equipment instanceof ArmorEquipment || equipment instanceof StructureEquipment) return [];
+    if (equipment instanceof MiscEquipment && isConstructionSystemEquipment(equipment)) return [];
+    if (equipment instanceof AmmoEquipment && mount.allocation.kind === 'unallocated') return [];
+    return [{ mount, tonnage: requireMountTonnage(entity, mount) }];
+  });
 }
 
 function calculateMekPowerAmplifierWeight(entity: MekEntity): number {
@@ -146,12 +178,19 @@ function calculateMekPowerAmplifierWeight(entity: MekEntity): number {
   const poweredWeight = entity.equipment().reduce((total, mount) => {
     const equipment = mount.equipment;
     if (!(equipment instanceof WeaponEquipment)) return total;
-    const requiresPower = equipment.hasAnyFlag(['F_LASER', 'F_PPC', 'F_PLASMA', 'F_PLASMA_MFUK'])
-      || (equipment.hasFlag('F_FLAMER') && equipment.ammoType === 'NA');
+    const requiresPower =
+      equipment.hasFlag('F_LASER') ||
+      equipment.hasFlag('F_PLASMA') ||
+      equipment.hasFlag('F_PLASMA_MFUK') ||
+      isPpcEquipment(equipment) ||
+      flamerRequiresPower(equipment);
     if (!requiresPower) return total;
-    const capacitor = entity.getLinkingMount(mount);
-    return total + requireMountTonnage(entity, mount)
-      + (capacitor?.equipment?.hasFlag('F_PPC_CAPACITOR') ? requireMountTonnage(entity, capacitor) : 0);
+    const capacitor = entity.getLinkingMounts(mount).find(source => isPpcCapacitorEquipment(source.equipment));
+    return (
+      total +
+      requireMountTonnage(entity, mount) +
+      (capacitor ? requireMountTonnage(entity, capacitor) : 0)
+    );
   }, 0);
   return ceilToHalfTon(poweredWeight / 10);
 }
@@ -177,7 +216,10 @@ function calculateMekArmoredComponentWeight(entity: MekEntity): number {
   return weight + (armoredCockpit ? 1 : 0);
 }
 
-function requireMountTonnage(entity: MekEntity, mount: { equipmentId: string; getTonnage(owner: MekEntity): number | undefined }): number {
+function requireMountTonnage(
+  entity: MekEntity,
+  mount: { equipmentId: string; getTonnage(owner: MekEntity): number | undefined },
+): number {
   const tonnage = mount.getTonnage(entity);
   if (tonnage === undefined) {
     throw new Error(`Unable to calculate tonnage for ${mount.equipmentId} on ${entity.displayName()}`);

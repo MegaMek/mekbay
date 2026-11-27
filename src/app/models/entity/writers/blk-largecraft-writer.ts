@@ -6,7 +6,7 @@ import { JumpShipEntity } from '../entities/largecraft/jumpship-entity';
 import { WarShipEntity } from '../entities/largecraft/warship-entity';
 import { SpaceStationEntity } from '../entities/largecraft/space-station-entity';
 import {
-  LARGE_CRAFT_LOCATIONS,
+  LARGE_CRAFT_BLK_ARMOR_LOCATIONS,
 } from '../types';
 import { encodeBlkAeroDesignType, encodeBlkDriveCoreType, encodeBlkHeatSinkType } from '../parsers/blk-codec';
 import {
@@ -16,6 +16,7 @@ import {
   writeBlkPreamble,
   writeEngine,
   writeEquipmentByLocation,
+  writeEmbeddedImages,
   writeFluffBlocks,
   writeInternalType,
   writeManualBV,
@@ -70,7 +71,7 @@ export function writeBlkLargeCraft(entity: JumpShipEntity): string {
   writeOmni(w, entity);
 
   // 11. Armor values
-  const armorLocs = [...LARGE_CRAFT_LOCATIONS];
+  const armorLocs = [...LARGE_CRAFT_BLK_ARMOR_LOCATIONS];
   const armorMap = entity.armorValues();
   const armorInts: number[] = armorLocs.map(loc => armorMap.get(loc)?.front ?? 0);
   w.addBlock('armor', ...armorInts);
@@ -101,6 +102,7 @@ export function writeBlkLargeCraft(entity: JumpShipEntity): string {
   }
 
   // 19. JumpShip-specific tail: lithium-fusion, jump_range, sail, grav_decks
+  if (entity.hpg()) w.addBlock('hpg', 1);
   if (entity.lithiumFusion()) w.addBlock('lithium-fusion', 1);
   if (entity.jumpRange() !== 30) w.addBlock('jump_range', entity.jumpRange());
   w.addBlock('sail', entity.sail() ? 1 : 0);
@@ -116,5 +118,7 @@ export function writeBlkLargeCraft(entity: JumpShipEntity): string {
   w.addBlock('designtype', encodeBlkAeroDesignType(entity.designType()));
   writeBlkCrew(w, entity);
 
-  return w.toString();
+  writeEmbeddedImages(w, entity);
+
+  return w.toString(entity.nativeSourceTrailingNewlines || 2);
 }

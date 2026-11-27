@@ -10,14 +10,14 @@ interface IntrinsicWeaponBase {
   readonly id: string;
   readonly name: string;
   readonly locations: readonly string[];
-  readonly hitModifiers: readonly EntityWeaponHitModifier[];
+  /** Construction-only adjustment. The selected ruleset supplies the base modifier. */
+  readonly hitModifierAdjustment: EntityWeaponHitModifier;
 }
 
 export type FixedPhysicalDamage = {
   readonly kind: 'fixed';
   readonly value: number;
   readonly boostedValue?: number;
-  readonly alternatives?: Readonly<Record<string, IntrinsicWeaponDamage>>;
 };
 
 export type IntrinsicWeaponDamage =
@@ -34,12 +34,21 @@ export type IntrinsicWeaponDamage =
 export type IntrinsicWeaponKind =
   | 'punch'
   | 'kick'
+  | 'mule-kick'
   | 'club'
   | 'death-from-above'
   | 'charge'
   | 'airmek-ram'
   | 'push'
-  | 'frenzy';
+  | 'thrash'
+  // A swarmed 'Mech pulls the infantry off with one arm (TW p. 221).
+  | 'brush-off'
+  | 'frenzy'
+  // Infantry anti-'Mech attacks (TW pp. 220-223).
+  | 'vibro-claw'
+  | 'leg-attack'
+  | 'swarm'
+  | 'end-swarm';
 
 export interface IntrinsicWeapon extends IntrinsicWeaponBase {
   readonly source: 'intrinsic';

@@ -4,7 +4,6 @@
 
 import { ChangeDetectionStrategy, Component, inject, signal } from '@angular/core';
 import { DialogRef, DIALOG_DATA } from '@angular/cdk/dialog';
-import { CommonModule } from '@angular/common';
 import { OpPreviewComponent, type OpPreviewForce } from '../op-preview/op-preview.component';
 
 
@@ -28,9 +27,8 @@ export interface OperationDialogResult {
 
 @Component({
     selector: 'save-operation-dialog',
-    standalone: true,
     changeDetection: ChangeDetectionStrategy.OnPush,
-    imports: [CommonModule, OpPreviewComponent],
+    imports: [OpPreviewComponent],
     host: { class: 'fullscreen-dialog-host glass' },
     template: `
     <div class="wide-dialog">

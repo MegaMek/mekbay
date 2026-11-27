@@ -5,35 +5,9 @@
         (activeTabChange)="activeTab.set($event)"
         [panelClass]="'unit-details-panel'">
         
-        <!-- Header -->
-        <div panel-header class="header">
-            <div class="header-icon-container">
-                <unit-icon [unit]="currentUnit" [size]="56"></unit-icon>
-            </div>
-            <div class="header-content">
-                <div class="header-row reverse-wrap">
-                    <div class="header-model allow-select">{{ currentUnit.model }}</div>
-                    <div class="header-details">
-                        @if (currentUnit.role && currentUnit.role !== 'None') {
-                            <div class="role"><strong>{{ currentUnit.role }}</strong></div>
-                        }
-                        <div class="info-slot numeric allow-select" title="Tonnage">
-                            <span class="value">{{ formatThousands(currentUnit.tons) }}</span>
-                            <img src="/images/weight.svg" class="icon" alt="tons">
-                        </div>
-                    </div>
-                </div>
-                <div class="header-row">
-                    <div class="header-chassis-group">
-                        <div class="header-chassis allow-select">{{ currentUnit.chassis }}</div>
-                        @if (currentUnit.serverHost) {
-                            <span class="custom-unit-badge" title="Custom unit from {{ currentUnit.serverHost }}">Custom</span>
-                        }
-                    </div>
-                    <unit-tags class="header-tags" [unit]="currentUnit" [mode]="'full'" (tagClick)="onTagClick($event)"></unit-tags>
-                </div>
-            </div>
-        </div>
+        <!-- Header: tags stay reachable on every tab; General lists them in full. -->
+        <unit-identity-bar panel-header [unit]="currentUnit" [value]="headerValue()"
+            [showTags]="activeTab() !== 'General'" (tagClick)="onTagClick($event)" />
 
         <!-- Tab Actions -->
         <div tab-actions>
@@ -53,12 +27,7 @@
             
             <div class="tab-content">
                 @if (activeTab() === 'General') {
-                    <unit-details-general-tab 
-                        [unit]="currentUnit"
-                        [gunnerySkill]="gunnerySkill()"
-                        [pilotingSkill]="pilotingSkill()"
-                        [adjustedValueOverride]="adjustedValueOverride()">
-                    </unit-details-general-tab>
+                    <unit-details-general-tab [unit]="currentUnit"></unit-details-general-tab>
                 }
 
                 @if (activeTab() === 'Variants') {
@@ -102,29 +71,34 @@
                 [hasPrev]="hasPrev()"
                 [hasNext]="hasNext()"
                 [sheetTab]="sheetTabRef()"
+                [cardTab]="cardTabRef()"
                 [variantsTabState]="variantsTabState()"
                 [gameSystem]="currentGameSystem()"
                 (prev)="prev.emit()"
                 (next)="next.emit()"
                 (variantsTabStateChange)="variantsTabState.set($event)">
                 <ng-container unit-details-footer-actions>
-                <div class="bt-split-button add-split-button" [class.disabled]="forceBuilderService.currentForce()?.readOnly()">
+                <div class="bt-split-button add-split-button" [class.disabled]="forceWorkspace.currentForce()?.readOnly()">
                     <button
                         type="button"
                         class="bt-split-part split-main"
-                        [disabled]="forceBuilderService.currentForce()?.readOnly()"
+                        [disabled]="forceWorkspace.currentForce()?.readOnly()"
                         (click)="onAdd()">
                         ADD TO FORCE
                     </button>
                     <button
                         type="button"
                         class="bt-split-part split-extra"
-                        [disabled]="forceBuilderService.currentForce()?.readOnly()"
+                        [disabled]="forceWorkspace.currentForce()?.readOnly()"
                         (click)="onAddMultiple()"
                         title="Add multiple copies">
                         +
                     </button>
                 </div>
+                <unit-construction-button [unit]="currentUnit"></unit-construction-button>
+                @if (currentUnit.isCustom) {
+                    <custom-unit-actions [unit]="currentUnit" />
+                }
                 </ng-container>
         </unit-details-footer>
     </base-panel>

@@ -2,62 +2,77 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 // Author: Drake
 
-import { ChangeDetectionStrategy, Component, computed, inject, InjectionToken, Injector, signal, type Signal, viewChild } from '@angular/core';
-import { DIALOG_DATA, DialogRef } from '@angular/cdk/dialog';
+import { ChangeDetectionStrategy, Component, computed, DestroyRef, inject, Injector, signal, viewChild } from '@angular/core';
 import { Overlay } from '@angular/cdk/overlay';
 import { ComponentPortal } from '@angular/cdk/portal';
-import { isFallPSRCheck, psrFailureLabel, type PSRCheck } from '../../../models/rules/unit-type-rules';
-import { OverlayManagerService } from '../../../services/overlay-manager.service';
-import { DiceRollerComponent } from '../../dice-roller/dice-roller.component';
-import type { CBTForceUnit } from '../../../models/cbt-force-unit.model';
-import type { PageInteractionOverlayComponent } from './page-interaction-overlay.component';
-import { displayPsrModifiers, openTurnSummaryChildOverlay } from './page-turn-summary.util';
-import { getMekLocationLabel } from '../../../models/entity/types';
 
-type PsrOutcome = 'success' | 'failed';
-type PsrOutcomeSource = 'committed' | 'selected' | 'cascade' | 'automatic';
+import {
+    mekAutomaticFallReasonV2,
+    type MekAutomaticFallV2,
+    type MekPilotCheckOutcomeV2,
+    type MekPilotCheckV2,
+} from '../../../models/runtime/mek-movement-psr-v2';
+import type { CBTMekForceMember } from '../../../models/force-member.model';
+import { OptionsService } from '../../../services/options.service';
+import { OverlayManagerService } from '../../../services/overlay-manager.service';
+import { ToastService } from '../../../services/toast.service';
+import { DiceRollerComponent } from '../../dice-roller/dice-roller.component';
+import {
+    MekTurnSummaryRuntimeController,
+} from './mek-turn-summary-runtime.controller';
+import {
+    actionableMekPilotChecks,
+    mekPsrDisplayModifiers,
+    openTurnSummaryChildOverlay,
+    PAGE_TURN_MEMBER,
+} from './page-turn-summary.util';
+
+type PsrOutcomeSource = 'committed' | 'selected' | 'cascade';
 
 interface PsrOutcomeState {
-    readonly outcome: PsrOutcome;
+    readonly outcome: MekPilotCheckOutcomeV2;
     readonly source: PsrOutcomeSource;
 }
 
-export interface PsrWarningDialogData {
-    readonly unit: CBTForceUnit;
-}
-
-export const PSR_WARNING_UNIT = new InjectionToken<Signal<CBTForceUnit | null>>('PSR_WARNING_UNIT');
-const PSR_WARNING_CLOSE = new InjectionToken<() => void>('PSR_WARNING_CLOSE');
-
-export function psrRollOutcome(sum: number, target: number): 'success' | 'failed' {
+export function psrRollOutcome(sum: number, target: number): MekPilotCheckOutcomeV2 {
     return sum >= target ? 'success' : 'failed';
 }
 
+function psrWarningKey(unitId: string): string {
+    return `psrWarning-${unitId}`;
+}
+
 export function togglePsrWarningOverlay(
-    parent: PageInteractionOverlayComponent,
+    member: CBTMekForceMember | null,
     overlayManager: OverlayManagerService,
     injector: Injector,
     overlay: Overlay,
     beforeOpen?: () => void
 ): void {
-    const unitId = parent.unit()?.id;
-    if (!unitId) return;
-
-    const overlayKey = `psrWarning-${unitId}`;
-    if (overlayManager.has(overlayKey)) {
-        overlayManager.closeManagedOverlay(overlayKey);
+    if (member && overlayManager.has(psrWarningKey(member.id))) {
+        overlayManager.closeManagedOverlay(psrWarningKey(member.id));
         return;
     }
+    openPsrWarningOverlay(member, overlayManager, injector, overlay, beforeOpen);
+}
+
+/** Opens the unit's Piloting Skill Roll panel unless it is already open. */
+export function openPsrWarningOverlay(
+    member: CBTMekForceMember | null,
+    overlayManager: OverlayManagerService,
+    injector: Injector,
+    overlay: Overlay,
+    beforeOpen?: () => void
+): void {
+    const unitId = member?.id;
+    if (!unitId) return;
+
+    const overlayKey = psrWarningKey(unitId);
+    if (overlayManager.has(overlayKey)) return;
 
     beforeOpen?.();
     const customInjector = Injector.create({
-        providers: [
-            { provide: PSR_WARNING_UNIT, useValue: parent.unit },
-            {
-                provide: PSR_WARNING_CLOSE,
-                useValue: () => overlayManager.closeManagedOverlay(overlayKey),
-            },
-        ],
+        providers: [{ provide: PAGE_TURN_MEMBER, useValue: member }],
         parent: injector
     });
     const portal = new ComponentPortal(PagePsrWarningPanelComponent, null, customInjector);
@@ -81,39 +96,87 @@ export function togglePsrWarningOverlay(
     styleUrl: './page-psr-warning-panel.component.scss',
 })
 export class PagePsrWarningPanelComponent {
-    private readonly overlayUnit = inject(PSR_WARNING_UNIT, { optional: true });
-    private readonly overlayClose = inject(PSR_WARNING_CLOSE, { optional: true });
+    private readonly member = inject(PAGE_TURN_MEMBER);
     private readonly overlayManager = inject(OverlayManagerService);
-    private readonly dialogData = inject<PsrWarningDialogData | null>(DIALOG_DATA, { optional: true });
-    private readonly dialogRef = inject<DialogRef<boolean> | null>(DialogRef, { optional: true });
+    private readonly options = inject(OptionsService);
+    private readonly toast = inject(ToastService);
+    private readonly destroyRef = inject(DestroyRef);
+
     readonly diceRoller = viewChild<DiceRollerComponent>('roller');
-    readonly unit = this.overlayUnit ?? computed(() => this.dialogData?.unit ?? null);
     readonly rolledResult = signal<string | null>(null);
     readonly rolledResultTone = computed<'default' | 'success' | 'failed'>(() => {
         if (this.rolledResult() === 'SUCCESS') return 'success';
         if (this.rolledResult() === 'FAILED') return 'failed';
         return 'default';
     });
-    private readonly selectedOutcomes = computed<Readonly<Record<string, PsrOutcome>>>(() =>
-        this.unit()?.psrOutcomeSelections() ?? {});
-    private readonly selectedDice = computed<Readonly<Record<string, readonly [number, number]>>>(() =>
-        this.unit()?.psrDiceSelections?.() ?? {});
-    private rollingCheck: PSRCheck | null = null;
-    readonly locationLabel = getMekLocationLabel;
+    readonly controlRollFullLabel = computed(() => 'Piloting Skill Rolls');
 
-    close(accepted = false): void {
-        if (this.dialogRef) {
-            this.dialogRef.close(accepted);
-            return;
+    private controller: MekTurnSummaryRuntimeController | null = null;
+    private rollingCheck: MekPilotCheckV2 | null = null;
+    private readonly selectedOutcomes = signal<Readonly<Record<string, MekPilotCheckOutcomeV2>>>({});
+    private readonly selectedDice = signal<Readonly<Record<string, readonly [number, number]>>>({});
+
+    readonly automaticFalls = computed(() =>
+        this.runtime()?.snapshot().movementState.automaticFalls ?? []);
+    readonly psrChecks = computed(() => actionableMekPilotChecks(
+        this.runtime()?.snapshot().movementState.checks ?? [],
+        this.automaticFalls().length > 0,
+    ));
+    readonly targetRoll = computed(() => {
+        const checks = this.psrChecks();
+        return checks.find(check => check.status === 'pending')?.targetNumber
+            ?? checks[0]?.targetNumber
+            ?? 0;
+    });
+    readonly modifiersList = computed(() => {
+        const movement = this.runtime()?.snapshot().movement;
+        return movement ? mekPsrDisplayModifiers(movement) : [];
+    });
+    private readonly resolutionStates = computed<ReadonlyMap<string, PsrOutcomeState>>(() => {
+        const states = new Map<string, PsrOutcomeState>();
+        const selected = this.selectedOutcomes();
+        let priorFallFailed = this.automaticFalls().length > 0;
+        for (const check of this.psrChecks()) {
+            if (check.status !== 'pending') {
+                states.set(check.checkId, { outcome: check.status, source: 'committed' });
+                if (check.status === 'failed' && isCascadeFallPilotCheck(check)) priorFallFailed = true;
+                continue;
+            }
+            if (priorFallFailed && isCascadeFallPilotCheck(check)) {
+                states.set(check.checkId, { outcome: 'failed', source: 'cascade' });
+                continue;
+            }
+            const outcome = selected[check.checkId];
+            if (!outcome) continue;
+            states.set(check.checkId, { outcome, source: 'selected' });
+            if (outcome === 'failed' && isCascadeFallPilotCheck(check)) priorFallFailed = true;
         }
-        if (this.overlayClose) {
-            this.overlayClose();
-            return;
-        }
-        this.overlayManager.closeManagedOverlay(`psrWarning-${this.unit()?.id}`);
+        return states;
+    });
+    readonly showRollDetails = computed(() => this.psrChecks().length > 0);
+    readonly canAccept = computed(() => {
+        const checks = this.psrChecks();
+        const states = this.resolutionStates();
+        return checks.length > 0
+            && checks.every(check => states.has(check.checkId))
+            && [...states.values()].some(state => state.source !== 'committed');
+    });
+
+    automaticFallReason(fall: MekAutomaticFallV2): string {
+        return mekAutomaticFallReasonV2(fall.triggerKind);
     }
 
-    roll(check: PSRCheck): void {
+    locationLabel(locationId: string | undefined): string | null {
+        return locationId
+            ? this.runtime()?.snapshot().locationLabels[locationId] ?? null
+            : null;
+    }
+
+    close(): void {
+        this.overlayManager.closeManagedOverlay(psrWarningKey(this.member.id));
+    }
+
+    roll(check: MekPilotCheckV2): void {
         const roller = this.diceRoller();
         if (!roller || roller.isRolling() || !this.canEditOutcome(check)) return;
         this.rollingCheck = check;
@@ -122,175 +185,102 @@ export class PagePsrWarningPanelComponent {
     }
 
     onRollFinished(event: { readonly results: number[]; readonly sum: number }): void {
-        const unit = this.unit();
+        const runtime = this.runtime();
         const check = this.rollingCheck;
         this.rollingCheck = null;
-        if (!unit || !check) return;
-
-        const result = psrRollOutcome(event.sum, unit.PSRTargetRoll());
-        this.rolledResult.set(result.toUpperCase());
-        this.selectOutcome(check, result, validPsrDice(event.results));
+        if (!runtime || !check || event.results.length < 2) return;
+        const outcome = psrRollOutcome(event.sum, check.targetNumber);
+        this.rolledResult.set(outcome.toUpperCase());
+        this.selectOutcome(check, outcome, validPsrDice(event.results));
     }
 
     selectOutcome(
-        check: PSRCheck,
-        result: PsrOutcome,
+        check: MekPilotCheckV2,
+        outcome: MekPilotCheckOutcomeV2,
         dice: readonly [number, number] | null = null,
     ): void {
-        const checkId = check.id;
-        const unit = this.unit();
-        if (!unit || !checkId || !this.canEditOutcome(check)) return;
-        unit.psrOutcomeSelections.update(current => ({ ...current, [checkId]: result }));
-        unit.psrDiceSelections?.update(current => {
-            if (dice) return { ...current, [checkId]: [...dice] as readonly [number, number] };
-            const { [checkId]: _removed, ...remaining } = current;
+        if (!this.canEditOutcome(check)) return;
+        this.selectedOutcomes.update(current => ({ ...current, [check.checkId]: outcome }));
+        this.selectedDice.update(current => {
+            if (dice) return { ...current, [check.checkId]: dice };
+            const { [check.checkId]: _removed, ...remaining } = current;
             return remaining;
         });
+        this.rolledResult.set(outcome.toUpperCase());
     }
 
-    diceFor(check: PSRCheck): readonly [number, number] | null {
-        return check.id && this.resolutionStates().get(check.id)?.source === 'selected'
-            ? this.selectedDice()[check.id] ?? null
+    outcome(check: MekPilotCheckV2): MekPilotCheckOutcomeV2 | undefined {
+        return this.resolutionStates().get(check.checkId)?.outcome;
+    }
+
+    diceFor(check: MekPilotCheckV2): readonly [number, number] | null {
+        return this.resolutionStates().get(check.checkId)?.source === 'selected'
+            ? this.selectedDice()[check.checkId] ?? null
             : null;
     }
 
-    outcome(check: PSRCheck): PsrOutcome | undefined {
-        return check.id ? this.resolutionStates().get(check.id)?.outcome : undefined;
-    }
-
-    canEditOutcome(check: PSRCheck): boolean {
-        const source = check.id ? this.resolutionStates().get(check.id)?.source : undefined;
+    canEditOutcome(check: MekPilotCheckV2): boolean {
+        const source = this.resolutionStates().get(check.checkId)?.source;
         return source === undefined || source === 'selected';
     }
 
-    isCascadedFailure(check: PSRCheck): boolean {
-        return check.id ? this.resolutionStates().get(check.id)?.source === 'cascade' : false;
+    isCascadedFailure(check: MekPilotCheckV2): boolean {
+        return this.resolutionStates().get(check.checkId)?.source === 'cascade';
     }
 
-    isAutomaticFailure(check: PSRCheck): boolean {
-        const turnState = this.unit()?.turnState();
-        return this.committedOutcome(check) === undefined
-            && turnState !== undefined
-            && (turnState.isPSRCheckAutomaticFailure(check)
-                || (turnState.autoFall() && isFallPSRCheck(check)));
+    failureLabel(check: MekPilotCheckV2): string {
+        if (check.source.triggerKind === 'shutdown') return 'Shutdown';
+        if (check.source.triggerKind === 'get-up') return 'Fall again';
+        if (check.source.triggerKind === 'made-thrash') return 'Falling damage';
+        if (check.source.triggerKind === 'shake-off-jump') return 'Infantry holds on';
+        return 'Fall';
     }
 
-    failureLabel(check: PSRCheck): string {
-        return psrFailureLabel(check);
-    }
-
-    readonly canAccept = computed(() => {
-        const checks = this.psrChecks();
+    async accept(): Promise<void> {
+        const runtime = this.runtime();
+        if (!runtime || !this.canAccept()) return;
         const states = this.resolutionStates();
-        return checks.length > 0
-            && checks.every(check => check.id !== undefined && states.has(check.id))
-            && Array.from(states.values()).some(state => state.source !== 'committed');
-    });
-
-    accept(): void {
-        const unit = this.unit();
-        if (!unit || !this.canAccept()) return;
         const resolutions = this.psrChecks().flatMap(check => {
-            if (!check.id) return [];
-            const state = this.resolutionStates().get(check.id);
+            const state = states.get(check.checkId);
             return state && state.source !== 'committed'
-                ? [{ check, outcome: state.outcome }]
+                ? [{ check, outcome: state.outcome, dice: this.diceFor(check) }]
                 : [];
         });
-        if (resolutions.length === 0) return;
-
         for (const resolution of resolutions) {
-            this.applyOutcome(resolution.check, resolution.outcome);
+            if (!await runtime.resolveCheckOutcome(
+                resolution.check.checkId,
+                resolution.check.targetNumber,
+                resolution.outcome,
+                resolution.dice ?? undefined,
+            )) return;
         }
-        unit.psrOutcomeSelections.set({});
-        unit.psrDiceSelections?.set({});
-        this.close(true);
+        this.selectedOutcomes.set({});
+        this.selectedDice.set({});
+        this.close();
     }
 
-    private applyOutcome(check: PSRCheck, result: PsrOutcome): void {
-        const unit = this.unit();
-        if (!unit) return;
-        if (check.resolution) {
-            unit.resolveRuleCheck(check.resolution.key, check.resolution.token, result);
-        } else if (check.id) {
-            unit.turnState().resolvePSRCheck(check.id, result);
+    private runtime(): MekTurnSummaryRuntimeController | null {
+        if (!this.controller || this.controller.member !== this.member) {
+            this.controller = new MekTurnSummaryRuntimeController(
+                this.member,
+                this.options,
+                this.toast,
+                this.destroyRef,
+            );
         }
+        return this.controller;
     }
+}
 
-    private committedOutcome(check: PSRCheck): PsrOutcome | undefined {
-        const unit = this.unit();
-        if (!unit) return undefined;
-        if (check.resolution) {
-            const ruleCheck = unit.getRuleCheck(check.resolution.key);
-            if (!ruleCheck || ruleCheck.token !== check.resolution.token || ruleCheck.status === 'pending') {
-                return undefined;
-            }
-            return ruleCheck.status;
-        }
-        return check.id ? unit.turnState().getPSROutcome(check.id) : undefined;
-    }
-
-    readonly modifiersList = computed(() => {
-        const unit = this.unit();
-        if (!unit) return [];
-        return displayPsrModifiers(unit.PSRModifiers().modifiers);
-    });
-
-    readonly controlRollFullLabel = computed(() => {
-        const unit = this.unit();
-        if (!unit) return 'Piloting Skill Rolls';
-        return unit.rules.controlRollFullLabel;
-    });
-
-    readonly psrChecks = computed(() => {
-        const unit = this.unit();
-        if (!unit) return [];
-        return unit.turnState().getPSRChecks()
-            .filter(check => check.fallCheck !== undefined);
-    });
-
-    private readonly resolutionStates = computed<ReadonlyMap<string, PsrOutcomeState>>(() => {
-        const states = new Map<string, PsrOutcomeState>();
-        const selected = this.selectedOutcomes();
-        let priorFallFailed = false;
-
-        for (const check of this.psrChecks()) {
-            if (!check.id) continue;
-            const committed = this.committedOutcome(check);
-            if (committed) {
-                states.set(check.id, { outcome: committed, source: 'committed' });
-                if (committed === 'failed' && isFallPSRCheck(check)) priorFallFailed = true;
-                continue;
-            }
-            if (this.isAutomaticFailure(check)) {
-                states.set(check.id, { outcome: 'failed', source: 'automatic' });
-                if (isFallPSRCheck(check)) priorFallFailed = true;
-                continue;
-            }
-            if (priorFallFailed && isFallPSRCheck(check)) {
-                states.set(check.id, { outcome: 'failed', source: 'cascade' });
-                continue;
-            }
-            const outcome = selected[check.id];
-            if (!outcome) continue;
-            states.set(check.id, { outcome, source: 'selected' });
-            if (outcome === 'failed' && isFallPSRCheck(check)) priorFallFailed = true;
-        }
-        return states;
-    });
-
-    readonly allChecksAutomaticFailure = computed(() => {
-        const checks = this.psrChecks();
-        return checks.length > 0 && checks.every(check => this.isAutomaticFailure(check));
-    });
-
-    readonly showRollDetails = computed(() => this.psrChecks().length > 0
-        && !this.allChecksAutomaticFailure());
+function isCascadeFallPilotCheck(check: MekPilotCheckV2): boolean {
+    return check.source.triggerKind !== 'shutdown'
+        && check.source.triggerKind !== 'get-up'
+        && check.source.triggerKind !== 'shake-off-jump';
 }
 
 function validPsrDice(results: readonly number[]): readonly [number, number] | null {
     return results.length === 2
         && results.every(value => Number.isInteger(value) && value >= 1 && value <= 6)
-        ? [results[0], results[1]]
+        ? [results[0]!, results[1]!]
         : null;
 }

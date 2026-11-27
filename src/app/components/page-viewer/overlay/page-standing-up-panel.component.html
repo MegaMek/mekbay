@@ -11,10 +11,12 @@
             <span>Attempts</span>
             <div class="attempts-stepper">
                 <button type="button" class="bt-button square-small" [disabled]="attempts() === 0"
-                    aria-label="Decrease stand attempts" title="Decrease stand attempts" (click)="adjustAttempts(-1)">-</button>
+                    aria-label="Decrease stand attempts" title="Decrease stand attempts"
+                    (click)="adjustAttempts(-1)">-</button>
                 <strong>{{ attempts() }}</strong>
                 <button type="button" class="bt-button square-small"
-                    aria-label="Increase stand attempts" title="Increase stand attempts" (click)="adjustAttempts(1)">+</button>
+                    aria-label="Increase stand attempts" title="Increase stand attempts"
+                    (click)="adjustAttempts(1)">+</button>
             </div>
         </div>
         @if (!canStandWithoutPSR()) {
@@ -24,10 +26,11 @@
                     <div class="psr-check-header">
                         <div class="psr-item-content">
                             <div class="psr-reason">Stand up!
-                            @if (attemptLimit(); as limit) {
-                                <span class="stand-attempt-limit">({{ limit }} attempt per turn)</span>
-                            }</div>
-                            <div class="psr-subtitle">Failure: <span class="psr-failure-value">Remain prone</span></div>
+                                @if (attemptLimit(); as limit) {
+                                    <span class="stand-attempt-limit">({{ limit }} attempt per turn)</span>
+                                }
+                            </div>
+                            <div class="psr-subtitle">Failure: <span class="psr-failure-value">Fall again</span></div>
                         </div>
                         @if (lastOutcome(); as result) {
                             <div class="psr-result" [class.failed]="result === 'failed'">{{ result }}</div>
@@ -47,8 +50,8 @@
             @if (!reviewOnly && supportsCarefulStand()) {
                 <label class="careful-stand" [class.disabled]="!canCarefulStand()"
                     [attr.title]="canCarefulStand() ? 'Consumes all remaining movement and counts as walking' : 'Requires at least 3 available Walking MP'">
-                    <input type="checkbox" class="bt-checkbox" [checked]="carefulStand()" [disabled]="!canCarefulStand()"
-                        (change)="setCarefulStand($event)">
+                    <input type="checkbox" class="bt-checkbox" [checked]="carefulStand()"
+                        [disabled]="!canCarefulStand()" (change)="setCarefulStand($event)">
                     <span>Careful stand (optional)</span>
                     <span class="modifier-badge">-2</span>
                 </label>
@@ -57,14 +60,12 @@
                 <div class="roll-details">
                     <div class="roll-details-label">Modifiers</div>
                     <div class="modifiers">
-                        @for (modifier of modifiersList(); track $index) {
+                        @for (modifier of modifiersList(); track modifier.reason) {
                             <div class="modifier-item">
-                                <span class="modifier-location">
-                                    @if (modifier.loc) { {{ modifier.loc }} } @else { &mdash; }
-                                </span>
+                                <span class="modifier-location">&mdash;</span>
                                 <span class="modifier-reason">{{ modifier.reason }}</span>
-                                <strong class="modifier-value" [class.bonus]="modifier.pilotCheck < 0">
-                                    {{ modifier.pilotCheck >= 0 ? '+' : '' }}{{ modifier.pilotCheck }}
+                                <strong class="modifier-value" [class.bonus]="modifier.modifier < 0">
+                                    {{ modifier.modifier >= 0 ? '+' : '' }}{{ modifier.modifier }}
                                 </strong>
                             </div>
                         }
@@ -89,8 +90,7 @@
         [compactOverlayResult]="true"
         [overlayResult]="rolledResult()"
         [overlayResultTone]="rolledResultTone()"
-        [overlayCloseHint]="rollOverlayCloseHint()"
+        overlayCloseHint="Click to return to standing up"
         (finished)="onRollFinished($event)"
-        (overlayClosed)="onRollOverlayClosed()"
     />
 }

@@ -23,7 +23,6 @@ export interface ForceTagClickEvent {
 @Component({
     selector: 'force-tags',
     changeDetection: ChangeDetectionStrategy.OnPush,
-    imports: [],
     templateUrl: './force-tags.component.html',
     styleUrl: './force-tags.component.css'
 })

@@ -5,7 +5,6 @@
 import {
   CalculationReportBuilder,
   NULL_CALCULATION_REPORT,
-  formatForReport,
   formatRoundedReportResult,
 } from './calculation-report';
 import { renderTextCalculationReport } from './text-calculation-report-renderer';
@@ -30,45 +29,6 @@ describe('CalculationReportBuilder', () => {
     ]);
   });
 
-  it('commits a tentative section in order', () => {
-    const report = new CalculationReportBuilder();
-    report.addLine('Before');
-    report.startTentativeSection();
-    report.addLine('Tentative');
-    report.startTentativeSection();
-    report.addLine('Still tentative');
-    report.endTentativeSection();
-    report.endTentativeSection();
-    report.addLine('After');
-
-    expect(report.events().map(event => event.kind === 'line' ? event.type : event.kind))
-      .toEqual(['Before', 'Tentative', 'Still tentative', 'After']);
-  });
-
-  it('discards a tentative section without affecting committed events', () => {
-    const report = new CalculationReportBuilder();
-    report.addLine('Before');
-    report.startTentativeSection();
-    report.addResultLine('Discarded', '', '1');
-    report.finalizeTentativeSection(false);
-    report.discardTentativeSection();
-
-    expect(report.events()).toEqual([
-      { kind: 'line', type: 'Before', calculation: '', result: '' },
-    ]);
-  });
-
-  it('keeps a tentative section through finalization', () => {
-    const report = new CalculationReportBuilder();
-    report.startTentativeSection();
-    report.addLine('Kept');
-    report.finalizeTentativeSection(true);
-
-    expect(report.events()).toEqual([
-      { kind: 'line', type: 'Kept', calculation: '', result: '' },
-    ]);
-  });
-
   it('returns a defensive copy of committed events', () => {
     const report = new CalculationReportBuilder();
     report.addLine('Original');
@@ -81,8 +41,6 @@ describe('CalculationReportBuilder', () => {
   it('supports a reusable no-op report sink', () => {
     expect(() => {
       NULL_CALCULATION_REPORT.addHeader('Ignored').addLine('Ignored');
-      NULL_CALCULATION_REPORT.startTentativeSection();
-      NULL_CALCULATION_REPORT.finalizeTentativeSection(true);
     }).not.toThrow();
   });
 });
@@ -93,13 +51,7 @@ describe('calculation report number formatting', () => {
     expect(formatRoundedReportResult(null, 0)).toBe('0.0');
   });
 
-  it('formats only significant report decimals up to thousandths', () => {
-    expect([12, 12.3, 12.34, 12.345, 12.3456].map(formatForReport))
-      .toEqual(['12', '12.3', '12.34', '12.345', '12.346']);
-  });
-
   it('rejects non-finite numeric values', () => {
-    expect(() => formatForReport(Number.NaN)).toThrowError(RangeError);
     expect(() => formatRoundedReportResult('', Number.POSITIVE_INFINITY)).toThrowError(RangeError);
   });
 });

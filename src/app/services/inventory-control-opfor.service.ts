@@ -1,0 +1,306 @@
+// Copyright (C) 2026 The MegaMek Team
+// SPDX-License-Identifier: GPL-3.0-or-later
+
+import { UnitNameService } from './unit-name.service';
+import { forceOpforTargetId } from '../models/runtime/cbt-force-target-roster';
+import { DestroyRef, effect, inject, Injectable, Injector, type EffectRef, type Signal, untracked } from '@angular/core';
+import { StaticEmplacementEntity } from '../models/entity/entities/misc/static-emplacement-entity';
+import { parseBuildingLocation } from '../models/entity/types/building';
+import { CBTForce } from '../models/cbt-force.model';
+import { hasNonMekRuntime } from '../models/cbt-unit-snapshot';
+import type { InventoryControlTargetRosterRow } from '../models/cbt-force.types';
+import type { ForceSlot } from '../models/force-slot.model';
+import {
+    DEFAULT_ENCOUNTER_TARGET_COLORS,
+    encounterTargetLetter,
+    MAX_ENCOUNTER_TARGETS,
+    type EncounterTarget,
+    type TargetRegistryCommandResult,
+} from '../models/runtime/encounter-runtime';
+import type { CBTForceMember } from '../models/force-member.model';
+import { GameEventsService, type TargetDistanceEvent } from './game-events.service';
+import { LoggerService } from './logger.service';
+import { ToastService } from './toast.service';
+
+/** Typing a distance edits on every keystroke; only the settled value is mirrored. */
+const DISTANCE_MIRROR_DEBOUNCE_MS = 400;
+
+@Injectable({ providedIn: 'root' })
+export class InventoryControlOpforService {
+    private readonly unitNames = inject(UnitNameService);
+    private readonly injector = inject(Injector);
+    private readonly logger = inject(LoggerService);
+    private readonly toastService = inject(ToastService);
+    private readonly gameEvents = inject(GameEventsService);
+    private loadedForces: () => readonly ForceSlot[] = () => [];
+    private monitor: EffectRef | null = null;
+    private readonly pendingMirrors = new Map<string, ReturnType<typeof setTimeout>>();
+
+    constructor() {
+        const received = this.gameEvents.received.subscribe(({ toForce, event }) => {
+            if (event.kind === 'target-distance') this.applyMirroredDistance(toForce, event);
+        });
+        inject(DestroyRef).onDestroy(() => {
+            this.monitor?.destroy();
+            received.unsubscribe();
+            for (const timer of this.pendingMirrors.values()) clearTimeout(timer);
+        });
+    }
+
+    connect(loadedForces: Signal<readonly ForceSlot[]>): void {
+        this.monitor?.destroy();
+        this.loadedForces = loadedForces;
+        this.monitor = effect(() => this.synchronizeLoadedForces(), { injector: this.injector });
+    }
+
+    targetName(targetId: string, fallback: string): string {
+        const target = this.resolveOpforTarget(targetId);
+        return target ? this.unitNames.name(target.member.entity) : fallback;
+    }
+
+    /** Floors available as cover. TW uses committed hex CF for the duration of the phase (p. 171). */
+    buildingFloors() {
+        return this.loadedForces().flatMap(({ force }) => {
+            const forceId = force.instanceId();
+            if (!(force instanceof CBTForce) || !forceId) return [];
+            return force.getCBTMembers().flatMap(member => {
+                if (!(member.entity instanceof StaticEmplacementEntity)) return [];
+                const building = member.entity;
+                const floors = member.nonMekRecordSheetSnapshot()?.locations ?? [];
+                const cfByHex = new Map<string, number>();
+                for (const floor of floors) {
+                    const hex = parseBuildingLocation(floor.code)?.hex;
+                    if (!hex) continue;
+                    const key = hex.q + ',' + hex.r;
+                    cfByHex.set(key, Math.min(cfByHex.get(key) ?? Infinity, floor.remainingInternal));
+                }
+                return floors.flatMap(floor => {
+                    const entry = parseBuildingLocation(floor.code);
+                    if (!entry) return [];
+                    return [{ ref: { forceId, unitId: member.id, location: floor.code },
+                        label: this.unitNames.name(building) + ' · ' + floor.code,
+                        cf: cfByHex.get(entry.hex.q + ',' + entry.hex.r)!,
+                        levelsBelowRoof: building.hexHeight(entry.hex) - entry.floor }];
+                });
+            });
+        });
+    }
+
+    /** The loaded unit an OPFOR target stands for, if its force is open here. */
+    resolveOpforTarget(targetId: string): { readonly forceId: string; readonly member: CBTForceMember } | null {
+        for (const slot of this.loadedForces()) {
+            if (!(slot.force instanceof CBTForce)) continue;
+            const forceId = slot.force.instanceId();
+            if (!forceId) continue;
+            for (const member of slot.force.getCBTMembers()) {
+                if (forceOpforTargetId(forceId, member.id) === targetId) return { forceId, member };
+            }
+        }
+        return null;
+    }
+
+    /**
+     * The infantry swarming a unit, when its force is open here: the one whose swarm names this unit (the infantry's
+     * own record, so it holds however the swarm reached either player).
+     */
+    swarmerOf(member: CBTForceMember): { readonly forceId: string; readonly member: CBTForceMember } | null {
+        const ownForce = member.force.instanceId();
+        if (!ownForce) return null;
+        const targetId = forceOpforTargetId(ownForce, member.id);
+        for (const slot of this.loadedForces()) {
+            if (!(slot.force instanceof CBTForce)) continue;
+            const forceId = slot.force.instanceId();
+            if (!forceId) continue;
+            for (const candidate of slot.force.getCBTMembers()) {
+                const snapshot = slot.force.getUnitSnapshot(candidate.id);
+                if (snapshot && hasNonMekRuntime(snapshot) && snapshot.state.swarming === targetId) {
+                    return { forceId, member: candidate };
+                }
+            }
+        }
+        return null;
+    }
+
+    /**
+     * A player set how far their unit is from an opposing unit: give the opposing unit's owner the
+     * same distance to this unit, so only one player has to track it (either side may overwrite it).
+     */
+    mirrorTargetDistance(attacker: CBTForceMember, targetId: string, distance: number): void {
+        const target = this.resolveOpforTarget(targetId);
+        const fromForce = attacker.force.instanceId();
+        if (!target || !fromForce) return;
+        const key = `${fromForce}:${attacker.id}:${targetId}`;
+        const pending = this.pendingMirrors.get(key);
+        if (pending) clearTimeout(pending);
+        this.pendingMirrors.set(key, setTimeout(() => {
+            this.pendingMirrors.delete(key);
+            void this.gameEvents.send(target.forceId, {
+                kind: 'target-distance', fromForce, fromUnit: attacker.id, toUnit: target.member.id, distance,
+            });
+        }, DISTANCE_MIRROR_DEBOUNCE_MS));
+    }
+
+    private applyMirroredDistance(toForce: string, event: TargetDistanceEvent): void {
+        const force = this.loadedForces()
+            .map(slot => slot.force)
+            .find((candidate): candidate is CBTForce => candidate instanceof CBTForce
+                && candidate.instanceId() === toForce && !candidate.readOnly());
+        const member = force?.getCBTMembers().find(candidate => candidate.id === event.toUnit);
+        if (!force || !member) return;
+        const targetId = forceOpforTargetId(event.fromForce, event.fromUnit);
+        // Only a target this player already tracks (their OPFOR includes the attacker) takes the distance.
+        if (!force.queryInventoryControlTargetRegistry().targets.some(target => target.id === targetId)) return;
+        const current = force.getAttackerTargeting(member.id)?.state.targets.get(targetId);
+        if (current?.distance === event.distance) return;
+        void force.dispatchAttackerTargeting(member.id, {
+            type: 'edit-attacker-targeting',
+            edit: { kind: 'set-target-facts', targetId, facts: { ...current, distance: event.distance } },
+        });
+    }
+
+    isAvailable(force: CBTForce): boolean {
+        return this.opposingCBTForces(force).length > 0;
+    }
+
+    setEnabled(force: CBTForce, enabled: boolean): boolean {
+        const nextEnabled = enabled && this.isAvailable(force);
+        const result = this.synchronize(
+            force,
+            this.opposingCBTTargetRoster(force),
+            nextEnabled,
+            true,
+        );
+        if (result && !result.accepted) return false;
+        force.inventoryControlOpforEnabled.set(nextEnabled);
+        return true;
+    }
+
+    private synchronizeLoadedForces(): void {
+        const cbtForces = this.loadedForces()
+            .filter(slot => slot.force instanceof CBTForce)
+            .map(slot => slot.force as CBTForce);
+        for (const force of cbtForces) {
+            force.targetRegistryVersion();
+            const available = this.isAvailable(force);
+            // Persisted OPFOR facts are the durable enabled witness. During
+            // incremental force loading, transient absence is not deletion authority.
+            if (!available && force.inventoryControlOpforEnabled()) continue;
+            const enabled = force.inventoryControlOpforEnabled() && available;
+            const roster = this.opposingCBTTargetRoster(force);
+            untracked(() => {
+                const result = this.synchronize(force, roster, enabled, false);
+                if (!available && (!result || result.accepted)) {
+                    force.inventoryControlOpforEnabled.set(false);
+                }
+            });
+        }
+    }
+
+    private opposingCBTForces(force: CBTForce): CBTForce[] {
+        const sourceSlot = this.loadedForces().find(slot => slot.force === force);
+        if (!sourceSlot) return [];
+        return this.loadedForces()
+            .filter(slot => slot.force instanceof CBTForce && (
+                sourceSlot.alignment === 'enemy'
+                    ? slot.alignment !== 'enemy'
+                    : slot.alignment === 'enemy'
+            ))
+            .map(slot => slot.force as CBTForce);
+    }
+
+    private opposingCBTTargetRoster(force: CBTForce): InventoryControlTargetRosterRow[] {
+        const rows = this.opposingCBTForces(force)
+            .flatMap(opposingForce => opposingForce.getInventoryControlTargetRoster())
+            .sort((left, right) => String(left.targetId).localeCompare(String(right.targetId)));
+        const seen = new Set<string>();
+        for (const row of rows) {
+            const targetId = String(row.targetId);
+            if (seen.has(targetId)) throw new Error(`Duplicate opposing target-roster ID ${targetId}`);
+            seen.add(targetId);
+        }
+        return rows;
+    }
+
+    private synchronize(
+        force: CBTForce,
+        enemyRoster: readonly InventoryControlTargetRosterRow[],
+        enabled = force.inventoryControlOpforEnabled(),
+        surfaceError = false,
+    ): TargetRegistryCommandResult | null {
+        const snapshot = force.queryInventoryControlTargetRegistry();
+        const currentTargets = snapshot.targets;
+        const manualTargets = currentTargets.filter(target => target.source !== 'opfor');
+        const existingById = new Map(currentTargets.map(target => [target.id, target]));
+        const usedLetters = new Set(manualTargets.map(target => target.letter));
+        const manualTargetIds = new Set(manualTargets.map(target => target.id));
+        const capacity = Math.max(0, MAX_ENCOUNTER_TARGETS - manualTargets.length);
+        const opforTargets = (enabled
+            ? enemyRoster.filter(row => !manualTargetIds.has(row.targetId)).slice(0, capacity)
+            : [])
+            .map((row, enemyIndex): EncounterTarget => {
+                const existing = existingById.get(row.targetId);
+                const letter = existing && !usedLetters.has(existing.letter)
+                    ? existing.letter
+                    : this.firstUnusedLetter(usedLetters);
+                usedLetters.add(letter);
+                return {
+                    id: row.targetId,
+                    letter,
+                    name: row.name,
+                    color: existing?.color
+                        ?? DEFAULT_ENCOUNTER_TARGET_COLORS[enemyIndex % DEFAULT_ENCOUNTER_TARGET_COLORS.length],
+                    source: 'opfor',
+                    readOnly: true,
+                    unitType: row.unitType,
+                    tnCalculator: row.tnCalculator,
+                };
+            });
+        const currentOpforTargets = currentTargets.filter(target => target.source === 'opfor');
+        if (targetsEqual(currentOpforTargets, opforTargets)) return null;
+        const result = force.dispatchInventoryControlTargetRegistry({
+            kind: 'replace-targets',
+            targets: opforTargets,
+        }, 'opfor-sync');
+        if (!result.accepted) this.reportRejection(surfaceError);
+        return result;
+    }
+
+    private firstUnusedLetter(usedLetters: ReadonlySet<string>): string {
+        for (let index = 0; ; index++) {
+            const letter = encounterTargetLetter(index);
+            if (!usedLetters.has(letter)) return letter;
+        }
+    }
+
+    private reportRejection(surfaceError: boolean): void {
+        const message = 'OPFOR synchronization was rejected because the force is read-only.';
+        this.logger.error(`Target registry: ${message}`);
+        if (surfaceError) this.toastService.showToast(message, 'error');
+    }
+}
+
+function targetsEqual(currentTargets: readonly EncounterTarget[], nextTargets: readonly EncounterTarget[]): boolean {
+    if (currentTargets.length !== nextTargets.length) return false;
+    const nextById = new Map(nextTargets.map(target => [target.id, target]));
+    return currentTargets.every(current => {
+        const next = nextById.get(current.id);
+        return !!next
+            && current.letter === next.letter
+            && current.name === next.name
+            && current.color === next.color
+            && current.source === next.source
+            && current.readOnly === next.readOnly
+            && current.unitType === next.unitType
+            && shallowRecordsEqual(current.tnCalculator, next.tnCalculator);
+    });
+}
+
+function shallowRecordsEqual(current: object | undefined, next: object | undefined): boolean {
+    if (current === next) return true;
+    if (!current || !next) return false;
+    const currentEntries = Object.entries(current).filter(([, value]) => value !== undefined);
+    const nextEntries = Object.entries(next).filter(([, value]) => value !== undefined);
+    const nextRecord = Object.fromEntries(nextEntries);
+    return currentEntries.length === nextEntries.length
+        && currentEntries.every(([key, value]) => value === nextRecord[key]);
+}

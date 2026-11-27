@@ -2,6 +2,8 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 // Author: Drake
 
+import { fallbackRecordSheetFluffImage } from './record-sheet-center-panel.util';
+
 const PNG_MIME_TYPE = 'image/png';
 const DEFAULT_PNG_SCALE = 3;
 const DEFAULT_CLIPBOARD_PNG_SCALE = 5; //workaround for some browsers that uses some internal pixel scaling that is less than the rendering one
@@ -35,6 +37,38 @@ const FONT_FACE_SPECS: FontFaceSpec[] = [
 export class SvgExportUtil {
     private static embeddedFontCssPromise: Promise<string> | null = null;
 
+    /** Keep multiple cards/pages together, with the same side-by-side arrangement as PNG export. */
+    static async downloadSvg(svgs: SVGSVGElement[], fileName: string): Promise<void> {
+        if (svgs.length === 0) return;
+        const pages = svgs.map(svg => ({ svg, size: this.getSvgExportSize(svg) }));
+        const root = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
+        const width = pages.reduce((sum, page) => sum + page.size.width, 0);
+        const height = Math.max(...pages.map(page => page.size.height));
+        root.setAttribute('viewBox', `0 0 ${width} ${height}`);
+        root.setAttribute('width', String(width));
+        root.setAttribute('height', String(height));
+        let x = 0;
+        for (const page of pages) {
+            const clone = page.svg.cloneNode(true) as SVGSVGElement;
+            clone.setAttribute('x', String(x));
+            clone.setAttribute('y', '0');
+            clone.setAttribute('width', String(page.size.width));
+            clone.setAttribute('height', String(page.size.height));
+            root.appendChild(clone);
+            x += page.size.width;
+        }
+        const serialized = await this.serializeSvgForExport(root, await this.getEmbeddedFontCss());
+        const url = URL.createObjectURL(new Blob([serialized], { type: 'image/svg+xml;charset=utf-8' }));
+        try {
+            const link = document.createElement('a');
+            link.href = url;
+            link.download = `${fileName}.svg`;
+            link.click();
+        } finally {
+            URL.revokeObjectURL(url);
+        }
+    }
+
     static async downloadPng(svgs: SVGSVGElement[], fileName: string, options: SvgPngRenderOptions = {}): Promise<void> {
         const renderedPng = await this.generatePng(svgs, options);
         if (!renderedPng) return;
@@ -42,32 +76,63 @@ export class SvgExportUtil {
         this.downloadPngBlob(renderedPng.blob, fileName);
     }
 
-    static async openPng(svgs: SVGSVGElement[], options: SvgPngRenderOptions = {}): Promise<void> {
-        const renderedPng = await this.generatePng(svgs, options);
-        if (!renderedPng) return;
-
-        this.openPngBlob(renderedPng.blob);
+    static async openPng(svgs: SVGSVGElement[] | Promise<SVGSVGElement[]>, options: SvgPngRenderOptions = {}): Promise<void> {
+        // Reserve the tab during the click. Font/image loading can outlast the
+        // browser's transient user activation, especially on mobile connections.
+        const opened = window.open('', '_blank');
+        if (!opened) {
+            void Promise.resolve(svgs).catch(() => undefined);
+            throw new Error('Could not open PNG in a new tab');
+        }
+        opened.opener = null;
+        let pngUrl: string | undefined;
+        try {
+            const renderedPng = await this.generatePng(await svgs, options);
+            if (!renderedPng) {
+                opened.close();
+                return;
+            }
+            if (opened.closed) return;
+            pngUrl = URL.createObjectURL(renderedPng.blob);
+            opened.location.href = pngUrl;
+        } catch (error) {
+            if (pngUrl) URL.revokeObjectURL(pngUrl);
+            opened.close();
+            throw error;
+        }
     }
 
-    static async sharePng(svgs: SVGSVGElement[], fileName: string, options: SvgPngRenderOptions = {}): Promise<void> {
-        const renderedPng = await this.generatePng(svgs, options);
-        if (!renderedPng) throw new Error('No PNG data was generated');
-
-        await this.sharePngBlob(renderedPng.blob, fileName);
-    }
-
-    static async copyPngToClipboard(svgs: SVGSVGElement[], fileName = 'record-sheet', options: SvgPngRenderOptions = {}): Promise<void> {
-        const renderedPng = await this.generatePng(svgs, {
-            ...options,
-            scale: options.scale ?? DEFAULT_CLIPBOARD_PNG_SCALE,
+    static async copyPngToClipboard(svgs: SVGSVGElement[] | Promise<SVGSVGElement[]>, fileName = 'record-sheet', options: SvgPngRenderOptions = {}): Promise<void> {
+        const rendering = Promise.resolve(svgs).then(async sources => {
+            const renderedPng = await this.generatePng(sources, {
+                ...options,
+                scale: options.scale ?? DEFAULT_CLIPBOARD_PNG_SCALE,
+            });
+            if (!renderedPng) throw new Error('No PNG data was generated');
+            return renderedPng;
         });
-        if (!renderedPng) throw new Error('No PNG data was generated');
 
+        if (this.canUseAsyncImageClipboard()) {
+            const png = rendering.then(rendered => rendered.blob);
+            try {
+                // Safari requires write() in the originating user gesture. A
+                // promised ClipboardItem lets rasterization finish afterwards.
+                const write = navigator.clipboard.write([
+                    new ClipboardItem({ [PNG_MIME_TYPE]: png }),
+                ]);
+                await Promise.all([write, png]);
+                return;
+            } catch {
+                // Also observe a rendering failure if write() rejected before
+                // consuming its promise; such failures cannot use the fallback.
+                await png;
+            }
+        }
+
+        const renderedPng = await rendering;
+        // Older implementations may accept Blob items but not promised items.
+        // Preserve the existing share/clipboard/legacy fallback for that case.
         await this.copyPngBlobToClipboard(renderedPng.blob, fileName, renderedPng);
-    }
-
-    static async renderPngBlob(svgs: SVGSVGElement[], options: SvgPngRenderOptions = {}): Promise<Blob | null> {
-        return (await this.generatePng(svgs, options))?.blob ?? null;
     }
 
     static downloadPngBlob(pngBlob: Blob, fileName: string): void {
@@ -84,11 +149,13 @@ export class SvgExportUtil {
 
     static openPngBlob(pngBlob: Blob): void {
         const pngUrl = URL.createObjectURL(pngBlob);
-        const opened = window.open(pngUrl, '_blank', 'noopener');
+        // The noopener feature returns null even when the new tab opens successfully.
+        const opened = window.open(pngUrl, '_blank');
         if (!opened) {
             URL.revokeObjectURL(pngUrl);
             throw new Error('Could not open PNG in a new tab');
         }
+        opened.opener = null;
     }
 
     static async sharePngBlob(pngBlob: Blob, fileName: string): Promise<void> {
@@ -178,6 +245,9 @@ export class SvgExportUtil {
 
     private static async serializeSvgForExport(svg: SVGSVGElement, embeddedFontCss: string): Promise<string> {
         const clone = svg.cloneNode(true) as SVGSVGElement;
+        clone.querySelectorAll('.movementControl, .movementStationary').forEach(control => control.remove());
+        clone.querySelectorAll('.movementCaptionReplaced').forEach(caption =>
+            caption.classList.remove('movementCaptionReplaced', 'print-only'));
         if (!clone.getAttribute('xmlns')) {
             clone.setAttribute('xmlns', 'http://www.w3.org/2000/svg');
         }
@@ -210,7 +280,7 @@ export class SvgExportUtil {
             return;
         }
 
-        this.fallbackFluffImageToReferenceTables(image);
+        fallbackRecordSheetFluffImage(image);
     }
 
     private static async inlineHtmlImage(image: HTMLImageElement): Promise<void> {
@@ -223,7 +293,7 @@ export class SvgExportUtil {
             return;
         }
 
-        this.fallbackFluffImageToReferenceTables(image);
+        fallbackRecordSheetFluffImage(image);
     }
 
     private static getImageHref(image: SVGImageElement): string | null {
@@ -254,23 +324,6 @@ export class SvgExportUtil {
         }
     }
 
-    private static fallbackFluffImageToReferenceTables(image: Element): void {
-        if (image.id !== 'fluff-image-injected') {
-            return;
-        }
-
-        const svg = image.closest('svg') as SVGSVGElement | null;
-        if (!svg) {
-            return;
-        }
-
-        const injectedEl = svg.getElementById('fluff-image-fo') as SVGElement | null;
-        (injectedEl ?? image as SVGElement).style.setProperty('display', 'none');
-        svg.querySelectorAll<SVGGraphicsElement>('.referenceTable').forEach((referenceTable) => {
-            referenceTable.style.display = 'block';
-        });
-    }
-
     private static injectExportStyles(svg: SVGSVGElement, embeddedFontCss: string): void {
         if (!embeddedFontCss) return;
 
@@ -288,23 +341,24 @@ export class SvgExportUtil {
     }
 
     private static async loadEmbeddedFontCss(): Promise<string> {
-        try {
-            const rules = await Promise.all(FONT_FACE_SPECS.map(async (font) => {
-                const dataUrl = await this.fetchAsDataUrl(font.href);
-                return [
-                    '@font-face {',
-                    `font-family: '${font.family}';`,
-                    `src: url('${dataUrl}') format('truetype');`,
-                    `font-weight: ${font.weight};`,
-                    font.stretch ? `font-stretch: ${font.stretch};` : '',
-                    `font-style: ${font.style};`,
-                    '}',
-                ].filter(Boolean).join('\n');
-            }));
-            return rules.join('\n');
-        } catch {
-            return '';
+        const rules = await Promise.allSettled(FONT_FACE_SPECS.map(async (font) => {
+            const dataUrl = await this.fetchAsDataUrl(font.href);
+            return [
+                '@font-face {',
+                `font-family: '${font.family}';`,
+                `src: url('${dataUrl}') format('truetype');`,
+                `font-weight: ${font.weight};`,
+                font.stretch ? `font-stretch: ${font.stretch};` : '',
+                `font-style: ${font.style};`,
+                '}',
+            ].filter(Boolean).join('\n');
+        }));
+        if (rules.some(rule => rule.status === 'rejected')) {
+            // Keep available fonts in this export, and retry after an offline or
+            // failed fetch instead of caching incomplete typography permanently.
+            this.embeddedFontCssPromise = null;
         }
+        return rules.flatMap(rule => rule.status === 'fulfilled' ? [rule.value] : []).join('\n');
     }
 
     private static async fetchAsDataUrl(href: string): Promise<string> {

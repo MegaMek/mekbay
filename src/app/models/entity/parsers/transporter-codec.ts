@@ -18,6 +18,16 @@ import type { ParseContext } from './parse-context';
 
 const COMSTAR_BIT = 1;
 const CLAN_BIT = 2;
+export const MAX_NATIVE_TRANSPORTER_LINES = 4_096;
+
+export class TransporterSourceLimitError extends Error {
+  readonly code = 'NATIVE_SOURCE_LIMIT' as const;
+
+  constructor(actual: number) {
+    super(`BLK transporter count exceeded: ${actual} > ${MAX_NATIVE_TRANSPORTER_LINES}`);
+    this.name = 'TransporterSourceLimitError';
+  }
+}
 
 function parseInteger(value: string): number | undefined {
   if (!/^[+-]?\d+$/.test(value)) return undefined;
@@ -28,7 +38,7 @@ function parseInteger(value: string): number | undefined {
 }
 
 function parseFiniteDouble(value: string): number | undefined {
-  if (value.trim() === '') return undefined;
+  if (!/^[+-]?(?:\d+(?:\.\d*)?|\.\d+)(?:[eE][+-]?\d+)?$/u.test(value)) return undefined;
   const parsed = Number(value);
   return Number.isFinite(parsed) ? parsed : undefined;
 }
@@ -155,6 +165,9 @@ export function parseTransporterLines(
   entityTechBase: EntityTechBase,
   context: ParseContext,
 ): EntityTransporter[] {
+  if (lines.length > MAX_NATIVE_TRANSPORTER_LINES) {
+    throw new TransporterSourceLimitError(lines.length);
+  }
   const transporters: EntityTransporter[] = [];
   const usedBayNumbers = new Set<number>();
 

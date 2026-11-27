@@ -2,12 +2,15 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 // Author: Drake
 
+import { UnitNameService } from '../../services/unit-name.service';
 import { ChangeDetectionStrategy, Component, computed, inject, signal } from '@angular/core';
 import { DialogRef } from '@angular/cdk/dialog';
 import type { LoadForceEntry } from '../../models/load-force-entry.model';
 import type { LoadOrganizationEntry } from '../../models/organization.model';
 import type { UnitSummary, UnitTagEntry } from '../../models/unit-summary.model';
 import { DataService } from '../../services/data.service';
+import { ForcePersistenceService } from '../../services/force-persistence.service';
+import { OrganizationStorageService } from '../../services/organization-storage.service';
 import { DialogsService } from '../../services/dialogs.service';
 import { GameService } from '../../services/game.service';
 import { TagsService } from '../../services/tags.service';
@@ -84,7 +87,6 @@ type CollectionExportValue = string | number;
 
 @Component({
     selector: 'collection-dialog',
-    standalone: true,
     changeDetection: ChangeDetectionStrategy.OnPush,
     host: {
         class: 'fullscreen-dialog-host nopadding fullheight tv-fade'
@@ -93,8 +95,11 @@ type CollectionExportValue = string | number;
     styleUrl: './collection-dialog.component.scss'
 })
 export class CollectionDialogComponent {
+    readonly unitNames = inject(UnitNameService);
     private readonly dialogRef = inject(DialogRef<void>);
     private readonly dataService = inject(DataService);
+    private readonly forcePersistence = inject(ForcePersistenceService);
+    private readonly organizationStorage = inject(OrganizationStorageService);
     private readonly dialogsService = inject(DialogsService);
     private readonly gameService = inject(GameService);
     private readonly tagsService = inject(TagsService);
@@ -1036,7 +1041,7 @@ export class CollectionDialogComponent {
 
         this.organizationsLoading.set(true);
         try {
-            const organizations = await this.dataService.listOrganizations();
+            const organizations = await this.organizationStorage.listOrganizations();
             this.organizations.set(organizations || []);
             this.organizationsLoaded.set(true);
         } catch {
@@ -1052,7 +1057,7 @@ export class CollectionDialogComponent {
         this.organizationUnitCounts.set(new Map<string, number>());
 
         try {
-            const organization = await this.dataService.getOrganization(organizationId);
+            const organization = await this.organizationStorage.getOrganization(organizationId);
             if (!organization) {
                 if (loadToken === this.organizationFilterLoadToken) {
                     this.statusMessage.set('Could not find the selected TO&E.');
@@ -1061,7 +1066,7 @@ export class CollectionDialogComponent {
             }
 
             const forceInstanceIds = organization.forces.map(force => force.instanceId).filter(Boolean);
-            const forces = await this.dataService.getLoadForceEntriesByIds(forceInstanceIds);
+            const forces = await this.forcePersistence.getLoadForceEntriesByIds(forceInstanceIds);
             if (loadToken !== this.organizationFilterLoadToken) {
                 return;
             }
@@ -1281,7 +1286,7 @@ export class CollectionDialogComponent {
     }
 
     private getQuickAddModelSearchText(unit: UnitSummary): string {
-        return `${unit.chassis ?? ''} ${unit.model ?? ''} ${unit.name ?? ''}`;
+        return this.unitNames.name(unit);
     }
 
     private getQuickAddChassisSearchText(option: ChassisOption): string {
@@ -1305,15 +1310,16 @@ export class CollectionDialogComponent {
     }
 
     private getUnitDisplayName(unit: UnitSummary): string {
-        return unit.model ? `${unit.chassis} ${unit.model}` : unit.chassis;
+        return this.unitNames.name(unit);
     }
 
     private getQuickAddUnitDisplayName(unit: UnitSummary): string {
-        return unit.model ? this.getUnitDisplayName(unit) : `${unit.chassis} (Standard)`;
+        return unit.model ? this.getUnitDisplayName(unit) : `${this.unitNames.chassis(unit)} (Standard)`;
     }
 
     private getVariantGroupChassis(unit: UnitSummary): string {
-        return getUnitVariantGroupIdentity(unit).chassis;
+        const chassis = getUnitVariantGroupIdentity(unit).chassis;
+        return chassis === unit.chassis ? this.unitNames.chassis(unit) : chassis;
     }
 
     private getVariantGroupInputLabel(unit: UnitSummary): string {

@@ -4,7 +4,7 @@
 @let budgetMode = this.filtersService.budgetMode();
 
 <div class="search-overlay overlay-backdrop" [class.expanded]="this.expandedView()"
-    [hidden]="!this.filtersService.isDataReady() || !overlayVisible()" (click)="onOverlayClick()">
+    [hidden]="!this.filtersService.isInteractionReady() || !overlayVisible()" (click)="onOverlayClick()">
 </div>
 
 @if (filterChordActive()) {
@@ -28,12 +28,14 @@
     } @else {
         @if (expandedView()) {
         <button type="button" class="bt-button expand-btn square" (click)="toggleExpandedView()"
-            title="Collapse View" aria-label="Collapse View">
+            [title]="selectionMode() ? 'Cancel unit selection' : 'Collapse View'" [attr.aria-label]="selectionMode() ? 'Cancel unit selection' : 'Collapse View'">
+        @if (selectionMode()) { <span aria-hidden="true">✕</span> } @else {
         <svg width="24px" height="24px" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg"
             focusable="false" aria-hidden="true" role="img">
             <path d="M4 14H10M10 14V20M10 14L3 21M20 10H14M14 10V4M14 10L21 3" stroke="currentColor" stroke-width="2"
                 stroke-linecap="round" stroke-linejoin="round" />
         </svg>
+        }
         </button>
         } @else {
         <a class="bt-button expand-btn square" href="/?expanded=true" (click)="openExpandedSearch($event)"
@@ -86,6 +88,7 @@
         [attr.aria-expanded]="viewModeMenuOpen()">
         <ng-container [ngTemplateOutlet]="viewModeIcon" [ngTemplateOutletContext]="{ mode: viewMode() }"></ng-container>
     </button>
+    @if (viewModeMenuOpen()) {
     <ng-template
         cdkConnectedOverlay
         [cdkConnectedOverlayOrigin]="viewModeOrigin"
@@ -125,10 +128,11 @@
             }
         </div>
     </ng-template>
+    }
     <!-- Adv button on left when filters are on left side -->
     @if (this.expandedView() && this.filtersOnLeft()) {
     <button #advBtn class="bt-button adv-btn square" [class.active]="isAdvActive()"
-        [disabled]="!this.filtersService.isDataReady()" (click)="toggleAdv()" title="Advanced Search" type="button">
+        [disabled]="!this.filtersService.isInteractionReady()" (click)="toggleAdv()" title="Advanced Search" type="button">
         <svg width="24px" height="24px" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"
             stroke-linecap="round" stroke-linejoin="round" xmlns="http://www.w3.org/2000/svg" aria-hidden="true"
             focusable="false">
@@ -138,8 +142,8 @@
     }
     <div class="searchbar-input-container">
         <syntax-input #syntaxInput [value]="this.filtersService.searchText()" [tokens]="highlightTokens()"
-            [placeholder]="this.filtersService.isDataReady() ? 'Search units...' : 'Loading data...'"
-            [disabled]="!this.filtersService.isDataReady()" [showClear]="this.filtersService.searchText().length > 0"
+            [placeholder]="this.filtersService.isInteractionReady() ? 'Search units...' : 'Loading data...'"
+            [disabled]="!this.filtersService.isInteractionReady()" [showClear]="this.filtersService.searchText().length > 0"
             (valueChange)="setSearch($event)" (cleared)="clearSearch()" (focused)="focused.set(true)"
             id="unit-search-input" />
     </div>
@@ -162,7 +166,7 @@
     <!-- Adv button on right when filters are on right side (default) -->
     @if (!this.expandedView() || !this.filtersOnLeft()) {
     <button #advBtn class="bt-button adv-btn square" [class.active]="isAdvActive()"
-        [disabled]="!this.filtersService.isDataReady()" (click)="toggleAdv()" title="Advanced Search" type="button">
+        [disabled]="!this.filtersService.isInteractionReady()" (click)="toggleAdv()" title="Advanced Search" type="button">
         <svg width="24px" height="24px" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"
             stroke-linecap="round" stroke-linejoin="round" xmlns="http://www.w3.org/2000/svg" aria-hidden="true"
             focusable="false">
@@ -174,12 +178,12 @@
 </div>
 
 <!-- Results Container -->
+@if (resultsVisible()) {
 <div #resultsContainer class="results-container"
     [class.expanded]="this.expandedView()"
     [class.css-anchor-positioned]="supportsCssAnchorPositioning"
     [class.has-results]="resultUnits.length > 0"
     [class.with-details-panel]="showInlinePanel()"
-    [hidden]="!this.filtersService.isDataReady() || !resultsVisible()"
     [style.top]="supportsCssAnchorPositioning ? null : (this.expandedView() ? expandedWrapperStyle().top : resultsDropdownStyle().top)"
     [style.left]="this.expandedView() ? expandedWrapperStyle().left : null"
     [style.right]="this.expandedView() ? expandedWrapperStyle().right : null"
@@ -190,18 +194,20 @@
 
     <!-- Inline Details Panel (visible when screen permits in expanded view) -->
     @if (showInlinePanel()) {
-    <unit-details-panel class="inline-details-panel framed-borders" [unit]="inlinePanelUnit()"
-        [prevUnit]="inlinePanelPrevUnit()"
-        [nextUnit]="inlinePanelNextUnit()"
-        [gunnerySkill]="inlinePanelUnit() ? getSearchResultGunnery(inlinePanelUnit()!) : undefined"
-        [pilotingSkill]="inlinePanelUnit() ? getSearchResultPiloting(inlinePanelUnit()!) : undefined"
-        [adjustedValueOverride]="filtersService.activeNormalization() && inlinePanelUnit() ? getSearchResultContext(inlinePanelUnit()!).adjustedValue : undefined"
-        [hasPrev]="inlinePanelHasPrev()"
-        [hasNext]="inlinePanelHasNext()"
-        (add)="onInlinePanelAdd()"
-        (prev)="onInlinePanelPrev()"
-        (next)="onInlinePanelNext()">
-    </unit-details-panel>
+    @defer (when showInlinePanel()) {
+        <unit-details-panel class="inline-details-panel framed-borders" [unit]="inlinePanelUnit()"
+            [prevUnit]="inlinePanelPrevUnit()"
+            [nextUnit]="inlinePanelNextUnit()"
+            [gunnerySkill]="inlinePanelUnit() ? getSearchResultGunnery(inlinePanelUnit()!) : undefined"
+            [pilotingSkill]="inlinePanelUnit() ? getSearchResultPiloting(inlinePanelUnit()!) : undefined"
+            [adjustedValueOverride]="filtersService.activeNormalization() && inlinePanelUnit() ? getSearchResultContext(inlinePanelUnit()!).adjustedValue : undefined"
+            [hasPrev]="inlinePanelHasPrev()"
+            [hasNext]="inlinePanelHasNext()"
+            (add)="onInlinePanelAdd()"
+            (prev)="onInlinePanelPrev()"
+            (next)="onInlinePanelNext()">
+        </unit-details-panel>
+    }
     }
 
     <div #resultsDropdown class="results-dropdown framed-borders" [class.expanded]="this.expandedView()">
@@ -224,7 +230,11 @@
                 </button>
             </div>
             }
-            @if (resultUnits.length > 0) {
+            @if (resultsLoading()) {
+            <div class="results-status loading-results" role="status" aria-live="polite" aria-atomic="true">
+                <loading-spinner class="spinner-container" message="Loading results..." ariaLabel="Loading results"></loading-spinner>
+            </div>
+            } @else if (resultUnits.length > 0) {
             @if (viewMode() === 'chassis') {
             <!-- Compact Chassis-Grouped View -->
             <div class="chassis-view-grid" [class.has-sort-slot]="chassisSortSlotHeader()">
@@ -242,7 +252,10 @@
                     <div class="chassis-view-td chassis-view-td-count">{{ group.variantCount }}</div>
                     <div class="chassis-view-td chassis-view-td-icon"><unit-icon [unit]="group.representativeUnit" [size]="28"></unit-icon></div>
                     <div class="chassis-view-td chassis-view-td-chassis">
-                        <span class="chassis-view-chassis-name">{{ group.chassis }}</span>
+                        <span class="chassis-view-name-row">
+                            <span class="chassis-view-chassis-name">{{ formatVariantGroupTitle(group) }}</span>
+                            @if (group.customVariantCount) { <span class="custom-unit-badge" [title]="group.customVariantCount + ' custom variant(s)'">CUSTOM</span> }
+                        </span>
                         <span class="chassis-view-type">{{ formatVariantGroupType(group) }}@if (group.omni) {<span class="chassis-view-omni">(omni)</span>}</span>
                     </div>
                     <div class="chassis-view-td chassis-view-td-value">{{ formatChassisGroupBvPv(group) }}</div>
@@ -305,8 +318,8 @@
                 <div class="as-td as-td-name">
                     <span class="as-td-model" [innerHTML]="highlight(unit.model)"></span>
                     <span class="as-td-chassis">
-                        <span class="as-td-chassis-name" [innerHTML]="highlight(unit.chassis)"></span>
-                        @if (unit.serverHost) { <span class="custom-unit-badge" title="Custom unit from {{ unit.serverHost }}">Custom</span> }
+                        <span class="as-td-chassis-name" [innerHTML]="highlight(unitNames.chassis(unit))"></span>
+                        @if (unit.isCustom) { <span class="custom-unit-badge">CUSTOM</span> }
                     </span>
                 </div>
             </ng-template>
@@ -321,7 +334,7 @@
             </ng-template>
 
             <ng-template #tableBvCell let-unit>
-                <div class="as-td cbt-td-bv">{{ formatClassicBv(unit, gunnery, piloting) }}</div>
+                <div class="as-td cbt-td-bv">{{ formatCBTBv(unit, gunnery, piloting) }}</div>
             </ng-template>
 
             <ng-template #tableTypeCell let-unit>
@@ -336,8 +349,8 @@
                 <div class="as-td as-td-mv" [innerHTML]="formatASMovement(unit)"></div>
             </ng-template>
 
-            <ng-template #tableClassicMovementCell let-unit>
-                <div class="as-td cbt-td-mv">{{ formatClassicMovement(unit) }}</div>
+            <ng-template #tableCBTMovementCell let-unit>
+                <div class="as-td cbt-td-mv">{{ formatCBTMovement(unit) }}</div>
             </ng-template>
 
             <ng-template #tableSpecialsCell let-unit>
@@ -430,7 +443,7 @@
                         [searchResultContext]="filtersService.activeNormalization() ? getSearchResultContext(unit) : null"
                         [useBvPvDisplayOption]="true"
                         [expandedView]="false"
-                        [showSelectCheckbox]="true"
+                        [showSelectCheckbox]="!selectionMode()"
                         [megaMekAvailability]="getSearchResultMegaMekAvailability(unit)"
                         [isSelected]="isUnitSelected(unit)"
                         [sortKey]="currentSortKey()"
@@ -444,11 +457,11 @@
             </cdk-virtual-scroll-viewport>
             }
 
-            @if (this.selectedUnits().size > 0) {
+            @if (!selectionMode() && this.selectedUnits().size > 0) {
                 <div class="selection-footer">
                     <div class="selected-count">{{ this.selectedUnits().size }} units selected</div>
                     <span class="spanner"></span>
-                    <button [disabled]="this.forceBuilderService.smartCurrentForce()?.readOnly()" type="button" class="bt-button"
+                    <button [disabled]="forceWorkspace.smartCurrentForce()?.readOnly()" type="button" class="bt-button"
                         (click)="addSelectedUnits()">ADD TO FORCE</button>
                     <button type="button" class="bt-button" (click)="selectAll()">SELECT ALL</button>
                     <button type="button" class="bt-button" (click)="clearSelection()">CLEAR</button>
@@ -465,7 +478,7 @@
                     </div>
                     <span class="spanner"></span>
                     <div class="results-sort">
-                        <select class="bt-input sort-select"
+                        <select class="bt-select sort-select"
                             (change)="onSortOrderChange($any($event.target).value)">
                             @for (opt of SORT_OPTIONS; let i = $index; track i) {
                             @if (!opt.gameSystem || opt.gameSystem === this.gameSystem()) {
@@ -497,11 +510,13 @@
                             }
                         </button>
                     </div>
+                    @if (!selectionMode()) {
                     <button type="button" class="bt-button square-small generate-force-btn" (click)="showGenerateForceDialog()" title="Generate Force from Search Results" aria-label="Generate Force from Search Results">
                         <svg fill="currentColor" width="24px" height="24px" viewBox="0 0 36 36" xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink">
                             <path d="M30.8,2.29A.49.49,0,0,0,30.35,2H16.42a.5.5,0,0,0-.42.23l-10.71,17A.49.49,0,0,0,5.7,20h7.67L6.6,33.25a.52.52,0,0,0,.46.75h3a.5.5,0,0,0,.37-.16L28,14.85a.5.5,0,0,0-.37-.85H20.89L30.72,2.82A.49.49,0,0,0,30.8,2.29Z"></path>
                         </svg>
                     </button>
+                    }
                     <button class="bt-button square-small" (click)="openShareSearch($event)" title="Share Search Results" aria-label="Share Search Results">
                         <svg width="24px" height="24px" viewBox="0 0 24 24" fill="currentColor" xmlns="http://www.w3.org/2000/svg">
                             <path fill-rule="evenodd" clip-rule="evenodd"
@@ -511,11 +526,21 @@
                 </div>          
             }
             } @else {
-            <div class="results-dropdown-item no-results">No results</div>
+                @if (filtersService.formationTargetBlocker(); as blocker) {
+                <div class="formation-search-blocker" role="status">
+                    <strong>Formation blocked by selected group</strong>
+                    <p>The selected group cannot form {{ blocker.formationName }} by adding units.</p>
+                    <formation-diagnostics [evaluation]="blocker.evaluation" [units]="blocker.units" filter="blocked" />
+                    <p>Change this group or choose a different formation.</p>
+                </div>
+                } @else {
+                <div class="results-status no-results">No results</div>
+                }
             }
         </div>
     </div>
 </div>
+}
 
 @if (this.expandedView() && this.advPanelDocked()) {
 <div class="adv-panel-drag-handle" [class.left]="filtersOnLeft()" (pointerdown)="onAdvPanelDragStart($event)" (click)="$event.stopPropagation();"
@@ -526,7 +551,8 @@
     <div class="drag-bar"></div>
 </div>
 }
-<div #advPanel class="adv-panel framed-borders has-shadow" [hidden]="!advOpen()"
+@if (advOpen()) {
+<div #advPanel class="adv-panel framed-borders has-shadow"
     [class.css-anchor-positioned]="supportsCssAnchorPositioning"
     [class.filters-left]="this.expandedView() && filtersOnLeft()"
     [class.anchor-below]="supportsCssAnchorPositioning && advPanelAnchoredBelow()"
@@ -545,7 +571,7 @@
                 [title]="advPanelFilterGameSystemToggleTitle()"
                 [attr.aria-label]="advPanelFilterGameSystemToggleTitle()"
                 (click)="toggleAdvPanelFilterGameSystem()">
-                @if (otherAdvPanelFilterGameSystem() === gameSystemEnum.CLASSIC) {
+                @if (otherAdvPanelFilterGameSystem() === gameSystemEnum.CBT) {
                 <svg width="21" height="26" viewBox="0 0 21 25.9" xmlns="http://www.w3.org/2000/svg" aria-hidden="true" focusable="false">
                     <g transform="translate(-.02)">
                         <g transform="matrix(.265 0 0 .265 -21.1 0)" fill="currentColor">
@@ -577,8 +603,8 @@
                 } @else if (gameService.isAlphaStrike()) {
                 <div class="skill-control">
                     <label for="gunnery-skill" (click)="openSelect($event, gunnerySelect)">Pilot Skill:</label>
-                    <select #gunnerySelect id="gunnery-skill" class="bt-input skill-select"
-                        [class.active]="gunnery != 4" [value]="gunnery"
+                    <select #gunnerySelect id="gunnery-skill" class="bt-select skill-select"
+                        [class.has-value]="gunnery != 4" [value]="gunnery"
                         (change)="setPilotSkill('gunnery', +$any($event.target).value)">
                         @for (n of [0,1,2,3,4,5,6,7,8]; let i = $index; track i) {
                         <option [value]="n" [selected]="n === gunnery">{{ n }}</option>
@@ -599,8 +625,8 @@
                 <div class="pilot-skill-inputs">
                 <div class="skill-control">
                     <label for="gunnery-skill" (click)="openSelect($event, gunnerySelect)">Gunnery:</label>
-                    <select #gunnerySelect id="gunnery-skill" class="bt-input skill-select"
-                        [class.active]="gunnery != 4" [value]="gunnery"
+                    <select #gunnerySelect id="gunnery-skill" class="bt-select skill-select"
+                        [class.has-value]="gunnery != 4" [value]="gunnery"
                         (change)="setPilotSkill('gunnery', +$any($event.target).value)">
                         @for (n of [0,1,2,3,4,5,6,7,8]; let i = $index; track i) {
                         <option [value]="n" [selected]="n === gunnery">{{ n }}</option>
@@ -610,8 +636,8 @@
                 </div>
                 <div class="skill-control">
                     <label for="piloting-skill" (click)="openSelect($event, pilotingSelect)">Piloting:</label>
-                    <select #pilotingSelect id="piloting-skill" class="bt-input skill-select"
-                        [class.active]="piloting != 5" [value]="piloting"
+                    <select #pilotingSelect id="piloting-skill" class="bt-select skill-select"
+                        [class.has-value]="piloting != 5" [value]="piloting"
                         (change)="setPilotSkill('piloting', +$any($event.target).value)">
                         @for (n of [0,1,2,3,4,5,6,7,8]; let i = $index; track i) {
                         <option [value]="n" [selected]="n === piloting">{{ n }}</option>
@@ -632,6 +658,7 @@
                         Force {{ gameService.isAlphaStrike() ? 'PV' : 'BV' }} Limit
                     </button>
                     <div class="budget-mode-switch-control"
+                        [class.animate-thumb]="budgetModeSwitchTransitionsEnabled()"
                         [class.neutral]="budgetMode === null"
                         [class.bv-normalization]="budgetMode === (gameService.isAlphaStrike() ? 'pv-normalization' : 'bv-normalization')"
                         role="group"
@@ -740,7 +767,7 @@
             [title]="advPanelFilterGameSystemToggleTitle()"
             [attr.aria-label]="advPanelFilterGameSystemToggleTitle()"
             (click)="toggleAdvPanelFilterGameSystem()">
-            @if (otherAdvPanelFilterGameSystem() === gameSystemEnum.CLASSIC) {
+            @if (otherAdvPanelFilterGameSystem() === gameSystemEnum.CBT) {
             <svg width="21" height="26" viewBox="0 0 21 25.9" xmlns="http://www.w3.org/2000/svg" aria-hidden="true" focusable="false">
                 <g transform="translate(-.02)">
                     <g transform="matrix(.265 0 0 .265 -21.1 0)" fill="currentColor">
@@ -767,3 +794,4 @@
         [showAvailabilitySourceDisclaimer]="true">
     </unit-search-advanced-filters>
 </div>
+}

@@ -2,21 +2,22 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 // Author: Drake
 
-import { Component, ChangeDetectionStrategy, input, output, signal, computed, inject, DestroyRef, viewChild } from '@angular/core';
-import { CommonModule } from '@angular/common';
+import { UnitNameService } from '../../services/unit-name.service';
+import { Component, ChangeDetectionStrategy, input, output, signal, computed, inject, DestroyRef, viewChild, effect } from '@angular/core';
 import { firstValueFrom } from 'rxjs';
 import type { UnitSummary } from '../../models/unit-summary.model';
 import { GameService } from '../../services/game.service';
-import { ForceBuilderService } from '../../services/force-builder.service';
+import { ForceWorkspaceStateService } from '../../services/force-workspace-state.service';
+import { ForceWorkspaceCommandsService } from '../../services/force-workspace-commands.service';
 import { ToastService } from '../../services/toast.service';
 import { TaggingService } from '../../services/tagging.service';
 import { DialogsService } from '../../services/dialogs.service';
 import { KeyboardShortcutService } from '../../services/keyboard-shortcut.service';
-import { getUnitServerHost } from '../../models/common.model';
 import { copyTextToClipboard } from '../../utils/clipboard.util';
 import { BasePanelComponent } from '../base-panel/base-panel.component';
-import { UnitIconComponent } from '../unit-icon/unit-icon.component';
-import { UnitTagsComponent, type TagClickEvent } from '../unit-tags/unit-tags.component';
+import type { TagClickEvent } from '../unit-tags/unit-tags.component';
+import { UnitIdentityBarComponent, unitValueDisplay } from '../unit-identity-bar/unit-identity-bar.component';
+import { OptionsService } from '../../services/options.service';
 import { UnitDetailsGeneralTabComponent } from '../unit-details-dialog/tabs/unit-details-general-tab.component';
 import { UnitDetailsIntelTabComponent } from '../unit-details-dialog/tabs/unit-details-intel-tab.component';
 import { UnitDetailsFactionTabComponent } from '../unit-details-dialog/tabs/unit-details-factions-tab.component';
@@ -26,6 +27,11 @@ import { UnitDetailsVariantsTabComponent, type VariantsTabState, DEFAULT_VARIANT
 import { UnitDetailsDialogComponent, type UnitDetailsDialogData } from '../unit-details-dialog/unit-details-dialog.component';
 import { ConfirmDialogComponent, type ConfirmDialogData } from '../confirm-dialog/confirm-dialog.component';
 import { UnitDetailsFooterComponent } from '../unit-details-footer/unit-details-footer.component';
+import { CustomUnitActionsComponent } from '../custom-unit-actions/custom-unit-actions.component';
+import { UnitConstructionButtonComponent } from '../../construction/unit-construction-button.component';
+import { UnitFluffImageService } from '../../services/catalogs/unit-fluff-image.service';
+import { UnitDetailsSummaryService } from '../../services/unit-details-summary.service';
+import { buildUnitShareLinks } from '../../utils/force-url.util';
 
 /**
  * Inline unit details panel for expanded view mode.
@@ -36,17 +42,17 @@ import { UnitDetailsFooterComponent } from '../unit-details-footer/unit-details-
     selector: 'unit-details-panel',
     changeDetection: ChangeDetectionStrategy.OnPush,
     imports: [
-        CommonModule,
         BasePanelComponent,
-        UnitIconComponent,
-        UnitTagsComponent,
+        UnitIdentityBarComponent,
         UnitDetailsGeneralTabComponent,
         UnitDetailsIntelTabComponent,
         UnitDetailsFactionTabComponent,
         UnitDetailsSheetTabComponent,
         UnitDetailsCardTabComponent,
         UnitDetailsVariantsTabComponent,
-        UnitDetailsFooterComponent
+        UnitDetailsFooterComponent,
+        CustomUnitActionsComponent,
+        UnitConstructionButtonComponent
     ],
     templateUrl: './unit-details-panel.component.html',
     styleUrl: './unit-details-panel.component.scss',
@@ -57,19 +63,39 @@ import { UnitDetailsFooterComponent } from '../unit-details-footer/unit-details-
     }
 })
 export class UnitDetailsPanelComponent {
+    readonly unitNames = inject(UnitNameService);
     private gameService = inject(GameService);
-    forceBuilderService = inject(ForceBuilderService);
+    private optionsService = inject(OptionsService);
+    protected readonly forceWorkspace = inject(ForceWorkspaceStateService);
+
+    private readonly forceCommands = inject(ForceWorkspaceCommandsService);
     private toastService = inject(ToastService);
     private taggingService = inject(TaggingService);
     private dialogsService = inject(DialogsService);
     private keyboardShortcutService = inject(KeyboardShortcutService);
     private destroyRef = inject(DestroyRef);
-    readonly unit = input<UnitSummary | null>(null);
+    private fluffImages = inject(UnitFluffImageService);
+    private detailsSummaries = inject(UnitDetailsSummaryService);
+    public readonly sourceUnit = input<UnitSummary | null>(null, { alias: 'unit' });
+    private readonly resolvedUnit = signal<{
+        readonly source: UnitSummary;
+        readonly summary: UnitSummary;
+    } | null>(null);
+    readonly unit = computed(() => {
+        const source = this.sourceUnit();
+        const resolved = this.resolvedUnit();
+        return source && resolved?.source === source ? resolved.summary : source;
+    });
     readonly prevUnit = input<UnitSummary | null>(null);
     readonly nextUnit = input<UnitSummary | null>(null);
     readonly gunnerySkill = input<number | undefined>(undefined);
     readonly pilotingSkill = input<number | undefined>(undefined);
     readonly adjustedValueOverride = input<number | undefined>(undefined);
+    /** A catalog unit, valued at the search's skills or override. */
+    readonly headerValue = computed(() => unitValueDisplay(
+        this.unit()!, undefined, this.optionsService.options().forceViewerBVPVDisplayDamage,
+        this.adjustedValueOverride(), this.gunnerySkill(), this.pilotingSkill(), this.gameService.isAlphaStrike(),
+    ));
     readonly hasPrev = input<boolean>(false);
     readonly hasNext = input<boolean>(false);
     readonly add = output<UnitSummary>();
@@ -86,8 +112,21 @@ export class UnitDetailsPanelComponent {
     readonly variantsTabState = signal<VariantsTabState>({ ...DEFAULT_VARIANTS_TAB_STATE });
     readonly currentGameSystem = computed(() => this.gameService.currentGameSystem());
     readonly sheetTabRef = viewChild(UnitDetailsSheetTabComponent);
+    readonly cardTabRef = viewChild(UnitDetailsCardTabComponent);
 
     constructor() {
+        effect(onCleanup => {
+            const source = this.sourceUnit();
+            this.resolvedUnit.set(null);
+            if (!source) return;
+
+            let active = true;
+            void this.detailsSummaries.resolve(source).then(summary => {
+                if (active) this.resolvedUnit.set({ source, summary });
+            });
+            onCleanup(() => { active = false; });
+        });
+
         this.keyboardShortcutService.register({
             id: 'unit-details-panel',
             active: () => !!this.unit(),
@@ -97,18 +136,12 @@ export class UnitDetailsPanelComponent {
 
     /** Check if unit has fluff background image */
     readonly hasFluff = computed(() => {
-        const u = this.unit();
-        if (!u?.fluff?.img) return false;
-        if (u.fluff.img.endsWith('hud.png')) return false;
-        return true;
+        return this.fluffImageUrl() !== null;
     });
 
     /** Fluff background URL */
     readonly fluffImageUrl = computed(() => {
-        const u = this.unit();
-        if (!u?.fluff?.img) return null;
-        if (u.fluff.img.endsWith('hud.png')) return null;
-        return `${getUnitServerHost(u)}/images/fluff/${u.fluff.img}`;
+        return this.fluffImages.resolveUrl(this.unit());
     });
 
     /** CSS background style for fluff */
@@ -116,12 +149,6 @@ export class UnitDetailsPanelComponent {
         const url = this.fluffImageUrl();
         return url ? `url("${url}")` : null;
     });
-
-    /** Format thousands with commas */
-    formatThousands(value: number): string {
-        if (value === undefined || value === null) return '';
-        return value.toString().replace(/\B(?=(\d{3})+(?!\d))/g, ',');
-    }
 
     private handleShortcutKeyDown(event: KeyboardEvent): boolean {
         if (event.ctrlKey || event.altKey || event.metaKey) return false;
@@ -146,14 +173,14 @@ export class UnitDetailsPanelComponent {
         const unit = this.unit();
         if (!unit) return;
 
-        const addedUnit = await this.forceBuilderService.addUnit(
+        const addedUnit = await this.forceCommands.addUnit(
             unit,
             this.gunnerySkill(),
             this.pilotingSkill()
         );
 
         if (addedUnit) {
-            this.toastService.showToast(`${unit.chassis} ${unit.model} added to force`, 'success');
+            this.toastService.showToast(`${this.unitNames.name(unit)} added to force`, 'success');
             this.add.emit(unit);
         }
     }
@@ -166,7 +193,7 @@ export class UnitDetailsPanelComponent {
         const ref = this.dialogsService.createDialog<number | undefined>(ConfirmDialogComponent, {
             data: <ConfirmDialogData<number>>{
                 title: 'Add Multiple',
-                message: `How many copies of ${unit.chassis} ${unit.model}?`,
+                message: `How many copies of ${this.unitNames.name(unit)}?`,
                 buttons: [
                     { label: '1', value: 1, class: 'square' },
                     { label: '2', value: 2, class: 'square' },
@@ -182,7 +209,7 @@ export class UnitDetailsPanelComponent {
 
         let addedCount = 0;
         for (let index = 0; index < count; index++) {
-            const addedUnit = await this.forceBuilderService.addUnit(
+            const addedUnit = await this.forceCommands.addUnit(
                 unit,
                 this.gunnerySkill(),
                 this.pilotingSkill()
@@ -194,7 +221,7 @@ export class UnitDetailsPanelComponent {
 
         if (addedCount > 0) {
             this.toastService.showToast(
-                `${addedCount}x ${unit.chassis} ${unit.model} added to force`,
+                `${addedCount}x ${this.unitNames.name(unit)} added to force`,
                 'success'
             );
             this.add.emit(unit);
@@ -225,11 +252,14 @@ export class UnitDetailsPanelComponent {
         const unit = this.unit();
         if (!unit) return;
         
-        const domain = window.location.origin + window.location.pathname;
-        const unitName = encodeURIComponent(unit.name);
-        const tab = encodeURIComponent(this.activeTab());
-        const shareUrl = `${domain}?gs=${this.gameService.currentGameSystem()}&shareUnit=${unitName}&tab=${tab}`;
-        const shareText = `${unit.chassis} ${unit.model}`;
+        const { httpsUrl: shareUrl } = buildUnitShareLinks(
+            window.location.origin,
+            window.location.pathname,
+            this.gameService.currentGameSystem(),
+            unit,
+            this.activeTab(),
+        );
+        const shareText = `${this.unitNames.name(unit)}`;
         
         if (navigator.share) {
             navigator.share({

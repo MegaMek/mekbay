@@ -2,7 +2,8 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 // Author: Drake
 
-import { Injectable, inject } from '@angular/core';
+import { Injectable } from '@angular/core';
+import { isRecord } from '../../utils/json-value.util';
 
 import {
     SARNA_PAGE_TITLE_LOOKUP_TYPE_BY_UNIT_TYPE,
@@ -12,7 +13,6 @@ import {
     type SarnaPageTitlesByType,
     type SarnaPageTitlesData,
 } from '../../models/sarna-page-titles.model';
-import { DbService } from '../db.service';
 import { CatalogBaseService } from './catalog-base.service';
 
 type TitleCandidateIndex = Map<string, string[]>;
@@ -43,10 +43,6 @@ const NON_ALIAS_PARENTHESES = [
     'supportvehicle',
     'warship',
 ] as const;
-
-function isRecord(value: unknown): value is Record<string, unknown> {
-    return !!value && typeof value === 'object' && !Array.isArray(value);
-}
 
 function isWrappedSarnaPageTitlesData(value: unknown): value is SarnaPageTitlesData {
     return isRecord(value) && isRecord(value['titlesByType']);
@@ -183,8 +179,6 @@ function getSubtypeTitleHints(unit: SarnaLookupUnit): string[] {
     providedIn: 'root'
 })
 export class SarnaPageTitlesCatalogService extends CatalogBaseService<SarnaPageTitlesData | SarnaPageTitlesByType, SarnaPageTitlesData, SarnaPageTitlesData | SarnaPageTitlesByType> {
-    private readonly dbService = inject(DbService);
-
     private titleCount = 0;
     private exactTitleByType = new Map<SarnaPageTitleLookupType, Map<string, string>>();
     private baseCandidatesByType = new Map<SarnaPageTitleLookupType, TitleCandidateIndex>();
@@ -194,8 +188,8 @@ export class SarnaPageTitlesCatalogService extends CatalogBaseService<SarnaPageT
         return 'sarna_page_titles';
     }
 
-    protected override get remoteUrl(): string {
-        return 'assets/sarna-page-titles.json';
+    protected override get repositoryAssetPath(): string {
+        return 'online-assets/generated/sarna-page-titles.json';
     }
 
     public getPageTitleForUnit(unit: SarnaLookupUnit | null | undefined): string | undefined {
@@ -205,6 +199,7 @@ export class SarnaPageTitlesCatalogService extends CatalogBaseService<SarnaPageT
         if (!chassis) return undefined;
 
         const lookupType = SARNA_PAGE_TITLE_LOOKUP_TYPE_BY_UNIT_TYPE[unit.type];
+        if (!lookupType) return undefined;
         const normalizedChassis = normalizeText(chassis);
         const exactTitle = this.exactTitleByType.get(lookupType)?.get(normalizedChassis);
         if (exactTitle) return exactTitle;
@@ -222,24 +217,12 @@ export class SarnaPageTitlesCatalogService extends CatalogBaseService<SarnaPageT
         return tokenCandidates?.length ? this.selectBestCandidate(tokenCandidates, unit) : undefined;
     }
 
-    public hasPageForUnit(unit: SarnaLookupUnit | null | undefined): boolean {
-        return this.getPageTitleForUnit(unit) !== undefined;
-    }
-
     protected override hasHydratedData(): boolean {
         return this.titleCount > 0;
     }
 
-    protected override async loadFromCache(): Promise<SarnaPageTitlesData | undefined> {
-        return await this.dbService.getSarnaPageTitles() ?? undefined;
-    }
-
-    protected override saveToCache(data: SarnaPageTitlesData): Promise<void> {
-        return this.dbService.saveSarnaPageTitles(data);
-    }
-
     protected override hydrate(data: SarnaPageTitlesData | SarnaPageTitlesByType): void {
-        const wrappedData = this.wrapData(data, isWrappedSarnaPageTitlesData(data) ? data.etag : '');
+        const wrappedData = this.wrapData(data, isWrappedSarnaPageTitlesData(data) ? data.assetHash : '');
 
         this.titleCount = 0;
         this.exactTitleByType.clear();
@@ -278,11 +261,11 @@ export class SarnaPageTitlesCatalogService extends CatalogBaseService<SarnaPageT
             this.tokenCandidatesByType.set(lookupType, tokenCandidates);
         }
 
-        this.etag = wrappedData.etag;
+        this.transportRevision = wrappedData.assetHash;
     }
 
-    protected override normalizeFetchedData(data: SarnaPageTitlesData | SarnaPageTitlesByType, etag: string): SarnaPageTitlesData {
-        return this.wrapData(data, etag);
+    protected override normalizeFetchedData(data: SarnaPageTitlesData | SarnaPageTitlesByType, assetHash: string): SarnaPageTitlesData {
+        return this.wrapData(data, assetHash);
     }
 
     protected override getDatasetSize(data: SarnaPageTitlesData | SarnaPageTitlesByType): number {
@@ -290,7 +273,7 @@ export class SarnaPageTitlesCatalogService extends CatalogBaseService<SarnaPageT
         return SARNA_PAGE_TITLE_LOOKUP_TYPES.reduce((count, lookupType) => count + (wrappedData.titlesByType[lookupType]?.length ?? 0), 0);
     }
 
-    private wrapData(data: SarnaPageTitlesData | SarnaPageTitlesByType, etag: string): SarnaPageTitlesData {
+    private wrapData(data: SarnaPageTitlesData | SarnaPageTitlesByType, assetHash: string): SarnaPageTitlesData {
         const source = isWrappedSarnaPageTitlesData(data) ? data.titlesByType : data;
         const titlesByType: SarnaPageTitlesByType = {};
 
@@ -304,7 +287,9 @@ export class SarnaPageTitlesCatalogService extends CatalogBaseService<SarnaPageT
         }
 
         return {
-            etag: isWrappedSarnaPageTitlesData(data) && typeof data.etag === 'string' ? data.etag : etag,
+            assetHash: isWrappedSarnaPageTitlesData(data) && typeof data.assetHash === 'string'
+                ? data.assetHash
+                : assetHash,
             titlesByType,
         };
     }

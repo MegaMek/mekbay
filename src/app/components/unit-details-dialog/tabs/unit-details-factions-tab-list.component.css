@@ -1,0 +1,176 @@
+:host {
+    display: flex;
+    flex: 1;
+    width: 100%;
+    min-width: 0;
+    min-height: 0;
+}
+
+.faction-availability-list {
+    display: grid;
+    flex: 1;
+    min-width: 0;
+    min-height: 0;
+    padding: 16px;
+    box-sizing: border-box;
+    grid-template-columns: auto 1fr;
+    gap: 8px 16px;
+    align-items: start;
+    align-content: start;
+    overflow-x: hidden;
+    overflow-y: auto;
+    touch-action: pan-y;
+}
+
+.era-name {
+    display: flex;
+    align-items: flex-start;
+    gap: 4px;
+    white-space: nowrap;
+}
+
+.era-name-content {
+    display: flex;
+    flex-direction: column;
+    line-height: 1.6;
+}
+
+.era-years {
+    color: var(--text-color-secondary);
+    font-size: 0.7em;
+    line-height: 1;
+}
+
+.era-icon {
+    position: relative;
+    top: 3px;
+    height: 1.2em;
+    margin-bottom: 0;
+    vertical-align: middle;
+}
+
+.faction-list {
+    line-height: 1.6;
+}
+
+.faction-item {
+    display: inline;
+}
+
+.faction-name-head {
+    display: inline-flex;
+    align-items: baseline;
+    white-space: nowrap;
+}
+
+.faction-name-middle {
+    white-space: pre-wrap;
+}
+
+.faction-name-tail {
+    display: inline-flex;
+    align-items: baseline;
+    white-space: nowrap;
+}
+
+.faction-megamek-availability {
+    display: inline-flex;
+    margin-left: 4px;
+    color: var(--text-color-secondary);
+    white-space: nowrap;
+}
+
+.faction-megamek-availability-badges {
+    display: inline-flex;
+}
+
+.faction-megamek-availability-badge {
+    position: relative;
+    top: 0.18em;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    line-height: 0;
+}
+
+.faction-megamek-availability-icon {
+    display: block;
+    width: 0.95em;
+    height: 0.95em;
+}
+
+.faction-megamek-availability-separator {
+    display: inline-block;
+    width: 4px;
+}
+
+.faction-icon {
+    width: 1.2em;
+    height: 1.2em;
+    margin-right: 2px;
+    align-self: center;
+    object-fit: contain;
+}
+
+.no-factions {
+    margin-top: 24px;
+    margin-right: auto;
+    margin-left: auto;
+    grid-column: 1 / -1;
+    color: var(--text-color-secondary);
+    text-align: center;
+}
+
+hr.divider {
+    grid-column: 1 / -1;
+}
+
+.catch-all-faction,
+.collapsed-faction-item {
+    display: inline;
+}
+
+.faction-name-head > .faction-icon,
+.faction-name-tail > .faction-icon {
+    vertical-align: text-bottom;
+}
+
+.catch-all-faction .parent-faction {
+    color: var(--bt-yellow);
+    cursor: pointer;
+}
+
+.catch-all-faction .parent-faction-label {
+    text-decoration: underline dotted;
+}
+
+.catch-all-faction .parent-faction:hover {
+    color: var(--bt-yellow-background-light);
+}
+
+@container (max-width: 768px) {
+    .faction-availability-list {
+        display: flex;
+        flex-direction: column;
+    }
+
+    hr.divider {
+        width: 100%;
+    }
+
+    .era-name-content {
+        align-items: center;
+    }
+
+    .era-name {
+        width: 100%;
+        margin-top: 8px;
+        margin-bottom: 8px;
+        justify-content: center;
+        font-size: 1.2em;
+    }
+
+    .faction-list {
+        margin-bottom: 16px;
+    }
+}

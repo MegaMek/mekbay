@@ -18,13 +18,14 @@ import type { CardAbility, SpecialAbilityClickEvent } from './layouts/layout-bas
 import { CriticalHitRollDialogComponent, type CriticalHitRollDialogData } from './critical-hit-roll-dialog/critical-hit-roll-dialog.component';
 import { MotiveDamageRollDialogComponent, type MotiveDamageRollDialogData } from './motive-damage-roll-dialog/motive-damage-roll-dialog.component';
 import { AsLayoutStandardComponent, AsLayoutLargeVessel1Component, AsLayoutLargeVessel2Component } from './layouts';
-import { GameSystem, getUnitServerHost } from '../../models/common.model';
+import { GameSystem } from '../../models/common.model';
 import type { ChoicePickerInstance, NumericPickerInstance, NumericPickerResult, PickerChoice, PickerPosition } from '../picker/picker.interface';
 import { vibrate } from '../../utils/vibrate.util';
 import { firstValueFrom } from 'rxjs';
 import { OptionsService } from '../../services/options.service';
 import { PickerFactoryService } from '../../services/picker-factory.service';
 import type { ColorScheme } from '../../models/options.model';
+import { UnitFluffImageService } from '../../services/catalogs/unit-fluff-image.service';
 
 
 
@@ -54,6 +55,7 @@ export class AlphaStrikeCardComponent {
     private readonly elRef = inject(ElementRef<HTMLElement>);
     private readonly destroyRef = inject(DestroyRef);
     private readonly pickerFactory = inject(PickerFactoryService);
+    private readonly fluffImages = inject(UnitFluffImageService);
     
     /** Unique instance ID for SVG filter deduplication */
     readonly instanceId = AlphaStrikeCardComponent.nextId++;
@@ -77,12 +79,13 @@ export class AlphaStrikeCardComponent {
     selected = output<ASForceUnit>();
     editPilot = output<ASForceUnit>();
     
-    imageUrl = signal<string>('');
+    readonly fluffImageUrl = input<string | null>();
+    imageUrl = computed(() => (this.fluffImageUrl() === undefined ? this.fluffImages.resolveUrl(this.resolvedUnit()) : this.fluffImageUrl()) ?? '');
     
     // Interaction state
     private interactionAbortController: AbortController | null = null;
     private pickerRef: NumericPickerInstance | ChoicePickerInstance | null = null;
-    private pickerAnchorElement: HTMLElement | null = null;
+    private pickerAnchorElement: SVGElement | HTMLElement | null = null;
     private interactionsSetup = false;
     
     onCardClick(): void {
@@ -92,8 +95,8 @@ export class AlphaStrikeCardComponent {
         }
     }
     
-    /** Effective Unit for rendering: forceUnit.getUnit() wins, otherwise the plain unit input. */
-    resolvedUnit = computed<UnitSummary | undefined>(() => this.forceUnit()?.getUnit() ?? this.unit());
+    /** Effective Unit for rendering: forceUnit.getSummary() wins, otherwise the plain unit input. */
+    resolvedUnit = computed<UnitSummary | undefined>(() => this.forceUnit()?.getSummary() ?? this.unit());
     
     /** Get the Alpha Strike unit type (BM, IM, CV, CI, WS, etc.) */
     unitType = computed<ASUnitTypeCode>(() => this.resolvedUnit()?.as.TP || 'BM');
@@ -130,17 +133,6 @@ export class AlphaStrikeCardComponent {
     }
 
     constructor() {
-        // Effect to load image
-        effect(() => {
-            const unit = this.resolvedUnit();
-            const imagePath = unit?.fluff?.img;
-            if (imagePath) {
-                this.loadFluffImage(imagePath, unit?.serverHost);
-            } else {
-                this.imageUrl.set('');
-            }
-        });
-        
         // Track pending afterNextRender callbacks to clean up on destroy
         let pendingAfterRenderRef: { destroy: () => void } | null = null;
         
@@ -197,20 +189,6 @@ export class AlphaStrikeCardComponent {
         });
     }
     
-    private async loadFluffImage(imagePath: string, serverHost?: string): Promise<void> {
-        try {    
-            if (imagePath.endsWith('hud.png')) {
-                this.imageUrl.set('');
-                return;
-            }
-            const fluffImageUrl = `${getUnitServerHost({ serverHost })}/images/fluff/${imagePath}`;
-            this.imageUrl.set(fluffImageUrl);
-        } catch {
-            // Ignore errors, image will just not display
-            this.imageUrl.set('');
-        }
-    }
-    
     // Handle special ability click from layout components
     onSpecialClick(clickEvent: SpecialAbilityClickEvent): void {
         const { state, event } = clickEvent;
@@ -221,7 +199,7 @@ export class AlphaStrikeCardComponent {
         
         // In interactive mode, show picker for consumable/exhaustible abilities
         if (this.interactive() && fu && ability && (ability.consumable || ability.canExhaust)) {
-            const anchorElement = event.currentTarget as HTMLElement | undefined;
+            const anchorElement = event.currentTarget as SVGElement | HTMLElement | undefined;
             if (anchorElement) {
                 this.showAbilityPicker(state, parsedAbility, anchorElement);
                 return;
@@ -243,7 +221,7 @@ export class AlphaStrikeCardComponent {
         });
     }
     
-    private showAbilityPicker(state: SpecialAbilityState, parsedAbility: ParsedAbility, anchorElement: HTMLElement): void {
+    private showAbilityPicker(state: SpecialAbilityState, parsedAbility: ParsedAbility, anchorElement: SVGElement | HTMLElement): void {
         const fu = this.forceUnit();
         const ability = parsedAbility.ability;
         if (!fu || !ability) return;
@@ -347,41 +325,44 @@ export class AlphaStrikeCardComponent {
         if (selection.kind === 'formation-wide') {
             this.dialogs.createDialog<void>(PilotAbilityInfoDialogComponent, {
                 data: {
-                    gameSystem: GameSystem.ALPHA_STRIKE,
+                    gameSystem: GameSystem.AS,
                     ability: selection.descriptor.ability,
                     isCustom: false,
                     isFormationWide: true,
-                } as PilotAbilityInfoDialogData
+                } as PilotAbilityInfoDialogData,
             });
             return;
         }
 
-        const pilotSelection = selection.selection;
-        let isCustom = typeof pilotSelection !== 'string';
+        this.onPilotAbilityClick(selection.selection);
+    }
+
+    onPilotAbilityClick(selection: AbilitySelection): void {
+        let isCustom = typeof selection !== 'string';
         let isCommand = false;
         let ability: PilotAbilityInfoDialogData['ability'];
         
-        if (typeof pilotSelection === 'string') {
-            const pilotAbility = PILOT_ABILITIES.find((entry) => entry.id === pilotSelection);
+        if (typeof selection === 'string') {
+            const pilotAbility = PILOT_ABILITIES.find((entry) => entry.id === selection);
             if (pilotAbility) {
                 ability = pilotAbility;
             } else {
-                const commandAbility = COMMAND_ABILITIES.find((entry) => entry.id === pilotSelection);
+                const commandAbility = COMMAND_ABILITIES.find((entry) => entry.id === selection);
                 if (commandAbility) {
                     ability = commandAbility;
                     isCommand = true;
                     isCustom = false;
                 } else {
-                    ability = { name: pilotSelection, cost: 0, summary: '' } as ASCustomPilotAbility;
+                    ability = { name: selection, cost: 0, summary: '' } as ASCustomPilotAbility;
                     isCustom = true;
                 }
             }
         } else {
-            ability = pilotSelection;
+            ability = selection;
         }
         
         this.dialogs.createDialog<void>(PilotAbilityInfoDialogComponent, {
-            data: { gameSystem: GameSystem.ALPHA_STRIKE, ability, isCustom, isCommand } as PilotAbilityInfoDialogData
+            data: { gameSystem: GameSystem.AS, ability, isCustom, isCommand } as PilotAbilityInfoDialogData
         });
     }
 
@@ -390,7 +371,7 @@ export class AlphaStrikeCardComponent {
         const fu = this.forceUnit();
         if (!fu) return;
         
-        const unitType = fu.getUnit().as.TP;
+        const unitType = fu.getSummary().as.TP;
         if (!unitType) return;
         
         const ref = this.dialogs.createDialog<void, CriticalHitRollDialogComponent, CriticalHitRollDialogData>(
@@ -431,7 +412,7 @@ export class AlphaStrikeCardComponent {
         this.interactionsSetup = false;
     }
     
-    private addTapHandler(el: HTMLElement, handler: (evt: PointerEvent) => void, signal: AbortSignal): void {
+    private addTapHandler(el: SVGElement | HTMLElement, handler: (evt: PointerEvent) => void, signal: AbortSignal): void {
         el.classList.add('interactive');
         const eventOptions = { passive: false, signal };
         
@@ -441,49 +422,49 @@ export class AlphaStrikeCardComponent {
         let startY = 0;
         const moveThreshold = 10;
         
-        el.addEventListener('pointerdown', (evt: PointerEvent) => {
+        el.addEventListener('pointerdown', ((evt: PointerEvent) => {
             evt.preventDefault();
             evt.stopPropagation();
             pointerMoved = false;
             startX = evt.clientX;
             startY = evt.clientY;
             pointerId = evt.pointerId;
-        }, eventOptions);
+        }) as EventListener, eventOptions);
         
-        el.addEventListener('pointermove', (evt: PointerEvent) => {
+        el.addEventListener('pointermove', ((evt: PointerEvent) => {
             if (evt.pointerId !== pointerId) return;
             const dx = Math.abs(evt.clientX - startX);
             const dy = Math.abs(evt.clientY - startY);
             if (dx > moveThreshold || dy > moveThreshold) {
                 pointerMoved = true;
             }
-        }, eventOptions);
+        }) as EventListener, eventOptions);
         
-        el.addEventListener('pointerup', (evt: PointerEvent) => {
+        el.addEventListener('pointerup', ((evt: PointerEvent) => {
             if (evt.pointerId !== pointerId) return;
             evt.preventDefault();
             if (!pointerMoved) {
                 handler(evt);
             }
             pointerId = null;
-        }, eventOptions);
+        }) as EventListener, eventOptions);
         
-        el.addEventListener('pointerleave', (evt: PointerEvent) => {
+        el.addEventListener('pointerleave', ((evt: PointerEvent) => {
             if (evt.pointerId === pointerId) pointerId = null;
-        }, eventOptions);
+        }) as EventListener, eventOptions);
         
-        el.addEventListener('pointercancel', (evt: PointerEvent) => {
+        el.addEventListener('pointercancel', ((evt: PointerEvent) => {
             if (evt.pointerId === pointerId) pointerId = null;
-        }, eventOptions);
+        }) as EventListener, eventOptions);
     }
     
-    private setupArmorInteraction(cardElement: HTMLElement, signal: AbortSignal): void {
+    private setupArmorInteraction(cardElement: SVGElement | HTMLElement, signal: AbortSignal): void {
         if (this.optionsService.options().ASUnifiedDamagePicker) {
             // Unified: tap anywhere in pips-wrapper shows combined damage picker
             const pipsWrapper = cardElement.querySelector('.pips-wrapper');
             if (!pipsWrapper) return;
             
-            this.addTapHandler(pipsWrapper as HTMLElement, (evt) => {
+            this.addTapHandler(pipsWrapper as SVGElement | HTMLElement, (evt) => {
                 this.showDamagePicker(evt);
             }, signal);
         } else {
@@ -492,31 +473,31 @@ export class AlphaStrikeCardComponent {
             const structureRow = cardElement.querySelector('[data-damage-type="structure"]');
             
             if (armorRow) {
-                this.addTapHandler(armorRow as HTMLElement, (evt) => {
+                this.addTapHandler(armorRow as SVGElement | HTMLElement, (evt) => {
                     this.showSingleDamagePicker(evt, 'armor');
                 }, signal);
             }
             if (structureRow) {
-                this.addTapHandler(structureRow as HTMLElement, (evt) => {
+                this.addTapHandler(structureRow as SVGElement | HTMLElement, (evt) => {
                     this.showSingleDamagePicker(evt, 'structure');
                 }, signal);
             }
         }
     }
     
-    private setupCriticalHitInteraction(cardElement: HTMLElement, signal: AbortSignal): void {
+    private setupCriticalHitInteraction(cardElement: SVGElement | HTMLElement, signal: AbortSignal): void {
         const critRows = cardElement.querySelectorAll('[data-crit]');
         critRows.forEach(row => {
             const critKey = row.getAttribute('data-crit');
             if (!critKey) return;
             
-            this.addTapHandler(row as HTMLElement, (evt) => {
-                this.showCritPicker(evt, critKey, row as HTMLElement);
+            this.addTapHandler(row as SVGElement | HTMLElement, (evt) => {
+                this.showCritPicker(evt, critKey, row as SVGElement | HTMLElement);
             }, signal);
         });
     }
     
-    private setupVesselDamageTrackInteraction(cardElement: HTMLElement, signal: AbortSignal): void {
+    private setupVesselDamageTrackInteraction(cardElement: SVGElement | HTMLElement, signal: AbortSignal): void {
         const damageTracks = cardElement.querySelectorAll('.damage-track');
         damageTracks.forEach(track => {
             const trackType = track.getAttribute('data-damage-track');
@@ -525,7 +506,7 @@ export class AlphaStrikeCardComponent {
         
             if (this.optionsService.options().ASUnifiedDamagePicker) {
                 // Unified: any damage track shows combined damage dialog
-                this.addTapHandler(track as HTMLElement, (evt) => {
+                this.addTapHandler(track as SVGElement | HTMLElement, (evt) => {
                     if (pickerStyle === 'linear') {
                         this.showVesselDamageDialog();
                     } else {
@@ -535,7 +516,7 @@ export class AlphaStrikeCardComponent {
             } else {
                 // Separate: each track shows its own damage dialog
                 if (trackType === 'armor' || trackType === 'structure') {
-                    this.addTapHandler(track as HTMLElement, (evt) => {
+                    this.addTapHandler(track as SVGElement | HTMLElement, (evt) => {
                     if (pickerStyle === 'linear') {
                         this.showVesselSingleDamageDialog(trackType);
                     } else {
@@ -547,13 +528,13 @@ export class AlphaStrikeCardComponent {
         });
     }
     
-    private setupHeatInteraction(cardElement: HTMLElement, signal: AbortSignal): void {
+    private setupHeatInteraction(cardElement: SVGElement | HTMLElement, signal: AbortSignal): void {
         const heatTrack = cardElement.querySelector('.heat-track');
         if (!heatTrack) return;
 
-        this.addTapHandler(heatTrack as HTMLElement, (event) => {
-            const target = event.target instanceof HTMLElement
-                ? event.target.closest<HTMLElement>('.heat-level')
+        this.addTapHandler(heatTrack as SVGElement | HTMLElement, (event) => {
+            const target = event.target instanceof Element
+                ? event.target.closest<SVGElement>('.heat-level')
                 : null;
             if (!target || !heatTrack.contains(target)) return;
 
@@ -581,8 +562,8 @@ export class AlphaStrikeCardComponent {
         const unit = this.forceUnit();
         if (!unit) return;
         
-        const maxArmor = unit.getUnit().as.Arm;
-        const maxInternal = unit.getUnit().as.Str;
+        const maxArmor = unit.getSummary().as.Arm;
+        const maxInternal = unit.getSummary().as.Str;
         const totalMax = maxArmor + maxInternal;
         
         const committedTotal = unit.getState().armor() + unit.getState().internal();
@@ -591,7 +572,7 @@ export class AlphaStrikeCardComponent {
         const currentTotal = totalMax - currentTotalDamage;
         
         this.showNumericPicker({
-            anchorElement: event.currentTarget as HTMLElement,
+            anchorElement: event.currentTarget as SVGElement | HTMLElement,
             event,
             title: 'DAMAGE',
             min: -currentTotalDamage,
@@ -624,14 +605,14 @@ export class AlphaStrikeCardComponent {
         
         const state = unit.getState();
         const isArmor = type === 'armor';
-        const max = isArmor ? unit.getUnit().as.Arm : unit.getUnit().as.Str;
+        const max = isArmor ? unit.getSummary().as.Arm : unit.getSummary().as.Str;
         const committed = isArmor ? state.armor() : state.internal();
         const pending = isArmor ? state.pendingArmor() : state.pendingInternal();
         const currentDamage = committed + pending;
         const remaining = max - currentDamage;
         
         this.showNumericPicker({
-            anchorElement: event.currentTarget as HTMLElement,
+            anchorElement: event.currentTarget as SVGElement | HTMLElement,
             event,
             title: isArmor ? 'ARMOR' : 'STRUCTURE',
             min: -currentDamage,
@@ -668,7 +649,7 @@ export class AlphaStrikeCardComponent {
                 message: 'Enter damage amount (negative to heal):',
                 inputType: 'number',
                 minimumValue: - (unit.getState().armor() + unit.getState().pendingArmor() + unit.getState().internal() + unit.getState().pendingInternal()),
-                maximumValue: unit.getUnit().as.Arm + unit.getUnit().as.Str,
+                maximumValue: unit.getSummary().as.Arm + unit.getSummary().as.Str,
                 defaultValue: 0
             } as InputDialogData
         });
@@ -706,7 +687,7 @@ export class AlphaStrikeCardComponent {
                 message: 'Enter damage amount (negative to heal):',
                 inputType: 'number',
                 minimumValue: - (isArmor ? state.armor() + state.pendingArmor() : state.internal() + state.pendingInternal()),
-                maximumValue: isArmor ? unit.getUnit().as.Arm : unit.getUnit().as.Str,
+                maximumValue: isArmor ? unit.getSummary().as.Arm : unit.getSummary().as.Str,
                 defaultValue: 0,
                 centerInput: true,
             } as InputDialogData
@@ -745,13 +726,13 @@ export class AlphaStrikeCardComponent {
         if (!this.optionsService.options().ASUseAutomations) return;
         if (deltaChange <= 0) return;
         
-        const unitType = unit.getUnit().as.TP;
+        const unitType = unit.getSummary().as.TP;
         if (unitType === 'CI') return; // Skip conventional infantry
         if (unitType === 'BA') return; // Skip battle armor
         
         const newPendingInternal = unit.getState().pendingInternal();
         const tookStructureDamage = newPendingInternal > previousPendingInternal;
-        const specials = unit.getUnit().as.specials || [];
+        const specials = unit.getSummary().as.specials || [];
         const hasBAR = specials.some(s => s.startsWith('BAR'));
         
         // BAR: Any time a unit with BAR suffers damage, a critical hit may occur
@@ -778,7 +759,7 @@ export class AlphaStrikeCardComponent {
      * Vehicles must roll on the Motive Systems Damage Table when taking structure damage.
      */
     private async checkMotiveDamage(unit: ASForceUnit): Promise<void> {
-        const unitType = unit.getUnit().as.TP;
+        const unitType = unit.getSummary().as.TP;
         // Only vehicles (CV = Combat Vehicle, SV = Support Vehicle) need motive damage rolls
         if (unitType !== 'CV' && unitType !== 'SV') return;
         
@@ -868,7 +849,7 @@ export class AlphaStrikeCardComponent {
         return hits;
     }
     
-    private showCritPicker(event: PointerEvent, critKey: string, rowElement: HTMLElement): void {
+    private showCritPicker(event: PointerEvent, critKey: string, rowElement: SVGElement | HTMLElement): void {
         const unit = this.forceUnit();
         if (!unit) return;
         
@@ -913,7 +894,7 @@ export class AlphaStrikeCardComponent {
      * - 'radial' or 'default': Uses rotating dial picker
      */
     private showNumericPicker(config: {
-        anchorElement: HTMLElement;
+        anchorElement: SVGElement | HTMLElement;
         event?: PointerEvent;
         title: string;
         min: number;
@@ -982,7 +963,7 @@ export class AlphaStrikeCardComponent {
      * Show a choice picker (linear style) for selecting from a list of options.
      */
     private showLinearPicker(config: {
-        anchorElement: HTMLElement;
+        anchorElement: SVGElement | HTMLElement;
         title: string;
         values: PickerChoice[];
         onPick: (val: PickerChoice) => void;
@@ -1005,7 +986,7 @@ export class AlphaStrikeCardComponent {
         });
     }
     
-    private calculatePickerPosition(element: HTMLElement, centerVertically: boolean): PickerPosition {
+    private calculatePickerPosition(element: SVGElement | HTMLElement, centerVertically: boolean): PickerPosition {
         const rect = element.getBoundingClientRect();
         return {
             x: rect.left + rect.width / 2,

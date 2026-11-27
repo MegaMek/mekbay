@@ -1,0 +1,277 @@
+// Copyright (C) 2026 The MegaMek Team
+// SPDX-License-Identifier: GPL-3.0-or-later
+
+import { bombAmmo,carriedBombs,isTagPodBomb } from './aerospace-bomb.model';
+import { isC3EmergencyMasterOperatingTurnsFried } from './c3-emergency-master.model';
+import { crewSkillsForUnit } from './unit-crew-policy';
+import { projectEncounterNetworksToC3Editor } from './c3-network-presentation';
+import {
+C3Role,
+C3TaxCalculator,
+projectNonMekC3Components,
+type C3Component,
+type C3UnitView,
+} from './c3-network.model';
+import { asComponentId,type ComponentId } from './entity/entity-identifiers';
+import { unroundedEntityBattleValueForSkills } from './entity/utils/battle-value/skill-facts';
+import type { EquipmentRegistry } from './equipment-lookup';
+import { AmmoEquipment,WeaponEquipment,ammoMatchesWeapon } from './equipment.model';
+import { gameRulesFor,type TagBattleValueFacts } from './rules/game-rules';
+import { isCBTMekUnit,isCBTNonMekUnit,type CBTUnit } from './runtime/cbt-unit';
+import type { EncounterNetwork } from './runtime/encounter-runtime';
+import type { ScenarioRules } from './runtime/unit-state-initializer';
+import { scenarioRuleset } from './runtime/unit-state-initializer';
+import { unitCrewKind } from './unit-crew-policy';
+
+export interface CBTForceBattleValueUnit {
+    readonly unit: CBTUnit;
+    readonly baseBattleValue: number | null;
+}
+
+export interface CBTForceBattleValueBreakdown {
+    /** Integer entity/runtime BV after the base-BV rounding boundary. */
+    readonly base: number;
+    /** Fractional post-base adjustments retained until final rounding. */
+    readonly tag: number;
+    readonly c3: number;
+    /** Carried bombs; MegaMek BVCalculator.processExternalStores, before the skill multiplier. */
+    readonly externalStores: number;
+    readonly skills: number;
+    /** Rounded force-adjusted BV before skills, for the adjustedPreSkill display option. */
+    readonly adjustedPreSkill: number;
+    /** Integer result after applying every post-base adjustment. */
+    readonly adjusted: number;
+}
+
+export interface CBTForceBattleValueInput {
+    readonly units: readonly CBTForceBattleValueUnit[];
+    readonly scenario: ScenarioRules;
+    readonly networks: readonly EncounterNetwork[];
+    readonly isC3EndpointIntact: (
+        instanceId: string,
+        componentId: ComponentId,
+    ) => boolean;
+}
+
+/** Current entity + sparse-runtime BV. No force-wide state participates. */
+export function currentUnitBaseBattleValue(unit: CBTUnit): number | null {
+    return unit.captureRuntime().query.currentBaseBattleValue();
+}
+
+/** Immutable entity BV under the unit's rules, before runtime damage, TAG, C3, or skills. */
+export function pristineUnitBattleValue(unit: CBTUnit): number {
+    return unit.getUnit().battleValue(unit.ruleset());
+}
+
+/**
+ * Produces every force-level BV adjustment in one pass. Base BV is supplied by
+ * each member's own computed signal, so an unrelated unit's base calculator is
+ * never invalidated by this cross-unit projection.
+ */
+export function calculateCBTForceBattleValues(
+    input: CBTForceBattleValueInput,
+): ReadonlyMap<string, CBTForceBattleValueBreakdown> {
+    const vacant = new Set(input.units.filter(({ unit }) => unitCrewKind(unit.getUnit().unitType(), unit.getUnit().unitSubtype(), unit.getUnit().crewSlotCount()) !== 'none'
+        && unit.getCrewAssignment().positions.length === 0).map(({ unit }) => unit.instanceId));
+    const inventories = input.units.filter(row => !vacant.has(row.unit.instanceId)).map(row => ({
+        ...row,
+        inventory: tagBattleValueInventory(row.unit),
+    }));
+    const ruleset = scenarioRuleset(input.scenario);
+    const rules = gameRulesFor(ruleset);
+    const homingArtilleryLauncherCount = inventories.reduce((total, { inventory }) =>
+        total + inventory.launchers.filter(launcher =>
+            launcher.hasFlag('F_ARTILLERY')
+            && inventory.ammunition.some(ammo =>
+                ammo.hasMunitionType('M_HOMING') && ammoMatchesWeapon(launcher, ammo))).length, 0);
+    const ammoBv = (ammo: AmmoEquipment, registry: EquipmentRegistry) => {
+        const bv = rules.getAmmoBV(ammo, registry);
+        return typeof bv === 'number' ? bv : 0;
+    };
+    const guidedAmmoBv = inventories.reduce((total, { inventory }) =>
+        total + inventory.ammunition.reduce((ammoTotal, ammo) =>
+            (ammo.hasMunitionType('M_SEMIGUIDED') || ammo.hasMunitionType('M_HOMING'))
+                && inventory.launchers.some(launcher => ammoMatchesWeapon(launcher, ammo))
+                ? ammoTotal + ammoBv(ammo, inventory.registry)
+                : ammoTotal, 0), 0);
+    // MegaMek tagBVBump: each friendly homing Arrow IV bomb adds its BV per TAG in both rulesets.
+    const homingBombBv = inventories.reduce((total, { inventory }) =>
+        total + inventory.bombs.reduce((bombTotal, bomb) => bomb.ammo.hasMunitionType('M_HOMING')
+            ? bombTotal + bomb.carried * ammoBv(bomb.ammo, inventory.registry)
+            : bombTotal, 0), 0);
+    const tagValues = new Map(inventories.map(({ unit, inventory }) => {
+        const facts: TagBattleValueFacts = {
+            operationalTagCount: inventory.operationalTagCount,
+            homingArtilleryLauncherCount,
+            onlyRearTag: inventory.onlyRearTag,
+            guidedAmmoBv,
+            homingBombBv,
+        };
+        return [unit.instanceId, rules.calculateTagBVCost(facts)] as const;
+    }));
+    const externalStoresValues = new Map(inventories.map(({ unit, inventory }) => [unit.instanceId,
+        inventory.bombs.reduce((total, bomb) => total + bomb.carried * ammoBv(bomb.ammo, inventory.registry), 0),
+    ] as const));
+
+    // Keep configured endpoints in the structural graph; vacancy changes operation and cost, not ownership.
+    const views = input.units.map(row => battleValueC3View(
+        vacant.has(row.unit.instanceId) ? { ...row, baseBattleValue: 0 } : row,
+        tagValues.get(row.unit.instanceId) ?? 0,
+        (instanceId, componentId) => !vacant.has(instanceId) && input.isC3EndpointIntact(instanceId, componentId),
+    ));
+    const viewsById = new Map(views.map(view => [view.instanceId, view] as const));
+    const editorNetworks = projectEncounterNetworksToC3Editor(input.networks, views);
+    const tax = new C3TaxCalculator(
+        editorNetworks,
+        views,
+        (unit, component) => unit.isC3EndpointOperational(component.index, component),
+    );
+
+    return new Map(input.units.flatMap(row => {
+        // Native manual BV is the final value, before crew, TAG or network adjustments.
+        const manual = row.unit.getUnit().manualBV();
+        if (manual > 0) return [[row.unit.instanceId, Object.freeze({ base: manual, tag: 0, c3: 0, externalStores: 0, skills: 0, adjustedPreSkill: manual, adjusted: manual })] as const];
+        if (vacant.has(row.unit.instanceId)) return [[row.unit.instanceId, Object.freeze({ base: 0, tag: 0, c3: 0, externalStores: 0, skills: 0, adjustedPreSkill: 0, adjusted: 0 })] as const];
+        const base = row.baseBattleValue;
+        if (base === null) return [];
+        const view = viewsById.get(row.unit.instanceId)!;
+        const tag = tagValues.get(row.unit.instanceId) ?? 0;
+        const c3 = ruleset === 'total-warfare' ? tax.totalWar(view) : tax.core2026(view);
+        const externalStores = externalStoresValues.get(row.unit.instanceId) ?? 0;
+        const preSkill = base + tag + c3 + externalStores;
+        const primary = row.unit.getCrewAssignment().positions[0];
+        const entity = row.unit.getUnit();
+        const skill = crewSkillsForUnit(primary, entity.unitType(), entity.unitSubtype());
+        const unroundedAdjusted = primary === undefined
+            ? preSkill
+            : unroundedEntityBattleValueForSkills(
+                row.unit.getUnit(),
+                preSkill,
+                skill.gunnery,
+                skill.piloting,
+            );
+        const skills = unroundedAdjusted - preSkill;
+        const adjusted = Math.round(unroundedAdjusted);
+        return [[row.unit.instanceId, Object.freeze({
+            base,
+            tag,
+            c3,
+            externalStores,
+            skills,
+            adjustedPreSkill: Math.round(preSkill),
+            adjusted,
+        })] as const];
+    }));
+}
+
+interface ReadyTagBattleValueInventory {
+    readonly operationalTagCount: number;
+    readonly onlyRearTag: boolean;
+    readonly launchers: readonly WeaponEquipment[];
+    readonly ammunition: readonly AmmoEquipment[];
+    readonly bombs: readonly Readonly<{ ammo: AmmoEquipment; carried: number }>[];
+    readonly registry: EquipmentRegistry;
+}
+
+function tagBattleValueInventory(unit: CBTUnit): ReadyTagBattleValueInventory {
+    const mounts = unit.getUnit().equipment();
+    const registry = unit.getUnit().getEquipmentRegistry();
+    const operational = new Set<string>();
+    const ammunition: AmmoEquipment[] = [];
+    const { query, state } = unit.captureRuntime();
+    const bombs = query.destroyed() ? [] : (state.bombs ?? []).flatMap(load => {
+        const ammo = bombAmmo(load.bombId, registry);
+        return ammo && carriedBombs(load) > 0 ? [Object.freeze({ ammo, carried: carriedBombs(load) })] : [];
+    });
+    for (const mount of mounts) {
+        const componentId = asComponentId(mount.mountId);
+        if (query.componentStatus(componentId) !== 'available') continue;
+        operational.add(mount.mountId);
+        if (mount.equipment instanceof AmmoEquipment && query.remainingAmmo(componentId) > 0) {
+            const ammo = query.ammoEquipment(componentId);
+            if (ammo) ammunition.push(ammo);
+        }
+    }
+
+    const operationalMounts = mounts.filter(mount => operational.has(mount.mountId));
+    const tagMounts = operationalMounts.filter(mount => mount.equipment?.hasFlag('F_TAG'));
+    const tagPods = bombs.reduce((total, bomb) => total + (isTagPodBomb(bomb.ammo.internalName) ? bomb.carried : 0), 0);
+    return Object.freeze({
+        operationalTagCount: tagMounts.length + tagPods,
+        // Rear-mounted as the BV calculators read it: a 'Mech's rear mount, a vehicle's Rear, an aerospace unit's Aft
+        onlyRearTag: tagPods === 0 && tagMounts.length > 0
+            && tagMounts.every(mount => mount.rearMounted || mount.location === 'Rear' || mount.location === 'Aft'),
+        launchers: Object.freeze(operationalMounts.flatMap(mount =>
+            mount.equipment instanceof WeaponEquipment ? [mount.equipment] : [])),
+        ammunition: Object.freeze(ammunition),
+        bombs: Object.freeze(bombs),
+        registry,
+    });
+}
+
+interface BattleValueC3View extends C3UnitView {
+    readonly instanceId: string;
+    readonly c3Components: readonly C3Component[];
+    getBaseBv(): number;
+    tagBV(): number;
+}
+
+function battleValueC3View(
+    row: CBTForceBattleValueUnit,
+    tag: number,
+    isIntact: CBTForceBattleValueInput['isC3EndpointIntact'],
+): BattleValueC3View {
+    const { unit } = row;
+    const entity = unit.getUnit();
+    const structural = isCBTMekUnit(unit)
+        ? mekC3Components(unit)
+        : isCBTNonMekUnit(unit)
+            ? projectNonMekC3Components(unit.getIndex())
+            : Object.freeze([]);
+    return Object.freeze({
+        id: String(unit.instanceId),
+        instanceId: unit.instanceId,
+        c3Components: structural,
+        getC3Specials: () => Object.freeze([]),
+        getC3Presentation: () => Object.freeze({
+            chassis: entity.chassis(),
+            model: entity.model(),
+            icon: '',
+            tons: entity.tonnage(),
+            walk: entity.walkMP(),
+        }),
+        alias: () => undefined,
+        c3Position: () => null,
+        isC3Jammed: () => false,
+        isC3EndpointOperational: (_index: number, component: C3Component) =>
+            component.componentId !== undefined
+            && isIntact(unit.instanceId, component.componentId),
+        getBaseBv: () => row.baseBattleValue ?? 0,
+        tagBV: () => tag,
+    });
+}
+
+function mekC3Components(unit: CBTUnit): readonly C3Component[] {
+    if (!isCBTMekUnit(unit)) return Object.freeze([]);
+    const query = unit.query();
+    const projected = query.mekC3Endpoints();
+    if (projected.kind !== 'supported') return Object.freeze([]);
+    return Object.freeze(projected.endpoints.map((endpoint, index) => {
+        const emergencyState = endpoint.emergency
+            ? query.componentC3EmergencyMaster(endpoint.componentId)
+            : undefined;
+        return Object.freeze({
+            componentId: endpoint.componentId,
+            networkType: endpoint.family,
+            role: endpoint.role === 'master'
+                ? C3Role.MASTER
+                : endpoint.role === 'peer' ? C3Role.PEER : C3Role.SLAVE,
+            boosted: endpoint.boosted,
+            emergency: endpoint.emergency,
+            emergencyFried: isC3EmergencyMasterOperatingTurnsFried(
+                emergencyState?.operatingTurns ?? 0,
+            ),
+            index,
+        });
+    }));
+}

@@ -2,15 +2,25 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 // Author: Drake
 
+import { UnitNameService } from '../../services/unit-name.service';
 import { ChangeDetectionStrategy, Component, computed, inject, input } from '@angular/core';
 import type { Force } from '../../models/force.model';
 import { GameSystem } from '../../models/common.model';
 import { UnitIconComponent } from '../unit-icon/unit-icon.component';
+import { CommanderIconComponent } from '../commander-icon/commander-icon.component';
+import { ForceReservesPreviewComponent } from '../force-reserves-preview/force-reserves-preview.component';
 import { CleanModelStringPipe } from '../../pipes/clean-model-string.pipe';
 import { OptionsService } from '../../services/options.service';
-import { CommonModule } from '@angular/common';
 import { getFactionImg } from '../../models/factions.model';
-import { formatBvPv } from '../../utils/force-viewer-bv-pv-display.util';
+import { formatForceMembersBvPv } from '../../utils/force-viewer-bv-pv-display.util';
+import {
+    forceMemberAlias,
+    forceMemberCommander,
+    forceMemberDestroyed,
+    forceMemberModel,
+    forceMemberPilotStats,
+    forceMemberPresentationUnit,
+} from '../../models/force-member.model';
 
 /*
  *
@@ -19,9 +29,8 @@ import { formatBvPv } from '../../utils/force-viewer-bv-pv-display.util';
  */
 @Component({
     selector: 'force-preview',
-    standalone: true,
     changeDetection: ChangeDetectionStrategy.OnPush,
-    imports: [CommonModule, UnitIconComponent, CleanModelStringPipe],
+    imports: [UnitIconComponent, CleanModelStringPipe, ForceReservesPreviewComponent, CommanderIconComponent],
     template: `
     @let unitDisplayName = optionsService.options().unitDisplayName;
     @let f = force();
@@ -37,10 +46,10 @@ import { formatBvPv } from '../../utils/force-viewer-bv-pv-display.util';
             <span class="force-preview-name">{{ f.displayName() }}</span>
         </div>
         <span class="force-preview-info">
-            <span class="game-type-badge" [class.as]="f.gameSystem === GameSystem.ALPHA_STRIKE">
-                {{ f.gameSystem === GameSystem.ALPHA_STRIKE ? 'AS' : 'CBT' }}
+            <span class="game-type-badge" [class.as]="f.gameSystem === GameSystem.AS">
+                {{ f.gameSystem === GameSystem.AS ? 'AS' : 'CBT' }}
             </span>
-            @if (f.gameSystem === GameSystem.ALPHA_STRIKE) {
+            @if (f.gameSystem === GameSystem.AS) {
                 <span class="force-bv">PV: {{ displayedBvPv() }}</span>
             } @else {
                 <span class="force-bv">BV: {{ displayedBvPv() }}</span>
@@ -48,44 +57,43 @@ import { formatBvPv } from '../../utils/force-viewer-bv-pv-display.util';
         </span>
     </div>
     <div class="unit-scroll">
-        @for (group of f.groups(); track group.id) {
+        @for (groupView of displayGroups(); track groupView.group.id) {
+            @let group = groupView.group;
             <div class="unit-group">
                 <div class="group-name">{{ group.groupDisplayName() }}</div>
                 <div class="units">
-                    @for (fu of group.units(); track fu.id) {
-                        <div class="unit-square compact-mode" [class.destroyed]="fu.destroyed">
-                            @if (fu.commander()) {
+                    @for (fu of groupView.members; track fu.id) {
+                        @let presentationUnit = forceMemberPresentationUnit(fu);
+                        @let alias = forceMemberAlias(fu);
+                        <div class="unit-square compact-mode" [class.destroyed]="forceMemberDestroyed(fu)">
+                            @if (forceMemberCommander(fu)) {
                                 <div class="group-commander-indicator" aria-hidden="true">
-                                    <svg class="group-commander-icon" width="42.08" height="51.88" viewBox="0 0 21.04 25.94" preserveAspectRatio="xMidYMid meet" xmlns="http://www.w3.org/2000/svg" focusable="false">
-                                        <g transform="translate(-.02)">
-                                            <g transform="matrix(.265 0 0 .265 -21.1 0)" fill="currentColor">
-                                                <path d="m79.7 70 39.3-70 40 70.1h-27l-13-22.1-13 22.1z" />
-                                                <path d="m81.4 97.9 11.3-21.6h52.3l12 21.6z" />
-                                            </g>
-                                        </g>
-                                    </svg>
+                                    <commander-icon />
                                 </div>
                             }
                             <div class="unit-content">
-                                <unit-icon [unit]="fu.getUnit()" [size]="32"></unit-icon>
+                                <unit-icon [unit]="presentationUnit" [size]="32"></unit-icon>
                                 @if (unitDisplayName === 'chassisModel'
                                     || unitDisplayName === 'both'
-                                    || !fu.alias()) {
-                                    <div class="unit-model">{{ fu.getUnit().model | cleanModelString }}</div>
-                                    <div class="unit-chassis">{{ fu.getUnit().chassis }}</div>
+                                    || !alias) {
+                                    <div class="unit-model">{{ forceMemberModel(fu) | cleanModelString }}</div>
+                                    <div class="unit-chassis">{{ unitNames.chassis(presentationUnit) }}</div>
                                 }
                                 @if (unitDisplayName === 'alias' || unitDisplayName === 'both') {
                                     <div class="unit-alias"
-                                        [class.thin]="unitDisplayName === 'both'">{{ fu.alias() }}</div>
+                                        [class.thin]="unitDisplayName === 'both'">{{ alias }}</div>
                                 }
                                 <div class="pilot-info info-slot numeric slim">
-                                    <span class="value">{{ fu.getPilotStats() }}</span>
+                                    <span class="value">{{ forceMemberPilotStats(fu) }}</span>
                                 </div>
                             </div>
                         </div>
                     }
                 </div>
             </div>
+        }
+        @if (reserveCount() > 0) {
+            <force-reserves-preview [count]="reserveCount()"></force-reserves-preview>
         }
     </div>
     `,
@@ -219,11 +227,8 @@ import { formatBvPv } from '../../utils/force-viewer-bv-pv-display.util';
             left: 3px;
         }
 
-        .group-commander-icon {
+        commander-icon {
             width: 16px;
-            height: auto;
-            transform: rotate(180deg);
-            flex-shrink: 0;
         }
 
         .unit-content {
@@ -302,16 +307,36 @@ import { formatBvPv } from '../../utils/force-viewer-bv-pv-display.util';
     `]
 })
 export class ForcePreviewComponent {
+    readonly unitNames = inject(UnitNameService);
     optionsService = inject(OptionsService);
 
+    readonly displayGroups = computed(() => {
+        const force = this.force();
+        return force.groups().map(group => ({
+            group,
+            members: force.membersInGroup(group),
+        }));
+    });
+
+    readonly reserveCount = computed(() => {
+        const personnel = this.force().personnel();
+        return personnel.people.length - personnel.assignments.length;
+    });
+
     displayedBvPv = computed(() => {
-        const units = this.force().units();
-        return formatBvPv(
-            units.reduce((total, unit) => total + unit.getBv(), 0),
-            units.reduce((total, unit) => total + unit.baseAdjustedBv(), 0),
-            this.optionsService.options().forceViewerBVPVDisplay,
+        const options = this.optionsService.options();
+        return formatForceMembersBvPv(
+            this.force().members(),
+            options.forceViewerBVPVDisplay,
+            options.forceViewerBVPVDisplayDamage,
         );
     });
+    protected readonly forceMemberAlias = forceMemberAlias;
+    protected readonly forceMemberCommander = forceMemberCommander;
+    protected readonly forceMemberDestroyed = forceMemberDestroyed;
+    protected readonly forceMemberModel = forceMemberModel;
+    protected readonly forceMemberPilotStats = forceMemberPilotStats;
+    protected readonly forceMemberPresentationUnit = forceMemberPresentationUnit;
     readonly GameSystem = GameSystem;
 
     /** The force to display. */

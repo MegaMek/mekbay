@@ -3,7 +3,8 @@
 // Author: Drake
 
 import type { Faction } from '../../models/factions.model';
-import { getOrgFromForceCollection, getOrgFromResolvedGroups } from './org-namer.util';
+import { getOrgFromResolvedGroups } from './org-namer.util';
+import { getOrgFromForceCollection } from './org-analysis.util';
 import { getAggregatedTier, getDynamicTierForModifier } from './org-tier.util';
 import { resolveFromGroups } from './org-solver.util';
 import type { GroupSizeResult } from './org-types';
@@ -268,7 +269,7 @@ describe('org-namer.util', () => {
 			modifierKey: 'Under-Strength ',
 			tier: underStrengthBattalionTier,
 		}));
-		const promoted = resolveFromGroups(battalions, innerSphereFaction, null, true);
+		const promoted = resolveFromGroups(battalions, innerSphereFaction);
 		const result = getOrgFromForceCollection([], innerSphereFaction, null, battalions);
 
 		expect(promoted.length).toBe(1);

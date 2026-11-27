@@ -9,7 +9,6 @@ import type { TriStateBooleanFilterValue } from '../../services/unit-search-filt
 import { TriStateFilterCheckboxComponent } from './tri-state-filter-checkbox.component';
 
 @Component({
-    standalone: true,
     imports: [TriStateFilterCheckboxComponent],
     template: `
         <tri-state-filter-checkbox

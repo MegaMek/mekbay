@@ -71,33 +71,10 @@
   font-weight: 500;
 }
 
-.header-icon-button,
 .header-icon-button-spacer {
   width: 40px;
   height: 40px;
   flex-shrink: 0;
-}
-
-.header-icon-button {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  padding: 0;
-  border: none;
-  background: transparent;
-  color: var(--text-color-secondary);
-  cursor: pointer;
-  transition: color 0.2s;
-}
-
-.header-icon-button:hover,
-.header-icon-button:focus-visible {
-  color: var(--bt-yellow);
-}
-
-.header-icon-button svg {
-  width: 20px;
-  height: 20px;
 }
 
 .options-shell {
@@ -361,6 +338,10 @@
   width: min(360px, 48%);
 }
 
+.rules-mode-switch {
+  justify-content: flex-end;
+}
+
 .automation-options {
   display: flex;
   min-width: 0;
@@ -419,6 +400,54 @@
   width: 100%;
 }
 
+.optional-rules {
+  min-width: 0;
+  margin: 0;
+  padding: 0;
+  border: 0;
+}
+
+.optional-rules legend {
+  width: 100%;
+  margin-bottom: 4px;
+  box-sizing: border-box;
+}
+
+.optional-rule {
+  display: flex;
+  align-items: last baseline;
+  gap: 12px;
+  min-height: 44px;
+  padding: 8px 4px;
+  box-sizing: border-box;
+  line-height: 1.4;
+  cursor: pointer;
+}
+
+.optional-rule .bt-checkbox {
+  align-self: center;
+  flex: 0 0 20px;
+}
+
+.optional-rule-label {
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
+.optional-rule-leader {
+  flex: 1 0 16px;
+  border-bottom: 1px dotted var(--border-color);
+}
+
+.optional-rule:hover {
+  background: var(--background-highlight);
+}
+
+.optional-rule:has(:focus-visible) {
+  outline: 2px solid var(--bt-yellow);
+  outline-offset: -2px;
+}
+
 .account-summary-row {
   display: flex;
   align-items: baseline;
@@ -426,27 +455,6 @@
   padding: 4px 0;
   flex-direction: row;
   flex-wrap: wrap;
-}
-
-.unit-servers-list {
-  display: flex;
-  flex-direction: column;
-  gap: .35rem;
-}
-
-.unit-server-row .unit-server-url {
-  word-break: break-all;
-  font-family: monospace;
-  font-size: 0.8rem;
-}
-
-.unit-server-add-row .bt-input {
-  flex: 1 1 auto;
-  min-width: 0;
-}
-
-.unit-server-error p {
-  color: var(--text-color-danger, #e06c6c);
 }
 
 .account-summary-label {
@@ -481,6 +489,12 @@
   gap: 6px;
 }
 
+.image-purge-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
 .force-gen-search-window-control {
   display: flex;
   align-items: center;
@@ -505,7 +519,7 @@
   width: min(420px, 48%);
 }
 
-input {
+input:not([type='checkbox']) {
   width: 100%;
   box-sizing: border-box;
 }
@@ -654,27 +668,6 @@ input {
 
 .tags-description {
   margin-top: 0;
-}
-
-.subscriber-count {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  gap: 3px;
-  min-height: 24px;
-  padding: 0 8px;
-  border: 1px solid var(--primary-focus-color);
-  border-radius: 999px;
-  color: var(--primary-focus-color);
-  font-size: 0.75rem;
-  font-weight: 700;
-  flex-shrink: 0;
-}
-
-.subscriber-count svg {
-  width: 14px;
-  height: 14px;
-  flex-shrink: 0;
 }
 
 .tag-actions {

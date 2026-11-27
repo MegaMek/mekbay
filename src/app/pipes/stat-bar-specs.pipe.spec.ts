@@ -3,7 +3,6 @@
 // Author: Drake
 
 import { TestBed } from '@angular/core/testing';
-import { DataService } from '../services/data.service';
 import { UnitSearchIndexService } from '../services/unit-search-index.service';
 import { createEmptyUnit } from '../testing/unit-test-helpers';
 import type { UnitSummary } from '../models/unit-summary.model';
@@ -14,8 +13,8 @@ describe('StatBarSpecsPipe', () => {
     let pipe: StatBarSpecsPipe;
     beforeEach(() => {
         index = new UnitSearchIndexService();
-        TestBed.configureTestingModule({ providers: [{ provide: DataService,
-            useValue: { getUnitStats: (unit: UnitSummary) => index.getUnitStats(unit) } }] });
+        TestBed.configureTestingModule({ providers: [{ provide: UnitSearchIndexService,
+            useValue: index }] });
         pipe = TestBed.runInInjectionContext(() => new StatBarSpecsPipe());
     });
 
@@ -24,7 +23,7 @@ describe('StatBarSpecsPipe', () => {
             armor: i === 19 ? 300 : 100, subtype: i % 2 ? 'BattleMek Omni' : 'BattleMek',
         }));
         const sh = createEmptyUnit({ armor: 800, weightClass: 'Colossal/Super-Heavy' });
-        index.prepareUnits([...units, sh]);
+        index.commitPreparedCatalogIndexes(index.prepareCatalogIndexes([...units, sh], [], []));
         const armor = pipe.transform(units[19]).find(stat => stat.label === 'Armor')!;
         expect(armor.value).toBe(300);
         expect(armor.valueText).toContain('300');
@@ -37,7 +36,7 @@ describe('StatBarSpecsPipe', () => {
         const units = Array.from({ length: 100 }, (_, i) => createEmptyUnit({
             heat: null, dissipation: null, dpt: i === 99 ? 5 : 0,
         }));
-        index.prepareUnits(units);
+        index.commitPreparedCatalogIndexes(index.prepareCatalogIndexes(units, [], []));
         const stats = pipe.transform(units[99]);
         expect(stats.some(stat => stat.label === 'Heat')).toBeFalse();
         expect(stats.some(stat => stat.label === 'Dissipation')).toBeFalse();
@@ -49,11 +48,13 @@ describe('StatBarSpecsPipe', () => {
         expect(pipe.transform(units[0]).find(stat => stat.label === 'Damage/Turn')!.percent).toBe(0);
     });
 
-    it('renders measured zero and 999 heat values', () => {
-        const unit = createEmptyUnit({ heat: 0, dissipation: 999 });
-        index.prepareUnits([unit]);
+    it('displays measured zero heat and legitimate values of 999', () => {
+        const unit = createEmptyUnit({ heat: 0, dissipation: 10, armor: 999, dpt: 999 });
+        index.commitPreparedCatalogIndexes(index.prepareCatalogIndexes([unit], [], []));
         const stats = pipe.transform(unit);
         expect(stats.find(stat => stat.label === 'Heat')?.value).toBe(0);
-        expect(stats.find(stat => stat.label === 'Dissipation')?.value).toBe(999);
+        expect(stats.find(stat => stat.label === 'Dissipation')?.value).toBe(10);
+        expect(stats.find(stat => stat.label === 'Armor')?.value).toBe(999);
+        expect(stats.find(stat => stat.label === 'Damage/Turn')?.value).toBe(999);
     });
 });

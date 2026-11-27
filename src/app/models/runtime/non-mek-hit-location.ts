@@ -1,0 +1,137 @@
+// Copyright (C) 2026 The MegaMek Team
+// SPDX-License-Identifier: GPL-3.0-or-later
+
+import type { BaseEntity } from '../entity/base-entity';
+import {
+    isAeroEntity,
+    isProtoMekEntity,
+    isVehicleEntity,
+} from '../entity/utils/entity-type-guards';
+import { aeroCriticalType, type AeroCriticalType } from '../rules/aero-critical-rules';
+import type { NonMekRecordSheetSnapshot } from './non-mek-record-sheet';
+import type { TnAttackDirection } from '../target-number-calculator.model';
+
+export type NonMekHitArc = TnAttackDirection;
+
+/**
+ * Vehicle table markers: a critical hit check, which a roll of 2 makes a through-armor one (Core p.91), or a motive
+ * system (VTOL: rotor) hit.
+ */
+export type NonMekHitEffect = 'critical' | 'through-armor' | 'motive' | 'rotor-destroyed';
+
+export interface NonMekHitLocation {
+    readonly locationCode: string;
+    readonly transferredFrom?: string;
+    readonly effects?: readonly NonMekHitEffect[];
+    /** Aerospace: the critical damage this roll threatens. */
+    readonly aeroCritical?: AeroCriticalType;
+}
+
+const FRONT_BACK_ARCS: readonly NonMekHitArc[] = ['front', 'right', 'rear', 'left'];
+const SIX_ARCS: readonly NonMekHitArc[] = ['front', 'front-right', 'rear-right', 'rear', 'rear-left', 'front-left'];
+
+export function nonMekHitArcs(entity: BaseEntity): readonly NonMekHitArc[] {
+    if (isAeroEntity(entity) && !['JumpShip', 'WarShip', 'SpaceStation'].includes(entity.entityType)) {
+        return [...FRONT_BACK_ARCS, 'above', 'below'];
+    }
+    return isVehicleEntity(entity) && entity.locationOrder.includes('Front Left')
+        ? SIX_ARCS : FRONT_BACK_ARCS;
+}
+
+/** Normal attacks, using MegaMek's Tank/VTOL/ProtoMek/Aero/SmallCraft/Jumpship rollHitLocation tables. */
+export function resolveNonMekHitLocation(
+    entity: BaseEntity,
+    snapshot: NonMekRecordSheetSnapshot,
+    arc: NonMekHitArc,
+    roll: number,
+    d6: () => number,
+): NonMekHitLocation | null {
+    let code: string | null = null;
+    let aeroCritical: AeroCriticalType | undefined;
+    const effects: NonMekHitEffect[] = [];
+    if (isVehicleEntity(entity)) {
+        if (arc === 'above' || arc === 'below') return null;
+        const facing = ({ front: 'Front', rear: 'Rear', left: 'Left', right: 'Right',
+            'front-left': 'Front Left', 'front-right': 'Front Right',
+            'rear-left': 'Rear Left', 'rear-right': 'Rear Right' })[arc];
+        const side = arc === 'left' || arc === 'right';
+        code = facing;
+        if (entity.entityType === 'VTOL' || entity.entityType === 'SupportVTOL') {
+            if ([3, 10, 11, 12].includes(roll)) code = 'Rotor';
+            if (roll === 4) code = entity.hasTurret() ? 'Turret' : 'Rotor';
+            // TW p. 196: from behind, the sides swap (MegaMek's VTOL table does not mirror them).
+            if (roll === 5) code = side ? 'Front' : arc === 'rear' ? 'Left' : 'Right';
+            if (roll === 9) code = side ? 'Rear' : arc === 'rear' ? 'Right' : 'Left';
+            if (roll === 2 || roll === 12 || (roll === 8 && side)) effects.push('critical');
+            if (roll === 2) effects.push('through-armor');
+            if (code === 'Rotor') effects.push('motive');
+        } else {
+            if (nonMekHitArcs(entity).length === 6) {
+                if (roll === 3) {
+                    if (arc === 'front-left' || arc === 'front-right') code = 'Front';
+                    else if (arc === 'rear-left' || arc === 'rear-right') code = 'Rear';
+                    else if (arc === 'rear') code = 'Rear Left';
+                    else if (arc === 'front') code = 'Front Right';
+                }
+            } else {
+                // TW p. 193: a 5 strikes the right side from the front and the left from behind; a 9 the other.
+                if (roll === 5) code = side ? 'Front' : arc === 'rear' ? 'Left' : 'Right';
+                if (roll === 9) code = side ? 'Rear' : arc === 'rear' ? 'Right' : 'Left';
+            }
+            const sixArcs = nonMekHitArcs(entity).length === 6;
+            const quarter = arc !== 'front' && arc !== 'rear';
+            if (roll === 2 || roll === 12 || (roll === 8 && (sixArcs ? quarter : side))) effects.push('critical');
+            if (roll === 2) effects.push('through-armor');
+            if ([3, 4, 9].includes(roll) || (roll === 5 && (!sixArcs || !quarter))) effects.push('motive');
+            if (roll >= 10 && entity.hasTurret()) {
+                code = entity.hasDualTurret()
+                    ? d6() + (arc === 'front' ? -2 : arc === 'rear' ? 2 : 0) <= 3
+                        ? 'Front Turret' : 'Rear Turret'
+                    : 'Turret';
+            }
+        }
+    } else if (isProtoMekEntity(entity)) {
+        if (roll === 3 || roll === 11) return { locationCode: 'MISS' };
+        code = ({ 2: 'Main Gun', 4: entity.isQuad() ? 'Legs' : 'Right Arm', 5: 'Legs',
+            6: 'Torso', 7: 'Torso', 8: 'Torso', 9: 'Legs',
+            10: entity.isQuad() ? 'Legs' : 'Left Arm', 12: 'Head' } as Record<number, string>)[roll];
+        const source = snapshot.locations.find(location => location.code === code);
+        if (code !== 'Torso' && (!source || source.previewRemainingInternal === 0)) {
+            const torso = snapshot.locations.find(location => location.code === 'Torso');
+            return torso ? { locationCode: torso.sheetCode, transferredFrom: source?.sheetCode
+                ?? entity.componentLocationLabel(code) } : null;
+        }
+    } else if (isAeroEntity(entity)) {
+        const capital = ['JumpShip', 'WarShip', 'SpaceStation'].includes(entity.entityType);
+        const smallCraft = entity.entityType === 'SmallCraft' || entity.entityType === 'DropShip';
+        const left = capital ? 'FLS' : smallCraft ? 'Left Side' : 'Left Wing';
+        const right = capital ? 'FRS' : smallCraft ? 'Right Side' : 'Right Wing';
+        aeroCritical = aeroCriticalType(entity, arc, roll);
+        if (!capital && (arc === 'above' || arc === 'below')) {
+            const sideHit = smallCraft ? roll >= 5 && roll <= 9 : [3, 6, 8, 11].includes(roll);
+            code = sideHit ? (d6() <= 3 ? right : left) : roll <= (smallCraft ? 4 : 7) ? 'Nose' : 'Aft';
+        } else if (arc === 'front' || arc === 'rear') {
+            code = roll === 4 || roll === 5 ? capital && arc === 'rear' ? 'ARS' : right
+                : roll === 9 || roll === 10 ? capital && arc === 'rear' ? 'ALS' : left
+                    : arc === 'front' ? 'Nose' : 'Aft';
+        } else if (arc === 'left' || arc === 'right') {
+            const wing = arc === 'left' ? left : right;
+            if (capital) {
+                code = roll === 2 ? 'Nose' : roll <= 6 ? wing
+                    : roll <= 10 ? arc === 'left' ? 'ALS' : 'ARS' : 'Aft';
+            } else if (smallCraft) {
+                code = roll <= 4 ? 'Nose' : roll <= 9 ? wing : 'Aft';
+            } else {
+                code = [2, 4, 5].includes(roll) ? 'Nose' : [9, 10, 12].includes(roll) ? 'Aft' : wing;
+            }
+        }
+    }
+    const location = snapshot.locations.find(candidate => candidate.code === code);
+    return location?.sheetCode
+        ? {
+            locationCode: location.sheetCode,
+            ...(effects.length === 0 ? {} : { effects: Object.freeze(effects) }),
+            ...(aeroCritical === undefined ? {} : { aeroCritical }),
+        }
+        : null;
+}

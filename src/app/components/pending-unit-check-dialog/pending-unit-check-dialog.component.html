@@ -1,0 +1,29 @@
+<div class="panel glass preventZoomReset framed-borders has-shadow" (click)="$event.stopPropagation()">
+    <div class="header unit-check-dialog-header">
+        @if (showRollAll()) {
+            <button type="button" class="random-button unit-check-roll-all"
+                [disabled]="isAnyRolling()" aria-label="Roll all checks" title="Roll all checks"
+                (click)="rollAll()"></button>
+        }
+        <span>{{ data.title }}</span>
+        @if (commonSubject(); as subject) {
+            <span>{{ subject }}</span>
+        }
+    </div>
+    <div class="body unit-check-dialog-body">
+        <div class="unit-check-list">
+            @for (check of data.checks; track check.id) {
+                <pending-unit-check-row
+                    [check]="check"
+                    [resolution]="resolution(check.id)"
+                    [showSubject]="commonSubject() === null"
+                    (selected)="select(check.id, $event)"
+                    (selectionChanged)="selectChoice(check.id, $event)" />
+            }
+        </div>
+    </div>
+    <div class="actions unit-check-dialog-actions">
+        <button type="button" class="bt-button primary" [disabled]="!allResolved()" (click)="apply()">APPLY</button>
+        <button type="button" class="bt-button" (click)="close()">CLOSE</button>
+    </div>
+</div>

@@ -2,18 +2,29 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 // Author: Drake
 
-import { ChangeDetectionStrategy, Component, computed, effect, type ElementRef, inject, signal, type TemplateRef, untracked, viewChild } from '@angular/core';
-import { CommonModule } from '@angular/common';
+import { UnitNameService } from '../../services/unit-name.service';
+import { ChangeDetectionStrategy, Component, computed, effect, type DestroyRef, type ElementRef, inject, signal, TemplateRef, untracked, viewChild } from '@angular/core';
 import { DialogRef, DIALOG_DATA } from '@angular/cdk/dialog';
 import { DragDropModule, type CdkDragDrop, type CdkDragMove } from '@angular/cdk/drag-drop';
 import type { Force, UnitGroup } from '../../models/force.model';
 import type { ForceUnit } from '../../models/force-unit.model';
+import { ASForceUnit } from '../../models/as-force-unit.model';
+import { ASForce } from '../../models/as-force.model';
 import type { UnitSummary } from '../../models/unit-summary.model';
-import { GameSystem } from '../../models/common.model';
+import {
+    isCBTForceMember,
+    isCBTMekForceMember,
+    type CBTForceMember,
+    type ForceMember,
+} from '../../models/force-member.model';
+import { GameService } from '../../services/game.service';
 import { LayoutService } from '../../services/layout.service';
 import { DataService } from '../../services/data.service';
 import { DialogsService } from '../../services/dialogs.service';
 import { ForceBuilderService } from '../../services/force-builder.service';
+import { ForceDialogsService } from '../../services/force-dialogs.service';
+import { ForceWorkspaceCommandsService } from '../../services/force-workspace-commands.service';
+import { ForceFormationService } from '../../services/force-formation.service';
 import { ToastService } from '../../services/toast.service';
 import { OptionsService } from '../../services/options.service';
 import { AsAbilityLookupService } from '../../services/as-ability-lookup.service';
@@ -22,44 +33,51 @@ import { createForcePreviewEntryFromForce, type ForcePreviewEntry, type ForcePre
 import { ForcePreviewPanelComponent } from '../force-preview-panel/force-preview-panel.component';
 import { ForceRadarPanelComponent } from '../force-radar-panel/force-radar-panel.component';
 import { UnitCardExpandedComponent } from '../unit-card-expanded/unit-card-expanded.component';
-import { UnitBlockComponent } from '../unit-block/unit-block.component';
+import { ForceUnitCrewComponent } from '../force-crew/force-unit-crew.component';
+import { ForceReserveCrewComponent } from '../force-crew/force-reserve-crew.component';
+import { CrewDropTargetDirective } from '../force-crew/crew-drop-target.directive';
+import { RemoveIconComponent } from '../remove-icon/remove-icon.component';
 import { UnitIconComponent } from '../unit-icon/unit-icon.component';
 import type { TagClickEvent } from '../unit-tags/unit-tags.component';
 import { AbilityInfoDialogComponent, type AbilityInfoDialogData } from '../ability-info-dialog/ability-info-dialog.component';
 import { isMegaMekRaritySortKey, SORT_OPTIONS } from '../../services/unit-search-filters.model';
-import { getFormationDefinition } from '../../utils/formation-blueprints';
-import { formationInheritsParentEffects } from '../../utils/formation-type.model';
+import { getFormationDefinition } from '../../utils/formation/formation-definitions';
+import { formationInheritsParentEffects } from '../../utils/formation/formation-type.model';
 import { TaggingService } from '../../services/tagging.service';
 import { UnitDetailsDialogComponent, type UnitDetailsDialogData } from '../unit-details-dialog/unit-details-dialog.component';
+import { formatMovement } from '../../utils/as-common.util';
 import { DataTableComponent, type DataTableCellContext, type DataTableColumn, type DataTableRowClickEvent, type DataTableRowLongPressEvent, type DataTableSortEvent } from '../data-table/data-table.component';
 import { TooltipDirective } from '../../directives/tooltip.directive';
-import { LongPressDirective } from '../../directives/long-press.directive';
 import { FORCE_NOTE_MAX_LENGTH } from '../../models/force-serialization';
 import { naturalCompare } from '../../utils/sort.util';
-import { formatBvPv } from '../../utils/force-viewer-bv-pv-display.util';
-import { FormatTonsPipe } from '../../pipes/format-tons.pipe';
+import { formatForceMembersBvPv } from '../../utils/force-viewer-bv-pv-display.util';
+import { DEFAULT_GUNNERY_SKILL, DEFAULT_PILOTING_SKILL } from '../../models/crew-member.model';
+import { CBTForce } from '../../models/cbt-force.model';
+import { GameSystem } from '../../models/common.model';
+import { LongPressDirective } from '../../directives/long-press.directive';
 import {
     buildUnitDataTableColumns,
-    formatAlphaStrikeUnitMovement,
-    formatClassicUnitMovement,
+    formatCBTUnitMovement,
     formatUnitDataTableSortSlotValue,
     getUnitDataTableSortSlotHeader,
     isUnitDataTableSortActive,
 } from '../../utils/unit-data-table.util';
+import { getProperty } from '../../utils/unit-search-shared.util';
+import { effectiveEntityPilotingSkill } from '../../models/entity/utils/battle-value/skill-facts';
 
 export interface ForceOverviewDialogData {
     force: Force;
 }
 
 /** View model for displaying units in the force */
-interface ForceUnitViewModel {
-    forceUnit: ForceUnit;
+interface ForceMemberViewModel {
+    member: ForceMember;
     unit: UnitSummary;
 }
 
 type ForceTableRow =
     | { kind: 'group'; group: UnitGroup }
-    | { kind: 'unit'; vm: ForceUnitViewModel; group: UnitGroup };
+    | { kind: 'unit'; vm: ForceMemberViewModel; group: UnitGroup };
 
 type ForceOverviewTab = 'primer' | 'summary' | 'units';
 
@@ -69,14 +87,14 @@ const FORCE_PRIMER_META_THRESHOLD = 0.9;
  * State for the overview that can be persisted.
  */
 export interface OverviewState {
-    viewMode: 'expanded' | 'compact' | 'table';
+    viewMode: 'expanded' | 'table';
     sortKey: string;
     sortDirection: 'asc' | 'desc';
 }
 
 /** Default state for the overview */
 export const DEFAULT_OVERVIEW_STATE: OverviewState = {
-    viewMode: 'compact',
+    viewMode: 'expanded',
     sortKey: '',
     sortDirection: 'asc'
 };
@@ -89,31 +107,38 @@ export const DEFAULT_OVERVIEW_STATE: OverviewState = {
     selector: 'force-overview-dialog',
     changeDetection: ChangeDetectionStrategy.OnPush,
     imports: [
-        CommonModule,
         DragDropModule,
         UnitCardExpandedComponent,
         ForcePreviewPanelComponent,
         ForceRadarPanelComponent,
-        UnitBlockComponent,
+        ForceUnitCrewComponent,
+        ForceReserveCrewComponent,
+        CrewDropTargetDirective,
+        RemoveIconComponent,
         UnitIconComponent,
         DataTableComponent,
         TooltipDirective,
         LongPressDirective,
-        FormatTonsPipe,
     ],
     host: {
         class: 'fullscreen-dialog-host fullheight tv-fade'
     },
     templateUrl: './force-overview-dialog.component.html',
-    styleUrls: ['./force-overview-dialog.component.scss']
+    styleUrl: './force-overview-dialog.component.scss'
 })
 export class ForceOverviewDialogComponent {
+    readonly unitNames = inject(UnitNameService);
     private dialogRef = inject<DialogRef<void>>(DialogRef);
     protected data = inject<ForceOverviewDialogData>(DIALOG_DATA);
+    protected gameService = inject(GameService);
     protected layoutService = inject(LayoutService);
     private dataService = inject(DataService);
     private dialogsService = inject(DialogsService);
     private forceBuilderService = inject(ForceBuilderService);
+    private readonly forceDialogs = inject(ForceDialogsService);
+
+    private readonly forceCommands = inject(ForceWorkspaceCommandsService);
+    private readonly formations = inject(ForceFormationService);
     private toastService = inject(ToastService);
     private optionsService = inject(OptionsService);
     private abilityLookup = inject(AsAbilityLookupService);
@@ -121,6 +146,7 @@ export class ForceOverviewDialogComponent {
 
     /** Reference to new group dropzone */
     private newGroupDropzone = viewChild<ElementRef<HTMLElement>>('newGroupDropzone');
+    protected readonly newGroupDropData: ForceMember[] = [];
 
     /** Reference to scrollable units list */
     private scrollContainer = viewChild<ElementRef<HTMLElement>>('scrollContainer');
@@ -129,7 +155,7 @@ export class ForceOverviewDialogComponent {
     private readonly tableNameCell = viewChild<TemplateRef<DataTableCellContext<ForceTableRow>>>('tableNameCell');
     private readonly tableYearCell = viewChild<TemplateRef<DataTableCellContext<ForceTableRow>>>('tableYearCell');
     private readonly tableValueCell = viewChild<TemplateRef<DataTableCellContext<ForceTableRow>>>('tableValueCell');
-    private readonly tableSkillCell = viewChild<TemplateRef<DataTableCellContext<ForceTableRow>>>('tableSkillCell');
+    private readonly tableCrewCell = viewChild<TemplateRef<DataTableCellContext<ForceTableRow>>>('tableCrewCell');
     private readonly tableMovementCell = viewChild<TemplateRef<DataTableCellContext<ForceTableRow>>>('tableMovementCell');
     private readonly tableSpecialsCell = viewChild<TemplateRef<DataTableCellContext<ForceTableRow>>>('tableSpecialsCell');
     private readonly tableGroupRow = viewChild<TemplateRef<{ $implicit: ForceTableRow; row: ForceTableRow; index: number }>>('tableGroupRow');
@@ -140,10 +166,10 @@ export class ForceOverviewDialogComponent {
     /** Flag for group drag/reorder */
     readonly isGroupDragging = signal<boolean>(false);
 
-    /** Force-unit ids selected through long press or a modified click. */
+    /** Member ids selected through long press or a modified click. */
     readonly selectedUnitIds = signal<ReadonlySet<string>>(new Set());
 
-    /** Number of force units currently selected. */
+    /** Number of currently selected members. */
     readonly selectedUnitCount = computed(() => this.selectedUnitIds().size);
 
     /** Active high-level tab */
@@ -180,7 +206,7 @@ export class ForceOverviewDialogComponent {
         .map(opt => opt.key === '' ? { ...opt, label: 'Custom' } : opt);
 
     /** Current view mode */
-    viewMode = signal<'expanded' | 'compact' | 'table'>(this.optionsService.options().forceOverviewViewMode);
+    viewMode = signal<'expanded' | 'table'>(this.optionsService.options().forceOverviewViewMode);
 
     readonly noteLimit = FORCE_NOTE_MAX_LENGTH;
 
@@ -198,7 +224,7 @@ export class ForceOverviewDialogComponent {
     });
 
     /** Get the current game system for filtering sort options */
-    readonly gameSystem = computed(() => this.data.force.gameSystem);
+    gameSystem = computed(() => this.data.force.gameSystem);
 
     /** Force faction for header display */
     readonly forceFaction = computed(() => this.data.force.faction());
@@ -211,7 +237,12 @@ export class ForceOverviewDialogComponent {
 
     /** Live force adapter for the preview and summary panels */
     readonly summaryPreviewEntry = computed<ForcePreviewEntry>(() => {
-        return createForcePreviewEntryFromForce(this.data.force);
+        return createForcePreviewEntryFromForce(
+            this.data.force,
+            this.data.force.members(),
+            {},
+            member => this.resolveCBTCatalogSummary(member),
+        );
     });
 
     /** Total unit count */
@@ -221,7 +252,7 @@ export class ForceOverviewDialogComponent {
     readonly hoveredRadarUnit = computed(() => this.hoveredPreviewUnit()?.unit ?? null);
 
     /** Whether this is an Alpha Strike force */
-    readonly isAlphaStrike = computed(() => this.gameSystem() === GameSystem.ALPHA_STRIKE);
+    isAlphaStrike = computed(() => this.gameSystem() === GameSystem.AS);
 
     /** Whether table mode is active */
     readonly isTableMode = computed(() => this.viewMode() === 'table');
@@ -232,9 +263,6 @@ export class ForceOverviewDialogComponent {
     /** Whether the primer tab is active */
     readonly isPrimerTab = computed(() => this.effectiveActiveTab() === 'primer');
 
-    /** Whether the units tab is active */
-    readonly isUnitsTab = computed(() => this.effectiveActiveTab() === 'units');
-
     /** Current primer note */
     readonly primerNote = computed(() => this.data.force.note ?? '');
 
@@ -244,37 +272,37 @@ export class ForceOverviewDialogComponent {
     /** Whether the PRIMER tab should be available in the current state */
     readonly showPrimerTab = computed(() => !this.isReadOnly() || this.trimmedPrimerNote().length > 0);
 
-    readonly nextViewMode = computed<'compact' | 'expanded' | 'table'>(() => {
-        const current = this.viewMode();
-        if (current === 'compact') return 'expanded';
-        if (current === 'expanded') return 'table';
-        return 'compact';
-    });
+    readonly nextViewMode = computed<'expanded' | 'table'>(() => this.viewMode() === 'expanded' ? 'table' : 'expanded');
 
-    readonly nextViewModeTitle = computed(() => {
-        const current = this.viewMode();
-        const next = this.nextViewMode();
-        const currentLabel = current === 'compact' ? 'Compact View' : current === 'expanded' ? 'Expanded View' : 'Table View';
-        const nextLabel = next === 'compact' ? 'Compact View' : next === 'expanded' ? 'Expanded View' : 'Table View';
-        return `${currentLabel}. Click to switch to ${nextLabel}.`;
+    readonly nextViewModeTitle = computed(() => this.viewMode() === 'expanded'
+        ? 'Expanded View. Click to switch to Table View.'
+        : 'Table View. Click to switch to Expanded View.');
+
+    /** Phones stack the reserves as the same 40px rows the sidebar uses. */
+    readonly reserveLayout = computed(() => this.layoutService.isPhone() ? 'rows' : 'cards');
+
+    /** On a phone the crew column should start within the first screen of the table. */
+    private readonly nameColumnTrack = computed(() => ({ minPx: this.layoutService.isPhone() ? 180 : 320, flex: 1.35 }));
+
+    /** One full crew card; a unit with three stations gets room for three narrow ones. */
+    private readonly crewColumnTrack = computed(() => {
+        const force = this.data.force;
+        const stations = Math.max(0, ...force.members().map(member => force.getUnitCrewPolicy(member.id).positions.length));
+        return stations > 2 ? 344 : 232;
     });
 
     constructor() {
         effect(() => {
             const savedViewMode = this.optionsService.options().forceOverviewViewMode;
-            untracked(() => {
-                if (this.viewMode() !== savedViewMode) {
-                    this.viewMode.set(savedViewMode);
-                }
-            });
+            untracked(() => this.viewMode.set(savedViewMode));
         });
         effect(() => {
-            const availableUnitIds = new Set(this.data.force.units().map(unit => unit.id));
+            const availableUnitIds = new Set(this.data.force.members().map(member => member.id));
             untracked(() => {
                 const selectedUnitIds = this.selectedUnitIds();
                 if ([...selectedUnitIds].some(id => !availableUnitIds.has(id))) {
                     this.selectedUnitIds.set(new Set(
-                        [...selectedUnitIds].filter(id => availableUnitIds.has(id))
+                        [...selectedUnitIds].filter(id => availableUnitIds.has(id)),
                     ));
                 }
             });
@@ -284,26 +312,24 @@ export class ForceOverviewDialogComponent {
     /** Whether to use hex movement */
     readonly useHex = computed(() => this.optionsService.options().ASUseHex);
 
+    /** Keys always visible in the AS table row */
+    private readonly AS_TABLE_VISIBLE_KEYS = ['name', 'year', 'as.PV', 'as.TP', 'role', 'as.SZ', 'as._mv', 'as.TMM', 'as.damage', 'as.Arm', 'as.Str', 'as.OV'];
+
+    /** Keys that are grouped together in the UI display */
+    private readonly SORT_KEY_GROUPS: Record<string, string[]> = {
+        'as.damage': ['as.dmg.dmgS', 'as.dmg.dmgM', 'as.dmg.dmgL', 'as.dmg.dmgE']
+    };
+
     /** Total BV/PV of the force using the selected display mode. */
-    totalBv = computed(() => this.displayedBvPv(this.data.force.units()));
+    totalBv = computed(() => {
+        return this.displayedBvPv(this.data.force.members());
+    });
 
-    displayedBvPv(units: readonly ForceUnit[]): string {
-        return formatBvPv(
-            units.reduce((total, unit) => total + unit.getBv(), 0),
-            units.reduce((total, unit) => total + unit.baseAdjustedBv(), 0),
+    displayedBvPv(members: readonly ForceMember[]): string {
+        return formatForceMembersBvPv(
+            members,
             this.optionsService.options().forceViewerBVPVDisplay,
-        );
-    }
-
-    totalTons(units: readonly ForceUnit[]): number {
-        return units.reduce((total, unit) => total + unit.getUnit().tons, 0);
-    }
-
-    displayedUnitBvPv(unit: ForceUnit): string {
-        return formatBvPv(
-            unit.getBv(),
-            unit.baseAdjustedBv(),
-            this.optionsService.options().forceViewerBVPVDisplay,
+            this.optionsService.options().forceViewerBVPVDisplayDamage,
         );
     }
 
@@ -317,12 +343,12 @@ export class ForceOverviewDialogComponent {
     hasSingleGroup = computed(() => this.groups().length === 1);
 
     /** Whether any group is empty */
-    hasEmptyGroups = computed(() => this.groups().some(g => g.units().length === 0));
+    hasEmptyGroups = computed(() => this.groups().some(group => this.membersForGroup(group).length === 0));
 
     /** Whether force has max groups */
     hasMaxGroups = computed(() => this.data.force.hasMaxGroups());
 
-    /** Label for a selected sort that is not represented by a standard table column. */
+    /** For AS table view: returns the sort slot header label if the current sort is not already visible in the table columns */
     readonly tableSortSlotHeader = computed(() => getUnitDataTableSortSlotHeader(
         this.gameSystem(),
         this.selectedSort(),
@@ -345,74 +371,223 @@ export class ForceOverviewDialogComponent {
         const nameCell = this.tableNameCell();
         const yearCell = this.tableYearCell();
         const valueCell = this.tableValueCell();
-        const skillCell = this.tableSkillCell();
+        const crewCell = this.tableCrewCell();
         const movementCell = this.tableMovementCell();
         const specialsCell = this.tableSpecialsCell();
 
-        if (!iconCell || !nameCell || !yearCell || !valueCell || !skillCell || !movementCell) {
+        if (!iconCell || !nameCell || !yearCell || !crewCell || !movementCell) {
             return [];
         }
-        if (this.isAlphaStrike() && !specialsCell) {
-            return [];
-        }
-
-        const skillColumn: DataTableColumn<ForceTableRow> = {
-            id: 'skill',
-            header: this.isAlphaStrike() ? 'Skill' : 'G/P',
-            track: this.isAlphaStrike() ? 40 : 56,
-            cellTemplate: skillCell,
-            align: 'center',
+        // The crew sits beside the unit it mans, before any statistic.
+        const crewColumn: DataTableColumn<ForceTableRow> = {
+            id: 'crew',
+            header: this.isAlphaStrike() ? 'Pilot' : 'Crew',
+            track: this.crewColumnTrack(),
+            cellTemplate: crewCell,
         };
 
-        const sortSlotHeader = this.tableSortSlotHeader();
-        return buildUnitDataTableColumns({
-            gameSystem: this.gameSystem(),
-            getUnit: row => row.kind === 'unit' ? row.vm.unit : null,
-            isSortActive: keyOrGroup => this.isSortActive(keyOrGroup),
-            templates: {
-                icon: iconCell,
-                name: nameCell,
-                year: yearCell,
-                value: valueCell,
-                movement: movementCell,
-                specials: specialsCell,
+        if (!this.isAlphaStrike()) {
+            if (!valueCell) return [];
+            const sortSlotHeader = this.tableSortSlotHeader();
+            return buildUnitDataTableColumns({
+                gameSystem: this.gameSystem(),
+                getUnit: row => row.kind === 'unit' ? row.vm.unit : null,
+                isSortActive: keyOrGroup => this.isSortActive(keyOrGroup),
+                templates: {
+                    icon: iconCell,
+                    name: nameCell,
+                    year: yearCell,
+                    value: valueCell,
+                    movement: movementCell,
+                },
+                nameTrack: this.nameColumnTrack(),
+                afterNameColumns: [crewColumn],
+                sortSlot: sortSlotHeader ? {
+                    header: sortSlotHeader,
+                    value: row => row.kind === 'unit' ? this.getTableSortSlot(row.vm.unit) : '',
+                } : null,
+            });
+        }
+
+        if (!specialsCell) return [];
+
+        const columns: DataTableColumn<ForceTableRow>[] = [
+            {
+                id: 'icon',
+                header: '',
+                track: 40,
+                cellTemplate: iconCell,
+                align: 'center',
             },
-            afterValueColumns: [skillColumn],
-            sortSlot: sortSlotHeader ? {
-                header: sortSlotHeader,
-                value: row => row.kind === 'unit' ? this.getTableSortSlot(row.vm.unit) ?? '' : '',
-            } : null,
+            {
+                id: 'name',
+                header: 'Name',
+                track: this.nameColumnTrack(),
+                cellTemplate: nameCell,
+                sortKey: 'name',
+                sortActive: this.isSortActive('name'),
+            },
+            crewColumn,
+            {
+                id: 'year',
+                header: 'Year',
+                track: 72,
+                cellTemplate: yearCell,
+                sortKey: 'year',
+                sortActive: this.isSortActive('year'),
+                cellClass: this.tableCellClass('as-td-year', this.isSortActive('year')),
+                align: 'center',
+            },
+            {
+                id: 'type',
+                header: 'Type',
+                track: 50,
+                value: row => row.kind === 'unit' ? row.vm.unit.as.TP : '',
+                sortKey: 'as.TP',
+                sortActive: this.isSortActive('as.TP'),
+                cellClass: this.tableCellClass('as-td-type', this.isSortActive('as.TP')),
+                align: 'center',
+            },
+            {
+                id: 'role',
+                header: 'Role',
+                track: 130,
+                value: row => row.kind === 'unit' && row.vm.unit.role !== 'None' ? row.vm.unit.role : '',
+                sortKey: 'role',
+                sortActive: this.isSortActive('role'),
+                cellClass: this.tableCellClass('as-td-role', this.isSortActive('role')),
+            },
+            {
+                id: 'pv',
+                header: 'PV',
+                track: 45,
+                value: row => row.kind === 'unit'
+                    ? this.displayedBvPv([row.vm.member])
+                    : '',
+                sortKey: 'as.PV',
+                sortActive: this.isSortActive('as.PV'),
+                cellClass: this.tableCellClass('as-td-pv is-bold', this.isSortActive('as.PV')),
+                align: 'right',
+            },
+            {
+                id: 'sz',
+                header: 'SZ',
+                track: 30,
+                value: row => row.kind === 'unit' ? row.vm.unit.as.SZ : '',
+                sortKey: 'as.SZ',
+                sortActive: this.isSortActive('as.SZ'),
+                cellClass: this.tableCellClass('as-td-sz', this.isSortActive('as.SZ')),
+                align: 'center',
+            },
+            {
+                id: 'mv',
+                header: 'MV',
+                track: 65,
+                cellTemplate: movementCell,
+                sortKey: 'as._mv',
+                sortActive: this.isSortActive('as._mv'),
+                cellClass: this.tableCellClass('as-td-mv', this.isSortActive('as._mv')),
+                align: 'center',
+            },
+            {
+                id: 'tmm',
+                header: 'TMM',
+                track: 40,
+                value: row => row.kind === 'unit' ? row.vm.unit.as.TMM : '',
+                sortKey: 'as.TMM',
+                sortActive: this.isSortActive('as.TMM'),
+                cellClass: this.tableCellClass('as-td-tmm', this.isSortActive('as.TMM')),
+                align: 'center',
+            },
+            {
+                id: 'damage',
+                header: 'S/M/L',
+                track: 60,
+                value: row => row.kind === 'unit' && !row.vm.unit.as.usesArcs ? `${row.vm.unit.as.dmg.dmgS}/${row.vm.unit.as.dmg.dmgM}/${row.vm.unit.as.dmg.dmgL}` : '',
+                sortKey: 'as.dmg._dmgS',
+                sortGroupKey: 'as.damage',
+                sortActive: this.isSortActive('as.damage'),
+                cellClass: this.tableCellClass('as-td-dmg', this.isSortActive('as.damage')),
+                align: 'center',
+            },
+            {
+                id: 'arm',
+                header: 'A',
+                track: 40,
+                value: row => row.kind === 'unit' ? row.vm.unit.as.Arm : '',
+                sortKey: 'as.Arm',
+                sortActive: this.isSortActive('as.Arm'),
+                cellClass: this.tableCellClass('as-td-arm', this.isSortActive('as.Arm')),
+                align: 'center',
+            },
+            {
+                id: 'str',
+                header: 'S',
+                track: 40,
+                value: row => row.kind === 'unit' ? row.vm.unit.as.Str : '',
+                sortKey: 'as.Str',
+                sortActive: this.isSortActive('as.Str'),
+                cellClass: this.tableCellClass('as-td-str', this.isSortActive('as.Str')),
+                align: 'center',
+            },
+            {
+                id: 'ov',
+                header: 'OV',
+                track: 30,
+                value: row => row.kind === 'unit' && row.vm.unit.as.usesOV ? row.vm.unit.as.OV : '',
+                sortKey: 'as.OV',
+                sortActive: this.isSortActive('as.OV'),
+                cellClass: this.tableCellClass('as-td-ov', this.isSortActive('as.OV')),
+                align: 'center',
+            },
+        ];
+
+        if (this.tableSortSlotHeader()) {
+            columns.push({
+                id: 'sort-slot',
+                header: this.tableSortSlotHeader() ?? '',
+                track: 80,
+                value: row => row.kind === 'unit' ? this.getAsTableSortSlot(row.vm) ?? '' : '',
+                cellClass: 'as-td-sort-slot sort-slot',
+                align: 'center',
+            });
+        }
+
+        columns.push({
+            id: 'specials',
+            header: 'Special',
+            track: { minPx: 220, flex: 1 },
+            cellTemplate: specialsCell,
         });
+
+        return columns;
     });
 
-    /** Whether drag-drop is allowed (compact mode + default sort + not read-only) */
-    canDragDrop = computed(() => 
-        this.viewMode() === 'compact' && 
+    /** Whether units and groups can be reordered (expanded view + custom order + not read-only) */
+    canDragDrop = computed(() =>
+        this.viewMode() === 'expanded' &&  
         this.selectedSort() === '' && 
-        !this.isReadOnly()
+        !this.isReadOnly() &&
+        !this.units().some(vm => isCBTMekForceMember(vm.member))
     );
 
     /** All units in the force with their view model data */
-    units = computed<ForceUnitViewModel[]>(() => {
+    units = computed<ForceMemberViewModel[]>(() => {
         const force = this.data.force;
-        const forceUnits = force.units();
+        const members = force.members();
         const sortKey = this.selectedSort();
         const sortDirection = this.selectedSortDirection();
 
-        // Build view models - ForceUnit now contains all needed data
-        const viewModels: ForceUnitViewModel[] = forceUnits.map(fu => {
-            const unit = fu.getUnit();
-            return {
-                forceUnit: fu,
-                unit
-            };
-        }).filter(vm => vm.unit != null) as ForceUnitViewModel[];
+        const viewModels: ForceMemberViewModel[] = members.map(member => ({
+            member,
+            unit: this.memberCatalogSummary(member),
+        }));
 
         // Sort the units (skip if no sort key - show default order)
         if (sortKey) {
             viewModels.sort((a, b) => {
-                const valA = this.getNestedProperty(a.unit, sortKey);
-                const valB = this.getNestedProperty(b.unit, sortKey);
+                const valA = getProperty(a.unit, sortKey);
+                const valB = getProperty(b.unit, sortKey);
 
                 let cmp = 0;
                 if (valA == null && valB == null) cmp = 0;
@@ -431,7 +606,7 @@ export class ForceOverviewDialogComponent {
         return viewModels;
     });
 
-    /** Toggle between expanded and compact view modes */
+    /** Toggle between the expanded and table view modes */
     toggleViewMode(): void {
         this.setViewMode(this.nextViewMode());
     }
@@ -476,7 +651,7 @@ export class ForceOverviewDialogComponent {
             return;
         }
 
-        this.toggleUnitSelection(event.row.vm.forceUnit, event.event);
+        this.toggleUnitSelection(event.row.vm.member, event.event);
     }
 
     onPreviewUnitHover(unitEntry: ForcePreviewUnit | null): void {
@@ -500,50 +675,43 @@ export class ForceOverviewDialogComponent {
         return this.shouldShowLengthMeta(this.primerNote().length, this.noteLimit);
     }
 
-    trackByForceUnitId = (_index: number, row: ForceTableRow) => row.kind === 'group' ? `group-${row.group.id}` : row.vm.forceUnit.id;
+    trackByForceUnitId = (_index: number, row: ForceTableRow) => row.kind === 'group' ? `group-${row.group.id}` : row.vm.member.id;
 
     isForceTableGroupRow = (row: ForceTableRow) => row.kind === 'group';
 
     readonly forceTableRowClass = (row: ForceTableRow) => ({
-        'is-selected': row.kind === 'unit' && this.isUnitSelected(row.vm.forceUnit),
+        'is-selected': row.kind === 'unit' && this.isUnitSelected(row.vm.member),
     });
 
     /** Handle unit card click - open unit details dialog */
-    onUnitClick(vm: ForceUnitViewModel, event?: MouseEvent): void {
+    onUnitClick(vm: ForceMemberViewModel, event?: MouseEvent): void {
         if (event && (event.ctrlKey || event.metaKey || event.shiftKey)) {
-            this.toggleUnitSelection(vm.forceUnit, event);
+            this.toggleUnitSelection(vm.member, event);
             return;
         }
 
-        const unitList = this.data.force.units();
-        const unitIndex = unitList.findIndex(u => u.id === vm.forceUnit.id);
-        this.dialogsService.createDialog(UnitDetailsDialogComponent, {
-            data: <UnitDetailsDialogData>{
-                unitList: this.data.force.units,
-                unitIndex: unitIndex
-            }
-        });
+        this.openMemberDetails(vm.member);
     }
 
-    toggleUnitSelection(forceUnit: ForceUnit, event?: Event): void {
+    toggleUnitSelection(member: Readonly<{ id: string }>, event?: Event): void {
         event?.preventDefault();
         event?.stopPropagation();
 
         const selectedUnitIds = new Set(this.selectedUnitIds());
-        if (selectedUnitIds.has(forceUnit.id)) {
-            selectedUnitIds.delete(forceUnit.id);
+        if (selectedUnitIds.has(member.id)) {
+            selectedUnitIds.delete(member.id);
         } else {
-            selectedUnitIds.add(forceUnit.id);
+            selectedUnitIds.add(member.id);
         }
         this.selectedUnitIds.set(selectedUnitIds);
     }
 
-    isUnitSelected(forceUnit: ForceUnit): boolean {
-        return this.selectedUnitIds().has(forceUnit.id);
+    isUnitSelected(member: Readonly<{ id: string }>): boolean {
+        return this.selectedUnitIds().has(member.id);
     }
 
     selectAllUnits(): void {
-        this.selectedUnitIds.set(new Set(this.units().map(vm => vm.forceUnit.id)));
+        this.selectedUnitIds.set(new Set(this.units().map(vm => vm.member.id)));
     }
 
     clearUnitSelection(): void {
@@ -562,22 +730,16 @@ export class ForceOverviewDialogComponent {
         await this.taggingService.openTagSelector([unit], anchorEl);
     }
 
-    /** Handle pilot click - open pilot edit dialog */
-    async onPilotClick(forceUnit: ForceUnit): Promise<void> {
-        if (forceUnit.readOnly()) return;
-        await this.forceBuilderService.editPilotOfUnit(forceUnit);
-    }
-
     /** Handle force name click - open rename dialog */
     async onForceNameClick(): Promise<void> {
         if (this.isReadOnly()) return;
-        await this.forceBuilderService.promptChangeForceName(this.data.force);
+        await this.forceDialogs.promptChangeForceName(this.data.force);
     }
 
     /** Show formation info dialog */
     showFormationInfo(event: MouseEvent, group: UnitGroup): void {
         event.stopPropagation();
-        this.forceBuilderService.showFormationInfo(group);
+        this.formations.showFormationInfo(group);
     }
 
     /** Build tooltip HTML for a mismatched formation */
@@ -614,63 +776,51 @@ export class ForceOverviewDialogComponent {
     /** Handle group name click - open rename dialog */
     async onGroupNameClick(group: UnitGroup): Promise<void> {
         if (this.isReadOnly()) return;
-        await this.forceBuilderService.promptChangeGroupName(group);
+        await this.forceDialogs.promptChangeGroupName(group);
     }
 
     /** Handle C3 network click - open C3 network dialog */
-    async openC3Network(event: MouseEvent, forceUnit: ForceUnit): Promise<void> {
+    async openC3Network(event: MouseEvent, member: ForceMember): Promise<void> {
         event.stopPropagation();
-        await this.forceBuilderService.openC3Network(this.data.force, forceUnit.readOnly());
+        await this.forceDialogs.openC3Network(
+            this.data.force,
+            isCBTForceMember(member) ? member.force.readOnly() : member.readOnly(),
+        );
     }
 
     /** Handle remove unit */
-    async removeUnit(event: MouseEvent, forceUnit: ForceUnit): Promise<void> {
+    async removeUnit(event: MouseEvent, member: ForceMember): Promise<void> {
         event.stopPropagation();
-        await this.forceBuilderService.removeUnit(forceUnit, event.ctrlKey);
+        await this.forceCommands.removeUnit(member, event.ctrlKey || event.metaKey);
     }
 
     /** Handle repair unit */
-    async repairUnit(event: MouseEvent, forceUnit: ForceUnit): Promise<void> {
+    async repairUnit(event: MouseEvent, member: ForceMember): Promise<void> {
         event.stopPropagation();
-        const unit = forceUnit.getUnit();
-        const confirmed = await this.dialogsService.requestConfirmation(
-            `Are you sure you want to repair the unit "${unit?.chassis} ${unit?.model}"? This will reset all damage and status effects.`,
-            `Repair ${unit?.chassis}`,
-            'info');
-        if (confirmed) {
-            forceUnit.repairAll();
-            this.toastService.showToast(`Repaired unit ${unit?.chassis} ${unit?.model}.`, 'success');
-        }
+        await this.forceCommands.repairUnit(member);
     }
 
     /** Handle show unit info */
-    showUnitInfo(event: MouseEvent, forceUnit: ForceUnit): void {
+    showUnitInfo(event: MouseEvent, member: ForceMember): void {
         event.stopPropagation();
-        const unitList = this.data.force.units();
-        const unitIndex = unitList.findIndex(u => u.id === forceUnit.id);
-        this.dialogsService.createDialog(UnitDetailsDialogComponent, {
-            data: <UnitDetailsDialogData>{
-                unitList: this.data.force.units,
-                unitIndex: unitIndex
-            }
-        });
+        this.openMemberDetails(member);
     }
 
     /** Get sorted units for a group */
-    getSortedUnitsForGroup(group: UnitGroup): ForceUnitViewModel[] {
+    getSortedUnitsForGroup(group: UnitGroup): ForceMemberViewModel[] {
         const sortKey = this.selectedSort();
         const sortDirection = this.selectedSortDirection();
 
-        const viewModels: ForceUnitViewModel[] = group.units().map(fu => {
-            const unit = fu.getUnit();
-            return { forceUnit: fu, unit };
-        }).filter(vm => vm.unit != null) as ForceUnitViewModel[];
+        const viewModels: ForceMemberViewModel[] = this.membersForGroup(group).map(member => ({
+            member,
+            unit: this.memberCatalogSummary(member),
+        }));
 
         // Skip sorting if no sort key - show default order
         if (sortKey) {
             viewModels.sort((a, b) => {
-                const valA = this.getNestedProperty(a.unit, sortKey);
-                const valB = this.getNestedProperty(b.unit, sortKey);
+                const valA = getProperty(a.unit, sortKey);
+                const valB = getProperty(b.unit, sortKey);
 
                 let cmp = 0;
                 if (valA == null && valB == null) cmp = 0;
@@ -689,6 +839,58 @@ export class ForceOverviewDialogComponent {
         return viewModels;
     }
 
+    membersForGroup(group: UnitGroup): ForceMember[] {
+        return this.data.force.membersInGroup(group);
+    }
+
+    expandedMemberUnit(member: ForceMember): UnitSummary | ForceUnit {
+        return isCBTForceMember(member) ? this.resolveCBTCatalogSummary(member) : member;
+    }
+
+    memberAlias(member: ForceMember): string | null {
+        return isCBTForceMember(member) ? null : member.alias() ?? null;
+    }
+
+    memberGunnery(member: ForceMember): number {
+        if (!isCBTForceMember(member)) {
+            return member instanceof ASForceUnit ? member.pilotSkill() : DEFAULT_GUNNERY_SKILL;
+        }
+        return member.force.getUnitCrewAssignment(member.id)?.positions[0]?.gunnery
+            ?? DEFAULT_GUNNERY_SKILL;
+    }
+
+    memberPiloting(member: ForceMember): number {
+        if (!isCBTForceMember(member)) return DEFAULT_PILOTING_SKILL;
+        return effectiveEntityPilotingSkill(member.entity,
+            member.force.getUnitCrewAssignment(member.id)?.positions[0]?.piloting ?? DEFAULT_PILOTING_SKILL);
+    }
+
+    private openMemberDetails(member: ForceMember): void {
+        this.dialogsService.createDialog(UnitDetailsDialogComponent, {
+            data: <UnitDetailsDialogData>{
+                unitList: this.data.force.members,
+                unitIndex: this.data.force.members().findIndex(unit => unit.id === member.id),
+            },
+        });
+    }
+
+    private memberCatalogSummary(member: ForceMember): UnitSummary {
+        return isCBTForceMember(member)
+            ? this.resolveCBTCatalogSummary(member)
+            : member.getSummary();
+    }
+
+    private resolveCBTCatalogSummary(member: CBTForceMember): UnitSummary {
+        const uuid = member.force.getUnitUuid(member.id);
+        const summary = uuid
+            ? this.dataService.getUnitByUuid(uuid)
+            : undefined;
+        if (!summary) {
+            throw new Error(`Catalog presentation is unavailable for ${member.entity.displayName()}`);
+        }
+        return summary;
+    }
+
     /** Close the dialog */
     close(): void {
         this.dialogRef.close();
@@ -696,19 +898,6 @@ export class ForceOverviewDialogComponent {
 
     private clearHoveredPreviewUnit(): void {
         this.hoveredPreviewUnit.set(null);
-    }
-
-    /** Get a nested property value using dot notation (e.g., 'as.PV') */
-    private getNestedProperty(obj: any, key: string): any {
-        if (!obj || !key) return undefined;
-        if (!key.includes('.')) return obj[key];
-        const parts = key.split('.');
-        let cur: any = obj;
-        for (const p of parts) {
-            if (cur == null) return undefined;
-            cur = cur[p];
-        }
-        return cur;
     }
 
     // --- Drag and Drop ---
@@ -726,7 +915,7 @@ export class ForceOverviewDialogComponent {
     }
 
     /** Called when dragging moves */
-    onUnitDragMoved(event: CdkDragMove<any>): void {
+    onUnitDragMoved(event: CdkDragMove<unknown>): void {
         if (this.isReadOnly()) return;
 
         const scrollRef = this.scrollContainer?.();
@@ -818,7 +1007,7 @@ export class ForceOverviewDialogComponent {
     connectedDropLists = computed(() => {
         const ids: string[] = [];
         for (const g of this.data.force.groups()) {
-            ids.push(`overview-group-${g.id}`);
+            ids.push(`group-${g.id}`);
         }
         if (this.newGroupDropzone()?.nativeElement) {
             ids.push('new-group-dropzone');
@@ -827,13 +1016,13 @@ export class ForceOverviewDialogComponent {
     });
 
     /** Handle drop within or between groups */
-    drop(event: CdkDragDrop<ForceUnit[]>): void {
+    async drop(event: CdkDragDrop<ForceMember[]>): Promise<void> {
         if (this.isReadOnly()) return;
 
         const force = this.data.force;
         const groups = force.groups();
 
-        const groupIdFromContainer = (id?: string) => id && id.startsWith('overview-group-') ? id.substring('overview-group-'.length) : null;
+        const groupIdFromContainer = (id?: string) => id && id.startsWith('group-') ? id.substring('group-'.length) : null;
 
         const fromGroupId = groupIdFromContainer(event.previousContainer?.id);
         const toGroupId = groupIdFromContainer(event.container?.id);
@@ -849,58 +1038,91 @@ export class ForceOverviewDialogComponent {
             return;
         }
 
+        const movingMember = this.membersForGroup(fromGroup)[event.previousIndex];
+        if (isCBTForceMember(movingMember)) {
+            if (!(force instanceof CBTForce)) return;
+            const moved = await force.moveMember(movingMember.id, toGroup.id, event.currentIndex);
+            if (!moved.accepted) {
+                this.toastService.showToast(`Could not move unit: ${moved.reason}`, 'error');
+                return;
+            }
+            await this.formations.assignFormationIfNeeded(fromGroup);
+            if (fromGroup !== toGroup) await this.formations.assignFormationIfNeeded(toGroup);
+            return;
+        }
+
         if (fromGroup === toGroup) {
             fromGroup.reorderUnit(event.previousIndex, event.currentIndex);
         } else {
             const moved = fromGroup.moveUnitTo(event.previousIndex, toGroup, event.currentIndex);
             if (!moved) return;
-            this.forceBuilderService.assignFormationIfNeeded(fromGroup);
-            this.forceBuilderService.assignFormationIfNeeded(toGroup);
+            await this.formations.assignFormationIfNeeded(fromGroup);
+            await this.formations.assignFormationIfNeeded(toGroup);
         }
 
+        if (!(force instanceof ASForce)) return;
         force.removeEmptyGroups();
         force.emitChanged();
     }
 
     /** Handle drop to create a new group */
-    dropForNewGroup(event: CdkDragDrop<any>): void {
+    async dropForNewGroup(event: CdkDragDrop<ForceMember[]>): Promise<void> {
         if (this.isReadOnly()) return;
 
         const force = this.data.force;
-        const newGroup = force.addGroup();
-        if (!newGroup) return;
-
         const prevId = event.previousContainer?.id;
-        if (!prevId || !prevId.startsWith('overview-group-')) return;
+        if (!prevId || !prevId.startsWith('group-')) return;
 
-        const sourceGroupId = prevId.substring('overview-group-'.length);
+        const sourceGroupId = prevId.substring('group-'.length);
         const sourceGroup = force.groups().find(g => g.id === sourceGroupId);
         if (!sourceGroup) return;
 
-        const moved = sourceGroup.moveUnitTo(event.previousIndex, newGroup);
-        if (!moved) return;
+        const movingMember = this.membersForGroup(sourceGroup)[event.previousIndex];
+        if (!movingMember) return;
+        const newGroup = await force.addGroup();
 
-        this.forceBuilderService.assignFormationIfNeeded(sourceGroup);
-        this.forceBuilderService.assignFormationIfNeeded(newGroup);
-        force.removeEmptyGroups();
-        force.emitChanged();
+        if (isCBTForceMember(movingMember)) {
+            if (!(force instanceof CBTForce)) {
+                await force.removeGroup(newGroup);
+                return;
+            }
+            const moved = await force.moveMember(movingMember.id, newGroup.id, 0);
+            if (!moved.accepted) {
+                await force.removeRosterGroup(newGroup);
+                this.toastService.showToast(`Could not move unit: ${moved.reason}`, 'error');
+                return;
+            }
+        } else {
+            const moved = sourceGroup.moveUnitTo(event.previousIndex, newGroup);
+            if (!moved) {
+                await force.removeGroup(newGroup);
+                return;
+            }
+        }
+
+        await this.formations.assignFormationIfNeeded(sourceGroup);
+        await this.formations.assignFormationIfNeeded(newGroup);
+        if (force instanceof ASForce) {
+            force.removeEmptyGroups();
+            force.emitChanged();
+        }
     }
 
     /** Handle group drag-drop for reordering within the force */
-    dropGroup(event: CdkDragDrop<UnitGroup[]>): void {
+    async dropGroup(event: CdkDragDrop<UnitGroup[]>): Promise<void> {
         if (this.isReadOnly()) return;
-        this.data.force.reorderGroup(event.previousIndex, event.currentIndex);
+        await this.data.force.reorderGroup(event.previousIndex, event.currentIndex);
     }
 
     /** Handle click on empty group to remove it */
     onEmptyGroupClick(group: UnitGroup): void {
         if (this.isReadOnly()) return;
-        if (group.units().length === 0) {
-            this.forceBuilderService.removeGroup(group);
+        if (this.membersForGroup(group).length === 0) {
+            this.forceCommands.removeGroup(group);
         }
     }
 
-    // --- Unit Table View Helpers ---
+    // --- AS Table View Helpers ---
 
     /** Handle header click: toggle direction if already active, otherwise activate with asc */
     onHeaderSort(sortKey: string, groupKey?: string): void {
@@ -918,22 +1140,54 @@ export class ForceOverviewDialogComponent {
         return isUnitDataTableSortActive(this.selectedSort(), ...keysOrGroups);
     }
 
-    getTableSortSlot(unit: UnitSummary): string | null {
+    /** Get the sort slot value for AS table row view */
+    getAsTableSortSlot(vm: ForceMemberViewModel): string | null {
         const sortKey = this.selectedSort();
-        if (!sortKey || !this.tableSortSlotHeader()) {
-            return null;
+        if (!sortKey || !this.isAlphaStrike()) return null;
+        
+        // Check if already visible in table
+        if (this.AS_TABLE_VISIBLE_KEYS.includes(sortKey)) return null;
+        for (const [groupKey, members] of Object.entries(this.SORT_KEY_GROUPS)) {
+            if (this.AS_TABLE_VISIBLE_KEYS.includes(groupKey) && members.includes(sortKey)) return null;
         }
+        
+        const val = getProperty(vm.unit, sortKey);
+        if (val == null) return null;
+        return typeof val === 'number' ? String(val) : String(val);
+    }
 
-        return formatUnitDataTableSortSlotValue(unit, sortKey);
+    getTableSortSlot(unit: UnitSummary): string {
+        return formatUnitDataTableSortSlotValue(unit, this.selectedSort(), (candidate, key) => (
+            getProperty(candidate, key)
+        ));
+    }
+
+    formatCBTMovement(unit: UnitSummary): string {
+        return formatCBTUnitMovement(unit);
     }
 
     /** Format movement value for Alpha Strike table view */
     formatASMovement(unit: UnitSummary): string {
-        return formatAlphaStrikeUnitMovement(unit, this.useHex());
+        const mvm = unit.as.MVm;
+        if (!mvm) return unit.as.MV ?? '';
+
+        const entries = Object.entries(mvm)
+            .filter(([, value]) => typeof value === 'number' && value > 0) as Array<[string, number]>;
+
+        if (entries.length === 0) return unit.as.MV ?? '';
+
+        return entries
+            .sort((a, b) => {
+                if (a[0] === '') return -1;
+                if (b[0] === '') return 1;
+                return 0;
+            })            
+            .map(([mode, inches]) => formatMovement(inches, mode, this.useHex()))
+            .join('/');
     }
 
-    formatClassicMovement(unit: UnitSummary): string {
-        return formatClassicUnitMovement(unit);
+    private tableCellClass(base: string, active: boolean): string {
+        return active ? `${base} sort-slot` : base;
     }
 
     private clampText(value: string, maxLength: number): string {
@@ -952,14 +1206,7 @@ export class ForceOverviewDialogComponent {
         });
     }
 
-    getPilotStats(vm: ForceUnitViewModel): string | number {
-        return vm.forceUnit.getPilotStats();
-    }
-
-    private setViewMode(viewMode: 'expanded' | 'compact' | 'table') {
-        if (viewMode === 'compact') {
-            this.clearUnitSelection();
-        }
+    private setViewMode(viewMode: 'expanded' | 'table') {
         this.viewMode.set(viewMode);
         void this.optionsService.setOption('forceOverviewViewMode', viewMode);
     }

@@ -1,0 +1,99 @@
+// Copyright (C) 2026 The MegaMek Team
+// SPDX-License-Identifier: GPL-3.0-or-later
+// Author: Drake
+
+import { TestBed } from '@angular/core/testing';
+import type { PilotNameCatalog } from '../../models/pilot-name-catalog.model';
+import { PilotNameCatalogService } from './pilot-name-catalog.service';
+
+describe('PilotNameCatalogService generation', () => {
+    const catalog: PilotNameCatalog = {
+        maleGivenNames: { 1: [{ value: 'John', weight: 1 }] },
+        femaleGivenNames: { 1: [{ value: 'Jane', weight: 1 }] },
+        surnames: { 1: [{ value: 'Smith', weight: 1 }] },
+        factions: {
+            General: {
+                surnameEthnicities: [{ value: 1, weight: 1 }],
+                givenNameEthnicities: { 1: [{ value: 1, weight: 1 }] },
+            },
+        },
+        factionProfiles: {},
+        callsigns: [{ value: 'Ace', weight: 1 }],
+        bloodnameClans: {},
+        bloodnames: [],
+    };
+
+    beforeEach(() => TestBed.resetTestingModule());
+
+    function configure(catalogService: { initialize: jasmine.Spy; getCatalog: jasmine.Spy }): void {
+        TestBed.configureTestingModule({
+            providers: [
+                PilotNameCatalogService,
+            ],
+        });
+        const service = TestBed.inject(PilotNameCatalogService);
+        spyOn(service, 'initialize').and.callFake(catalogService.initialize);
+        spyOn(service, 'getCatalog').and.callFake(catalogService.getCatalog);
+    }
+
+    it('initializes the lazy catalog before generating', async () => {
+        const catalogService = {
+            initialize: jasmine.createSpy('initialize').and.resolveTo(undefined),
+            getCatalog: jasmine.createSpy('getCatalog').and.returnValue(catalog),
+        };
+        configure(catalogService);
+
+        const result = await TestBed.inject(PilotNameCatalogService).generateName({ includeCallsign: false });
+
+        expect(catalogService.initialize).toHaveBeenCalledTimes(1);
+        expect(catalogService.getCatalog).toHaveBeenCalledTimes(1);
+        expect(result).toMatch(/^(John|Jane) Smith$/);
+    });
+
+    it('uses the catalog faction profile for Clan single-name formatting', async () => {
+        const profiledCatalog: PilotNameCatalog = {
+            ...catalog,
+            factionProfiles: {
+                10: { generator: 'General', isClan: true },
+                12: { generator: 'General', isClan: false },
+            },
+        };
+        const catalogService = {
+            initialize: jasmine.createSpy('initialize').and.resolveTo(undefined),
+            getCatalog: jasmine.createSpy('getCatalog').and.returnValue(profiledCatalog),
+        };
+        configure(catalogService);
+        const service = TestBed.inject(PilotNameCatalogService);
+
+        expect(await service.generateName({ factionId: 10, includeCallsign: false })).toMatch(/^(John|Jane)$/);
+        expect(await service.generateName({ factionId: 12, includeCallsign: false })).toMatch(/^(John|Jane) Smith$/);
+        expect(await service.generateName({ factionId: 404, includeCallsign: false })).toMatch(/^(John|Jane) Smith$/);
+    });
+
+    it('generates a callsign within the requested display-name limit', async () => {
+        const catalogService = {
+            initialize: jasmine.createSpy('initialize').and.resolveTo(undefined),
+            getCatalog: jasmine.createSpy('getCatalog').and.returnValue({
+                ...catalog,
+                callsigns: [
+                    { value: 'FarTooLongForLobby', weight: 100 },
+                    { value: 'Ace', weight: 1 },
+                ],
+            }),
+        };
+        configure(catalogService);
+
+        await expectAsync(TestBed.inject(PilotNameCatalogService).generateCallsign(16)).toBeResolvedTo('Ace');
+    });
+
+    it('propagates catalog initialization failures', async () => {
+        const catalogService = {
+            initialize: jasmine.createSpy('initialize').and.rejectWith(new Error('offline')),
+            getCatalog: jasmine.createSpy('getCatalog'),
+        };
+        configure(catalogService);
+
+        await expectAsync(TestBed.inject(PilotNameCatalogService).generateName()).toBeRejectedWithError('offline');
+        expect(catalogService.getCatalog).not.toHaveBeenCalled();
+    });
+});

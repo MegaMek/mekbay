@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 // Author: Drake
 
-import { ChangeDetectionStrategy, Component } from '@angular/core';
+import { ChangeDetectionStrategy, Component, computed, input, output } from '@angular/core';
 
 export interface TooltipLine {
     label?: string;
@@ -20,20 +20,18 @@ export interface TooltipLine {
 
 export type TooltipType = 'info' | 'success' | 'error';
 
-export type TooltipContent = string | TooltipLine[];
+export type TooltipContent = string | readonly TooltipLine[];
 
 @Component({
     selector: 'tooltip',
-    standalone: true,
-    imports: [],
     changeDetection: ChangeDetectionStrategy.OnPush,
-    host: { class: 'tooltip' },
+    host: { class: 'tooltip', '[class.locked]': 'locked()' },
     template: `
-        <div class="tooltip-content framed-borders has-shadow" [class.error]="type === 'error'">
-            @if (isString) {
-                <div class="tooltip-html" [innerHTML]="htmlContent"></div>
+        <div class="tooltip-content framed-borders has-shadow" [class.error]="type() === 'error'">
+            @if (isString()) {
+                <div class="tooltip-html" [innerHTML]="htmlContent()"></div>
             } @else {
-                @for (line of lines; track $index) {
+                @for (line of lines(); track $index) {
                     @if (line.isBreak) {
                         <hr class="divisor" />
                     } @else {
@@ -52,8 +50,11 @@ export type TooltipContent = string | TooltipLine[];
                 }
             }
         </div>
-        @if (lockProgressDuration > 0) {
-            <div class="tooltip-lock-progress" [style.animation-duration.ms]="lockProgressDuration" aria-hidden="true"></div>
+        @if (locked()) {
+            <button type="button" class="close-button tooltip-close" aria-label="Close tooltip" (click)="closed.emit()"></button>
+        }
+        @if (lockProgressDuration() > 0) {
+            <div class="tooltip-lock-progress" [style.animation-duration.ms]="lockProgressDuration()" aria-hidden="true"></div>
         }
     `,
     styles: [`
@@ -65,8 +66,28 @@ export type TooltipContent = string | TooltipLine[];
             max-width: min(500px, calc(100vw - 24px));
             max-height: calc(100dvh - 24px);
         }
+        /* A locked tooltip grows by the close button's column, so its text keeps the same wrap. */
+        :host(.locked) {
+            max-width: min(524px, calc(100vw - 24px));
+        }
+        :host(.locked) .tooltip-content {
+            padding-right: 32px;
+        }
+        .close-button.tooltip-close {
+            position: absolute;
+            top: 4px;
+            right: 4px;
+            width: 24px;
+            height: 24px;
+        }
+        .close-button.tooltip-close::before {
+            width: 14px;
+            height: 14px;
+        }
         .tooltip-content {
             color: #fff;
+            -webkit-user-select: text;
+            user-select: text;
             box-sizing: border-box;
             padding: 6px 8px;
             font-size: 0.9em;
@@ -156,19 +177,20 @@ export type TooltipContent = string | TooltipLine[];
     `]
 })
 export class TooltipComponent {
-    content: TooltipContent = '';
-    type: TooltipType = 'info';
-    lockProgressDuration = 0;
+    readonly content = input<TooltipContent>('');
+    readonly type = input<TooltipType>('info');
+    readonly lockProgressDuration = input(0);
+    readonly locked = input(false);
+    readonly closed = output<void>();
 
-    get htmlContent(): string {
-        return typeof this.content === 'string' ? this.content : '';
-    }
-    
-    get isString(): boolean {
-        return typeof this.content === 'string';
-    }
-    
-    get lines(): TooltipLine[] {
-        return Array.isArray(this.content) ? this.content : [];
-    }
+    readonly htmlContent = computed(() => {
+        const content = this.content();
+        return typeof content === 'string' ? content : '';
+    });
+
+    readonly isString = computed(() => typeof this.content() === 'string');
+    readonly lines = computed<readonly TooltipLine[]>(() => {
+        const content = this.content();
+        return Array.isArray(content) ? content : [];
+    });
 }

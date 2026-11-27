@@ -4,9 +4,7 @@
 
 import { Injectable, signal } from '@angular/core';
 
-import type { ViewportTransform } from '../../../models/force-serialization';
-import type { CBTForceUnit } from '../../../models/cbt-force-unit.model';
-import type { PageViewerViewStateRecord } from './types';
+import type { PageViewerMember, PageViewerViewStateRecord, ViewportTransform } from './types';
 
 @Injectable()
 export class PageViewerViewStateService {
@@ -17,7 +15,7 @@ export class PageViewerViewStateService {
         this.lastSharedViewState.set({ ...viewState });
     }
 
-    saveUnitViewState(unit: CBTForceUnit, viewState: ViewportTransform): void {
+    saveUnitViewState(unit: PageViewerMember, viewState: ViewportTransform): void {
         const normalizedState = { ...viewState };
         const next = new Map(this.savedViewStates());
         next.set(unit.id, {
@@ -27,20 +25,20 @@ export class PageViewerViewStateService {
         });
         this.savedViewStates.set(next);
         this.saveSharedViewState(normalizedState);
-        unit.viewState = normalizedState;
     }
 
-    getSavedUnitViewState(unit: CBTForceUnit | null | undefined): ViewportTransform | null {
+    getSavedUnitViewState(unit: PageViewerMember | null | undefined): ViewportTransform | null {
         if (!unit) {
             return null;
         }
 
         const savedState = this.savedViewStates().get(unit.id)?.viewState;
-        return savedState ? { ...savedState } : unit.viewState ? { ...unit.viewState } : null;
+        if (savedState) return { ...savedState };
+        return null;
     }
 
     resolveRestoredViewState(options: {
-        unit: CBTForceUnit | null | undefined;
+        unit: PageViewerMember | null | undefined;
         syncZoomBetweenSheets: boolean;
         isMultiPageMode: boolean;
         fromSwipe: boolean;

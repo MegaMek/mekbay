@@ -2,8 +2,8 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 // Author: Drake
 
+import { UnitNameService } from '../../services/unit-name.service';
 import { ChangeDetectionStrategy, Component, computed, inject, input, output } from '@angular/core';
-import { CommonModule } from '@angular/common';
 import { CdkMenuModule } from '@angular/cdk/menu';
 import type { UnitSummary } from '../../models/unit-summary.model';
 import { GameSystem } from '../../models/common.model';
@@ -11,6 +11,7 @@ import { ToastService } from '../../services/toast.service';
 import { isMegaMekRaritySortKey, SORT_OPTIONS } from '../../services/unit-search-filters.model';
 import { SimpleSliderComponent } from '../simple-slider/simple-slider.component';
 import type { UnitDetailsSheetTabComponent } from '../unit-details-dialog/tabs/unit-details-sheet-tab.component';
+import type { UnitDetailsCardTabComponent } from '../unit-details-dialog/tabs/unit-details-card-tab.component';
 import {
     DEFAULT_VARIANTS_TAB_STATE,
     type VariantsTabState,
@@ -19,11 +20,12 @@ import {
 @Component({
     selector: 'unit-details-footer',
     changeDetection: ChangeDetectionStrategy.OnPush,
-    imports: [CommonModule, CdkMenuModule, SimpleSliderComponent],
+    imports: [CdkMenuModule, SimpleSliderComponent],
     templateUrl: './unit-details-footer.component.html',
     styleUrl: './unit-details-footer.component.scss',
 })
 export class UnitDetailsFooterComponent {
+    readonly unitNames = inject(UnitNameService);
     private toastService = inject(ToastService);
 
     readonly activeTab = input.required<string>();
@@ -32,8 +34,9 @@ export class UnitDetailsFooterComponent {
     readonly hasPrev = input(false);
     readonly hasNext = input(false);
     readonly sheetTab = input<UnitDetailsSheetTabComponent | undefined>(undefined);
+    readonly cardTab = input<UnitDetailsCardTabComponent | undefined>(undefined);
     readonly variantsTabState = input<VariantsTabState>({ ...DEFAULT_VARIANTS_TAB_STATE });
-    readonly gameSystem = input<GameSystem>(GameSystem.CLASSIC);
+    readonly gameSystem = input<GameSystem>(GameSystem.CBT);
 
     readonly prev = output<void>();
     readonly next = output<void>();
@@ -49,9 +52,10 @@ export class UnitDetailsFooterComponent {
         return unit ? this.formatUnitLabel(unit) : '';
     });
 
-    readonly minZoomPercent = computed(() => this.sheetTab()?.minZoomPercent ?? 100);
-    readonly maxZoomPercent = computed(() => this.sheetTab()?.maxZoomPercent ?? 300);
-    readonly zoomPercent = computed(() => this.sheetTab()?.zoomPercent() ?? this.minZoomPercent());
+    private readonly previewTab = computed(() => this.activeTab() === 'Card' ? this.cardTab() : this.sheetTab());
+    readonly minZoomPercent = computed(() => this.previewTab()?.minZoomPercent ?? 100);
+    readonly maxZoomPercent = computed(() => this.previewTab()?.maxZoomPercent ?? 300);
+    readonly zoomPercent = computed(() => this.previewTab()?.zoomPercent() ?? this.minZoomPercent());
 
     readonly variantSortOptions = computed(() => {
         return SORT_OPTIONS.filter(opt =>
@@ -61,31 +65,29 @@ export class UnitDetailsFooterComponent {
         );
     });
 
-    setSheetZoomPercent(value: number): void {
-        this.sheetTab()?.setZoomPercent(value);
+    setZoomPercent(value: number): void {
+        this.previewTab()?.setZoomPercent(value);
     }
 
-    resetSheetZoom(): void {
-        this.sheetTab()?.resetZoom();
+    resetZoom(): void {
+        this.previewTab()?.resetZoom();
     }
 
-    downloadSheetPng(): void {
-        void this.sheetTab()?.downloadPng();
-    }
-
-    openSheetPng(): void {
-        void this.sheetTab()?.openPng();
-    }
-
-    async copySheetPngToClipboard(): Promise<void> {
-        const sheetTab = this.sheetTab();
-        if (!sheetTab) return;
-
+    async exportPreview(action: 'openPng' | 'downloadPng' | 'copyPngToClipboard' | 'downloadSvg'): Promise<void> {
+        const preview = this.previewTab();
+        if (!preview) return;
+        const label = this.activeTab() === 'Card' ? 'Alpha Strike card' : 'Record sheet';
         try {
-            await sheetTab.copyPngToClipboard();
-            this.toastService.showToast('Record sheet copied to clipboard', 'success');
+            if (action === 'downloadSvg') {
+                await this.cardTab()?.downloadSvg();
+            } else {
+                await preview[action]();
+            }
+            if (action === 'copyPngToClipboard') {
+                this.toastService.showToast(`${label} copied to clipboard`, 'success');
+            }
         } catch {
-            this.toastService.showToast('Could not copy the record sheet image to the clipboard.', 'error');
+            this.toastService.showToast(`Could not export the ${label.toLowerCase()}.`, 'error');
         }
     }
 
@@ -105,6 +107,6 @@ export class UnitDetailsFooterComponent {
     }
 
     private formatUnitLabel(unit: UnitSummary): string {
-        return [unit.chassis, unit.model].filter(Boolean).join(' ') || unit.name;
+        return this.unitNames.name(unit);
     }
 }

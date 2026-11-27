@@ -3,14 +3,23 @@
 // Author: Drake
 
 import { Signal, computed, signal } from '@angular/core';
+import { battleArmorMyomerBoosterMp, isMascEquipment } from '../../../escalating-equipment.model';
+import {
+  isJumpBoosterEquipment,
+  isMechanicalJumpBoosterEquipment,
+  isPartialWingEquipment,
+} from '../../../jump-equipment.model';
 import {
   type MovementCalculationOptions,
+  type EntityDamageLocation,
+  type EntityMountedEquipment,
   type UnitSubtype,
   EntityType,
   EntityValidationMessage,
   requireArmorEquipment,
   TechRatingSource,
   WeightClass,
+  locationArmor,
 } from '../../types';
 import {
   getBattleArmorConstructionTech,
@@ -18,10 +27,19 @@ import {
 } from '../../components';
 import { InfantryBaseEntity } from './infantry-base-entity';
 import { EquipmentRegistry } from '../../../equipment-lookup';
+import { AmmoEquipment, WeaponEquipment, ammoMatchesWeapon } from '../../../equipment.model';
+import { isMagneticClampEquipment } from '../../../chassis-equipment.model';
+import {
+  isArmoredGloveEquipment,
+  isBasicManipulatorEquipment,
+  isBattleClawEquipment,
+} from '../../../battle-armor-equipment.model';
 
 // ============================================================================
 // BattleArmorEntity - powered-armor squads (Elemental, etc.)
 // ============================================================================
+
+export type BattleArmorChassisType = 'Biped' | 'Quad';
 
 export class BattleArmorEntity extends InfantryBaseEntity {
   override componentLocationOrder(): readonly string[] {
@@ -53,12 +71,8 @@ export class BattleArmorEntity extends InfantryBaseEntity {
 
   readonly trooperCount = this.squadSize;
   declaredWeightClass = signal<WeightClass>('Medium');
-  chassisType = signal<string>('Biped');
+  chassisType = signal<BattleArmorChassisType>('Biped');
   propulsionMP = signal<number>(0);
-  apMounts = signal<number>(0);
-  dwpCapacity = signal<number>(0);
-  sswmCapacity = signal<number>(0);
-  costKC = signal<number>(0);
 
   /** Quad BA turret config, e.g. "Modular:3" or "Standard:2" */
   turretConfig = signal<string>('');
@@ -75,16 +89,16 @@ export class BattleArmorEntity extends InfantryBaseEntity {
   readonly mechanizedCapable = computed(() => {
     if (this.chassisType() === 'Quad') return false;
 
-    const count = (flag: 'F_MAGNETIC_CLAMP' | 'F_BASIC_MANIPULATOR' | 'F_ARMORED_GLOVE' | 'F_BATTLE_CLAW') =>
-      this.equipment().filter(mount => mount.equipment?.hasFlag(flag)).length;
-    if (count('F_MAGNETIC_CLAMP') > 0) return true;
+    const count = (predicate: typeof isArmoredGloveEquipment) =>
+      this.equipment().filter(mount => predicate(mount.equipment)).length;
+    if (this.equipment().some(mount => isMagneticClampEquipment(mount.equipment))) return true;
 
-    const hasBasicManipulator = count('F_BASIC_MANIPULATOR') > 0;
-    const hasBattleClaw = count('F_BATTLE_CLAW') > 0;
+    const hasBasicManipulator = count(isBasicManipulatorEquipment) > 0;
+    const hasBattleClaw = count(isBattleClawEquipment) > 0;
     switch (this.weightClass()) {
       case 'Ultra Light':
       case 'Light':
-        return count('F_ARMORED_GLOVE') > 1 || hasBasicManipulator || hasBattleClaw;
+        return count(isArmoredGloveEquipment) > 1 || hasBasicManipulator || hasBattleClaw;
       case 'Medium':
       case 'Heavy':
         return hasBasicManipulator || hasBattleClaw;
@@ -102,22 +116,46 @@ export class BattleArmorEntity extends InfantryBaseEntity {
   readonly swarmAttackCapable = computed(() =>
     this.motiveType() !== 'UMU' && this.hasAntiMekManipulators());
 
-  override readonly canAntiMech = computed(() =>
-    this.legAttackCapable() || this.swarmAttackCapable(),
-  );
+  override canMakeLegAttacks(): boolean {
+    return this.legAttackCapable();
+  }
+
+  override canMakeSwarmAttacks(): boolean {
+    return this.swarmAttackCapable();
+  }
+
+  /** MML's general anti-Mek/BV rule; individual Leg and Swarm attacks have their own restrictions. */
+  override readonly canMakeAntiMekAttacks = computed(() => this.mechanizedCapable()
+    && this.weightClass() !== 'Heavy' && this.weightClass() !== 'Assault'
+    && this.motiveType() !== 'UMU' && !this.isBurdened());
+
+  carriesBodyMissileLauncher(mount: EntityMountedEquipment): boolean {
+    return this.techBase() !== 'Clan' && mount.baMountLocation === 'Body'
+      && mount.equipment instanceof WeaponEquipment && mount.equipment.hasFlag('F_MISSILE');
+  }
+
+  readonly isBurdened = computed(() => {
+    if (this.techBase() === 'Clan') return false;
+    return this.equipment().some(mount => {
+      const weapon = mount.equipment;
+      if (mount.baMountLocation !== 'Body' || !(weapon instanceof WeaponEquipment) || !weapon.hasFlag('F_MISSILE')) return false;
+      return !!weapon.oneShotCount || this.equipment().some(ammo => ammo.equipment instanceof AmmoEquipment && (ammo.getAmmoShots() ?? 0) > 0
+        && ammoMatchesWeapon(weapon, ammo.equipment));
+    });
+  });
 
   private hasAntiMekManipulators(): boolean {
-    if (this.chassisType().toLowerCase().includes('quad')) return false;
+    if (this.chassisType() === 'Quad') return false;
 
-    const count = (flag: 'F_BASIC_MANIPULATOR' | 'F_ARMORED_GLOVE' | 'F_BATTLE_CLAW') =>
-      this.equipment().filter(mount => mount.equipment?.hasFlag(flag)).length;
-    const basicManipulators = count('F_BASIC_MANIPULATOR');
-    const battleClaws = count('F_BATTLE_CLAW');
+    const count = (predicate: typeof isArmoredGloveEquipment) =>
+      this.equipment().filter(mount => predicate(mount.equipment)).length;
+    const basicManipulators = count(isBasicManipulatorEquipment);
+    const battleClaws = count(isBattleClawEquipment);
 
     switch (this.weightClass()) {
       case 'Ultra Light':
       case 'Light':
-        return count('F_ARMORED_GLOVE') > 1 || basicManipulators > 1 || battleClaws > 0;
+        return count(isArmoredGloveEquipment) > 1 || basicManipulators > 1 || battleClaws > 0;
       case 'Medium':
         return basicManipulators > 1 || battleClaws > 0;
       default:
@@ -147,12 +185,12 @@ export class BattleArmorEntity extends InfantryBaseEntity {
     const equipment = this.equipment();
     const weightClass = this.weightClass();
     let walkMP = this.originalWalkMP();
-    const hasMyomerBooster = equipment.some(mount => mount.equipment?.hasFlag('F_MASC'));
+    const hasMyomerBooster = equipment.some(mount => isMascEquipment(mount.equipment));
 
     if (hasMyomerBooster && !options.ignoreMyomerBooster) {
-      walkMP += weightClass === 'Heavy' || weightClass === 'Assault' ? 1 : 2;
+      walkMP += battleArmorMyomerBoosterMp(weightClass);
     } else if (!hasMyomerBooster
-      && equipment.some(mount => mount.equipment?.hasFlag('F_MECHANICAL_JUMP_BOOSTER'))) {
+      && equipment.some(mount => isMechanicalJumpBoosterEquipment(mount.equipment))) {
       walkMP++;
     }
 
@@ -166,31 +204,25 @@ export class BattleArmorEntity extends InfantryBaseEntity {
   }
 
   override computeJumpMP(options: MovementCalculationOptions): number {
+    if (!options.ignoreBurden && this.isBurdened()) return 0;
     const equipment = this.equipment();
     if (!options.ignoreDWP && equipment.some(mount => mount.isDWP)) return 0;
 
     let jumpMP = this.baseJumpMP();
-    if (jumpMP === 0 && equipment.some(mount => mount.equipment?.hasFlag('F_MECHANICAL_JUMP_BOOSTER'))) {
+    if (jumpMP === 0 && equipment.some(mount => isMechanicalJumpBoosterEquipment(mount.equipment))) {
       jumpMP = 1;
     }
-    if (jumpMP > 0 && equipment.some(mount => mount.equipment?.hasFlag('F_PARTIAL_WING'))) {
+    if (jumpMP > 0 && equipment.some(mount => isPartialWingEquipment(mount.equipment))) {
       jumpMP++;
     }
-    if (jumpMP > 0 && equipment.some(mount => mount.equipment?.hasFlag('F_JUMP_BOOSTER'))) {
+    if (jumpMP > 0 && equipment.some(mount => isJumpBoosterEquipment(mount.equipment))) {
       jumpMP++;
     }
     return jumpMP;
   }
 
   protected override computeMaximumArmorPoints(): number {
-    const maxPerTrooper: Partial<Record<WeightClass, number>> = {
-      'Ultra Light': 2,
-      'Light': 6,
-      'Medium': 10,
-      'Heavy': 14,
-      'Assault': 18,
-    };
-    return (maxPerTrooper[this.weightClass()] ?? 0) * this.trooperCount();
+    return (this.maxArmorValues().get('Squad') ?? 0) * this.trooperCount();
   }
 
   override totalArmorPoints = computed(() => {
@@ -202,6 +234,12 @@ export class BattleArmorEntity extends InfantryBaseEntity {
   //  LOCATION OVERRIDES
   // ═══════════════════════════════════════════════════════════════════════════
 
+  /** Construction uses one-based troopers; squad-support gear reserves space and mass on every suit. */
+  getConstructionEquipmentForTrooper(trooper: number): readonly EntityMountedEquipment[] {
+    return this.equipment().filter(mount => mount.allocation.kind === 'location'
+      && (mount.location === 'Squad' || mount.location === `Trooper ${trooper}` || mount.isSSWM));
+  }
+
   override get locationOrder(): readonly string[] {
     const locs: string[] = ['Squad'];
     for (let i = 1; i <= this.trooperCount(); i++) {
@@ -212,6 +250,17 @@ export class BattleArmorEntity extends InfantryBaseEntity {
 
   override get validLocations(): ReadonlySet<string> {
     return new Set(this.locationOrder);
+  }
+
+  override damageLocations(): readonly EntityDamageLocation[] {
+    const armor = this.armorValues().get('Squad') ?? locationArmor(0);
+    return Array.from({ length: this.trooperCount() }, (_, index) => ({
+      code: `Trooper ${index + 1}`,
+      sheetCode: `T${index + 1}`,
+      internalPoints: 1,
+      armor,
+      combinedPips: true,
+    }));
   }
 
   // ═══════════════════════════════════════════════════════════════════════════
@@ -234,12 +283,12 @@ export class BattleArmorEntity extends InfantryBaseEntity {
   protected override computeMaxArmor(
     _structureValues: Map<string, number>,
   ): Map<string, number> {
-    // BA armor points depend on weight class
+    // TechManual p. 169, Battle Armor Protection Table: maximum points per suit.
     const maxPerTrooper: Partial<Record<WeightClass, number>> = {
-      'Ultra Light': 2, 'Light': 5, 'Medium': 8, 'Heavy': 10, 'Assault': 14,
+      'Ultra Light': 2, 'Light': 6, 'Medium': 10, 'Heavy': 14, 'Assault': 18,
     };
-    const mx = maxPerTrooper[this.weightClass()] ?? 8;
-    const maxArmor = new Map<string, number>();
+    const mx = maxPerTrooper[this.weightClass()] ?? 0;
+    const maxArmor = new Map<string, number>([['Squad', mx]]);
     for (let i = 1; i <= this.trooperCount(); i++) {
       maxArmor.set(`Trooper ${i}`, mx);
     }

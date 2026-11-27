@@ -3,7 +3,7 @@
 // Author: Drake
 
 import { Rulebook, type RulesReference } from './common.model';
-import { GameSystem } from '../models/common.model';
+import { GameSystem } from './common.model';
 import type { ASUnitTypeCode } from './unit-summary.model';
 import { formatMovement } from '../utils/as-common.util';
 
@@ -53,7 +53,7 @@ export interface PilotAbility {
 
 /** Resolve the game-system-specific details for a pilot ability, with fallback. */
 export function getAbilityDetails(ability: PilotAbility, gameSystem: GameSystem): PilotAbilityRuleDetails {
-    return ability[gameSystem] ?? ability[gameSystem === GameSystem.ALPHA_STRIKE ? 'cbt' : 'as'] ?? { summary: [] };
+    return ability[gameSystem] ?? ability[gameSystem === GameSystem.AS ? 'cbt' : 'as'] ?? { summary: [] };
 }
 
 export interface ASCustomPilotAbility {

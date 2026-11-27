@@ -2,13 +2,20 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 // Author: Drake
 
-import type { MiscEquipment } from '../../equipment.model';
 import { EquipmentRegistry } from '../../equipment-lookup';
-import { ArmorEquipment } from '../../equipment.model';
-import type { CockpitType, EngineType, EntityTechBase, EquipmentTechBase } from '../types';
+import { ArmorEquipment, type MiscEquipment, WeaponEquipment } from '../../equipment.model';
+import type { CockpitType, EngineType, EntityMountedEquipment, EntityTechBase, EquipmentTechBase, MekLocation } from '../types';
+import { isQuadMekConfig } from '../types/mek';
+import type { MekEntity } from '../entities/mek/mek-entity';
 import type { HeatSinkType } from '../types/heat-sink';
 import { COCKPIT_DATA } from '../components/cockpit-data';
 import { GYRO_DATA, type GyroType } from '../components/gyro-data';
+import {
+  isCompactHeatSinkEquipment,
+  isDoubleHeatSinkEquipment,
+  isLaserHeatSinkEquipment,
+  isPrototypeDoubleHeatSinkEquipment,
+} from '../../heat-equipment.model';
 
 const FULL_HEAD_EJECTION_SYSTEM = 'Full Head Ejection System';
 const RISC_HEAT_SINK_OVERRIDE_KIT = 'RISC Heat Sink Override Kit';
@@ -55,7 +62,8 @@ export interface MtfEngineInfo {
 
 export interface MtfArmorInfo {
   readonly type: string;
-  readonly clanTech: boolean;
+  /** Null when the line has no tech designation; MegaMek then uses the unit's tech base. */
+  readonly techBase: EntityTechBase | null;
   readonly patchwork: boolean;
 }
 
@@ -130,8 +138,9 @@ export function encodeMtfStructure(
 
 export function decodeMtfArmor(value: string): MtfArmorInfo {
   const trimmed = value.trim();
+  const techBase = /\(Clan\)/i.test(trimmed) ? 'Clan' : /\((?:Inner Sphere|IS)\)/i.test(trimmed) ? 'IS' : null;
   if (trimmed.toLowerCase().includes('patchwork')) {
-    return { type: 'Patchwork', clanTech: trimmed.includes('(Clan)'), patchwork: true };
+    return { type: 'Patchwork', techBase, patchwork: true };
   }
   const type = trimmed
     .replace(/\s*\(Clan\)/i, '')
@@ -139,7 +148,7 @@ export function decodeMtfArmor(value: string): MtfArmorInfo {
     .replace(/\s*\(IS\)/i, '')
     .replace(/\s*Armor$/i, '')
     .trim() || 'Standard';
-  return { type, clanTech: trimmed.includes('(Clan)'), patchwork: false };
+  return { type, techBase, patchwork: false };
 }
 
 /**
@@ -208,11 +217,52 @@ export function decodeMtfHeatSinks(value: string): MtfHeatSinkConfiguration {
 
 export function encodeMtfHeatSinkType(equipment: MiscEquipment | null): string {
   if (!equipment) return 'Single';
-  if (equipment.hasFlag('F_IS_DOUBLE_HEAT_SINK_PROTOTYPE')) return 'Single';
-  if (equipment.isCompactHeatSink) return 'Compact';
-  if (equipment.hasFlag('F_LASER_HEAT_SINK')) return 'Laser';
-  if (equipment.hasFlag('F_DOUBLE_HEAT_SINK')) {
+  if (isPrototypeDoubleHeatSinkEquipment(equipment)) return 'Single';
+  if (isCompactHeatSinkEquipment(equipment)) return 'Compact';
+  if (isLaserHeatSinkEquipment(equipment)) return 'Laser';
+  if (isDoubleHeatSinkEquipment(equipment)) {
     return `${equipment.tech.base === 'Clan' ? 'Clan' : 'IS'} Double`;
   }
   return 'Single';
+}
+
+/** MTF crit-section order: biped */
+const CRIT_ORDER_BIPED: readonly MekLocation[] = ['LA', 'RA', 'LT', 'RT', 'CT', 'HD', 'LL', 'RL'];
+/** MTF crit-section order: quad */
+const CRIT_ORDER_QUAD: readonly MekLocation[] = ['FLL', 'FRL', 'LT', 'RT', 'CT', 'HD', 'RLL', 'RRL'];
+/** MTF crit-section order: tripod */
+const CRIT_ORDER_TRIPOD: readonly MekLocation[] = ['LA', 'RA', 'LT', 'RT', 'CT', 'HD', 'LL', 'RL', 'CL'];
+
+/**
+ * The order MTF files list their critical sections. Split weapons claim rows and mount tags are numbered in this
+ * order; MtfFile reads the legs first, but a leg never shares a split weapon.
+ */
+export function mtfCriticalSectionOrder(entity: Pick<MekEntity, 'chassisConfig'>): readonly MekLocation[] {
+  return entity.chassisConfig === 'Tripod' ? CRIT_ORDER_TRIPOD : isQuadMekConfig(entity.chassisConfig) ? CRIT_ORDER_QUAD : CRIT_ORDER_BIPED;
+}
+
+/** The weapons an MTF `Weapons:` list names. */
+export function mtfListedWeapons(entity: MekEntity): EntityMountedEquipment[] {
+  return entity
+    .equipment()
+    .filter((m) => m.allocation.kind === 'location' && m.location !== 'None' && m.equipment instanceof WeaponEquipment);
+}
+
+/**
+ * A split weapon's rows may end in a mount tag, `Autocannon/20 (R)#2`: rows of one equipment type with the same number
+ * belong to one mount. As in MtfFile, a tag is read only where it ends the row: `#` and a positive number without
+ * leading zeros, of any length (`#([1-9]\d*)$`), kept as written. Any other `#` word ending the row without a
+ * parenthesis is an unreadable tag; a `#` elsewhere, with nothing after it, or before a modifier such as
+ * `#2(ARMORED)`, stays part of the row, so the modifiers still apply.
+ */
+export function splitMtfMountTag(row: string): { text: string; tag?: string; malformed?: string } {
+  const suffix = /#([^\s#()]+)$/u.exec(row);
+  if (!suffix) return { text: row };
+  const text = row.slice(0, suffix.index);
+  return /^[1-9]\d*$/u.test(suffix[1]) ? { text, tag: suffix[1] } : { text, malformed: suffix[0] };
+}
+
+/** Mount tags number the mounts of one equipment type, however the file spells its name. */
+export function mtfMountKey(mount: EntityMountedEquipment): string {
+  return mount.equipment?.id ?? mount.equipmentId;
 }

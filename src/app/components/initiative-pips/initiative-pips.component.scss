@@ -1,0 +1,83 @@
+/*
+ * Compact: a honeycomb of 6px dots 2px apart, rows 1px apart. Every second row starts half a dot in and nests
+ * into the row above.
+ */
+:host {
+    --friendly-color: #5bb7e5;
+    --hostile-color: #e35845;
+    --dot-size: 6px;
+    display: flex;
+    flex-direction: column;
+    gap: 1px;
+    min-height: var(--dot-size);
+    isolation: isolate;
+}
+
+.row {
+    display: flex;
+    gap: 2px;
+
+    &:nth-child(even) {
+        padding-left: calc(var(--dot-size) / 2 + 1px);
+    }
+}
+
+:host(.large) {
+    --dot-size: 12px;
+
+    .row {
+        flex-wrap: wrap;
+        gap: 4px;
+    }
+}
+
+.dot {
+    --dot-color: var(--friendly-color);
+    position: relative;
+    flex: 0 0 auto;
+    inline-size: var(--dot-size);
+    block-size: var(--dot-size);
+
+    &::before {
+        content: '';
+        position: absolute;
+        inset: 0;
+        border-radius: 50%;
+        background: var(--dot-color);
+    }
+
+    &.hostile {
+        --dot-color: var(--hostile-color);
+
+        &::before {
+            border-radius: 1px;
+            transform: rotate(45deg) scale(0.85);
+        }
+    }
+
+    &.done::before {
+        background: color-mix(in srgb, var(--dot-color) 25%, var(--text-color-tertiary));
+    }
+
+    /* The selection whose turn it is: a ring drawn over the neighbours without taking space. */
+    &.next::before {
+        z-index: 1;
+        box-shadow: 0 0 0 1px var(--background-color-menu), 0 0 0 2.5px var(--bt-yellow);
+    }
+}
+
+/* Interactive pips are one control: a slightly larger target, all pips brighten together. */
+:host(.interactive) {
+    margin: -3px;
+    padding: 3px;
+    cursor: pointer;
+}
+
+:host(.interactive:hover) .dot::before,
+:host(.interactive:focus-visible) .dot::before {
+    filter: brightness(1.3);
+}
+
+:host(.large) .dot.next::before {
+    box-shadow: 0 0 0 1.5px var(--background-color-menu), 0 0 0 3.5px var(--bt-yellow);
+}

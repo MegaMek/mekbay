@@ -1,36 +1,30 @@
 // Copyright (C) 2026 The MegaMek Team
 // SPDX-License-Identifier: GPL-3.0-or-later
-// Author: Drake
 
 import { ChangeDetectionStrategy, Component, computed, inject, signal, viewChild } from '@angular/core';
 import { DIALOG_DATA, DialogRef } from '@angular/cdk/dialog';
+
+import type {
+    MekCriticalChanceModifier,
+    MekCriticalChanceResult,
+} from '../../models/runtime/mek-critical-hit-v2';
+import { mekCriticalChanceTotal, resolveMekCriticalChance } from '../../models/runtime/mek-critical-hit-v2';
 import { DiceRollerComponent } from '../dice-roller/dice-roller.component';
-import {
-    resolveMekCriticalChance,
-    type MekCriticalChanceModifier,
-    type MekCriticalChanceResult,
-} from '../../utils/mek-critical-hit.util';
 
 export interface MekCriticalChanceDialogData {
     readonly locationLabel: string;
     readonly canBlowOff: boolean;
-    readonly industrialMek: boolean;
+    readonly industrialMek?: boolean;
     readonly modifiers?: readonly MekCriticalChanceModifier[];
-    readonly initialResult?: MekCriticalChanceResult;
-    readonly initialRoll?: readonly [number, number];
-    readonly onResultChange?: (result: MekCriticalChanceResult | null) => void;
-    readonly onRollChange?: (roll: readonly [number, number]) => void;
-    readonly manual?: boolean;
 }
 
 @Component({
     selector: 'mek-critical-chance-dialog',
-    standalone: true,
     imports: [DiceRollerComponent],
     changeDetection: ChangeDetectionStrategy.OnPush,
     template: `
         <div class="panel glass preventZoomReset framed-borders has-shadow" (click)="$event.stopPropagation()">
-            <div class="header">Critical Chance: {{ data.locationLabel }}</div>
+            <div class="header">Critical Chance · {{ data.locationLabel }}</div>
             <div class="body">
                 <div class="critical-dialog-body">
                     <div class="roll-details critical-roll-details" aria-label="Critical chance modifiers">
@@ -112,76 +106,49 @@ export interface MekCriticalChanceDialogData {
                             </div>
                         </div>
                     </div>
-                    <div
-                        class="critical-random-row"
-                        [class.roll-disabled]="isRolling()"
-                        (click)="roll()"
-                    >
-                        <button
-                            class="random-button huge"
-                            type="button"
-                            aria-label="Roll critical chance"
-                            title="Roll critical chance"
-                            [disabled]="isRolling()"
-                        ></button>
-                        <div
-                            class="critical-dice-trigger"
-                            role="button"
-                            [attr.tabindex]="isRolling() ? -1 : 0"
-                            aria-label="Roll critical chance dice"
-                            [attr.aria-disabled]="isRolling()"
-                            (keydown.enter)="roll()"
-                            (keydown.space)="roll(); $event.preventDefault()"
-                        >
-                            <dice-roller
-                                #roller
-                                [diceCount]="2"
-                                [initialResults]="data.initialRoll ?? null"
-                                [modifier]="modifierTotal()"
-                                (finished)="onFinished($event)"
-                            />
-                        </div>
-                    </div>
+                    <dice-roller
+                        #roller
+                        [diceCount]="2"
+                        [modifier]="modifierTotal()"
+                        (finished)="onFinished($event)"
+                    />
                     <div class="critical-result-slot">
-                        <div class="critical-table-hint">
-                            {{ criticalTableHint() }}
+                        <div
+                            class="critical-result"
+                            [class.no-critical]="result()?.kind === 'none'"
+                            [class.result-slot-hidden]="!result()"
+                            aria-live="polite"
+                        >
+                            @if (result(); as currentResult) {
+                                {{ resultLabel(currentResult) }}
+                            } @else {
+                                No critical hits.
+                            }
+                        </div>
+                        <div class="critical-table-hint" [class.result-slot-hidden]="result()">
+                            @if (data.industrialMek) {
+                                2–7: None | 8–9: 1 | 10–11: 2 | 12–13: {{ data.canBlowOff ? 'blow off' : '3' }} | 14: {{ data.canBlowOff ? 'blow off' : '4' }}
+                            } @else {
+                                2–7: No Critical | 8–9: 1 | 10–11: 2 | 12: {{ data.canBlowOff ? 'blow off' : '3' }}
+                            }
                         </div>
                     </div>
                 </div>
             </div>
-            <div class="actions critical-dismiss-actions">
-                @if (result(); as currentResult) {
-                    <div class="critical-chance-options rolled-result-action">
-                        <button
-                            class="bt-button critical-result-action"
-                            [class.success]="currentResult.kind === 'none'"
-                            [class.danger]="currentResult.kind !== 'none'"
-                            type="button"
-                            [disabled]="isRolling()"
-                            (click)="continueWith(currentResult)"
-                        >
-                            {{ continueLabel(currentResult) }}
-                        </button>
-                    </div>
-                } @else {
-                    <div class="critical-manual-results">
-                        <div class="critical-manual-results-label">Criticals</div>
-                        <div class="critical-chance-options" aria-label="Set critical hit count manually">
-                            @for (manualResult of manualResults; track manualResult.label) {
-                                <button
-                                    class="bt-button"
-                                    [class.success]="manualResult.result.kind === 'none'"
-                                    [class.primary]="manualResult.result.kind !== 'none'"
-                                    type="button"
-                                    [disabled]="isRolling()"
-                                    (click)="continueWith(manualResult.result)">{{ manualResult.label }}</button>
-                            }
-                        </div>
-                    </div>
-                }
-                <button class="bt-button" type="button" [disabled]="isRolling()" (click)="close()">
-                    {{ data.manual ? 'CANCEL' : 'CLOSE' }}
+            <div class="actions critical-chance-actions">
+                <button class="bt-button" type="button" [disabled]="roller.isRolling()" (click)="roll()">
+                    {{ result() ? 'ROLL AGAIN' : 'ROLL 2D6' }}
                 </button>
+                <button
+                    class="bt-button primary critical-action"
+                    type="button"
+                    [disabled]="!canContinue()"
+                    [class.action-unavailable]="!canContinue()"
+                    (click)="continueWithCurrentResult()"
+                >
+                    {{ result() ? continueLabel(result()!) : '' }}
+                </button>
+                <button class="bt-button" type="button" (click)="close()">DISMISS</button>
             </div>
         </div>
     `,
@@ -194,44 +161,39 @@ export class MekCriticalChanceDialogComponent {
     private readonly dialogRef = inject(DialogRef<MekCriticalChanceResult | undefined>);
     readonly data = inject<MekCriticalChanceDialogData>(DIALOG_DATA);
     readonly roller = viewChild<DiceRollerComponent>('roller');
-    readonly result = signal<MekCriticalChanceResult | null>(this.data.initialResult ?? null);
+    readonly result = signal<MekCriticalChanceResult | null>(null);
     readonly modifiers = this.data.modifiers ?? [];
     readonly isRolling = computed(() => this.roller()?.isRolling() ?? false);
+    readonly canContinue = computed(() => {
+        const result = this.result();
+        return !this.isRolling() && result !== null && result.kind !== 'none';
+    });
     private readonly optionalModifiers = signal(new Set(
         this.modifiers.filter(modifier => modifier.optional && modifier.enabled !== false)
             .map(modifier => modifier.label),
     ));
     readonly situationalModifierEnabled = signal(false);
     readonly situationalModifier = signal(0);
-    readonly manualResults: readonly { label: string; result: MekCriticalChanceResult }[] = [
-        { label: 'NO CRITICAL', result: { kind: 'none' } },
-        { label: '1', result: { kind: 'critical-hits', count: 1 } },
-        { label: '2', result: { kind: 'critical-hits', count: 2 } },
-        {
-            label: this.data.canBlowOff ? 'BLOWN OFF' : '3',
-            result: resolveMekCriticalChance(12, this.data.canBlowOff, this.data.industrialMek),
-        },
-    ];
     readonly modifierTotal = computed(() => this.modifiers.reduce((total, modifier) =>
         total + (!modifier.optional || this.optionalModifiers().has(modifier.label) ? modifier.value : 0),
     this.situationalModifierEnabled() ? this.situationalModifier() : 0));
 
     roll(): void {
-        if (this.isRolling()) return;
+        this.result.set(null);
         this.roller()?.roll();
     }
 
     onFinished(event: { readonly results: readonly number[] }): void {
-        if (event.results.length === 2) {
-            this.data.onRollChange?.([event.results[0], event.results[1]]);
-        }
         this.resolveRoll(event.results.reduce((total, die) => total + die, 0));
     }
 
     private resolveRoll(raw: number): void {
-        const modifier = this.modifierTotal();
-        const modified = Math.min(this.data.industrialMek ? 14 : 12, raw + modifier);
-        this.setResult(resolveMekCriticalChance(modified, this.data.canBlowOff, this.data.industrialMek));
+        const modified = mekCriticalChanceTotal(raw, this.modifierTotal(), this.data.industrialMek);
+        this.result.set(resolveMekCriticalChance(
+            modified,
+            this.data.canBlowOff,
+            this.data.industrialMek ?? false,
+        ));
     }
 
     optionalModifierEnabled(modifier: MekCriticalChanceModifier): boolean {
@@ -262,7 +224,7 @@ export class MekCriticalChanceDialogComponent {
         const roller = this.roller();
         const results = roller?.diceResults();
         if (!roller?.rollFinished() || !results || results.some(value => value === null)) {
-            this.setResult(null);
+            this.result.set(null);
             return;
         }
         this.resolveRoll(results.reduce<number>((total, die) => total + (die ?? 0), 0));
@@ -272,33 +234,25 @@ export class MekCriticalChanceDialogComponent {
         return value >= 0 ? `+${value}` : String(value);
     }
 
+    resultLabel(result: MekCriticalChanceResult): string {
+        if (result.kind === 'none') return 'No critical hits.';
+        if (result.kind === 'blown-off') return 'Location blown off!';
+        return `${result.count} critical hit${result.count === 1 ? '' : 's'}.`;
+    }
+
     continueLabel(result: MekCriticalChanceResult): string {
-        if (result.kind === 'none') return 'NO CRITICAL HITS';
+        if (result.kind === 'none') return '';
         if (result.kind === 'blown-off') return 'APPLY BLOWN-OFF';
         return `APPLY ${result.count} CRITICAL${result.count === 1 ? '' : 'S'}`;
     }
 
-    criticalTableHint(): string {
-        const twelve = this.data.canBlowOff ? 'blow off' : '3';
-        if (!this.data.industrialMek) {
-            return `2–7: No Critical | 8–9: 1 | 10–11: 2 | 12: ${twelve}`;
-        }
-        const fourteen = this.data.canBlowOff ? 'blow off' : '4';
-        return `2–7: No Critical | 8–9: 1 | 10–11: 2 | 12–13: ${twelve} | 14+: ${fourteen}`;
-    }
-
-    continueWith(result: MekCriticalChanceResult): void {
-        this.setResult(result);
+    continueWithCurrentResult(): void {
+        const result = this.result();
+        if (!result || result.kind === 'none') return;
         this.dialogRef.close(result);
     }
 
     close(): void {
-        if (this.isRolling()) return;
-        this.dialogRef.close(undefined);
-    }
-
-    private setResult(result: MekCriticalChanceResult | null): void {
-        this.result.set(result);
-        this.data.onResultChange?.(result);
+        this.dialogRef.close();
     }
 }

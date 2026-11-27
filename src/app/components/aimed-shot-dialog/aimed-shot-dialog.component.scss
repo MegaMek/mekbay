@@ -1,0 +1,139 @@
+@use '../attack-report/attack-dialog';
+
+:host {
+    display: block;
+    // The line green of a location a shot may be aimed at, and the muted line of everything else.
+    --aim-line: #4dff73;
+    --aim-faint: #5d7468;
+    --aim-ground: #12181a;
+}
+
+@include attack-dialog.frame(420px, 760px);
+
+// The rear armor diagram stands beside the front one.
+.panel.with-rear {
+    width: min(560px, calc(100vw - 24px));
+}
+
+.aim-body {
+    display: grid;
+    gap: 10px;
+}
+
+.aim-context {
+    display: grid;
+    gap: 2px;
+    padding: 8px 10px;
+    border-left: 3px solid var(--aim-line);
+    background: var(--background-input);
+
+    strong { overflow-wrap: anywhere; }
+    span { color: var(--text-color-secondary); font-size: 0.78em; }
+}
+
+.aim-normal {
+    margin-left: 6px;
+    font-variant-numeric: tabular-nums;
+}
+
+.aim-dolls {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    padding: 6px;
+    border: 1px solid var(--aim-faint);
+    border-radius: 4px;
+    background: var(--aim-ground);
+}
+
+.aim-doll {
+    display: block;
+    flex: 1.7 1 0;
+    min-width: 0;
+    max-height: min(460px, 60dvh);
+}
+
+.aim-rear {
+    display: grid;
+    flex: 1 1 0;
+    min-width: 0;
+    gap: 4px;
+    justify-items: center;
+
+    .aim-doll {
+        width: 100%;
+    }
+}
+
+.aim-caption {
+    color: var(--text-color-secondary);
+    font-size: 0.72em;
+    font-weight: 700;
+    letter-spacing: 0.06em;
+    text-transform: uppercase;
+}
+
+// The art and its labels are built at run time, outside the component's style scope. Only the locations are drawn,
+// one outline each on the dark ground: faint, and green where a shot may be aimed. The rest of the sheet's line art
+// (its second contour, pip rails, transfer arrows) is left out.
+:host ::ng-deep .aim-doll {
+    path,
+    polygon,
+    polyline,
+    rect,
+    circle,
+    ellipse,
+    line {
+        display: none;
+    }
+
+    .aim-region {
+        display: inline;
+        fill: rgba(93, 116, 104, 0.08) !important;
+        stroke: var(--aim-faint) !important;
+        stroke-width: 1px !important;
+    }
+
+    .aim-region.aimable {
+        fill: rgba(77, 255, 115, 0.07) !important;
+        stroke: var(--aim-line) !important;
+        stroke-width: 1.6px !important;
+        cursor: pointer;
+        outline: none;
+    }
+
+    .aim-region.aimable:hover,
+    .aim-region.aimable:focus-visible {
+        fill: rgba(77, 255, 115, 0.25) !important;
+    }
+
+    .aim-region.aimed {
+        fill: rgba(77, 255, 115, 0.42) !important;
+        stroke-width: 2.6px !important;
+    }
+
+    .aim-label {
+        pointer-events: none;
+        fill: #f1f4f0;
+        stroke: var(--aim-ground);
+        stroke-width: 3px;
+        paint-order: stroke;
+        stroke-linejoin: round;
+        text-anchor: middle;
+        font-weight: 800;
+        font-variant-numeric: tabular-nums;
+    }
+
+    // Structure showing through spent armor.
+    .aim-label.exposed {
+        fill: #e6c991;
+    }
+
+    .aim-label.target-number {
+        fill: #82e2ce;
+    }
+
+    .aim-label.unavailable {
+        fill: #5f6b69;
+    }
+}

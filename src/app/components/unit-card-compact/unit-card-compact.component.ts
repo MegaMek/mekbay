@@ -2,8 +2,8 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 // Author: Drake
 
+import { UnitNameService } from '../../services/unit-name.service';
 import { ChangeDetectionStrategy, Component, computed, inject, input, output } from '@angular/core';
-import { CommonModule } from '@angular/common';
 import type { UnitSummary } from '../../models/unit-summary.model';
 import { GameSystem } from '../../models/common.model';
 import { UnitIconComponent } from '../unit-icon/unit-icon.component';
@@ -23,11 +23,12 @@ import { FormatTonsPipe } from '../../pipes/format-tons.pipe';
 @Component({
     selector: 'unit-card-compact',
     changeDetection: ChangeDetectionStrategy.OnPush,
-    imports: [CommonModule, UnitIconComponent, UnitTagsComponent, AdjustedBV, AdjustedPV, FormatNumberPipe, FormatTonsPipe],
+    imports: [UnitIconComponent, UnitTagsComponent, AdjustedBV, AdjustedPV, FormatNumberPipe, FormatTonsPipe],
     templateUrl: './unit-card-compact.component.html',
     styleUrl: './unit-card-compact.component.css'
 })
 export class UnitCardCompactComponent {
+    readonly unitNames = inject(UnitNameService);
     gameService = inject(GameService);
 
     /** The unit to display. If null/undefined, shows "NO UNIT" placeholder. */
@@ -38,7 +39,7 @@ export class UnitCardCompactComponent {
 
     isAlphaStrike = computed<boolean>(() => {
         const gs = this.gameSystem();
-        return gs != null ? gs === GameSystem.ALPHA_STRIKE : this.gameService.isAlphaStrike();
+        return gs != null ? gs === GameSystem.AS : this.gameService.isAlphaStrike();
     });
 
     /** Whether to show the info button */

@@ -22,7 +22,7 @@ export class LongPressDirective {
     
     private longPressed = false;
     private el = inject(ElementRef<HTMLElement>);
-    private timeoutId: any;
+    private timeoutId: ReturnType<typeof setTimeout> | undefined;
     private startX = 0;
     private startY = 0;
     private pointerId?: number;

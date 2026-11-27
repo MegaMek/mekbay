@@ -3,30 +3,35 @@
 // Author: Drake
 
 import { GameSystem } from './common.model';
-import type { CBTSerializedUnit, SerializedForce } from './force-serialization';
-import { createLoadForceEntry, createLoadForceEntryFromSerializedForce, LoadForceEntry, type RemoteLoadForceEntry } from './load-force-entry.model';
+import { createForcePreviewEntry, createForcePreviewEntryFromSerializedForce } from './force-preview.model';
+import type { RemoteLoadForceEntry } from './remote-load-force-entry.model';
+import type { SerializedForce } from './force-serialization';
+import { asUnitUuid } from '../services/unit-catalog/unit-catalog.types';
 
-describe('createLoadForceEntry', () => {
+describe('createForcePreviewEntry', () => {
     const resolvedUnit = { name: 'Atlas AS7-D', type: 'Mek' } as any;
     const resolvedFaction = { id: 1, name: 'Mercenary' } as any;
     const resolvedEra = { id: 3025, name: 'Succession Wars' } as any;
     const resolver = {
-        getUnitByName: (name: string) => name === 'Atlas AS7-D' ? resolvedUnit : undefined,
+        getUnitByIdentifier: (name: string) => name === 'Atlas AS7-D' ? resolvedUnit : undefined,
+        getUnitByUuid: () => resolvedUnit,
+        getUnitByIdentity: () => resolvedUnit,
         getFactionById: (id: number) => id === 1 ? resolvedFaction : undefined,
         getEraById: (id: number) => id === 3025 ? resolvedEra : undefined,
     };
 
-    it('wraps remote preview data in a saved entry and links groups back to the entry', () => {
+    it('builds saved preview data and links groups back to the entry', () => {
         const raw: RemoteLoadForceEntry = {
             owned: true,
             instanceId: 'force-1',
             name: 'Alpha Lance',
             note: 'Fast cavalry reserve.',
             tags: ['Recon', 'Skirmish'],
-            type: GameSystem.ALPHA_STRIKE,
+            type: GameSystem.AS,
             factionId: 1,
             eraId: 3025,
             pv: 123,
+            reserveCount: 3,
             timestamp: '2026-04-16T00:00:00.000Z',
             groups: [{
                 name: 'Striker',
@@ -42,14 +47,17 @@ describe('createLoadForceEntry', () => {
                 }],
             }],
         };
+        Object.freeze(raw.groups![0].units[0]);
+        Object.freeze(raw.groups![0].units);
+        Object.freeze(raw.groups![0]);
 
-        const result = createLoadForceEntry(raw, resolver, { cloud: true });
+        const result = createForcePreviewEntry(raw, resolver, { cloud: true });
 
-        expect(result instanceof LoadForceEntry).toBe(true);
         expect(result.cloud).toBe(true);
         expect(result.local).toBe(false);
         expect(result.note).toBe('Fast cavalry reserve.');
         expect(result.tags).toEqual(['Recon', 'Skirmish']);
+        expect(result.reserveCount).toBe(3);
         expect(result.faction).toBe(resolvedFaction);
         expect(result.era).toBe(resolvedEra);
         expect(result.groups[0]).toEqual(jasmine.objectContaining({
@@ -63,79 +71,36 @@ describe('createLoadForceEntry', () => {
             skill: 3,
             commander: true,
         }));
+        const another = createForcePreviewEntry(raw, resolver);
+        result.groups[0].units[0].alias = 'Edited preview';
+        expect(another.groups[0].units[0].alias).toBe('Ace');
+        expect(raw.groups![0].units[0].alias).toBe('Ace');
+        expect(another.groups[0].force).toBe(another);
     });
-});
 
-describe('createLoadForceEntryFromSerializedForce', () => {
-    const resolvedUnit = { name: 'Atlas AS7-D', type: 'Mek' } as any;
-    const resolvedFaction = { id: 1, name: 'Mercenary' } as any;
-    const resolvedEra = { id: 3025, name: 'Succession Wars' } as any;
-    const resolver = {
-        getUnitByName: (name: string) => name === 'Atlas AS7-D' ? resolvedUnit : undefined,
-        getFactionById: (id: number) => id === 1 ? resolvedFaction : undefined,
-        getEraById: (id: number) => id === 3025 ? resolvedEra : undefined,
-    };
-
-    it('wraps serialized force data in a saved entry and preserves unit crew stats', () => {
-        const serializedUnit: CBTSerializedUnit = {
-            id: 'cbt-1',
-            unit: 'Atlas AS7-D',
-            commander: false,
-            state: {
-                destroyed: false,
-                modified: false,
-                crew: [
-                    { id: 0, name: 'Pilot 1', gunnerySkill: 4, pilotingSkill: 5, hits: 0, state: 0 },
-                    { id: 1, name: 'Pilot 2', gunnerySkill: 3, pilotingSkill: 4, hits: 0, state: 0 },
-                ],
-                crits: [],
-                locations: {},
-                heat: {
-                    current: 0,
-                    previous: 0,
-                },
-            },
-        };
-
+    it('owns normalized save preview groups independently of the save and other previews', () => {
         const raw: SerializedForce = {
-            version: 1,
-            owned: true,
-            instanceId: 'force-2',
-            name: 'Classic Lance',
-            note: 'House guard detachment.',
-            tags: ['Guard', '3025'],
-            type: GameSystem.CLASSIC,
-            factionId: 1,
-            eraId: 3025,
-            bv: 1400,
-            timestamp: '2026-04-16T00:00:00.000Z',
-            groups: [{
-                id: 'group-1',
-                name: 'Command Lance',
-                formationId: 'command-lance',
-                units: [serializedUnit],
-            }],
-        } as SerializedForce;
+            version: 2, instanceId: 'force', timestamp: '', type: GameSystem.AS, name: 'Force',
+            personnel: {
+                people: [{ id: 'person', name: 'Ace', gunnery: 3 }],
+                assignments: [{ unitId: 'unit', positionId: 'pilot', personId: 'person' }],
+            },
+            groups: [{ id: 'group', name: 'Lance', units: [{ id: 'unit', uuid: asUnitUuid('019f6767-0dcb-7bb8-992f-aef08202f5e2') }] }],
+        };
+        Object.freeze(raw.groups![0].units[0]);
+        Object.freeze(raw.groups![0].units);
+        Object.freeze(raw.groups![0]);
 
-        const result = createLoadForceEntryFromSerializedForce(raw, resolver, { local: true });
+        const first = createForcePreviewEntryFromSerializedForce(raw, resolver);
+        const second = createForcePreviewEntryFromSerializedForce(raw, resolver);
+        first.groups[0].name = 'Edited lance';
+        first.groups[0].units[0].alias = 'Edited pilot';
 
-        expect(result instanceof LoadForceEntry).toBe(true);
-        expect(result.local).toBe(true);
-        expect(result.cloud).toBe(false);
-        expect(result.bv).toBe(1400);
-        expect(result.note).toBe('House guard detachment.');
-        expect(result.tags).toEqual(['Guard', '3025']);
-        expect(result.groups[0]).toEqual(jasmine.objectContaining({
-            name: 'Command Lance',
-            formationId: 'command-lance',
-            force: result,
-        }));
-        expect(result.groups[0].units[0]).toEqual(jasmine.objectContaining({
-            unit: resolvedUnit,
-            gunnery: 3,
-            piloting: 4,
-        }));
-        expect(result.faction).toBe(resolvedFaction);
-        expect(result.era).toBe(resolvedEra);
+        expect(first.groups[0].force).toBe(first);
+        expect(second.groups[0].force).toBe(second);
+        expect(second.groups[0].name).toBe('Lance');
+        expect(second.groups[0].units[0].alias).toBe('Ace');
+        expect(raw.groups![0].name).toBe('Lance');
+        expect(raw.personnel!.people[0].name).toBe('Ace');
     });
 });

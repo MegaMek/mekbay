@@ -7,7 +7,9 @@ import { encodeBlkArmorTechLevel, encodeBlkArmorType } from '../parsers/blk-code
 import {
   BuildingBlockWriter,
   writeFluffBlocks,
+  writeEmbeddedImages,
   writeSource,
+  writeManualBV,
   writeBlkPreamble,
 } from './building-block-writer';
 import { encodeEquipmentLine } from './equipment-encoder';
@@ -72,12 +74,14 @@ export function writeBlkBA(entity: BattleArmorEntity): string {
 
   // ── Section 7: Source ──
   writeSource(w, entity);
+  writeManualBV(w, entity);
 
   // ── Section 8: BA tail fields ──
-  if (entity.chassisType()) w.addBlock('chassis', entity.chassisType());
+  w.addBlock('chassis', entity.chassisType().toLowerCase());
   const turretCfg = entity.turretConfig();
   if (turretCfg) w.addBlock('turret', turretCfg);
   if (entity.isExoskeleton()) w.addBlock('exoskeleton', 'true');
+  if (entity.clanExoWithoutHarJel()) w.addBlock('clan_exo_without_harjel', 'true');
 
   w.addBlock('jumpingMP', Math.max(entity.baseJumpMP(), entity.umuMP()));
 
@@ -94,5 +98,7 @@ export function writeBlkBA(entity: BattleArmorEntity): string {
 
   // NOTE: No tonnage block for BattleArmor - matches Java reference output
 
-  return w.toString();
+  writeEmbeddedImages(w, entity);
+
+  return w.toString(entity.nativeSourceTrailingNewlines || 2);
 }

@@ -19,7 +19,7 @@ describe('equipment link rules', () => {
     const isPpc = weapon('PPC', {}, ['F_PPC','F_PPC_CAPACITOR_COMPATIBLE']);
     const heavyPpc = weapon('Heavy PPC', {}, ['F_PPC','F_PPC_CAPACITOR_COMPATIBLE']);
     const clanErPpc = weapon('CLERPPC', {}, ['F_PPC','F_PPC_CAPACITOR_COMPATIBLE'], 'Clan');
-    const laser = weapon('laser', {}, ['F_LASER']);
+    const laser = weapon('laser', {}, ['F_LASER', 'F_RISC_LASER_PULSE_COMPATIBLE']);
     const pulseLaser = weapon('pulse', {}, ['F_LASER', 'F_PULSE']);
     const clanLaser = weapon('clan-laser', {}, ['F_LASER'], 'Clan');
 
@@ -39,9 +39,13 @@ describe('equipment link rules', () => {
     expect(canLinkEquipment(capacitor, clanErPpc, { year: 3100 })).toBeFalse();
     expect(canLinkEquipment(capacitor, clanErPpc, { year: 3101 })).toBeTrue();
     expect(canLinkEquipment(pulseModule, laser, { year: 3145 })).toBeTrue();
+    expect(canLinkEquipment(pulseModule, weapon('Bombast Laser', {}, ['F_LASER']), { year: 3145 })).toBeFalse();
+    expect(canLinkEquipment(pulseModule, weapon('ISRISCHyperLaser', {}, ['F_LASER']), { year: 3145 })).toBeFalse();
     expect(canLinkEquipment(pulseModule, pulseLaser, { year: 3145 })).toBeFalse();
     expect(canLinkEquipment(pulseModule, clanLaser, { year: 3145 })).toBeFalse();
-    expect(canLinkEquipment(insulator, pulseLaser, { year: 3145 })).toBeTrue();
+    expect(canLinkEquipment(insulator, pulseLaser, { year: 3145, tonnage: 200 })).toBeTrue();
+    expect(canLinkEquipment(insulator, pulseLaser, { year: 3145, tonnage: 201 })).toBeFalse();
+    expect(canLinkEquipment(insulator, weapon('Naval Laser', { capital: true }, ['F_LASER']), { year: 3145 })).toBeFalse();
   });
 
   it('requires source and target to occupy the same location', () => {
@@ -70,6 +74,13 @@ describe('equipment link rules', () => {
 
     expect(isArtemisCompatibleWeapon(compatible)).toBeTrue();
     expect(isArtemisCompatibleWeapon(incompatible)).toBeFalse();
+  });
+
+  it('preserves Core 2026 Artemis IV compatibility for Extended LRMs', () => {
+    // Core Rulebook pp.186,192 explicitly includes ELRMs; older TO:AUE differs.
+    const launcher = weapon('Extended LRM', { ammoType: 'EXLRM' }, ['F_ARTEMIS_COMPATIBLE']);
+    expect(isArtemisCompatibleWeapon(launcher.equipment)).toBeTrue();
+    expect(canLinkEquipment(enhancement('artemis', 'F_ARTEMIS'), launcher, { year: 3145 })).toBeTrue();
   });
 });
 

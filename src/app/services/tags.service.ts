@@ -4,7 +4,7 @@
 
 import { Injectable, inject, signal } from '@angular/core';
 import { DbService, type TagData, type TagEntry, type UnitTagData, type TagOp, type StoredTags, type StoredChassisTags } from './db.service';
-import { WsService } from './ws.service';
+import { WsService, type WsMessage } from './ws.service';
 import { UserStateService } from './userState.service';
 import { LoggerService } from './logger.service';
 import { DialogsService } from './dialogs.service';
@@ -57,13 +57,13 @@ interface TagKeyMigration {
     readonly chassisKeysByLegacyKey: ReadonlyMap<string, readonly string[]>;
 }
 
-interface RemoteTagState {
-    readonly serverTs?: number;
+type RemoteTagState = WsMessage & {
+    readonly serverTs: number;
     readonly ops?: TagOp[];
     readonly fullState?: TagData;
     readonly formatVersion?: TagData['formatVersion'];
-}
-
+};
+type TagOpsUpdate = WsMessage & { readonly ops: TagOp[] };
 @Injectable({
     providedIn: 'root'
 })
@@ -374,8 +374,8 @@ export class TagsService {
      * @param action 'add' to add the tag, 'remove' to remove it
      */
     public async modifyTag(
-        units: UnitSummary[], 
-        tag: string, 
+        units: UnitSummary[],
+        tag: string,
         tagType: 'name' | 'chassis',
         action: 'add' | 'remove',
         quantity: number = 1
@@ -918,22 +918,49 @@ export class TagsService {
 
     private removeNameTagsCoveredByChassis(tagData: TagData, units: UnitSummary[], timestamp: number): TagOp[] {
         const ops: TagOp[] = [];
-        const processedUnitTags = new Set<string>();
-
+        const chassisKeysByUnitKey = new Map<string, Set<string>>();
+        const orderedUnitKeys: string[] = [];
         for (const unit of units) {
             const unitKey = TagsService.getUnitTagKey(unit);
-            const chassisKey = TagsService.getChassisTagKey(unit);
-            for (const [tagId, entry] of Object.entries(tagData.tags)) {
-                const processedKey = `${unitKey}\0${tagId}`;
-                if (processedUnitTags.has(processedKey)) {
-                    continue;
-                }
+            let chassisKeys = chassisKeysByUnitKey.get(unitKey);
+            if (!chassisKeys) {
+                chassisKeys = new Set<string>();
+                chassisKeysByUnitKey.set(unitKey, chassisKeys);
+                orderedUnitKeys.push(unitKey);
+            }
+            chassisKeys.add(TagsService.getChassisTagKey(unit));
+        }
 
-                if (entry.units[unitKey] !== undefined && entry.chassis[chassisKey] !== undefined) {
-                    processedUnitTags.add(processedKey);
-                    this.removeUnitTag(tagData, tagId, unitKey);
-                    ops.push({ k: unitKey, t: entry.label, c: TAG_CATEGORY.name, a: TAG_ACTION.remove, ts: timestamp });
+        const tagEntriesByUnitKey = new Map<string, Array<{
+            readonly tagId: string;
+            readonly entry: TagEntry;
+        }>>();
+        for (const [tagId, entry] of Object.entries(tagData.tags)) {
+            for (const unitKey of Object.keys(entry.units)) {
+                const entries = tagEntriesByUnitKey.get(unitKey) ?? [];
+                entries.push({ tagId, entry });
+                tagEntriesByUnitKey.set(unitKey, entries);
+            }
+        }
+
+        for (const unitKey of orderedUnitKeys) {
+            const chassisKeys = chassisKeysByUnitKey.get(unitKey)!;
+            for (const { tagId, entry } of tagEntriesByUnitKey.get(unitKey) ?? []) {
+                let coveredByChassis = false;
+                for (const chassisKey of chassisKeys) {
+                    if (entry.chassis[chassisKey] === undefined) continue;
+                    coveredByChassis = true;
+                    break;
                 }
+                if (!coveredByChassis) continue;
+                this.removeUnitTag(tagData, tagId, unitKey);
+                ops.push({
+                    k: unitKey,
+                    t: entry.label,
+                    c: TAG_CATEGORY.name,
+                    a: TAG_ACTION.remove,
+                    ts: timestamp,
+                });
             }
         }
 
@@ -1064,7 +1091,7 @@ export class TagsService {
 
         // Request server state info (timestamp) and any ops since our last sync
         let response = await this.requestCloudTagState(uuid, syncState.lastSyncTs);
-        if (response && (response.serverTs ?? 0) > 0 && !response.fullState
+        if (response && response.serverTs > 0 && !response.fullState
             && (response.formatVersion ?? TAG_FORMAT_VERSION) < TAG_FORMAT_VERSION) {
             // An older-format cloud copy is replaced below, so build the
             // replacement from all of it rather than from ops since lastSyncTs.
@@ -1072,7 +1099,7 @@ export class TagsService {
         }
         if (!response) return false;
 
-        const serverTs = response.serverTs ?? 0;
+        const { serverTs } = response;
         const upgradeRemote = (response.fullState?.formatVersion ?? TAG_FORMAT_VERSION) < TAG_FORMAT_VERSION;
         if (upgradeRemote) {
             // An older cloud copy always arrives as full state; its ops are never applied.
@@ -1130,7 +1157,7 @@ export class TagsService {
 
     /** getTagOps: the ops since `since`, or the full state; null when the server reports an error. */
     private async requestCloudTagState(uuid: string, since: number): Promise<RemoteTagState | null> {
-        const response = await this.wsService.sendAndWaitForResponse({
+        const response = await this.wsService.sendAndWaitForResponse<RemoteTagState>({
             action: 'getTagOps',
             uuid,
             since
@@ -1246,10 +1273,8 @@ export class TagsService {
     /** Register WebSocket handlers for real-time updates from other sessions */
     public registerWsHandlers(): void {
         // Handle remote tag operations from other sessions of the same user
-        this.wsService.registerMessageHandler('tagOps', async (msg) => {
-            if (msg.ops) {
-                await this.handleRemoteTagOps(msg.ops);
-            }
+        this.wsService.registerMessageHandler<TagOpsUpdate>('tagOps', async (msg) => {
+            await this.handleRemoteTagOps(msg.ops);
         });
 
         // Handle state reset notification - another session did a full state replacement

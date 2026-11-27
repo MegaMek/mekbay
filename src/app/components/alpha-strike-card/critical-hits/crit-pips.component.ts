@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 // Author: Drake
 
-import { Component, ChangeDetectionStrategy, input, computed } from '@angular/core';
+import { Component, ChangeDetectionStrategy, input, computed, signal, viewChild, ElementRef, DestroyRef, inject, afterNextRender, afterRenderEffect } from '@angular/core';
 import type { ASForceUnit } from '../../../models/as-force-unit.model';
 
 /*
@@ -12,87 +12,85 @@ import type { ASForceUnit } from '../../../models/as-force-unit.model';
  */
 
 @Component({
-    selector: 'as-crit-pips',
+    selector: 'g[as-crit-pips]',
     changeDetection: ChangeDetectionStrategy.OnPush,
     template: `
         @if (showNumeric()) {
-            <span class="pip-count" 
-                  [class.damaged]="isDamaged(0)"
+            <svg:text #count x="0.52" y="0.88" class="pip-count"
                   [class.pending-damage]="pendingChange() > 0"
                   [class.pending-heal]="pendingChange() < 0">
-                {{ committedHits() }}@if (pendingChange() !== 0) {<span class="pending-delta">{{ pendingDelta() }}</span>}
-                
-            </span>
-            <svg class="pip damaged" viewBox="0 0 24 24"><circle cx="12" cy="12" r="10" /></svg>
+                {{ committedHits() }}@if (pendingChange() !== 0) {<svg:tspan class="pending-delta">{{ pendingDelta() }}</svg:tspan>}
+            </svg:text>
+            <svg:circle class="pip damaged" [attr.cx]="numericWidth() + 1.89" cy="0" r="0.891666667" />
         } @else {
             @for (i of pipsArray(); track i) {
-                <svg class="pip" 
+                <svg:circle class="pip"
                      [class.damaged]="isDamaged(i)"
                      [class.pending-damage]="isPendingDamage(i)"
                      [class.pending-heal]="isPendingHeal(i)"
-                     viewBox="0 0 24 24"><circle cx="12" cy="12" r="10" /></svg>
+                     [attr.cx]="1.07 + i * 2.44" cy="0" r="0.891666667" />
             }
         }
     `,
     styles: [`
-        :host {
-            display: flex;
-            flex-direction: row;
-            align-items: center;
-            gap: 0.3em;
-            position: relative;
-            flex-shrink: 0;
-        }
         .pip-count {
             font-weight: bold;
-            font-size: 2.6em;
-            line-height: 1em;
-            color: var(--damage-color);
-            margin-left: 0.2em;
-            text-align: center;
-            &.damaged {
-                color: var(--damage-color);
-            }
+            font-size: 2.6px;
+            font-family: 'Roboto Condensed', sans-serif;
+            fill: var(--damage-color, #cd0000);
         }
         .pending-damage .pending-delta {
-            color: #ff5722;
+            fill: #ff5722;
         }
         .pending-heal .pending-delta {
-            color: #006797;
+            fill: #006797;
         }
-        
         .pip {
-            width: 2.14em;
-            height: 2.14em;
-
-            circle {
-                fill: #fff;
-                stroke: #000;
-                stroke-width: 2pt;
-            }
-
-            &.structure circle {
-                fill: #bbb;
-            }
-
-            &.damaged circle {
-                fill: var(--damage-color);
-            }
-
-            &.pending-damage circle {
-                fill: orange;
-            }
-
-            &.pending-heal circle {
-                fill: #03a9f4;
-            }
+            fill: #fff;
+            stroke: #000;
+            stroke-width: 0.237777778;
         }
+        .pip.damaged { fill: var(--damage-color, #cd0000); }
+        .pip.pending-damage { fill: orange; }
+        .pip.pending-heal { fill: #03a9f4; }
     `]
 })
 export class AsCritPipsComponent {
     forceUnit = input<ASForceUnit>();
     critKey = input.required<string>();
-    maxPips = input.required<number>();
+    // The parent positions its following description from width() in the same
+    // render pass that initializes this component's inputs.
+    maxPips = input(0);
+
+    private readonly count = viewChild<ElementRef<SVGTextElement>>('count');
+    protected readonly numericWidth = signal(0);
+
+    /** Width in the card's original em units, shared with the following description. */
+    readonly width = computed(() => {
+        if (this.maxPips() === 0) return 0;
+        return this.showNumeric()
+            ? this.numericWidth() + 2.96
+            : this.maxPips() * 2.14 + (this.maxPips() - 1) * 0.3;
+    });
+
+    constructor() {
+        const destroyRef = inject(DestroyRef);
+        afterRenderEffect(() => {
+            this.committedHits();
+            this.pendingChange();
+            this.measureCount();
+        });
+        afterNextRender(() => {
+            void document.fonts.ready.then(() => {
+                if (!destroyRef.destroyed) this.measureCount();
+            });
+        });
+    }
+
+    private measureCount(): void {
+        const count = this.count()?.nativeElement;
+        if (count) this.numericWidth.set(count.getComputedTextLength());
+    }
 
     /** Committed critical hits */
     committedHits = computed<number>(() => {

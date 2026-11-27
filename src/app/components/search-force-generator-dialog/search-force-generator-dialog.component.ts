@@ -2,7 +2,8 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 // Author: Drake
 
-import { CommonModule } from '@angular/common';
+import { getBudgetMetric, type SkillRange as ForceGenerationSkillRange } from '../../services/force-generator/skill-options';
+import { UnitNameService } from '../../services/unit-name.service';
 import { DIALOG_DATA, DialogRef } from '@angular/cdk/dialog';
 import { ChangeDetectionStrategy, Component, computed, effect, inject, signal, untracked } from '@angular/core';
 import { firstValueFrom } from 'rxjs';
@@ -27,18 +28,17 @@ import { SwipeDirective, type SwipeEndEvent } from '../../directives/swipe.direc
 import { UnitSearchAdvancedFiltersComponent } from '../unit-search-advanced-filters/unit-search-advanced-filters.component';
 import { ThousandsIntegerInputComponent } from '../thousands-integer-input/thousands-integer-input.component';
 import { DataService } from '../../services/data.service';
-import { ForceBuilderService } from '../../services/force-builder.service';
+import { ForceWorkspaceStateService } from '../../services/force-workspace-state.service';
 import {
     DEFAULT_FORCE_GENERATION_MAX_CBT_SKILL_DELTA,
     FORCE_GENERATION_MAX_PILOT_SKILL,
     FORCE_GENERATION_MIN_PILOT_SKILL,
     ForceGeneratorService,
-    getGeneratedClassicCrewSkill,
-    normalizeGeneratedClassicCrew,
+    getGeneratedCBTCrewSkill,
+    normalizeGeneratedCBTCrew,
     type ForceGenerationPreview,
     type ForceGenerationPreviewTask,
     type ForceGenerationRequest,
-    type ForceGenerationSkillRange,
     type ForceGenerationSkillRanges,
     type ForceGenerationTargetFormationSelection,
     type GeneratedForceUnit,
@@ -50,10 +50,10 @@ import { WsService } from '../../services/ws.service';
 import type { AdvFilterOptions, DropdownFilterOptions } from '../../services/unit-search-filters.model';
 import { UnitSearchFiltersService } from '../../services/unit-search-filters.service';
 import { resolveDropdownNamesFromFilter } from '../../utils/filter-name-resolution.util';
-import { getFormationDefinitions } from '../../utils/formation-blueprints';
-import { FormationRequirementEngine } from '../../utils/formation-requirement-engine.util';
-import { getFormationDropdownDisplayName, type FormationTypeDefinition } from '../../utils/formation-type.model';
-import { LanceTypeIdentifierUtil } from '../../utils/lance-type-identifier.util';
+import { getFormationDefinitions } from '../../utils/formation/formation-definitions';
+import { FormationSolver } from '../../utils/formation/formation-solver.util';
+import { getFormationDropdownDisplayName, type FormationTypeDefinition } from '../../utils/formation/formation-type.model';
+import { FormationAnalyzer } from '../../utils/formation/formation-analysis.util';
 import { type HighlightToken, tokenizeForHighlight } from '../../utils/semantic-filter-ast.util';
 import { isFilterAvailableForAvailabilitySource } from '../../utils/unit-search-filter-config.util';
 import { normalizeMultiStateSelection } from '../../utils/unit-search-shared.util';
@@ -65,7 +65,7 @@ import { UnitCardExpandedComponent } from '../unit-card-expanded/unit-card-expan
 import { uuidv7 } from '../../utils/uuid.util';
 import { normalizeBoundedInteger, normalizeBoundedIntegerInput } from '../../utils/bounded-integer-input.util';
 import { isAerospace } from '../../utils/as-common.util';
-import { getEffectivePilotingSkill, getFixedPilotingSkill } from '../../utils/cbt-common.util';
+import { getEffectivePilotingSkill, getFixedPilotingSkill, summarySkillFacts } from '../../utils/cbt-common.util';
 
 export interface SearchForceGeneratorDialogConfig {
     gameSystem: GameSystem;
@@ -112,10 +112,8 @@ type FormationTargetDropdownOptionsProvider = UnitSearchFiltersService & {
 
 @Component({
     selector: 'search-force-generator-dialog',
-    standalone: true,
     providers: [ForceGeneratorService],
     imports: [
-        CommonModule,
         BaseDialogComponent,
         ForcePreviewPanelComponent,
         ForceRadarPanelComponent,
@@ -131,15 +129,16 @@ type FormationTargetDropdownOptionsProvider = UnitSearchFiltersService & {
     ],
     changeDetection: ChangeDetectionStrategy.OnPush,
     templateUrl: './search-force-generator-dialog.component.html',
-    styleUrls: ['./search-force-generator-dialog.component.scss'],
+    styleUrl: './search-force-generator-dialog.component.scss',
 })
 export class SearchForceGeneratorDialogComponent {
+    readonly unitNames = inject(UnitNameService);
     readonly GameSystem = GameSystem;
     readonly MAX_UNITS = FORCE_MAX_UNITS;
     private readonly dialogRef = inject(DialogRef<SearchForceGeneratorDialogResult | null>);
     private readonly dialogData = inject(DIALOG_DATA, { optional: true }) as SearchForceGeneratorDialogData | null;
     readonly dataService = inject(DataService);
-    private readonly forceBuilderService = inject(ForceBuilderService);
+    private readonly forceWorkspace = inject(ForceWorkspaceStateService);
     private readonly forceGeneratorService = inject(ForceGeneratorService);
     private readonly gameService = inject(GameService);
     private readonly optionsService = inject(OptionsService);
@@ -164,7 +163,7 @@ export class SearchForceGeneratorDialogComponent {
     );
 
     readonly gameSystem = this.selectedGameSystem.asReadonly();
-    readonly isAlphaStrike = computed(() => this.gameSystem() === GameSystem.ALPHA_STRIKE);
+    readonly isAlphaStrike = computed(() => this.gameSystem() === GameSystem.AS);
     readonly useHex = computed<boolean>(() => this.optionsService.options().ASUseHex);
     readonly availabilitySource = computed(() => this.optionsService.options().availabilitySource);
     readonly eligibleUnits = this.filtersService.forceGeneratorEligibleUnits;
@@ -203,7 +202,7 @@ export class SearchForceGeneratorDialogComponent {
         const filterKey = this.unitTypeFilterKey();
         return filterKey ? this.getDropdownFilter(filterKey) : null;
     });
-    readonly subtypeFilter = computed(() => this.gameSystem() === GameSystem.CLASSIC ? this.getDropdownFilter('subtype') : null);
+    readonly subtypeFilter = computed(() => this.gameSystem() === GameSystem.CBT ? this.getDropdownFilter('subtype') : null);
     readonly tagsFilter = computed(() => this.getDropdownFilter('_tags'));
     readonly targetFormationEraOptions = computed(() => this.getDropdownOptionsForTargetFormation('era', this.eraFilter()));
     readonly randomFactionOption: DropdownOption = {
@@ -260,7 +259,7 @@ export class SearchForceGeneratorDialogComponent {
             return true;
         }
 
-        return this.gameSystem() === GameSystem.CLASSIC
+        return this.gameSystem() === GameSystem.CBT
             && (this.pilotingSkillRangeActive() || this.maxPilotSkillDeltaActive());
     });
     private readonly primaryDialogFilterKeys = computed(() => {
@@ -309,14 +308,17 @@ export class SearchForceGeneratorDialogComponent {
             ? tokenizeForHighlight(text, this.gameSystem())
             : [];
     });
-    readonly currentForce = this.forceBuilderService.smartCurrentForce;
-    readonly canImportCurrentForce = computed(() => (this.currentForce()?.units().length ?? 0) > 0);
+    readonly currentForce = this.forceWorkspace.smartCurrentForce;
+    readonly canImportCurrentForce = computed(() => {
+        const force = this.currentForce();
+        return force !== null && force.members().length > 0;
+    });
     readonly targetFormationSelection = signal<MultiStateSelection>({});
     readonly targetFormationStateCycle = ['or'] as const;
     readonly targetFormationOptions = computed<DropdownOption[]>(() => {
         const definitions = getFormationDefinitions(this.gameSystem())
-            .filter((definition) => FormationRequirementEngine.hasBlueprint(definition.id))
-            .filter((definition) => LanceTypeIdentifierUtil.getDefinitionById(definition.id, this.gameSystem()) !== null)
+            .filter((definition) => FormationSolver.hasBlueprint(definition.id))
+            .filter((definition) => FormationAnalyzer.getDefinitionById(definition.id, this.gameSystem()) !== null)
             .filter((definition) => this.isTargetFormationAvailableForSelectedFactions(definition));
 
         return definitions
@@ -346,7 +348,7 @@ export class SearchForceGeneratorDialogComponent {
     });
     readonly targetFormationAvailabilityDefinition = computed<FormationTypeDefinition | null>(() => {
         for (const targetFormation of this.targetFormations()) {
-            const definition = LanceTypeIdentifierUtil.getDefinitionById(targetFormation.formationId, this.gameSystem());
+            const definition = FormationAnalyzer.getDefinitionById(targetFormation.formationId, this.gameSystem());
             if (definition?.exclusiveFaction?.length) {
                 return definition;
             }
@@ -384,17 +386,17 @@ export class SearchForceGeneratorDialogComponent {
         );
     });
     readonly chassisOnlyLockedUnitKeys = computed(() => new Set(this.chassisOnlyLockVariantGroupByLockKey().keys()));
-    readonly rejectedUnitNames = computed(() => new Set(this.rejectedUnits().map((unit) => unit.name)));
+    readonly rejectedUnitUuids = computed(() => new Set(this.rejectedUnits().map((unit) => unit.uuid)));
     readonly generationEligibleUnits = computed(() => {
-        const rejectedUnitNames = this.rejectedUnitNames();
-        if (rejectedUnitNames.size === 0) {
+        const rejectedUnitUuids = this.rejectedUnitUuids();
+        if (rejectedUnitUuids.size === 0) {
             return this.eligibleUnits();
         }
 
-        return this.eligibleUnits().filter((unit) => !rejectedUnitNames.has(unit.name));
+        return this.eligibleUnits().filter((unit) => !rejectedUnitUuids.has(unit.uuid));
     });
     readonly rejectedUnitPills = computed(() => this.rejectedUnits().map((unit) => ({
-        name: unit.name,
+        uuid: unit.uuid,
         label: this.formatUnitLabel(unit),
     })));
     readonly previewUnitMenuItems: readonly ForcePreviewUnitMenuItem[] = [
@@ -453,7 +455,7 @@ export class SearchForceGeneratorDialogComponent {
             lines.push(`Target Formations: ${targetFormationSummary}`);
         }
 
-        const skillLabel = this.gameSystem() === GameSystem.ALPHA_STRIKE
+        const skillLabel = this.gameSystem() === GameSystem.AS
             ? `Pilot Skill ${this.formatSkillRange(this.gunnerySkillRange())}`
             : `Gunnery ${this.formatSkillRange(this.gunnerySkillRange())} Piloting ${this.formatSkillRange(this.pilotingSkillRange())} Delta ${this.maxPilotSkillDelta()}`;
         lines.push(`${skillLabel}`);
@@ -477,7 +479,7 @@ export class SearchForceGeneratorDialogComponent {
     readonly classicBudgetMax = signal(this.initialBudgetDefaults.classic.max);
     readonly alphaStrikeBudgetMin = signal(this.initialBudgetDefaults.alphaStrike.min);
     readonly alphaStrikeBudgetMax = signal(this.initialBudgetDefaults.alphaStrike.max);
-    readonly budgetRange = computed(() => this.gameSystem() === GameSystem.ALPHA_STRIKE
+    readonly budgetRange = computed(() => this.gameSystem() === GameSystem.AS
         ? { min: this.alphaStrikeBudgetMin(), max: this.alphaStrikeBudgetMax() }
         : { min: this.classicBudgetMin(), max: this.classicBudgetMax() });
     readonly minUnitCount = signal(this.initialUnitCountDefaults.min);
@@ -493,7 +495,7 @@ export class SearchForceGeneratorDialogComponent {
         const skillRanges = this.forceGenerationSkillRanges();
         return {
             gameSystem,
-            budgetRange: gameSystem === GameSystem.ALPHA_STRIKE
+            budgetRange: gameSystem === GameSystem.AS
                 ? { min: this.alphaStrikeBudgetMin(), max: this.alphaStrikeBudgetMax() }
                 : { min: this.classicBudgetMin(), max: this.classicBudgetMax() },
             gunnery: skillRanges.gunnery.min,
@@ -574,11 +576,11 @@ export class SearchForceGeneratorDialogComponent {
     }
 
     budgetMinimumFieldLabel(): string {
-        return this.gameSystem() === GameSystem.ALPHA_STRIKE ? 'Min PV' : 'Min BV';
+        return this.gameSystem() === GameSystem.AS ? 'Min PV' : 'Min BV';
     }
 
     budgetMaximumFieldLabel(): string {
-        return this.gameSystem() === GameSystem.ALPHA_STRIKE ? 'Max PV' : 'Max BV';
+        return this.gameSystem() === GameSystem.AS ? 'Max PV' : 'Max BV';
     }
 
     setPilotSkill(type: 'gunnery' | 'piloting', value: number): void {
@@ -638,7 +640,7 @@ export class SearchForceGeneratorDialogComponent {
     }
 
     advPanelFilterGameSystemToggleTitle(): string {
-        return this.otherAdvPanelFilterGameSystem() === GameSystem.CLASSIC
+        return this.otherAdvPanelFilterGameSystem() === GameSystem.CBT
             ? 'Show BattleTech filters'
             : 'Show Alpha Strike filters';
     }
@@ -652,7 +654,7 @@ export class SearchForceGeneratorDialogComponent {
     }
 
     toggleGameSystem(): void {
-        this.setGameSystem(this.isAlphaStrike() ? GameSystem.CLASSIC : GameSystem.ALPHA_STRIKE);
+        this.setGameSystem(this.isAlphaStrike() ? GameSystem.CBT : GameSystem.AS);
     }
 
     onEraSelectionChange(selection: MultiStateSelection | readonly string[]): void {
@@ -940,7 +942,17 @@ export class SearchForceGeneratorDialogComponent {
         this.clearHoveredPreviewUnit();
         this.clearSelectedPreviewUnit();
 
-        const importedPreviewEntry = createForcePreviewEntryFromForce(currentForce);
+        const importedPreviewEntry = createForcePreviewEntryFromForce(
+            currentForce,
+            currentForce.members(),
+            {},
+            member => {
+                const uuid = member.force.getUnitUuid(member.id);
+                return uuid
+                    ? this.dataService.getUnitByUuid(uuid)
+                    : undefined;
+            },
+        );
         const importedUnits = getForcePreviewUnitEntries(importedPreviewEntry)
             .map((unitEntry) => this.toLockedGeneratedUnit(unitEntry))
             .filter((unit): unit is GeneratedForceUnit => unit !== null);
@@ -1001,8 +1013,8 @@ export class SearchForceGeneratorDialogComponent {
         void this.editPreviewUnitPilot(unitEntry);
     }
 
-    removeRejectedUnit(unitName: string): void {
-        this.rejectedUnits.update((units) => units.filter((unit) => unit.name !== unitName));
+    removeRejectedUnit(unitUuid: UnitSummary['uuid']): void {
+        this.rejectedUnits.update((units) => units.filter((unit) => unit.uuid !== unitUuid));
     }
 
     submit(): void {
@@ -1124,7 +1136,7 @@ export class SearchForceGeneratorDialogComponent {
     ): DropdownOption[] {
         return options.map((option) => ({
             ...option,
-            available: option.available !== false && LanceTypeIdentifierUtil.isFormationAvailableForFaction(
+            available: option.available !== false && FormationAnalyzer.isFormationAvailableForFaction(
                 definition,
                 this.dataService.getFactionByName(option.name) ?? option.name,
             ),
@@ -1175,7 +1187,7 @@ export class SearchForceGeneratorDialogComponent {
         }
 
         return positiveFactionNames.some((factionName) => (
-            LanceTypeIdentifierUtil.isFormationAvailableForFaction(
+            FormationAnalyzer.isFormationAvailableForFaction(
                 definition,
                 this.dataService.getFactionByName(factionName) ?? factionName,
             )
@@ -1333,7 +1345,7 @@ export class SearchForceGeneratorDialogComponent {
 
         const budgetRange = this.normalizePreviewBudgetRange(settings.budgetRange);
         if (totalCost < budgetRange.min || totalCost > budgetRange.max) {
-            const budgetLabel = settings.gameSystem === GameSystem.ALPHA_STRIKE ? 'PV' : 'BV';
+            const budgetLabel = settings.gameSystem === GameSystem.AS ? 'PV' : 'BV';
             return `Current preview totals ${totalCost.toLocaleString()} ${budgetLabel}, outside the current target of ${this.formatBudgetTarget(budgetRange, budgetLabel)}. Press REROLL to generate a force for the updated settings.`;
         }
 
@@ -1370,18 +1382,18 @@ export class SearchForceGeneratorDialogComponent {
         piloting: number,
     ): GeneratedForceUnit[] {
         return lockedUnits.map((lockedUnit) => {
-            const skill = gameSystem === GameSystem.ALPHA_STRIKE
+            const skill = gameSystem === GameSystem.AS
                 ? lockedUnit.skill ?? lockedUnit.gunnery ?? gunnery
                 : undefined;
-            const resolvedGunnery = gameSystem === GameSystem.CLASSIC
+            const resolvedGunnery = gameSystem === GameSystem.CBT
                 ? lockedUnit.gunnery ?? lockedUnit.skill ?? gunnery
                 : undefined;
-            const resolvedPiloting = gameSystem === GameSystem.CLASSIC
+            const resolvedPiloting = gameSystem === GameSystem.CBT
                 ? getEffectivePilotingSkill(lockedUnit.unit, lockedUnit.piloting ?? piloting)
                 : undefined;
             const crew = resolvedGunnery === undefined || resolvedPiloting === undefined
                 ? undefined
-                : normalizeGeneratedClassicCrew(
+                : normalizeGeneratedCBTCrew(
                     lockedUnit.unit,
                     lockedUnit.crew,
                     resolvedGunnery,
@@ -1390,14 +1402,14 @@ export class SearchForceGeneratorDialogComponent {
                 );
             const syntheticGunnery = resolvedGunnery === undefined
                 ? undefined
-                : getGeneratedClassicCrewSkill(crew, 'gunnery', resolvedGunnery);
+                : getGeneratedCBTCrewSkill(crew, 'gunnery', resolvedGunnery);
             const syntheticPiloting = resolvedPiloting === undefined
                 ? undefined
-                : getGeneratedClassicCrewSkill(crew, 'piloting', resolvedPiloting);
+                : getGeneratedCBTCrewSkill(crew, 'piloting', resolvedPiloting);
 
             return {
                 unit: lockedUnit.unit,
-                cost: this.forceGeneratorService.getBudgetMetric(
+                cost: getBudgetMetric(
                     lockedUnit.unit,
                     gameSystem,
                     skill ?? syntheticGunnery ?? gunnery,
@@ -1416,14 +1428,14 @@ export class SearchForceGeneratorDialogComponent {
     }
 
     private resolveUnitTypeFilterKey(): UnitTypeFilterKey | null {
-        const filterKey = this.gameSystem() === GameSystem.ALPHA_STRIKE ? 'as.TP' : 'type';
+        const filterKey = this.gameSystem() === GameSystem.AS ? 'as.TP' : 'type';
         return this.getDropdownFilter(filterKey) ? filterKey : null;
     }
 
     private getOtherGameSystem(gameSystem: GameSystem): GameSystem {
-        return gameSystem === GameSystem.CLASSIC
-            ? GameSystem.ALPHA_STRIKE
-            : GameSystem.CLASSIC;
+        return gameSystem === GameSystem.CBT
+            ? GameSystem.AS
+            : GameSystem.CBT;
     }
 
     private setMultiStateFilter(key: MultiStateFilterKey, selection: MultiStateSelection | readonly string[]): void {
@@ -1531,7 +1543,7 @@ export class SearchForceGeneratorDialogComponent {
     private setBudgetRangeForSystem(gameSystem: GameSystem, range: { min: number; max: number }): void {
         const nextMin = Math.max(0, Math.floor(range.min));
         const nextMax = Math.max(0, Math.floor(range.max));
-        if (gameSystem === GameSystem.ALPHA_STRIKE) {
+        if (gameSystem === GameSystem.AS) {
             const didChangeMin = this.alphaStrikeBudgetMin() !== nextMin;
             const didChangeMax = this.alphaStrikeBudgetMax() !== nextMax;
             if (!didChangeMin && !didChangeMax) {
@@ -1686,7 +1698,7 @@ export class SearchForceGeneratorDialogComponent {
     }
 
     private changePreviewUnitVariant(unitEntry: ForcePreviewUnit, variant: UnitSummary): void {
-        if (!unitEntry.unit || unitEntry.unit.name === variant.name) {
+        if (!unitEntry.unit || unitEntry.unit.uuid === variant.uuid) {
             return;
         }
 
@@ -1761,7 +1773,7 @@ export class SearchForceGeneratorDialogComponent {
             return;
         }
         const replacementUnit = this.pickPreviewSlotRerollUnit(unitEntry);
-        if (!replacementUnit || replacementUnit.name === unitEntry.unit.name) {
+        if (!replacementUnit || replacementUnit.uuid === unitEntry.unit.uuid) {
             return;
         }
 
@@ -1782,7 +1794,6 @@ export class SearchForceGeneratorDialogComponent {
     }
 
     private pickPreviewSlotRerollUnit(unitEntry: ForcePreviewUnit): UnitSummary | null {
-        const lockKey = unitEntry.lockKey;
         const preview = this.preview();
         const previewUnitIndex = this.findPreviewUnitIndex(preview.units, unitEntry);
         if (previewUnitIndex < 0) {
@@ -1816,7 +1827,6 @@ export class SearchForceGeneratorDialogComponent {
     }
 
     private pickPreviewSlotRerollUnitAndPilot(unitEntry: ForcePreviewUnit): GeneratedForceUnit | null {
-        const lockKey = unitEntry.lockKey;
         const preview = this.preview();
         const previewUnitIndex = this.findPreviewUnitIndex(preview.units, unitEntry);
         if (previewUnitIndex < 0) {
@@ -1863,13 +1873,13 @@ export class SearchForceGeneratorDialogComponent {
         } else if (this.preventDuplicateChassis()) {
             const otherPreviewVariantGroupKeys = new Set(
                 preview.units
-                    .filter((unit) => unit.lockKey !== lockKey && unit.unit.name !== unitEntry.unit?.name)
+                    .filter((unit) => unit.lockKey !== lockKey && unit.unit.uuid !== unitEntry.unit?.uuid)
                     .map((unit) => getUnitVariantGroupKey(unit.unit)),
             );
             candidates = candidates.filter((unit) => !otherPreviewVariantGroupKeys.has(getUnitVariantGroupKey(unit)));
         }
 
-        const alternateCandidates = candidates.filter((unit) => unit.name !== unitEntry.unit?.name);
+        const alternateCandidates = candidates.filter((unit) => unit.uuid !== unitEntry.unit?.uuid);
         return alternateCandidates.length > 0 ? alternateCandidates : candidates;
     }
 
@@ -1878,13 +1888,13 @@ export class SearchForceGeneratorDialogComponent {
         unit: UnitSummary,
         gameSystem: GameSystem,
     ): GeneratedForceUnit[] {
-        if (gameSystem === GameSystem.ALPHA_STRIKE) {
+        if (gameSystem === GameSystem.AS) {
             return this.expandSkillRange(this.gunnerySkillRange()).map((skill) => ({
                 ...original,
                 unit,
                 alias: undefined,
                 crew: undefined,
-                cost: this.forceGeneratorService.getBudgetMetric(unit, gameSystem, skill, this.pilotingSkillRange()[0]),
+                cost: getBudgetMetric(unit, gameSystem, skill, this.pilotingSkillRange()[0]),
                 skill,
                 gunnery: undefined,
                 piloting: undefined,
@@ -1900,15 +1910,15 @@ export class SearchForceGeneratorDialogComponent {
             pilotingValues
                 .filter((piloting) => fixedPiloting !== null || Math.abs(gunnery - piloting) <= maxDelta)
                 .map((piloting) => {
-                    const crew = normalizeGeneratedClassicCrew(unit, undefined, gunnery, piloting);
-                    const syntheticGunnery = getGeneratedClassicCrewSkill(crew, 'gunnery', gunnery);
-                    const syntheticPiloting = getGeneratedClassicCrewSkill(crew, 'piloting', piloting);
+                    const crew = normalizeGeneratedCBTCrew(unit, undefined, gunnery, piloting);
+                    const syntheticGunnery = getGeneratedCBTCrewSkill(crew, 'gunnery', gunnery);
+                    const syntheticPiloting = getGeneratedCBTCrewSkill(crew, 'piloting', piloting);
                     return {
                         ...original,
                         unit,
                         alias: undefined,
                         crew,
-                        cost: this.forceGeneratorService.getBudgetMetric(
+                        cost: getBudgetMetric(
                             unit,
                             gameSystem,
                             syntheticGunnery,
@@ -1987,8 +1997,8 @@ export class SearchForceGeneratorDialogComponent {
             return;
         }
 
-        const unitName = unitEntry.unit.name;
-        this.rejectedUnits.update((units) => units.some((unit) => unit.name === unitName)
+        const unitUuid = unitEntry.unit.uuid;
+        this.rejectedUnits.update((units) => units.some((unit) => unit.uuid === unitUuid)
             ? units
             : [...units, unitEntry.unit!]);
 
@@ -2020,15 +2030,15 @@ export class SearchForceGeneratorDialogComponent {
             return;
         }
 
-        if (this.gameSystem() === GameSystem.ALPHA_STRIKE) {
+        if (this.gameSystem() === GameSystem.AS) {
             await this.editAlphaStrikePreviewUnitPilot(unitEntry);
             return;
         }
 
-        await this.editClassicPreviewUnitPilot(unitEntry);
+        await this.editCBTPreviewUnitPilot(unitEntry);
     }
 
-    private async editClassicPreviewUnitPilot(unitEntry: ForcePreviewUnit): Promise<void> {
+    private async editCBTPreviewUnitPilot(unitEntry: ForcePreviewUnit): Promise<void> {
         const unit = unitEntry.unit;
         if (!unit) {
             return;
@@ -2039,7 +2049,7 @@ export class SearchForceGeneratorDialogComponent {
             unit,
             unitEntry.piloting ?? this.pilotingSkillRange()[0],
         );
-        const normalizedCrew = normalizeGeneratedClassicCrew(
+        const normalizedCrew = normalizeGeneratedCBTCrew(
             unit,
             unitEntry.crew,
             initialGunnery,
@@ -2074,12 +2084,11 @@ export class SearchForceGeneratorDialogComponent {
                             : 'Piloting Skill',
                     disablePiloting: getFixedPilotingSkill(unit) !== null,
                     commander: unitEntry.commander ?? false,
-                    group: null,
                     factionId: this.preview().faction?.id ?? null,
                     isAerospace: unit.type === 'Aero',
                     era: this.preview().era,
                     preSkillBv: unit.bv,
-                    unit,
+                    skillFacts: summarySkillFacts(unit),
                 },
             },
         );
@@ -2089,9 +2098,12 @@ export class SearchForceGeneratorDialogComponent {
             return;
         }
 
-        const normalizedResultCrew = normalizeGeneratedClassicCrew(
+        const normalizedResultCrew = normalizeGeneratedCBTCrew(
             unit,
-            result.crew,
+            result.crew.flatMap(member => typeof member.id === 'number' ? [{
+                ...member,
+                id: member.id,
+            }] : []),
             initialGunnery,
             initialPiloting,
             result.crew[0]?.name,
@@ -2106,7 +2118,7 @@ export class SearchForceGeneratorDialogComponent {
             piloting,
             skill: undefined,
             commander: result.commander,
-            cost: this.forceGeneratorService.getBudgetMetric(unit, GameSystem.CLASSIC, gunnery, piloting),
+            cost: getBudgetMetric(unit, GameSystem.CBT, gunnery, piloting),
         }));
     }
 
@@ -2152,7 +2164,7 @@ export class SearchForceGeneratorDialogComponent {
             piloting: undefined,
             crew: undefined,
             commander: result.commander,
-            cost: this.forceGeneratorService.getBudgetMetric(unit, GameSystem.ALPHA_STRIKE, result.skill, this.pilotingSkillRange()[0]),
+            cost: getBudgetMetric(unit, GameSystem.AS, result.skill, this.pilotingSkillRange()[0]),
         }));
     }
 
@@ -2196,7 +2208,7 @@ export class SearchForceGeneratorDialogComponent {
             }
         }
 
-        return units.findIndex((unit) => unit.unit === unitEntry.unit || unit.unit.name === unitEntry.unit?.name);
+        return units.findIndex((unit) => unit.unit.uuid === unitEntry.unit?.uuid);
     }
 
     private createReplacementPreviewUnit(
@@ -2206,29 +2218,29 @@ export class SearchForceGeneratorDialogComponent {
     ): GeneratedForceUnit {
         const defaultGunnery = this.gunnerySkillRange()[0];
         const defaultPiloting = this.pilotingSkillRange()[0];
-        const skill = gameSystem === GameSystem.ALPHA_STRIKE
+        const skill = gameSystem === GameSystem.AS
             ? original.skill ?? original.gunnery ?? defaultGunnery
             : undefined;
-        const gunnery = gameSystem === GameSystem.CLASSIC
+        const gunnery = gameSystem === GameSystem.CBT
             ? original.gunnery ?? original.skill ?? defaultGunnery
             : undefined;
-        const piloting = gameSystem === GameSystem.CLASSIC
+        const piloting = gameSystem === GameSystem.CBT
             ? getEffectivePilotingSkill(variant, original.piloting ?? defaultPiloting)
             : undefined;
         const crew = gunnery === undefined || piloting === undefined
             ? undefined
-            : normalizeGeneratedClassicCrew(variant, original.crew, gunnery, piloting, original.alias);
+            : normalizeGeneratedCBTCrew(variant, original.crew, gunnery, piloting, original.alias);
         const syntheticGunnery = gunnery === undefined
             ? undefined
-            : getGeneratedClassicCrewSkill(crew, 'gunnery', gunnery);
+            : getGeneratedCBTCrewSkill(crew, 'gunnery', gunnery);
         const syntheticPiloting = piloting === undefined
             ? undefined
-            : getGeneratedClassicCrewSkill(crew, 'piloting', piloting);
+            : getGeneratedCBTCrewSkill(crew, 'piloting', piloting);
 
         return {
             ...original,
             unit: variant,
-            cost: this.forceGeneratorService.getBudgetMetric(
+            cost: getBudgetMetric(
                 variant,
                 gameSystem,
                 skill ?? syntheticGunnery ?? defaultGunnery,
@@ -2249,19 +2261,19 @@ export class SearchForceGeneratorDialogComponent {
         const gameSystem = this.gameSystem();
         const defaultGunnery = this.gunnerySkillRange()[0];
         const defaultPiloting = this.pilotingSkillRange()[0];
-        const skill = gameSystem === GameSystem.ALPHA_STRIKE
+        const skill = gameSystem === GameSystem.AS
             ? unitEntry.skill ?? defaultGunnery
             : undefined;
-        const gunnery = gameSystem === GameSystem.CLASSIC
+        const gunnery = gameSystem === GameSystem.CBT
             ? unitEntry.gunnery ?? defaultGunnery
             : undefined;
-        const piloting = gameSystem === GameSystem.CLASSIC
+        const piloting = gameSystem === GameSystem.CBT
             ? unitEntry.piloting ?? defaultPiloting
             : undefined;
 
         return {
             unit: unitEntry.unit,
-            cost: this.forceGeneratorService.getBudgetMetric(
+            cost: getBudgetMetric(
                 unitEntry.unit,
                 gameSystem,
                 skill ?? gunnery ?? defaultGunnery,
@@ -2271,7 +2283,7 @@ export class SearchForceGeneratorDialogComponent {
             gunnery,
             piloting,
             alias: unitEntry.alias,
-            crew: gameSystem === GameSystem.CLASSIC
+            crew: gameSystem === GameSystem.CBT
                 ? unitEntry.crew?.map((member) => ({ ...member }))
                 : undefined,
             commander: unitEntry.commander,
@@ -2281,6 +2293,6 @@ export class SearchForceGeneratorDialogComponent {
     }
 
     private formatUnitLabel(unit: UnitSummary): string {
-        return `${unit.chassis} ${unit.model}`.trim();
+        return this.unitNames.name(unit);
     }
 }

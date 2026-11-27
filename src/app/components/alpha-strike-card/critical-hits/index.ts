@@ -10,3 +10,4 @@ export { AsCriticalHitsProtomekComponent } from './critical-hits-protomek.compon
 export { AsCriticalHitsEmplacementComponent } from './critical-hits-emplacement.component';
 export { AsCriticalHitsAerofighterComponent } from './critical-hits-aerofighter';
 export { AsCritPipsComponent } from './crit-pips.component';
+export { criticalHitsHeight } from './critical-hits-base';

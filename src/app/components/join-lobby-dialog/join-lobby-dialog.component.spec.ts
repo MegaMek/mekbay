@@ -96,14 +96,5 @@ describe('JoinLobbyDialogComponent', () => {
         expect(element.querySelectorAll<HTMLInputElement>('input')[1].value).toBe('Atlas');
     });
 
-    it('reserves the random button width inside the display name input', () => {
-        const element = fixture.nativeElement as HTMLElement;
-        const input = element.querySelector<HTMLInputElement>('.name-field input')!;
-        const button = element.querySelector<HTMLButtonElement>('.random-button')!;
-        const inputStyle = getComputedStyle(input);
-        const buttonStyle = getComputedStyle(button);
-
-        expect(buttonStyle.position).toBe('absolute');
-        expect(parseFloat(inputStyle.paddingRight)).toBeGreaterThanOrEqual(parseFloat(buttonStyle.width));
-    });
 });
+

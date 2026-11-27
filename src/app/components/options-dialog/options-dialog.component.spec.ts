@@ -12,8 +12,8 @@ import { AppUpdateService } from '../../services/app-update.service';
 import { DataService } from '../../services/data.service';
 import { DbService } from '../../services/db.service';
 import { DialogsService } from '../../services/dialogs.service';
-import { DisplayNameService } from '../../services/display-name.service';
 import { GameService } from '../../services/game.service';
+import { LobbyService } from '../../services/lobby.service';
 import { LoggerService } from '../../services/logger.service';
 import { OptionsService } from '../../services/options.service';
 import { PublicTagsService } from '../../services/public-tags.service';
@@ -22,12 +22,27 @@ import { TaggingService } from '../../services/tagging.service';
 import { TagsService } from '../../services/tags.service';
 import { ToastService } from '../../services/toast.service';
 import { UserStateService } from '../../services/userState.service';
+import { DisplayNameService } from '../../services/display-name.service';
+import { ForceBuilderService } from '../../services/force-builder.service';
 import { OptionsDialogComponent } from './options-dialog.component';
+import { UnitArtworkService } from '../../services/unit-artwork.service';
+import { ProvidedFluffImageService } from '../../services/catalogs/provided-fluff-image.service';
+import { CustomUnitsService } from '../../services/custom-units.service';
 
 describe('OptionsDialogComponent', () => {
+    it('saves the wheel action selected in Advanced options', () => {
+        const setOption = jasmine.createSpy('setOption');
+        const component = configureComponent({ options: () => ({}), setOption });
+        const select = document.createElement('select');
+        select.innerHTML = '<option value="scroll">Scroll</option><option value="zoom">Zoom</option>';
+        for (const value of ['zoom', 'scroll']) {
+            select.value = value;
+            component.onMouseWheelActionChange({ target: select } as unknown as Event);
+            expect(setOption.calls.mostRecent().args).toEqual(['mouseWheelAction', value]);
+        }
+    });
     function configureComponent(
         optionsService: object,
-        displayNameService: object = { generate: () => Promise.resolve('Specter'), save: (value: string) => Promise.resolve(value) },
         userStateService: object = {
             uuid: signal(''),
             publicId: signal(''),
@@ -37,17 +52,24 @@ describe('OptionsDialogComponent', () => {
             hasOAuth: signal(false),
         },
         toastService: object = {},
+        forceBuilder: object = {},
+        dialogsService: object = {},
     ): OptionsDialogComponent {
         TestBed.configureTestingModule({
             providers: [
                 { provide: AccountAuthService, useValue: { authInFlight: signal(false) } },
                 { provide: AppUpdateService, useValue: {} },
-                { provide: DataService, useValue: { getUnits: () => [], getEquipmentRegistry: () => new EquipmentRegistry({}) } },
-                { provide: DbService, useValue: { getSheetsStoreSize: () => Promise.resolve({ memorySize: 0, count: 0 }), getCanvasStoreSize: () => Promise.resolve(0) } },
+                { provide: DataService, useValue: { getUnits: () => [], requireApplicationCatalogReady: async () => undefined, getEquipmentRegistry: () => new EquipmentRegistry({}) } },
+                { provide: DbService, useValue: { getCanvasStoreSize: () => Promise.resolve(0), listCustomUnits: async () => [] } },
+                { provide: UnitArtworkService, useValue: { initialize: async () => undefined, records: signal(new Map()), count: signal(0), bytes: signal(0), purge: jasmine.createSpy('purge').and.resolveTo() } },
+                { provide: ProvidedFluffImageService, useValue: { initialize: async () => undefined, count: signal(0), bytes: signal(0), purge: jasmine.createSpy('purge').and.resolveTo() } },
+                { provide: CustomUnitsService, useValue: { initialize: async () => undefined, records: signal([]) } },
                 { provide: DialogRef, useValue: { close: () => undefined } },
-                { provide: DialogsService, useValue: {} },
-                { provide: DisplayNameService, useValue: displayNameService },
+                { provide: DialogsService, useValue: dialogsService },
+                { provide: DisplayNameService, useValue: { save: jasmine.createSpy('save'), generate: jasmine.createSpy('generate') } },
+                { provide: ForceBuilderService, useValue: forceBuilder },
                 { provide: GameService, useValue: {} },
+                { provide: LobbyService, useValue: { hasLobby: signal(false) } },
                 { provide: LoggerService, useValue: {} },
                 { provide: OptionsService, useValue: optionsService },
                 { provide: PublicTagsService, useValue: { version: signal(0), getOwnTagSubscriberCounts: () => Promise.resolve({}) } },
@@ -61,69 +83,245 @@ describe('OptionsDialogComponent', () => {
         return TestBed.runInInjectionContext(() => new OptionsDialogComponent());
     }
 
+    it('protects catalogue, owned, subscribed, and unprojected units and rechecks before purging unused artwork', async () => {
+        const component = configureComponent({ options: () => ({}) });
+        const uuids = Array.from({ length: 5 }, (_, i) => `019f6767-0dcb-7bb8-992f-00000000001${i}`);
+        (TestBed.inject(UnitArtworkService).records as any).set(new Map(uuids.map(uuid => [uuid, { fluff: new Blob(['png'], { type: 'image/png' }) }])));
+        spyOn(component.dataService, 'getUnits').and.returnValue([{ uuid: uuids[0] }] as any);
+        (TestBed.inject(CustomUnitsService).records as any).set([{ uuid: uuids[1], owned: true }, { uuid: uuids[2], owned: false }]);
+        const stored = [{ uuid: uuids[3], owned: false }];
+        spyOn(component.dbService, 'listCustomUnits').and.callFake(async () => stored);
+        (component.dialogsService as any).requestConfirmation = jasmine.createSpy('confirm').and.callFake(async () => {
+            expect(component.unusedArtworkUuids()).toEqual(uuids.slice(4) as any);
+            stored.push({ uuid: uuids[4], owned: false });
+            return true;
+        });
+        expect(component.unusedArtworkUuids()).toEqual([]);
+        await component.onPurgeArtwork(true);
+        expect(component.artwork.purge).toHaveBeenCalledOnceWith([]);
+        expect(component.artworkCollectionReady()).toBeTrue(); expect(component.unusedArtworkUuids()).toEqual([]);
+    });
+    it('does not purge unused artwork when the complete collection cannot be loaded', async () => {
+        const component = configureComponent({ options: () => ({}) });
+        spyOn(component.dataService, 'requireApplicationCatalogReady').and.rejectWith(new Error('Catalogue unavailable'));
+        await component.onPurgeArtwork(true);
+        expect(component.artwork.purge).not.toHaveBeenCalled();
+        expect(component.artworkCollectionReady()).toBeFalse(); expect(component.artworkError()).toContain('Catalogue unavailable');
+    });
+
+    it('purges provided images independently of custom artwork', async () => {
+        const component = configureComponent({ options: () => ({}) });
+        (component.dialogsService as any).requestConfirmation = jasmine.createSpy('confirm').and.resolveTo(true);
+        await component.onPurgeProvidedImages();
+        expect(component.providedImages.purge).toHaveBeenCalledTimes(1);
+        expect(component.artwork.purge).not.toHaveBeenCalled();
+        expect(component.purgingArtwork()).toBeFalse();
+    });
+
+    it('keeps provided images when the purge is cancelled', async () => {
+        const component = configureComponent({ options: () => ({}) });
+        (component.dialogsService as any).requestConfirmation = jasmine.createSpy('confirm').and.resolveTo(false);
+        await component.onPurgeProvidedImages();
+        expect(component.providedImages.purge).not.toHaveBeenCalled();
+    });
+
+    for (const choice of ['keep', 'delete', 'cancel'] as const) {
+        it(`honors the ${choice} local data choice when logging out`, async () => {
+            const component = configureComponent({ options: () => ({}) });
+            (component.userHasOAuth as any).set(true);
+            (component.dialogsService as any).choose = jasmine.createSpy('choose').and.resolveTo(choice);
+            // Verify the selected storage operation and that a failed transaction prevents session replacement/reload.
+            const clear = jasmine.createSpy('clearLocalSession').and.rejectWith(new Error('Storage unavailable'));
+            (component.dbService as any).clearLocalSession = clear;
+            (TestBed.inject(LoggerService) as any).error = () => undefined;
+            (TestBed.inject(ToastService) as any).showToast = jasmine.createSpy('showToast');
+            const fresh = jasmine.createSpy('createFreshSession');
+            (TestBed.inject(UserStateService) as any).createFreshSession = fresh;
+            await component.onLogout();
+            if (choice === 'cancel') expect(clear).not.toHaveBeenCalled();
+            else expect(clear).toHaveBeenCalledOnceWith(choice === 'delete');
+            expect(fresh).not.toHaveBeenCalled();
+            expect(component.logoutInFlight()).toBeFalse();
+        });
+    }
+
+    it('returns from mobile details before closing the dialog', () => {
+        const component = configureComponent({ options: () => ({}) });
+        const close = spyOn(component.dialogRef, 'close');
+
+        component.openMobileSection('Search');
+        expect(component.mobileHeaderTitle()).toBe('Search');
+
+        component.onMobileBack();
+        expect(component.mobileDetailOpen()).toBeFalse();
+        expect(component.mobileHeaderTitle()).toBe('Options');
+        expect(component.activeTab()).toBe('Search');
+        expect(close).not.toHaveBeenCalled();
+
+        component.onMobileBack();
+        expect(close).toHaveBeenCalledTimes(1);
+    });
+
+    it('keeps the selected section when resizing and resets mobile navigation on a desktop selection', () => {
+        const component = configureComponent({ options: () => ({}) });
+        component.isWideLayout.set(false);
+        component.openMobileSection('Tags');
+
+        component.isWideLayout.set(true);
+        expect(component.currentViewDefinition().id).toBe('Tags');
+        component.isWideLayout.set(false);
+        expect(component.mobileDetailOpen()).toBeTrue();
+
+        component.isWideLayout.set(true);
+        component.selectDesktopSection('Account');
+        component.isWideLayout.set(false);
+        expect(component.mobileDetailOpen()).toBeFalse();
+        expect(component.currentViewDefinition().id).toBe('Account');
+    });
+
+    it('persists the selected unit name order', () => {
+        const setOption = jasmine.createSpy('setOption');
+        const component = configureComponent({ options: () => ({}), setOption });
+        const select = document.createElement('select');
+        select.innerHTML = '<option value="clanInnerSphere">Clan (Inner Sphere)</option>';
+        component.onDisplayUnitNameFormatChange({ target: select } as unknown as Event);
+        expect(setOption).toHaveBeenCalledWith('displayUnitNameFormat', 'clanInnerSphere');
+    });
+
     it('persists the selected force viewer BV/PV display mode', () => {
         const setOption = jasmine.createSpy('setOption');
-        const component = configureComponent({ options: () => ({ unitServers: [] }), setOption });
+        const component = configureComponent({ options: () => ({}), setOption });
         const select = document.createElement('select');
-        select.innerHTML = '<option value="both">Both</option>';
-        select.value = 'both';
+        select.innerHTML = '<option value="adjustedPreSkill">Adjusted before skills</option>';
+        select.value = 'adjustedPreSkill';
 
         component.onForceViewerBVPVDisplayChange({ target: select } as unknown as Event);
-        expect(setOption).toHaveBeenCalledOnceWith('forceViewerBVPVDisplay', 'both');
+        expect(setOption).toHaveBeenCalledOnceWith('forceViewerBVPVDisplay', 'adjustedPreSkill');
     });
 
-    it('forwards a CBT automation mode change to the options service', () => {
-        const setCbtAutomationMode = jasmine.createSpy('setCbtAutomationMode');
-        const component = configureComponent({
-            options: () => ({
-                unitServers: [],
-                cbtAutomationOptions: {
-                    pilotSkillCheck: 'ask',
-                    heatAndDissipationResolution: 'yes',
-                    heatEffectsCheck: 'ask',
-                    pilotHitsAndConsciousnessCheck: 'ask',
-                    internalExplosionsCheck: 'yes',
-                    criticalHitChanceCheck: 'no',
-                    breachAndFloodCheck: 'ask',
-                    fallingCheck: 'yes',
-                },
-            }),
-            setCbtAutomationMode,
-        });
-
-        component.onCbtAutomationModeChange('heatAndDissipationResolution', 'ask');
-
-        expect(setCbtAutomationMode).toHaveBeenCalledOnceWith('heatAndDissipationResolution', 'ask');
-    });
-
-    it('updates one CBT optional rule without changing the others', () => {
+    it('persists the selected CBT force viewer damage policy', () => {
         const setOption = jasmine.createSpy('setOption');
-        const component = configureComponent({
-            options: () => ({
-                unitServers: [],
-                CBTOptionalRules: {
-                    forcedWithdrawal: true,
-                    extremeRange: false,
-                    floatingCriticals: true,
-                    sprinting: false,
-                    allowMixedTechBaseAmmo: false,
-                },
-            }),
-            setOption,
-        });
+        const component = configureComponent({ options: () => ({}), setOption });
         const select = document.createElement('select');
-        select.innerHTML = '<option value="true">Enabled</option><option value="false">Disabled</option>';
-        select.value = 'false';
+        select.innerHTML = '<option value="pristine">Pristine</option>';
+        select.value = 'pristine';
 
-        component.onCBTOptionalRuleChange('forcedWithdrawal', { target: select } as unknown as Event);
+        component.onForceViewerBVPVDisplayDamageChange({ target: select } as unknown as Event);
 
-        expect(setOption).toHaveBeenCalledOnceWith('CBTOptionalRules', {
-            forcedWithdrawal: false,
-            extremeRange: false,
-            floatingCriticals: true,
-            sprinting: false,
-            allowMixedTechBaseAmmo: false,
+        expect(setOption).toHaveBeenCalledOnceWith('forceViewerBVPVDisplayDamage', 'pristine');
+    });
+
+    it('persists the selected CBT unit view', () => {
+        const setOption = jasmine.createSpy('setOption');
+        const component = configureComponent({ options: () => ({}), setOption });
+        const select = document.createElement('select');
+        select.innerHTML = '<option value="sheet">Sheet</option><option value="tactical">Tactical</option>';
+        for (const value of ['tactical', 'sheet']) {
+            select.value = value;
+            component.onCBTUnitViewModeChange({ target: select } as unknown as Event);
+            expect(setOption.calls.mostRecent().args).toEqual(['cbtUnitViewMode', value]);
+        }
+    });
+
+    for (const value of ['classic', 'distributed', 'rail']) {
+        it(`persists the selected ${value} record-sheet pip layout`, () => {
+            const setOption = jasmine.createSpy('setOption');
+            const component = configureComponent({ options: () => ({}), setOption });
+            const select = document.createElement('select');
+            select.add(new Option(value, value));
+
+            component.onRecordSheetPipLayoutChange({ target: select } as unknown as Event);
+
+            expect(setOption).toHaveBeenCalledOnceWith('recordSheetPipLayout', value);
         });
+    }
+
+    for (const paperSize of ['letter', 'a4'] as const) {
+        it(`updates the shared ${paperSize} print preference`, () => {
+            const setPrintOption = jasmine.createSpy('setPrintOption');
+            const component = configureComponent({ options: () => ({}), setPrintOption });
+            const select = document.createElement('select');
+            select.add(new Option(paperSize, paperSize));
+
+            component.onRecordSheetPaperSizeChange({ target: select } as unknown as Event);
+
+            expect(setPrintOption).toHaveBeenCalledOnceWith('paperSize', paperSize);
+        });
+    }
+
+    it('updates the shared record sheet center panel preference', () => {
+        const setPrintOption = jasmine.createSpy('setPrintOption');
+        const component = configureComponent({ options: () => ({}), setPrintOption });
+        const select = document.createElement('select');
+        select.add(new Option('Artwork', 'fluffImage'));
+
+        component.onRecordSheetCenterPanelContentChange({ target: select } as unknown as Event);
+
+        expect(setPrintOption).toHaveBeenCalledOnceWith('recordSheetCenterPanelContent', 'fluffImage');
+    });
+
+    it('persists each CBT automation mode independently', () => {
+        const setCbtAutomationMode = jasmine.createSpy('setCbtAutomationMode');
+        const component = configureComponent({ options: () => ({}), setCbtAutomationMode });
+
+        component.onCbtAutomationModeChange('criticalHitChanceCheck', 'ask');
+
+        expect(setCbtAutomationMode).toHaveBeenCalledOnceWith('criticalHitChanceCheck', 'ask');
+    });
+
+    for (const [confirmed, switched] of [[true, true], [true, false], [false, true]] as const) {
+        it(`turns a bound rule off through the force builder only once confirmed (confirmed: ${confirmed}, switched: ${
+            switched}), restoring the checkbox otherwise`, async () => {
+            const setOptionalRule = jasmine.createSpy('setOptionalRule').and.resolveTo(switched);
+            const requestConfirmation = jasmine.createSpy('requestConfirmation').and.resolveTo(confirmed);
+            const component = configureComponent(
+                { options: () => ({ CBTOptionalRules: { forcedWithdrawal: true } }) },
+                undefined, undefined, { setOptionalRule }, { requestConfirmation },
+            );
+            const checkbox = document.createElement('input');
+            checkbox.type = 'checkbox';
+            checkbox.checked = false;
+
+            await component.onCBTOptionalRuleChange('forcedWithdrawal', { target: checkbox } as unknown as Event);
+
+            expect(requestConfirmation).toHaveBeenCalledTimes(1);
+            if (confirmed) expect(setOptionalRule).toHaveBeenCalledOnceWith('forcedWithdrawal', false);
+            else expect(setOptionalRule).not.toHaveBeenCalled();
+            expect(checkbox.checked).toBe(!(confirmed && switched));
+        });
+    }
+
+    it('switches a bound rule to the value chosen even when the checkbox re-renders while confirming', async () => {
+        const setOptionalRule = jasmine.createSpy('setOptionalRule').and.resolveTo(true);
+        const checkbox = document.createElement('input');
+        checkbox.type = 'checkbox';
+        checkbox.checked = false;
+        // An earlier switch finishing while the dialog is open re-renders the checkbox from the options.
+        const requestConfirmation = jasmine.createSpy('requestConfirmation').and.callFake(async () => {
+            checkbox.checked = true;
+            return true;
+        });
+        const component = configureComponent({ options: () => ({ CBTOptionalRules: { forcedWithdrawal: true } }) },
+            undefined, undefined, { setOptionalRule }, { requestConfirmation });
+
+        await component.onCBTOptionalRuleChange('forcedWithdrawal', { target: checkbox } as unknown as Event);
+
+        expect(setOptionalRule).toHaveBeenCalledOnceWith('forcedWithdrawal', false);
+    });
+
+    it('saves a rule read where it is used without a confirmation', async () => {
+        const setOptionalRule = jasmine.createSpy('setOptionalRule').and.resolveTo(true);
+        const requestConfirmation = jasmine.createSpy('requestConfirmation');
+        const component = configureComponent({ options: () => ({ CBTOptionalRules: { quirks: true } }) },
+            undefined, undefined, { setOptionalRule }, { requestConfirmation });
+        const checkbox = document.createElement('input');
+        checkbox.type = 'checkbox';
+        checkbox.checked = false;
+
+        await component.onCBTOptionalRuleChange('quirks', { target: checkbox } as unknown as Event);
+
+        expect(requestConfirmation).not.toHaveBeenCalled();
+        expect(setOptionalRule).toHaveBeenCalledOnceWith('quirks', false);
     });
 
     it('counts canonical equipment registry entries rather than lookup aliases', () => {
@@ -147,13 +345,18 @@ describe('OptionsDialogComponent', () => {
                 { provide: AccountAuthService, useValue: { authInFlight: signal(false) } },
                 { provide: AppUpdateService, useValue: {} },
                 { provide: DataService, useValue: { getUnits: () => [], getEquipmentRegistry } },
-                { provide: DbService, useValue: { getSheetsStoreSize: () => Promise.resolve({ memorySize: 0, count: 0 }), getCanvasStoreSize: () => Promise.resolve(0) } },
+                { provide: DbService, useValue: { getCanvasStoreSize: () => Promise.resolve(0), listCustomUnits: async () => [] } },
+                { provide: UnitArtworkService, useValue: { initialize: async () => undefined, records: signal(new Map()), count: signal(0), bytes: signal(0), purge: jasmine.createSpy('purge').and.resolveTo() } },
+                { provide: ProvidedFluffImageService, useValue: { initialize: async () => undefined, count: signal(0), bytes: signal(0), purge: jasmine.createSpy('purge').and.resolveTo() } },
+                { provide: CustomUnitsService, useValue: { initialize: async () => undefined, records: signal([]) } },
                 { provide: DialogRef, useValue: { close: () => undefined } },
                 { provide: DialogsService, useValue: {} },
-                { provide: DisplayNameService, useValue: { generate: () => Promise.resolve('Specter'), save: (value: string) => Promise.resolve(value) } },
+                { provide: DisplayNameService, useValue: { save: jasmine.createSpy('save'), generate: jasmine.createSpy('generate') } },
+                { provide: ForceBuilderService, useValue: {} },
                 { provide: GameService, useValue: {} },
+                { provide: LobbyService, useValue: { hasLobby: signal(false) } },
                 { provide: LoggerService, useValue: {} },
-                { provide: OptionsService, useValue: { options: () => ({ unitServers: [] }) } },
+                { provide: OptionsService, useValue: { options: () => ({}) } },
                 { provide: PublicTagsService, useValue: { version: signal(0), getOwnTagSubscriberCounts: () => Promise.resolve({}) } },
                 { provide: SpriteStorageService, useValue: { getIconCount: () => Promise.resolve(0) } },
                 { provide: TaggingService, useValue: {} },
@@ -179,33 +382,13 @@ describe('OptionsDialogComponent', () => {
         expect(getEquipmentRegistry).toHaveBeenCalled();
     });
 
-    it('generates and saves the account display name through the shared service', async () => {
-        const displayNameService = {
-            generate: jasmine.createSpy('generate').and.resolveTo('Atlas'),
-            save: jasmine.createSpy('save').and.callFake(async (value: string) => value),
-        };
-        const component = configureComponent({ options: () => ({ unitServers: [] }) }, displayNameService);
-        const input = document.createElement('input');
-
-        await component.fillRandomDisplayName(input);
-        expect(input.value).toBe('Atlas');
-
-        input.value = 'Specter';
-        await component.queueDisplayNameSave(input);
-
-        expect(displayNameService.save.calls.allArgs()).toEqual([['Atlas'], ['Specter']]);
-        expect(input.value).toBe('Specter');
-        expect(component.displayNameError()).toBe('');
-    });
-
-    it('copies the user UUID while it is masked', async () => {
+    it('copies the user UUID to the clipboard', async () => {
         const writeText = jasmine.createSpy('writeText').and.resolveTo();
         const showToast = jasmine.createSpy('showToast');
         const originalClipboard = Object.getOwnPropertyDescriptor(navigator, 'clipboard');
         Object.defineProperty(navigator, 'clipboard', { configurable: true, value: { writeText } });
         const component = configureComponent(
-            { options: () => ({ unitServers: [] }) },
-            undefined,
+            { options: () => ({}) },
             {
                 uuid: signal('test-user-uuid'),
                 publicId: signal(''),

@@ -5,16 +5,27 @@
 import type { UnitSummary } from '../models/unit-summary.model';
 import { WeaponEquipment, type Equipment } from '../models/equipment.model';
 import type { EquipmentFlag } from '../models/equipment-flags.type';
-import type { MekHitArc } from '../models/force-serialization';
-import { CORE_2026_GAME_RULES, TW_GAME_RULES, type PhysicalLocationRow } from '../models/rules/game-rules';
+import type { MekEntity } from '../models/entity/entities/mek/mek-entity';
+import type { BaseEntity } from '../models/entity/base-entity';
+import type { CBTRuleset } from '../models/cbt-ruleset.model';
+import { gameRulesFor, type PhysicalLocationRow } from '../models/rules/game-rules';
+import { getMekLocationAbbreviation } from '../models/entity/types/mek';
 import { clusterHits } from './cluster-hit-table';
+import { isHagEquipment } from '../models/hag-mode.model';
+import { isApolloEquipment } from '../models/apollo-mode.model';
+import { artemisReferenceNoteFromFlags } from '../models/artemis-equipment.model';
 
 export type MekHitLocationTable = 'biped' | 'quad' | 'tripod';
+export type MekHitArc = 'front' | 'rear' | 'left' | 'right';
 
 export interface ClusterTableData {
     readonly hitLocationTable?: MekHitLocationTable;
     readonly clusterSizes: readonly number[];
-    readonly equipment: readonly Pick<Equipment, 'flags'>[];
+    readonly equipment: readonly ReferenceTableEquipmentFlags[];
+}
+
+export interface ReferenceTableEquipmentFlags {
+    readonly flags: ReadonlySet<EquipmentFlag>;
 }
 
 export interface HitLocationRow {
@@ -28,7 +39,7 @@ export interface HitLocationCellDefinition {
     readonly tableText: string;
     readonly tableLabel: string;
     readonly location: string | null;
-    readonly critical: boolean;
+    readonly throughArmorCritical: boolean;
     readonly tripodLegModifier?: -1 | 0 | 1;
 }
 
@@ -56,76 +67,55 @@ export interface ReferenceTableNote {
 
 export type ReferenceTableNoteId = 'artemisIV' | 'artemisV' | 'artemisProto' | 'apollo' | 'hag';
 
-/** Native equipment-flag associations for reference-table notes. */
-export const REFERENCE_TABLE_NOTE_FLAGS: Readonly<Record<ReferenceTableNoteId, readonly EquipmentFlag[]>> = {
-    artemisIV: ['F_ARTEMIS', 'F_ATM'],
-    artemisV: ['F_ARTEMIS_V'],
-    artemisProto: ['F_ARTEMIS_PROTO'],
-    apollo: ['F_APOLLO'],
-    hag: ['F_HAG'],
-};
-
 const HIT_LOCATION_CELLS = {
-    LA: locationCell('LA', 'LA'),
-    RA: locationCell('RA', 'RA'),
-    LL: locationCell('LL', 'LL'),
-    RL: locationCell('RL', 'RL'),
-    LT: locationCell('LT', 'LT'),
-    CT: locationCell('CT', 'CT'),
-    RT: locationCell('RT', 'RT'),
-    HD: locationCell('HD', 'HD'),
+    LA: locationCell('LA', 'LA'), RA: locationCell('RA', 'RA'),
+    LL: locationCell('LL', 'LL'), RL: locationCell('RL', 'RL'),
+    LT: locationCell('LT', 'LT'), CT: locationCell('CT', 'CT'),
+    RT: locationCell('RT', 'RT'), HD: locationCell('HD', 'HD'),
     LEFT_TORSO_CRITICAL: locationCell('LT(C)', 'LT', 'LT', true),
     CENTER_TORSO_CRITICAL: locationCell('CT(C)', 'CT', 'CT', true),
     RIGHT_TORSO_CRITICAL: locationCell('RT(C)', 'RT', 'RT', true),
-    LEFT_FRONT_LEG: locationCell('LFL', 'FLL'),
-    RIGHT_FRONT_LEG: locationCell('RFL', 'FRL'),
-    LEFT_REAR_LEG: locationCell('LRL', 'RLL'),
-    RIGHT_REAR_LEG: locationCell('RRL', 'RRL'),
+    LEFT_FRONT_LEG: locationCell(getMekLocationAbbreviation('FLL'), 'FLL'),
+    RIGHT_FRONT_LEG: locationCell(getMekLocationAbbreviation('FRL'), 'FRL'),
+    LEFT_REAR_LEG: locationCell(getMekLocationAbbreviation('RLL'), 'RLL'),
+    RIGHT_REAR_LEG: locationCell(getMekLocationAbbreviation('RRL'), 'RRL'),
     TRIPOD_LEFT_LEG: tripodLegCell('Leg (+1)†', 'Leg (+1)', 1),
     TRIPOD_CENTER_LEG: tripodLegCell('Leg†', 'Leg', 0),
     TRIPOD_RIGHT_LEG: tripodLegCell('Leg (-1)†', 'Leg (-1)', -1),
 } as const satisfies Readonly<Record<string, HitLocationCellDefinition>>;
 
 const BIPED_DEFINITION_ROWS: readonly HitLocationDefinitionRow[] = [
-    { roll: '2*', leftSide: HIT_LOCATION_CELLS.LEFT_TORSO_CRITICAL, frontRear: HIT_LOCATION_CELLS.CENTER_TORSO_CRITICAL, rightSide: HIT_LOCATION_CELLS.RIGHT_TORSO_CRITICAL },
-    { roll: '3', leftSide: HIT_LOCATION_CELLS.LL, frontRear: HIT_LOCATION_CELLS.RA, rightSide: HIT_LOCATION_CELLS.RL },
-    { roll: '4', leftSide: HIT_LOCATION_CELLS.LA, frontRear: HIT_LOCATION_CELLS.RA, rightSide: HIT_LOCATION_CELLS.RA },
-    { roll: '5', leftSide: HIT_LOCATION_CELLS.LA, frontRear: HIT_LOCATION_CELLS.RL, rightSide: HIT_LOCATION_CELLS.RA },
-    { roll: '6', leftSide: HIT_LOCATION_CELLS.LL, frontRear: HIT_LOCATION_CELLS.RT, rightSide: HIT_LOCATION_CELLS.RL },
-    { roll: '7', leftSide: HIT_LOCATION_CELLS.LT, frontRear: HIT_LOCATION_CELLS.CT, rightSide: HIT_LOCATION_CELLS.RT },
-    { roll: '8', leftSide: HIT_LOCATION_CELLS.CT, frontRear: HIT_LOCATION_CELLS.LT, rightSide: HIT_LOCATION_CELLS.CT },
-    { roll: '9', leftSide: HIT_LOCATION_CELLS.RT, frontRear: HIT_LOCATION_CELLS.LL, rightSide: HIT_LOCATION_CELLS.LT },
-    { roll: '10', leftSide: HIT_LOCATION_CELLS.RA, frontRear: HIT_LOCATION_CELLS.LA, rightSide: HIT_LOCATION_CELLS.LA },
-    { roll: '11', leftSide: HIT_LOCATION_CELLS.RL, frontRear: HIT_LOCATION_CELLS.LA, rightSide: HIT_LOCATION_CELLS.LL },
-    { roll: '12', leftSide: HIT_LOCATION_CELLS.HD, frontRear: HIT_LOCATION_CELLS.HD, rightSide: HIT_LOCATION_CELLS.HD },
+    definitionRow('2*', 'LEFT_TORSO_CRITICAL', 'CENTER_TORSO_CRITICAL', 'RIGHT_TORSO_CRITICAL'),
+    definitionRow('3', 'LL', 'RA', 'RL'), definitionRow('4', 'LA', 'RA', 'RA'),
+    definitionRow('5', 'LA', 'RL', 'RA'), definitionRow('6', 'LL', 'RT', 'RL'),
+    definitionRow('7', 'LT', 'CT', 'RT'), definitionRow('8', 'CT', 'LT', 'CT'),
+    definitionRow('9', 'RT', 'LL', 'LT'), definitionRow('10', 'RA', 'LA', 'LA'),
+    definitionRow('11', 'RL', 'LA', 'LL'), definitionRow('12', 'HD', 'HD', 'HD'),
 ];
 
 const QUAD_DEFINITION_ROWS: readonly HitLocationDefinitionRow[] = [
-    { roll: '2*', leftSide: HIT_LOCATION_CELLS.LEFT_TORSO_CRITICAL, frontRear: HIT_LOCATION_CELLS.CENTER_TORSO_CRITICAL, rightSide: HIT_LOCATION_CELLS.RIGHT_TORSO_CRITICAL },
-    { roll: '3', leftSide: HIT_LOCATION_CELLS.LEFT_REAR_LEG, frontRear: HIT_LOCATION_CELLS.RIGHT_FRONT_LEG, rightSide: HIT_LOCATION_CELLS.RIGHT_REAR_LEG },
-    { roll: '4', leftSide: HIT_LOCATION_CELLS.LEFT_FRONT_LEG, frontRear: HIT_LOCATION_CELLS.RIGHT_FRONT_LEG, rightSide: HIT_LOCATION_CELLS.RIGHT_FRONT_LEG },
-    { roll: '5', leftSide: HIT_LOCATION_CELLS.LEFT_FRONT_LEG, frontRear: HIT_LOCATION_CELLS.RIGHT_REAR_LEG, rightSide: HIT_LOCATION_CELLS.RIGHT_FRONT_LEG },
-    { roll: '6', leftSide: HIT_LOCATION_CELLS.LEFT_REAR_LEG, frontRear: HIT_LOCATION_CELLS.RT, rightSide: HIT_LOCATION_CELLS.RIGHT_REAR_LEG },
-    { roll: '7', leftSide: HIT_LOCATION_CELLS.LT, frontRear: HIT_LOCATION_CELLS.CT, rightSide: HIT_LOCATION_CELLS.RT },
-    { roll: '8', leftSide: HIT_LOCATION_CELLS.CT, frontRear: HIT_LOCATION_CELLS.LT, rightSide: HIT_LOCATION_CELLS.CT },
-    { roll: '9', leftSide: HIT_LOCATION_CELLS.RT, frontRear: HIT_LOCATION_CELLS.LEFT_REAR_LEG, rightSide: HIT_LOCATION_CELLS.LT },
-    { roll: '10', leftSide: HIT_LOCATION_CELLS.RIGHT_FRONT_LEG, frontRear: HIT_LOCATION_CELLS.LEFT_FRONT_LEG, rightSide: HIT_LOCATION_CELLS.LEFT_FRONT_LEG },
-    { roll: '11', leftSide: HIT_LOCATION_CELLS.RIGHT_REAR_LEG, frontRear: HIT_LOCATION_CELLS.LEFT_FRONT_LEG, rightSide: HIT_LOCATION_CELLS.LEFT_REAR_LEG },
-    { roll: '12', leftSide: HIT_LOCATION_CELLS.HD, frontRear: HIT_LOCATION_CELLS.HD, rightSide: HIT_LOCATION_CELLS.HD },
+    definitionRow('2*', 'LEFT_TORSO_CRITICAL', 'CENTER_TORSO_CRITICAL', 'RIGHT_TORSO_CRITICAL'),
+    definitionRow('3', 'LEFT_REAR_LEG', 'RIGHT_FRONT_LEG', 'RIGHT_REAR_LEG'),
+    definitionRow('4', 'LEFT_FRONT_LEG', 'RIGHT_FRONT_LEG', 'RIGHT_FRONT_LEG'),
+    definitionRow('5', 'LEFT_FRONT_LEG', 'RIGHT_REAR_LEG', 'RIGHT_FRONT_LEG'),
+    definitionRow('6', 'LEFT_REAR_LEG', 'RT', 'RIGHT_REAR_LEG'),
+    definitionRow('7', 'LT', 'CT', 'RT'), definitionRow('8', 'CT', 'LT', 'CT'),
+    definitionRow('9', 'RT', 'LEFT_REAR_LEG', 'LT'),
+    definitionRow('10', 'RIGHT_FRONT_LEG', 'LEFT_FRONT_LEG', 'LEFT_FRONT_LEG'),
+    definitionRow('11', 'RIGHT_REAR_LEG', 'LEFT_FRONT_LEG', 'LEFT_REAR_LEG'),
+    definitionRow('12', 'HD', 'HD', 'HD'),
 ];
 
 const TRIPOD_DEFINITION_ROWS: readonly HitLocationDefinitionRow[] = [
-    { roll: '2*', leftSide: HIT_LOCATION_CELLS.LEFT_TORSO_CRITICAL, frontRear: HIT_LOCATION_CELLS.CENTER_TORSO_CRITICAL, rightSide: HIT_LOCATION_CELLS.RIGHT_TORSO_CRITICAL },
-    { roll: '3', leftSide: HIT_LOCATION_CELLS.TRIPOD_LEFT_LEG, frontRear: HIT_LOCATION_CELLS.RA, rightSide: HIT_LOCATION_CELLS.TRIPOD_RIGHT_LEG },
-    { roll: '4', leftSide: HIT_LOCATION_CELLS.LA, frontRear: HIT_LOCATION_CELLS.RA, rightSide: HIT_LOCATION_CELLS.RA },
-    { roll: '5', leftSide: HIT_LOCATION_CELLS.LA, frontRear: HIT_LOCATION_CELLS.TRIPOD_CENTER_LEG, rightSide: HIT_LOCATION_CELLS.RA },
-    { roll: '6', leftSide: HIT_LOCATION_CELLS.TRIPOD_LEFT_LEG, frontRear: HIT_LOCATION_CELLS.RT, rightSide: HIT_LOCATION_CELLS.TRIPOD_RIGHT_LEG },
-    { roll: '7', leftSide: HIT_LOCATION_CELLS.LT, frontRear: HIT_LOCATION_CELLS.CT, rightSide: HIT_LOCATION_CELLS.RT },
-    { roll: '8', leftSide: HIT_LOCATION_CELLS.CT, frontRear: HIT_LOCATION_CELLS.LT, rightSide: HIT_LOCATION_CELLS.CT },
-    { roll: '9', leftSide: HIT_LOCATION_CELLS.RT, frontRear: HIT_LOCATION_CELLS.TRIPOD_CENTER_LEG, rightSide: HIT_LOCATION_CELLS.LT },
-    { roll: '10', leftSide: HIT_LOCATION_CELLS.RA, frontRear: HIT_LOCATION_CELLS.LA, rightSide: HIT_LOCATION_CELLS.LA },
-    { roll: '11', leftSide: HIT_LOCATION_CELLS.TRIPOD_LEFT_LEG, frontRear: HIT_LOCATION_CELLS.LA, rightSide: HIT_LOCATION_CELLS.TRIPOD_RIGHT_LEG },
-    { roll: '12', leftSide: HIT_LOCATION_CELLS.HD, frontRear: HIT_LOCATION_CELLS.HD, rightSide: HIT_LOCATION_CELLS.HD },
+    definitionRow('2*', 'LEFT_TORSO_CRITICAL', 'CENTER_TORSO_CRITICAL', 'RIGHT_TORSO_CRITICAL'),
+    definitionRow('3', 'TRIPOD_LEFT_LEG', 'RA', 'TRIPOD_RIGHT_LEG'),
+    definitionRow('4', 'LA', 'RA', 'RA'), definitionRow('5', 'LA', 'TRIPOD_CENTER_LEG', 'RA'),
+    definitionRow('6', 'TRIPOD_LEFT_LEG', 'RT', 'TRIPOD_RIGHT_LEG'),
+    definitionRow('7', 'LT', 'CT', 'RT'), definitionRow('8', 'CT', 'LT', 'CT'),
+    definitionRow('9', 'RT', 'TRIPOD_CENTER_LEG', 'LT'),
+    definitionRow('10', 'RA', 'LA', 'LA'),
+    definitionRow('11', 'TRIPOD_LEFT_LEG', 'LA', 'TRIPOD_RIGHT_LEG'),
+    definitionRow('12', 'HD', 'HD', 'HD'),
 ];
 
 const LOCATION_DEFINITION_ROWS: Readonly<Record<MekHitLocationTable, readonly HitLocationDefinitionRow[]>> = {
@@ -140,7 +130,6 @@ const LOCATION_ROWS: Readonly<Record<MekHitLocationTable, readonly HitLocationRo
     tripod: displayHitLocationRows(TRIPOD_DEFINITION_ROWS),
 };
 
-export const PHYSICAL_LOCATION_ROWS: readonly PhysicalLocationRow[] = CORE_2026_GAME_RULES.physicalLocationRows;
 
 const NOTE_TEXT: Readonly<Record<string, string>> = {
     tripodLeg: '† For a tripod, apply the indicated modifier when determining the leg hit.',
@@ -156,7 +145,7 @@ export function hitLocationRows(table: MekHitLocationTable): readonly HitLocatio
     return LOCATION_ROWS[table];
 }
 
-/** Resolves the exact table text and its rule metadata without parsing display strings. */
+/** Exact hit-location fact used by floating criticals and falling damage. */
 export function hitLocationCellDefinition(
     table: MekHitLocationTable,
     roll: number,
@@ -173,9 +162,9 @@ function locationCell(
     tableText: string,
     location: string,
     tableLabel = tableText,
-    critical = false,
+    throughArmorCritical = false,
 ): HitLocationCellDefinition {
-    return { tableText, tableLabel, location, critical };
+    return Object.freeze({ tableText, tableLabel, location, throughArmorCritical });
 }
 
 function tripodLegCell(
@@ -183,25 +172,97 @@ function tripodLegCell(
     tableLabel: string,
     tripodLegModifier: -1 | 0 | 1,
 ): HitLocationCellDefinition {
-    return { tableText, tableLabel, location: null, critical: false, tripodLegModifier };
+    return Object.freeze({ tableText, tableLabel, location: null, throughArmorCritical: false, tripodLegModifier });
+}
+
+function definitionRow(
+    roll: string,
+    left: keyof typeof HIT_LOCATION_CELLS,
+    front: keyof typeof HIT_LOCATION_CELLS,
+    right: keyof typeof HIT_LOCATION_CELLS,
+): HitLocationDefinitionRow {
+    return Object.freeze({
+        roll,
+        leftSide: HIT_LOCATION_CELLS[left],
+        frontRear: HIT_LOCATION_CELLS[front],
+        rightSide: HIT_LOCATION_CELLS[right],
+    });
 }
 
 function displayHitLocationRows(rows: readonly HitLocationDefinitionRow[]): readonly HitLocationRow[] {
-    return rows.map(row => ({
+    return Object.freeze(rows.map(row => Object.freeze({
         roll: row.roll,
         leftSide: row.leftSide.tableText,
         frontRear: row.frontRear.tableText,
         rightSide: row.rightSide.tableText,
-    }));
+    })));
+}
+
+/**
+ * The punch/kick location rows a Mek is struck on, naming location codes. Core Appendix A: a tripod uses the
+ * standard tables and every leg hit rolls for its leg, so its punches read the biped table and its kicks the leg roll.
+ */
+export function mekPhysicalLocationRows(
+    table: MekHitLocationTable,
+    ruleset: CBTRuleset,
+): readonly PhysicalLocationRow[] {
+    const rules = gameRulesFor(ruleset);
+    if (table === 'biped') return rules.physicalLocationRows;
+    if (table === 'quad') return rules.quadPhysicalLocationRows;
+    return Object.freeze(rules.physicalLocationRows.map(row => Object.freeze({
+        ...row,
+        kickLeftSide: tripodLegLocation(row.roll + 1),
+        kickFrontRear: tripodLegLocation(row.roll),
+        kickRightSide: tripodLegLocation(row.roll - 1),
+    })));
+}
+
+/** The punch/kick location rows as printed tables show them. */
+export function mekPhysicalLocationTableRows(
+    table: MekHitLocationTable,
+    ruleset: CBTRuleset,
+): readonly PhysicalLocationRow[] {
+    const text = (cell: string): string => cell.split('/').map(getMekLocationAbbreviation).join('/');
+    return Object.freeze(mekPhysicalLocationRows(table, ruleset).map(row => Object.freeze({
+        roll: row.roll,
+        punchLeftSide: text(row.punchLeftSide),
+        punchFrontRear: text(row.punchFrontRear),
+        punchRightSide: text(row.punchRightSide),
+        kickLeftSide: text(row.kickLeftSide),
+        kickFrontRear: text(row.kickFrontRear),
+        kickRightSide: text(row.kickRightSide),
+    })));
+}
+
+/**
+ * Core Appendix A: the leg a tripod leg hit strikes, from 1D6 with +1 for an attack from the left side and -1 from
+ * the right side.
+ */
+export function tripodLegLocation(modifiedRoll: number): 'RL' | 'CL' | 'LL' {
+    return modifiedRoll <= 2 ? 'RL' : modifiedRoll <= 4 ? 'CL' : 'LL';
 }
 
 export function referenceTableNotes(
     table: MekHitLocationTable | undefined,
-    equipment: readonly Pick<Equipment, 'flags'>[] = [],
+    equipment: readonly ReferenceTableEquipmentFlags[] = [],
 ): readonly ReferenceTableNote[] {
     const ids: string[] = [...referenceTableNoteIds(equipment)];
     if (table === 'tripod') ids.push('tripodLeg');
     return [...new Set(ids)].map(id => ({ id, text: NOTE_TEXT[id] ?? id }));
+}
+
+/** How record sheets print the equipment notes under a cluster table, as MegaMekLab words them. */
+const RECORD_SHEET_NOTE_TEXT: Readonly<Record<string, string>> = {
+    artemisIV: 'Artemis IV FCS: +2',
+    artemisV: 'Artemis V FCS: +3',
+    artemisProto: 'Prototype Artemis FCS: +1',
+    apollo: 'Apollo MRM FCS: -1',
+    hag: 'HAG: short range +2, long range -2',
+};
+
+/** The equipment notes a record sheet prints under its cluster table. */
+export function recordSheetClusterNotes(equipment: readonly ReferenceTableEquipmentFlags[]): readonly string[] {
+    return referenceTableNotes(undefined, equipment).map(note => RECORD_SHEET_NOTE_TEXT[note.id] ?? note.text);
 }
 
 /**
@@ -209,16 +270,52 @@ export function referenceTableNotes(
  */
 export function clusterTableForUnit(unit: Pick<UnitSummary, 'type' | 'subtype' | 'comp'>): ClusterTableData {
     const equipment = unit.comp.flatMap(collectComponentEquipment);
+    const hitLocationTable = unit.type === 'Mek'
+        ? unit.subtype.startsWith('Tripod') ? 'tripod'
+            : unit.subtype.startsWith('Quad') ? 'quad' : 'biped'
+        : undefined;
+    return clusterTableForEquipment(hitLocationTable, equipment);
+}
+
+/** The hit-location table a live Mek is struck on. */
+export function mekHitLocationTable(entity: Pick<MekEntity, 'chassisConfig'>): MekHitLocationTable {
+    return entity.chassisConfig === 'Tripod' ? 'tripod'
+        : entity.chassisConfig === 'Quad' || entity.chassisConfig === 'QuadVee' ? 'quad' : 'biped';
+}
+
+/** Derives the printed hit-location and cluster columns directly from a live Mek. */
+export function clusterTableForMekEntity(entity: MekEntity): ClusterTableData {
+    return clusterTableForEquipment(
+        mekHitLocationTable(entity),
+        entity.equipment()
+            .map(mount => mount.equipment)
+            .filter((equipment): equipment is Equipment => equipment !== undefined),
+    );
+}
+
+/** Derives cluster columns for any live entity without family-specific projections. */
+export function clusterTableForEntity(entity: BaseEntity): ClusterTableData {
+    return clusterTableForEquipment(
+        undefined,
+        entity.equipment()
+            .map(mount => mount.equipment)
+            .filter((equipment): equipment is Equipment => equipment !== undefined),
+    );
+}
+
+function clusterTableForEquipment(
+    hitLocationTable: MekHitLocationTable | undefined,
+    equipment: readonly Equipment[],
+): ClusterTableData {
     const sizes = new Set<number>();
 
     for (const item of equipment) {
         if (!(item instanceof WeaponEquipment)) continue;
-
-        if (item.getWeaponTypes().includes('R')) {
-            for (let size = 2; size <= item.getRapidFireCount(); size++) sizes.add(size);
+        const rapidFireCount = item.getRapidFireCount();
+        if (rapidFireCount > 1) {
+            for (let size = 2; size <= rapidFireCount; size++) sizes.add(size);
             continue;
         }
-
         switch (item.ammoType) {
             case 'AC_LBX':
             case 'EXLRM':
@@ -253,16 +350,11 @@ export function clusterTableForUnit(unit: Pick<UnitSummary, 'type' | 'subtype' |
         }
     }
 
-    const hitLocationTable = unit.type === 'Mek'
-        ? unit.subtype.startsWith('Tripod') ? 'tripod'
-            : unit.subtype.startsWith('Quad') ? 'quad' : 'biped'
-        : undefined;
-
-    return {
-        hitLocationTable,
-        clusterSizes: [...sizes].sort((left, right) => left - right),
+    return Object.freeze({
+        ...(hitLocationTable === undefined ? {} : { hitLocationTable }),
+        clusterSizes: Object.freeze([...sizes].sort((left, right) => left - right)),
         equipment,
-    };
+    });
 }
 
 function collectComponentEquipment(component: UnitSummary['comp'][number]): Equipment[] {
@@ -274,21 +366,18 @@ function collectComponentEquipment(component: UnitSummary['comp'][number]): Equi
 
 /** Resolves reference-table notes from the native flags on installed equipment. */
 export function referenceTableNoteIds(
-    equipment: readonly Pick<Equipment, 'flags'>[],
+    equipment: readonly ReferenceTableEquipmentFlags[],
 ): readonly ReferenceTableNoteId[] {
     const flags = new Set<EquipmentFlag>(equipment.flatMap(item => [...item.flags]));
+    const equipmentView = Object.freeze({
+        hasFlag: (flag: string) => flags.has(flag as EquipmentFlag),
+    });
     const noteIds: ReferenceTableNoteId[] = [];
 
-    if (REFERENCE_TABLE_NOTE_FLAGS.artemisIV.some(flag => flags.has(flag))) {
-        noteIds.push('artemisIV');
-    } else if (REFERENCE_TABLE_NOTE_FLAGS.artemisV.some(flag => flags.has(flag))) {
-        noteIds.push('artemisV');
-    } else if (REFERENCE_TABLE_NOTE_FLAGS.artemisProto.some(flag => flags.has(flag))) {
-        noteIds.push('artemisProto');
-    }
-    for (const noteId of ['apollo', 'hag'] as const) {
-        if (REFERENCE_TABLE_NOTE_FLAGS[noteId].some(flag => flags.has(flag))) noteIds.push(noteId);
-    }
+    const artemisNote = artemisReferenceNoteFromFlags(flags);
+    if (artemisNote !== null) noteIds.push(artemisNote);
+    if (isApolloEquipment(equipmentView)) noteIds.push('apollo');
+    if (isHagEquipment(equipmentView)) noteIds.push('hag');
 
     return noteIds;
 }

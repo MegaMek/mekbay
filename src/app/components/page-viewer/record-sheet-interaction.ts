@@ -1,0 +1,146 @@
+// Copyright (C) 2026 The MegaMek Team
+// SPDX-License-Identifier: GPL-3.0-or-later
+
+import type { MekConversionMode } from '../../models/mek-conversion-mode';
+import type { ArmorFaceId,ComponentId,CrewPositionId,CriticalSlotId,LocationId,SystemDamageTrackId } from '../../models/entity/entity-identifiers';
+import type { AttackerActionTarget } from '../../models/runtime/attacker-targeting-state';
+import type { UnitEditContext } from '../../models/runtime/unit-edit-context';
+import type { UnitConditionKey } from '../../models/unit-condition.model';
+import type { VelocityRecordField } from '../../models/aerospace-velocity-record.model';
+import type { MotiveModes } from '../../models/motiveModes.model';
+
+export type RecordSheetInteractionPayload =
+    /** Converts a LAM or QuadVee to the mode whose heading was used. */
+    | Readonly<{ kind: 'conversion-mode'; mode: MekConversionMode }>
+    /** `airborne` is set when the chosen movement belongs to the air/ground state the unit is not in. */
+    | Readonly<{ kind: 'movement'; mode: MotiveModes; airborne?: boolean }>
+    | Readonly<{
+        kind: 'armor';
+        faceId: ArmorFaceId;
+        locationId: LocationId;
+        button?: 'primary' | 'secondary';
+    }>
+    | Readonly<{
+        kind: 'internal';
+        locationId: LocationId;
+        button?: 'primary' | 'secondary';
+    }>
+    | Readonly<{
+        kind: 'critical';
+        slotId: CriticalSlotId;
+        componentIds: readonly ComponentId[];
+        button?: 'primary' | 'secondary';
+    }>
+    | Readonly<{
+        kind: 'shield';
+        componentId: ComponentId;
+        track: 'absorption' | 'capacity';
+        button?: 'primary' | 'secondary';
+    }>
+    | Readonly<{
+        kind: 'system-critical';
+        slotId: CriticalSlotId;
+        system: string;
+        level: number;
+    }>
+    | Readonly<{
+        kind: 'crew-wounds';
+        positionId: CrewPositionId;
+        wounds: number;
+    }>
+    | Readonly<{
+        kind: 'crew-skill';
+        positionId: CrewPositionId;
+        skill: 'gunnery' | 'piloting' | 'aeroGunnery' | 'aeroPiloting';
+    }>
+    | Readonly<{
+        kind: 'crew-state-menu';
+        positionId: CrewPositionId;
+    }>
+    | Readonly<{
+        kind: 'open-equipment';
+        tab: 'weapons' | 'ammo';
+    }>
+    | Readonly<{
+        kind: 'heat';
+        heat: number;
+    }>
+    | Readonly<{
+        kind: 'heat-preview';
+        heat: number;
+        baselineHeat: number;
+        element: SVGElement;
+    }>
+    | Readonly<{
+        kind: 'heat-preview-end';
+    }>
+    | Readonly<{
+        kind: 'heat-overflow';
+    }>
+    | Readonly<{
+        kind: 'apply-heat';
+    }>
+    | Readonly<{
+        kind: 'heat-sinks-off';
+    }>
+    | Readonly<{
+        kind: 'condition-menu';
+    }>
+    | Readonly<{
+        kind: 'condition';
+        condition: UnitConditionKey;
+    }>
+    | Readonly<{
+        kind: 'shutdown';
+    }>
+    | Readonly<{
+        kind: 'location-condition-menu';
+        locationId: LocationId;
+    }>
+    | Readonly<{
+        kind: 'inventory-selection';
+        componentIds: readonly ComponentId[];
+        mode?: string;
+        range?: 'short' | 'medium' | 'long' | 'extreme';
+        /** The row counts several weapons and splits by state, so the selection asks how many of them it takes. */
+        divisible?: boolean;
+    }>
+    | Readonly<{
+        /** The line under SWARMED: show the infantry swarming the unit. */
+        kind: 'show-swarmer';
+    }>
+    | Readonly<{
+        /** The Elevation tracker of a flying unit, or a turn of its Elevation Track: pick how high it flies. */
+        kind: 'elevation';
+        /** The Elevation Track's turn; this turn for the tracker. */
+        turn?: number;
+    }>
+
+    | Readonly<{
+        /** The aim stamp of a weapon row: pick the location of its target the weapon aims at. */
+        kind: 'inventory-aim';
+        componentId: ComponentId;
+    }>
+    | Readonly<{
+        kind: 'action-selection';
+        target: AttackerActionTarget;
+    }>
+    | Readonly<{
+        kind: 'reference-table';
+    }>
+    | Readonly<{
+        kind: 'random-hit';
+        element: SVGElement;
+    }>
+    | Readonly<{ kind: 'infantry-strength'; locationId: LocationId; strength: number }>
+    | Readonly<{ kind: 'damage-track'; damageTrackId: SystemDamageTrackId }>
+    | Readonly<{ kind: 'velocity-record'; turn: number; field: VelocityRecordField }>
+    | Readonly<{ kind: 'crew-profile'; positionId: CrewPositionId }>;
+
+/** Captured from the displayed snapshot and retained across asynchronous choices. */
+export type RecordSheetInteraction = RecordSheetInteractionPayload & Readonly<{ context: UnitEditContext }>;
+export type RecordSheetInteractionHandler = (interaction: RecordSheetInteraction, event: Event) => void;
+export type DirectRecordSheetInteraction = Extract<RecordSheetInteraction, { readonly kind:
+    'armor' | 'internal' | 'critical' | 'shield' | 'system-critical' | 'crew-wounds'
+    | 'heat' | 'heat-sinks-off' | 'apply-heat' | 'condition' | 'shutdown'
+}>;

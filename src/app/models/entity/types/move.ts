@@ -2,6 +2,8 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 // Author: Drake
 
+import type { CBTRuleset } from '../../cbt-ruleset.model';
+
 /** Movement-mode names exposed by MegaMek's unit data, see getMovementModeAsString */
 export type MoveType =
   | 'Aerodyne'
@@ -32,6 +34,8 @@ export type MoveType =
   | 'ERROR';
 
 export interface MovementCalculationOptions {
+  /** Absent for ruleset-independent conversion and existing Total Warfare movement. */
+  readonly ruleset?: CBTRuleset;
   readonly ignoreGravity: boolean;
   readonly ignoreHeat: boolean;
   readonly ignoreModularArmor: boolean;
@@ -48,8 +52,11 @@ export interface MovementCalculationOptions {
   readonly ignoreOptionalRules: boolean;
   readonly ignoreConversion: boolean;
   readonly forceTSM: boolean;
+  readonly ignoreShield: boolean;
   /** Include Mek alternate jump systems, such as mechanical jump boosters. */
   readonly includeAlternateJumpSystems: boolean;
+  /** External bomb hardpoints currently carried; a runtime fact ignored with cargo. */
+  readonly externalBombPoints?: number;
 }
 
 export const STANDARD_MOVEMENT_CALCULATION: MovementCalculationOptions = {
@@ -69,6 +76,7 @@ export const STANDARD_MOVEMENT_CALCULATION: MovementCalculationOptions = {
   ignoreOptionalRules: false,
   ignoreConversion: false,
   forceTSM: false,
+  ignoreShield: false,
   includeAlternateJumpSystems: false,
 };
 

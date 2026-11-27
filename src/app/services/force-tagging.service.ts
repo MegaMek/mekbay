@@ -6,18 +6,17 @@ import { inject, Injectable, Injector } from '@angular/core';
 import { outputToObservable } from '@angular/core/rxjs-interop';
 import { Overlay } from '@angular/cdk/overlay';
 import { ComponentPortal } from '@angular/cdk/portal';
-import { firstValueFrom, takeUntil } from 'rxjs';
+import { takeUntil } from 'rxjs';
 
 import {
     FORCE_TAG_SELECTOR_NEW_TAG,
     ForceTagSelectorComponent,
 } from '../components/force-tag-selector/force-tag-selector.component';
 import type { ForceTaggableEntry } from '../components/force-tags/force-tags.component';
-import { InputDialogComponent, type InputDialogData } from '../components/input-dialog/input-dialog.component';
 import { sanitizeForceTagLabels, sanitizeForceTags } from '../models/force-serialization';
-import { DataService } from './data.service';
+import { ForcePersistenceService } from './force-persistence.service';
 import { DialogsService } from './dialogs.service';
-import { ForceBuilderService } from './force-builder.service';
+import { ForceWorkspaceStateService } from './force-workspace-state.service';
 import { OverlayManagerService } from './overlay-manager.service';
 import { naturalCompare } from '../utils/sort.util';
 
@@ -41,8 +40,8 @@ const FORCE_TAG_SELECTOR_OVERLAY_KEY = 'forceTagSelector';
     providedIn: 'root'
 })
 export class ForceTaggingService {
-    private dataService = inject(DataService);
-    private forceBuilderService = inject(ForceBuilderService);
+    private readonly forcePersistence = inject(ForcePersistenceService);
+    private readonly forceWorkspace = inject(ForceWorkspaceStateService);
     private overlayManager = inject(OverlayManagerService);
     private dialogsService = inject(DialogsService);
     private overlay = inject(Overlay);
@@ -136,7 +135,7 @@ export class ForceTaggingService {
             addTags(force.tags);
         }
 
-        addTags(this.dataService.getCachedForceTagLabels());
+        addTags(this.forcePersistence.getCachedForceTagLabels());
 
         return Array.from(labels.values())
             .sort(naturalCompare);
@@ -183,20 +182,10 @@ export class ForceTaggingService {
     }
 
     private async promptForNewTag(): Promise<string | null> {
-        let newTag: string | null | undefined;
+        let newTag: string | null;
         this.overlayManager.blockCloseUntil(FORCE_TAG_SELECTOR_OVERLAY_KEY);
         try {
-            const ref = this.dialogsService.createDialog<string | null>(InputDialogComponent, {
-                data: {
-                    title: 'Add New Tag to Force',
-                    inputType: 'text',
-                    defaultValue: '',
-                    placeholder: 'Enter tag...',            
-                    centerInput: true,
-                } as InputDialogData
-            });
-
-            newTag = await firstValueFrom(ref.closed);
+            newTag = await this.dialogsService.prompt('Enter the new tag name:', 'Add New Tag to Force');
         } finally {
             setTimeout(() => this.overlayManager.unblockClose(FORCE_TAG_SELECTOR_OVERLAY_KEY), 100);
         }
@@ -269,11 +258,11 @@ export class ForceTaggingService {
 
         try {
             const updateCloud = options.updateCloud ?? force.cloud ?? true;
-            const updateResult = await this.dataService.updateForceTags(force.instanceId, nextTags, updateCloud);
+            const updateResult = await this.forcePersistence.updateForceTags(force.instanceId, nextTags, updateCloud);
             const normalizedTags = updateResult.tags;
             force.tags = normalizedTags.length > 0 ? normalizedTags : undefined;
 
-            for (const loadedForce of this.forceBuilderService.loadedForces()) {
+            for (const loadedForce of this.forceWorkspace.loadedForces()) {
                 if (loadedForce.force.instanceId() === force.instanceId) {
                     loadedForce.force.setTags(normalizedTags, false);
                 }

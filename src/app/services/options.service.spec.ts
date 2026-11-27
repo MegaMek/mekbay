@@ -5,9 +5,8 @@
 import { TestBed } from '@angular/core/testing';
 import { DbService } from './db.service';
 import { OptionsService } from './options.service';
-import { GameSystem } from '../models/common.model';
 
-describe('OptionsService', () => {
+describe('OptionsService theme migration', () => {
     let savedOptions: unknown;
     let dbService: { getOptions: jasmine.Spy; saveOptions: jasmine.Spy };
 
@@ -29,6 +28,70 @@ describe('OptionsService', () => {
 
     afterEach(() => TestBed.resetTestingModule());
 
+    it('defaults old saves to wheel zoom and persists the scrolling preference across reloads', async () => {
+        savedOptions = {};
+        let service = await createService();
+        expect(service.options().mouseWheelAction).toBe('zoom');
+        await service.setOption('mouseWheelAction', 'scroll');
+        savedOptions = dbService.saveOptions.calls.mostRecent().args[0];
+        TestBed.resetTestingModule();
+        service = await createService();
+        expect(service.options().mouseWheelAction).toBe('scroll');
+        TestBed.resetTestingModule();
+        savedOptions = { mouseWheelAction: 'invalid' };
+        service = await createService();
+        expect(service.options().mouseWheelAction).toBe('zoom');
+    });
+
+    it('updates paper size immediately, preserves the other print settings, and reloads it from storage', async () => {
+        savedOptions = { printAllOptions: { paperSize: 'letter', printPilotData: false, printMargin: 'none' } };
+        const service = await createService();
+        const previous = service.options().printAllOptions;
+        let finishSave!: () => void;
+        dbService.saveOptions.and.returnValue(new Promise<void>(resolve => { finishSave = resolve; }));
+
+        const saving = service.setPrintOption('paperSize', 'a4');
+
+        expect(service.options().printAllOptions).toEqual({ ...previous, paperSize: 'a4' });
+        expect(previous.paperSize).toBe('letter');
+        savedOptions = dbService.saveOptions.calls.mostRecent().args[0];
+        finishSave();
+        await saving;
+        TestBed.resetTestingModule();
+        const reloaded = await createService();
+        expect(reloaded.options().printAllOptions).toEqual({ ...previous, paperSize: 'a4' });
+    });
+
+    it('keeps a saved boolean weapon grouping choice: true groups everywhere, false takes the default', async () => {
+        savedOptions = { recordSheetGroupWeapons: true };
+        let service = await createService();
+        expect(service.options().recordSheetGroupWeapons).toBe('enabled');
+        TestBed.resetTestingModule();
+        savedOptions = { recordSheetGroupWeapons: false };
+        service = await createService();
+        expect(service.options().recordSheetGroupWeapons).toBe('previews');
+        TestBed.resetTestingModule();
+        savedOptions = { recordSheetGroupWeapons: 'disabled' };
+        service = await createService();
+        expect(service.options().recordSheetGroupWeapons).toBe('disabled');
+    });
+
+    it('defaults old saves to Inner Sphere first and persists the selected name format', async () => {
+        savedOptions = {};
+        let service = await createService();
+        expect(service.options().displayUnitNameFormat).toBe('innerSphereClan');
+        await service.setOption('displayUnitNameFormat', 'clanInnerSphere');
+        expect(dbService.saveOptions).toHaveBeenCalledWith(jasmine.objectContaining({ displayUnitNameFormat: 'clanInnerSphere' }));
+        TestBed.resetTestingModule();
+        savedOptions = { displayUnitNameFormat: 'clanInnerSphere' };
+        service = await createService();
+        expect(service.options().displayUnitNameFormat).toBe('clanInnerSphere');
+        TestBed.resetTestingModule();
+        savedOptions = { displayUnitNameFormat: 'invalid' };
+        service = await createService();
+        expect(service.options().displayUnitNameFormat).toBe('innerSphereClan');
+    });
+
     it('uses the normal theme by default', async () => {
         savedOptions = null;
 
@@ -36,6 +99,83 @@ describe('OptionsService', () => {
 
         expect(service.options().colorScheme).toBe('default');
     });
+
+    it('defaults CBT units to Sheet View', async () => {
+        savedOptions = null;
+
+        const service = await createService();
+
+        expect(service.options().cbtUnitViewMode).toBe('sheet');
+    });
+
+    it('restores and validates the CBT unit view preference', async () => {
+        savedOptions = { cbtUnitViewMode: 'tactical' };
+        let service = await createService();
+
+        expect(service.options().cbtUnitViewMode).toBe('tactical');
+
+        TestBed.resetTestingModule();
+        savedOptions = { cbtUnitViewMode: 'invalid' };
+        service = await createService();
+
+        expect(service.options().cbtUnitViewMode).toBe('sheet');
+    });
+
+    it('restores a saved CBT ruleset and defaults an invalid one to Core 2026', async () => {
+        savedOptions = { CBTRules: 'total-warfare' };
+        let service = await createService();
+
+        expect(service.options().CBTRules).toBe('total-warfare');
+
+        TestBed.resetTestingModule();
+        savedOptions = { CBTRules: 'basic' };
+        service = await createService();
+
+        expect(service.options().CBTRules).toBe('core-2026');
+    });
+
+    it('restores saved Initiative options and defaults invalid ones', async () => {
+        savedOptions = { initiativeOrder: 'spread', initiativeDie: true };
+        let service = await createService();
+
+        expect(service.options()).toEqual(jasmine.objectContaining({ initiativeOrder: 'spread', initiativeDie: true }));
+
+        TestBed.resetTestingModule();
+        savedOptions = { initiativeOrder: 'random', initiativeDie: 'yes' };
+        service = await createService();
+
+        expect(service.options()).toEqual(jasmine.objectContaining({ initiativeOrder: 'rules', initiativeDie: false }));
+    });
+
+    it('defaults record sheets to the Canon pip layout', async () => {
+        savedOptions = null;
+
+        const service = await createService();
+
+        expect(service.options().recordSheetPipLayout).toBe('classic');
+    });
+
+    for (const value of ['classic', 'distributed', 'rail'] as const) {
+        it(`restores and persists the ${value} record-sheet pip layout`, async () => {
+            savedOptions = { recordSheetPipLayout: value };
+            const service = await createService();
+
+            expect(service.options().recordSheetPipLayout).toBe(value);
+            await service.setOption('recordSheetPipLayout', value);
+            expect(dbService.saveOptions).toHaveBeenCalledWith(jasmine.objectContaining({
+                recordSheetPipLayout: value,
+            }));
+        });
+    }
+
+    for (const value of ['generic', 'canon', 'invalid']) {
+        it(`defaults unsupported ${value} record-sheet pip layouts to Canon`, async () => {
+            savedOptions = { recordSheetPipLayout: value };
+            const service = await createService();
+
+            expect(service.options().recordSheetPipLayout).toBe('classic');
+        });
+    }
 
     it('disables the force sync conflict dialog by default', async () => {
         savedOptions = null;
@@ -53,7 +193,56 @@ describe('OptionsService', () => {
         expect(service.options().enableForceSyncConflictDialog).toBeTrue();
     });
 
-    it('uses the default print options', async () => {
+    it('defaults CBT force BV to the pristine state', async () => {
+        savedOptions = null;
+
+        const service = await createService();
+
+        expect(service.options().forceViewerBVPVDisplayDamage).toBe('pristine');
+    });
+
+    it('defaults absent or invalid force BV/PV display preferences to adjusted after skills', async () => {
+        savedOptions = null;
+        let service = await createService();
+        expect(service.options().forceViewerBVPVDisplay).toBe('adjustedPostSkill');
+
+        TestBed.resetTestingModule();
+        savedOptions = { forceViewerBVPVDisplay: 'invalid' };
+        service = await createService();
+        expect(service.options().forceViewerBVPVDisplay).toBe('adjustedPostSkill');
+    });
+
+    for (const value of ['adjustedPostSkill', 'adjustedPreSkill', 'both'] as const) {
+        it(`restores the ${value} force BV/PV display preference`, async () => {
+            savedOptions = { forceViewerBVPVDisplay: value };
+            const service = await createService();
+
+            expect(service.options().forceViewerBVPVDisplay).toBe(value);
+        });
+    }
+
+    for (const stale of ['adjusted', 'base']) {
+        it(`defaults the stale ${stale} force BV/PV preference to adjusted after skills`, async () => {
+            savedOptions = { forceViewerBVPVDisplay: stale };
+            const service = await createService();
+
+            expect(service.options().forceViewerBVPVDisplay).toBe('adjustedPostSkill');
+            await service.setOption('unitDisplayName', 'both');
+            expect(dbService.saveOptions).toHaveBeenCalledWith(jasmine.objectContaining({
+                forceViewerBVPVDisplay: 'adjustedPostSkill',
+            }));
+        });
+    }
+
+    it('restores and validates the CBT force BV damage policy', async () => {
+        savedOptions = { forceViewerBVPVDisplayDamage: 'damaged' };
+
+        const service = await createService();
+
+        expect(service.options().forceViewerBVPVDisplayDamage).toBe('damaged');
+    });
+
+    it('uses complete print defaults', async () => {
         savedOptions = null;
 
         const service = await createService();
@@ -61,174 +250,24 @@ describe('OptionsService', () => {
         expect(service.options().printAllOptions).toEqual({
             clean: false,
             printPilotData: true,
+            paperSize: 'letter',
             recordSheetCenterPanelContent: 'clusterTable',
             ASPrintPageBreakOnGroups: true,
             ASPrintCardSize: 'standard',
-            printMargin: 'browserDefined',
+            printMargin: 'none',
         });
     });
 
-    it('falls back to defaults for invalid saved primitive options', async () => {
-        savedOptions = {
-            colorScheme: 'sepia',
-            pickerStyle: 'grid',
-            canvasInput: 'mouse',
-            swipeToNextSheet: 'diagonal',
-            syncZoomBetweenSheets: 'true',
-            unitDisplayName: 'model',
-            gameSystem: 'classic',
-            availabilitySource: 'other',
-            forceViewerBVPVDisplay: 'adjusted-only',
-            megaMekAvailabilityFiltersUseAllScopedOptions: 1,
-            recordSheetDoubleTapZoomReset: 'always',
-            trackPhaseAndTurn: 'true',
-            CBTRules: 'basic',
-            ASUseHex: 'false',
-            c3NetworkConnectionsAboveNodes: 0,
-            automaticallyConvertFiltersToSemantic: 'false',
-            allowMultipleActiveSheets: 1,
-            unitSearchExpandedViewLayout: 'list-panel-filters',
-            showFilteredComponents: 'false',
-            unitSearchViewMode: 'tiles',
-            forceOverviewViewMode: 'cards',
-            ASVehiclesCriticalHitTable: 'alternate',
-            ASUseAutomations: 'true',
-            ASUnifiedDamagePicker: 1,
-            performanceMode: 'false',
-            enableForceSyncConflictDialog: 1,
-        };
-
-        const service = await createService();
-
-        expect(service.options()).toEqual(jasmine.objectContaining({
-            colorScheme: 'default',
-            pickerStyle: 'default',
-            canvasInput: 'all',
-            swipeToNextSheet: 'horizontal',
-            syncZoomBetweenSheets: true,
-            unitDisplayName: 'both',
-            gameSystem: GameSystem.CLASSIC,
-            availabilitySource: 'mul',
-            forceViewerBVPVDisplay: 'adjusted',
-            megaMekAvailabilityFiltersUseAllScopedOptions: true,
-            recordSheetDoubleTapZoomReset: 'contextual',
-            trackPhaseAndTurn: true,
-            CBTRules: 'core2026',
-            ASUseHex: false,
-            c3NetworkConnectionsAboveNodes: false,
-            automaticallyConvertFiltersToSemantic: false,
-            allowMultipleActiveSheets: false,
-            unitSearchExpandedViewLayout: 'panel-list-filters',
-            showFilteredComponents: false,
-            unitSearchViewMode: 'list',
-            forceOverviewViewMode: 'compact',
-            ASVehiclesCriticalHitTable: 'default',
-            ASUseAutomations: true,
-            ASUnifiedDamagePicker: true,
-            performanceMode: false,
-            enableForceSyncConflictDialog: false,
-        }));
-    });
-
-    it('falls back per field for invalid saved structured options', async () => {
-        savedOptions = {
-            printAllOptions: {
-                clean: true,
-                printPilotData: 'yes',
-                recordSheetCenterPanelContent: 'diagram',
-                ASPrintPageBreakOnGroups: 'false',
-                ASPrintCardSize: 'large',
-                printMargin: 'auto',
-            },
-            CBTOptionalRules: {
-                forcedWithdrawal: 'true',
-                extremeRange: 1,
-            },
-            lastCanvasState: {
-                brushSize: 4,
-                eraserSize: Number.POSITIVE_INFINITY,
-            },
-            sidebarLipPosition: 100,
-            unitServers: ['not a URL'],
-            forceGenerator: {
-                lastBudget: {
-                    classic: { min: 9000, max: Number.NaN },
-                    alphaStrike: { min: 'low', max: 'high' },
-                },
-                lastUnitCount: { min: 'four', max: null },
-                lastSkills: {
-                    gunnery: { min: [], max: {} },
-                    piloting: { min: Number.NaN, max: Number.POSITIVE_INFINITY },
-                    maxDelta: 'two',
-                },
-                failureSearchWindowMs: Number.NaN,
-                ignoreRarityWeight: 'false',
-                preventDuplicateChassis: 'false',
-                useTaggedQuantities: 1,
-                useUnitTagsAsChassisTags: null,
-            },
-            forceBudgetOptimizerLastSkills: {
-                gunnery: { min: 'two', max: Number.NaN },
-                piloting: { min: null, max: Number.POSITIVE_INFINITY },
-                skill: { min: [], max: {} },
-                maxDelta: 'two',
-            },
-        };
-
-        const service = await createService();
-
-        expect(service.options().printAllOptions).toEqual({
-            clean: true,
-            printPilotData: true,
-            recordSheetCenterPanelContent: 'clusterTable',
-            ASPrintPageBreakOnGroups: true,
-            ASPrintCardSize: 'standard',
-            printMargin: 'browserDefined',
-        });
-        expect(service.options().CBTOptionalRules).toEqual({
-            forcedWithdrawal: true,
-            extremeRange: false,
-            floatingCriticals: false,
-            sprinting: false,
-            allowMixedTechBaseAmmo: false,
-        });
-        expect(service.options().lastCanvasState).toBeUndefined();
-        expect(service.options().sidebarLipPosition).toBeUndefined();
-        expect(service.options().unitServers).toEqual([]);
-        expect(service.options().forceGenerator).toEqual({
-            lastBudget: {
-                classic: { min: 9000, max: 8000 },
-                alphaStrike: { min: 290, max: 300 },
-            },
-            lastUnitCount: { min: 4, max: 8 },
-            lastSkills: {
-                gunnery: { min: 4, max: 4 },
-                piloting: { min: 5, max: 5 },
-                maxDelta: 2,
-            },
-            failureSearchWindowMs: 300,
-            ignoreRarityWeight: false,
-            preventDuplicateChassis: false,
-            useTaggedQuantities: false,
-            useUnitTagsAsChassisTags: false,
-        });
-        expect(service.options().forceBudgetOptimizerLastSkills).toEqual({
-            gunnery: { min: 2, max: 4 },
-            piloting: { min: 3, max: 5 },
-            skill: { min: 2, max: 5 },
-            maxDelta: 2,
-        });
-    });
-
-    it('restores nested print options', async () => {
+    it('restores nested print options and validates each field independently', async () => {
         savedOptions = {
             printAllOptions: {
                 clean: true,
                 printPilotData: false,
-                recordSheetCenterPanelContent: 'fluffImage',
+                paperSize: 'a4',
+                recordSheetCenterPanelContent: 'invalid',
                 ASPrintPageBreakOnGroups: false,
                 ASPrintCardSize: 'enlarged',
-                printMargin: 'none',
+                printMargin: 'invalid',
             },
         };
 
@@ -237,11 +276,60 @@ describe('OptionsService', () => {
         expect(service.options().printAllOptions).toEqual({
             clean: true,
             printPilotData: false,
-            recordSheetCenterPanelContent: 'fluffImage',
+            paperSize: 'a4',
+            recordSheetCenterPanelContent: 'clusterTable',
             ASPrintPageBreakOnGroups: false,
             ASPrintCardSize: 'enlarged',
             printMargin: 'none',
         });
+    });
+
+    it('migrates the former flat print preferences', async () => {
+        savedOptions = {
+            printPaperSize: 'a4',
+            recordSheetCenterPanelContent: 'fluffImage',
+            ASPrintPageBreakOnGroups: false,
+            ASPrintCardSize: 'enlarged',
+            printMargin: 'none',
+        };
+
+        const service = await createService();
+
+        expect(service.options().printAllOptions).toEqual(jasmine.objectContaining({
+            paperSize: 'a4',
+            recordSheetCenterPanelContent: 'fluffImage',
+            ASPrintPageBreakOnGroups: false,
+            ASPrintCardSize: 'enlarged',
+            printMargin: 'none',
+        }));
+    });
+
+    it('migrates the legacy heat automation preference without enabling unrelated automations', async () => {
+        savedOptions = { cbtAutomations: false };
+
+        const service = await createService();
+
+        expect(service.cbtAutomationMode('heatAndDissipationResolution')).toBe('no');
+        expect(service.cbtAutomationMode('internalExplosionsCheck')).toBe('ask');
+    });
+
+    it('restores and updates independent CBT automation modes', async () => {
+        savedOptions = {
+            cbtAutomationOptions: {
+                heatAndDissipationResolution: 'yes',
+                pilotSkillCheck: 'ask',
+                criticalHitChanceCheck: 'invalid',
+            },
+        };
+        const service = await createService();
+
+        expect(service.cbtAutomationMode('heatAndDissipationResolution')).toBe('yes');
+        expect(service.cbtAutomationMode('pilotSkillCheck')).toBe('ask');
+        expect(service.cbtAutomationMode('criticalHitChanceCheck')).toBe('no');
+
+        await service.setCbtAutomationMode('fallingCheck', 'yes');
+        expect(service.cbtAutomationMode('fallingCheck')).toBe('yes');
+        expect(dbService.saveOptions).toHaveBeenCalled();
     });
 
     it('uses CBT optional-rule defaults', async () => {
@@ -250,67 +338,23 @@ describe('OptionsService', () => {
         const service = await createService();
 
         expect(service.options().CBTOptionalRules).toEqual({
+            quirks: true,
+            floatingCriticals: false,
             forcedWithdrawal: true,
             extremeRange: false,
-            floatingCriticals: false,
             sprinting: false,
             allowMixedTechBaseAmmo: false,
+            hotLoadedAmmo: false,
+            enhancedFlamers: false,
         });
     });
 
-    it('uses the current CBT automation defaults', async () => {
-        savedOptions = null;
-
+    it('persists an explicitly disabled Quirks option', async () => {
+        savedOptions = { CBTOptionalRules: { quirks: false } };
         const service = await createService();
-
-        expect(service.options().cbtAutomationOptions).toEqual({
-            pilotSkillCheck: 'no',
-            heatAndDissipationResolution: 'no',
-            heatEffectsCheck: 'no',
-            pilotHitsAndConsciousnessCheck: 'no',
-            internalExplosionsCheck: 'ask',
-            criticalHitChanceCheck: 'no',
-            breachAndFloodCheck: 'no',
-            fallingCheck: 'no',
-        });
-    });
-
-    it('restores and validates current CBT automation modes per setting', async () => {
-        savedOptions = {
-            cbtAutomationOptions: {
-                pilotSkillCheck: 'yes',
-                heatAndDissipationResolution: 'ask',
-                heatEffectsCheck: 'sometimes',
-                internalExplosionsCheck: 'no',
-                breachAndFloodCheck: 'ask',
-            },
-        };
-
-        const service = await createService();
-
-        expect(service.options().cbtAutomationOptions).toEqual({
-            pilotSkillCheck: 'yes',
-            heatAndDissipationResolution: 'ask',
-            heatEffectsCheck: 'no',
-            pilotHitsAndConsciousnessCheck: 'no',
-            internalExplosionsCheck: 'no',
-            criticalHitChanceCheck: 'no',
-            breachAndFloodCheck: 'ask',
-            fallingCheck: 'no',
-        });
-    });
-
-    it('updates and persists the canonical CBT automation settings', async () => {
-        savedOptions = null;
-        const service = await createService();
-
-        await service.setCbtAutomationMode('pilotSkillCheck', 'yes');
-
-        expect(service.cbtAutomationMode('pilotSkillCheck')).toBe('yes');
-        expect(service.options().cbtAutomationOptions.pilotSkillCheck).toBe('yes');
-        expect(dbService.saveOptions).toHaveBeenCalledOnceWith(jasmine.objectContaining({
-            cbtAutomationOptions: jasmine.objectContaining({ pilotSkillCheck: 'yes' }),
-        }));
+        expect(service.options().CBTOptionalRules.quirks).toBeFalse();
+        await service.setOption('CBTOptionalRules', { ...service.options().CBTOptionalRules, quirks: true });
+        expect(dbService.saveOptions.calls.mostRecent().args[0].CBTOptionalRules.quirks).toBeTrue();
     });
 
     it('restores structured CBT optional rules', async () => {
@@ -321,17 +365,22 @@ describe('OptionsService', () => {
                 floatingCriticals: true,
                 sprinting: true,
                 allowMixedTechBaseAmmo: true,
+                hotLoadedAmmo: true,
+                enhancedFlamers: true,
             },
         };
 
         const service = await createService();
 
         expect(service.options().CBTOptionalRules).toEqual({
+            quirks: true,
+            floatingCriticals: true,
             forcedWithdrawal: false,
             extremeRange: true,
-            floatingCriticals: true,
             sprinting: true,
             allowMixedTechBaseAmmo: true,
+            hotLoadedAmmo: true,
+            enhancedFlamers: true,
         });
     });
 
@@ -352,14 +401,32 @@ describe('OptionsService', () => {
         expect(service.options().colorScheme).toBe('night');
     });
 
-    it('persists option updates', async () => {
-        savedOptions = { colorScheme: 'night' };
+    it('migrates legacy sheet and Alpha Strike color settings deterministically', async () => {
+        savedOptions = { sheetsColor: 'normal', ASCardStyle: 'colored' };
+
+        const service = await createService();
+
+        expect(service.options().colorScheme).toBe('default');
+    });
+
+    it('maps a legacy colored Alpha Strike card style when no sheet color exists', async () => {
+        savedOptions = { ASCardStyle: 'colored' };
+
+        const service = await createService();
+
+        expect(service.options().colorScheme).toBe('night');
+    });
+
+    it('persists only canonical theme options after an update', async () => {
+        savedOptions = { sheetsColor: 'night', ASCardStyle: 'monochrome' };
         const service = await createService();
 
         await service.setOption('colorScheme', 'default');
 
-        expect(dbService.saveOptions).toHaveBeenCalledWith(jasmine.objectContaining({
-            colorScheme: 'default',
-        }));
+        const persisted = dbService.saveOptions.calls.mostRecent().args[0] as Record<string, unknown>;
+        expect(persisted['colorScheme']).toBe('default');
+        expect(persisted['themeColor']).toBeUndefined();
+        expect(persisted['sheetsColor']).toBeUndefined();
+        expect(persisted['ASCardStyle']).toBeUndefined();
     });
 });

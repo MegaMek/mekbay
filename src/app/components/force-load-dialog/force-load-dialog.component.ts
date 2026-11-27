@@ -2,21 +2,26 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 // Author: Drake
 
+import { UnitNameService } from '../../services/unit-name.service';
 import { Component, inject, signal, effect, ChangeDetectionStrategy, computed, viewChild, type ElementRef, DestroyRef, afterNextRender, Injector, untracked } from '@angular/core';
-import { CommonModule } from '@angular/common';
+import { DecimalPipe } from '@angular/common';
 import { DialogRef, DIALOG_DATA } from '@angular/cdk/dialog';
 import { CdkVirtualScrollViewport, ScrollingModule } from '@angular/cdk/scrolling';
 import { firstValueFrom, map, race } from 'rxjs';
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import { BaseDialogComponent } from '../base-dialog/base-dialog.component';
 import { MeasureClampOverflowDirective } from '../../directives/measure-clamp-overflow.directive';
+import { ForceListPagingDirective } from '../../directives/force-list-paging.directive';
 import { DataService } from '../../services/data.service';
+import { ForcePersistenceService } from '../../services/force-persistence.service';
+import type { ForceListSession } from '../../models/force-list-session';
 import { DialogsService } from '../../services/dialogs.service';
 import { ToastService } from '../../services/toast.service';
 import { Pipe, type PipeTransform } from "@angular/core";
 import type { Force } from '../../models/force.model';
-import { getForcePreviewUnitPilotStats } from '../../models/force-preview.model';
-import { type LoadForceEntry, type LoadForceGroup } from '../../models/load-force-entry.model';
+import { getForcePreviewUnitDisplay, getForcePreviewUnitPilotStats } from '../../models/force-preview.model';
+import type { LoadForceEntry } from '../../models/load-force-entry.model';
+import type { ForcePreviewGroup } from '../../models/force-preview.model';
 import type { LoadOperationEntry } from '../../models/operation.model';
 import type { SerializedOperation } from '../../models/operation.model';
 import type { LoadOrganizationEntry } from '../../models/organization.model';
@@ -26,9 +31,15 @@ import { OpPreviewComponent } from '../op-preview/op-preview.component';
 import { OptionsService } from '../../services/options.service';
 import { GameService } from '../../services/game.service';
 import { ForceBuilderService } from '../../services/force-builder.service';
-import { UnitInitializerService } from '../../services/unit-initializer.service';
+import { ForceWorkspaceStateService } from '../../services/force-workspace-state.service';
+import { ForceDialogsService } from '../../services/force-dialogs.service';
+import { ForceOperationService } from '../../services/force-operation.service';
+import { OperationStorageService } from '../../services/operation-storage.service';
+import { OrganizationStorageService } from '../../services/organization-storage.service';
 import { GameSystem } from '../../models/common.model';
 import { UnitIconComponent } from '../unit-icon/unit-icon.component';
+import { CommanderIconComponent } from '../commander-icon/commander-icon.component';
+import { ForceReservesPreviewComponent } from '../force-reserves-preview/force-reserves-preview.component';
 import { type ResolvedPack, resolveForcePacks } from '../../utils/force-pack.util';
 import { CustomizeForcePackDialogComponent, type CustomizeForcePackDialogData, type CustomizeForcePackDialogResult } from '../customize-force-pack-dialog/customize-force-pack-dialog.component';
 import type { ForceAlignment } from '../../models/force-slot.model';
@@ -36,12 +47,12 @@ import { ForceAddModePickerDialogComponent, type ForceAddModePickerData, type Fo
 import { FactionImgPipe } from '../../pipes/faction-img.pipe';
 import { CleanModelStringPipe } from '../../pipes/clean-model-string.pipe';
 import { sanitizeForceTags } from '../../models/force-serialization';
-import { LanceTypeIdentifierUtil } from '../../utils/lance-type-identifier.util';
+import { FormationAnalyzer } from '../../utils/formation/formation-analysis.util';
 import {
     NOTE_PREVIEW_LINE_COUNT,
     hasVisibleNoteText,
 } from '../../utils/note-preview.util';
-import { NO_FORMATION_ID } from '../../utils/formation-type.model';
+import { NO_FORMATION_ID } from '../../utils/formation/formation-type.model';
 import { SessionPersistenceService } from '../../services/session-persistence.service';
 import { ForceTagsComponent, type ForceTagClickEvent } from '../force-tags/force-tags.component';
 import { ForceTaggingService } from '../../services/force-tagging.service';
@@ -67,6 +78,7 @@ export class FormatTimestamp implements PipeTransform {
 }
 
 export type ForceLoadMode = 'load' | 'add' | 'insert' | 'operation';
+export type ForceLoadTab = 'Hangar' | 'Force Packs' | 'TO&E' | 'Operations';
 
 export interface ForceLoadDialogEnvelope {
     result: LoadForceEntry | ResolvedPack | LoadOperationEntry | Force;
@@ -77,7 +89,7 @@ export interface ForceLoadDialogEnvelope {
 export type ForceLoadDialogResult = ForceLoadDialogEnvelope | null;
 
 export interface ForceLoadDialogData {
-    initialTab?: string;
+    initialTab?: ForceLoadTab;
 }
 
 type SortDirection = 'asc' | 'desc';
@@ -114,29 +126,35 @@ const DEFAULT_OPERATION_SORT_DIRECTION: SortDirection = 'desc';
 
 @Component({
     selector: 'force-load-dialog',
-    standalone: true,
     changeDetection: ChangeDetectionStrategy.OnPush,
-    imports: [CommonModule, ScrollingModule, BaseDialogComponent, CleanModelStringPipe, FormatTimestamp, MeasureClampOverflowDirective, UnitIconComponent, OpPreviewComponent, FactionImgPipe, ForceTagsComponent, CompactFilterMenuComponent, LoadingSpinnerComponent],
+    imports: [DecimalPipe, ScrollingModule, BaseDialogComponent, CleanModelStringPipe, FormatTimestamp, MeasureClampOverflowDirective, UnitIconComponent, OpPreviewComponent, FactionImgPipe, ForceTagsComponent, CompactFilterMenuComponent, LoadingSpinnerComponent, ForceReservesPreviewComponent, ForceListPagingDirective, CommanderIconComponent],
     templateUrl: './force-load-dialog.component.html',
-    styleUrls: ['./force-load-dialog.component.css']
+    styleUrl: './force-load-dialog.component.css'
 })
 export class ForceLoadDialogComponent {
+    readonly unitNames = inject(UnitNameService);
+    readonly getUnitDisplay = getForcePreviewUnitDisplay;
     private dialogRef = inject(DialogRef<ForceLoadDialogResult>);
     private dialogData: ForceLoadDialogData | null = inject(DIALOG_DATA, { optional: true });
     private dataService = inject(DataService);
+    private readonly forcePersistence = inject(ForcePersistenceService);
+    private operationStorage = inject(OperationStorageService);
+    private organizationStorage = inject(OrganizationStorageService);
     private destroyRef = inject(DestroyRef);
     private injector = inject(Injector);
     private sessionPersistenceService = inject(SessionPersistenceService);
     private forceTaggingService = inject(ForceTaggingService);
-    private unitInitializer = inject(UnitInitializerService);
     forceBuilderService = inject(ForceBuilderService);
+    private readonly forceWorkspace = inject(ForceWorkspaceStateService);
+    private readonly forceDialogs = inject(ForceDialogsService);
+    operationService = inject(ForceOperationService);
     optionsService = inject(OptionsService);
     gameService = inject(GameService);
     private dialogsService = inject(DialogsService);
     private toastService = inject(ToastService);
     readonly hangarAllFilter = HANGAR_FILTER_ALL;
     readonly hangarUnfiledFilter = HANGAR_FILTER_UNFILED;
-    readonly hangarClassicFilter = HANGAR_FILTER_CLASSIC;
+    readonly hangarCBTFilter = HANGAR_FILTER_CLASSIC;
     readonly hangarAlphaStrikeFilter = HANGAR_FILTER_ALPHA_STRIKE;
     searchInput = viewChild<ElementRef<HTMLInputElement>>('searchInput');
     private hangarViewport = viewChild<CdkVirtualScrollViewport>('hangarViewport');
@@ -149,7 +167,7 @@ export class ForceLoadDialogComponent {
     private readonly hangarDefaultItemSize = 142;
     private readonly hangarItemSizeSignal = signal(this.hangarDefaultItemSize);
     readonly hangarItemSize = computed(() => this.hangarItemSizeSignal());
-    private hangarHeightTrackingDebounceTimer: any;
+    private hangarHeightTrackingDebounceTimer: ReturnType<typeof setTimeout> | undefined;
     private readonly hangarMeasuredItemHeights = new Map<string, number>();
 
     readonly HANGAR_SORT_OPTIONS: { key: string; label: string }[] = [
@@ -227,10 +245,19 @@ export class ForceLoadDialogComponent {
     forces = signal<LoadForceEntry[]>([]);
     selectedForce = signal<LoadForceEntry | null>(null);
     loading = signal<boolean>(true);
+    readonly hangarComplete = signal(false);
+    readonly hangarLoadingMore = signal(false);
+    readonly hangarLoadingAll = signal(false);
+    readonly hangarLoadError = signal('');
+    private forceListSession?: ForceListSession;
     forceTagsVersion = signal(0);
 
-    tabs = ['Hangar', 'Force Packs', 'TO&E', 'Operations'];
-    activeTab = signal(this.dialogData?.initialTab ?? this.tabs[0]);
+    readonly tabs: readonly ForceLoadTab[] = ['Hangar', 'Force Packs', 'TO&E', 'Operations'];
+    activeTab = signal<ForceLoadTab>(this.dialogData?.initialTab ?? this.tabs[0]);
+
+    setActiveTab(tab: string): void {
+        if (this.tabs.includes(tab as ForceLoadTab)) this.activeTab.set(tab as ForceLoadTab);
+    }
 
     searchText = signal<string>('');
 
@@ -238,12 +265,17 @@ export class ForceLoadDialogComponent {
     isSelectedForceLoaded = computed<boolean>(() => {
         const sel = this.selectedForce();
         if (!sel?.instanceId) return false;
-        return this.forceBuilderService.loadedForces().some(s => s.force.instanceId() === sel.instanceId);
+        return this.forceWorkspace.loadedForces().some(s => s.force.instanceId() === sel.instanceId);
     });
-    gameTypeFilter = signal<'all' | GameSystem.CLASSIC | GameSystem.ALPHA_STRIKE>('all');
+    gameTypeFilter = signal<'all' | GameSystem.CBT | GameSystem.AS>('all');
     hangarTagFilter = signal<string>(this.getStoredHangarTagFilter());
     hangarFactionFilter = signal<number | null>(this.getStoredNumberFilter(HANGAR_FACTION_FILTER_SESSION_KEY));
     hangarEraFilter = signal<number | null>(this.getStoredNumberFilter(HANGAR_ERA_FILTER_SESSION_KEY));
+    readonly hangarRequiresComplete = computed(() => this.searchText().trim().length > 0
+        || this.hangarTagFilter() !== HANGAR_FILTER_ALL
+        || this.hangarFactionFilter() !== null || this.hangarEraFilter() !== null
+        || this.hangarSort() !== DEFAULT_HANGAR_SORT_KEY
+        || this.hangarSortDirection() !== DEFAULT_HANGAR_SORT_DIRECTION);
 
     private hangarCountSourceForces = computed(() => {
         const tokens = this.searchText().trim().toLowerCase().split(/\s+/).filter(Boolean);
@@ -253,13 +285,13 @@ export class ForceLoadDialogComponent {
     hangarGameTypeCounts = computed(() => {
         const counts = new Map<string, number>([
             [HANGAR_FILTER_ALL, 0],
-            [GameSystem.CLASSIC, 0],
-            [GameSystem.ALPHA_STRIKE, 0],
+            [GameSystem.CBT, 0],
+            [GameSystem.AS, 0],
         ]);
 
         for (const force of this.hangarCountSourceForces()) {
             counts.set(HANGAR_FILTER_ALL, (counts.get(HANGAR_FILTER_ALL) ?? 0) + 1);
-            const forceType = force.type || GameSystem.CLASSIC;
+            const forceType = force.type || GameSystem.CBT;
             counts.set(forceType, (counts.get(forceType) ?? 0) + 1);
         }
 
@@ -304,15 +336,15 @@ export class ForceLoadDialogComponent {
     hangarDisplayCounts = computed(() => {
         const counts = new Map<string, number>([
             [HANGAR_FILTER_ALL, 0],
-            [GameSystem.CLASSIC, 0],
-            [GameSystem.ALPHA_STRIKE, 0],
+            [GameSystem.CBT, 0],
+            [GameSystem.AS, 0],
             [HANGAR_FILTER_UNFILED, 0],
         ]);
 
         for (const force of this.hangarCountSourceForces()) {
             counts.set(HANGAR_FILTER_ALL, (counts.get(HANGAR_FILTER_ALL) ?? 0) + 1);
 
-            const forceType = force.type || GameSystem.CLASSIC;
+            const forceType = force.type || GameSystem.CBT;
             counts.set(forceType, (counts.get(forceType) ?? 0) + 1);
 
             const forceTags = this.getForceTags(force);
@@ -362,13 +394,13 @@ export class ForceLoadDialogComponent {
         return this.hangarCountSourceForces().filter(force => this.matchesHangarTagFilter(force, tagFilter));
     });
 
-    hangarFactionOptions = computed<FactionFilterOption[]>(() =>
+    hangarFactionOptions = computed<FactionFilterOption[]>(() => !this.hangarComplete() ? [] :
         this.buildFactionOptionsFromForces(
             this.hangarFacetSourceForces().filter(force => this.matchesForceEraFilter(force, this.hangarEraFilter())),
         ),
     );
 
-    hangarEraOptions = computed<EraFilterOption[]>(() =>
+    hangarEraOptions = computed<EraFilterOption[]>(() => !this.hangarComplete() ? [] :
         this.buildEraOptionsFromForces(
             this.hangarFacetSourceForces().filter(force => this.matchesForceFactionFilter(force, this.hangarFactionFilter())),
         ),
@@ -460,14 +492,14 @@ export class ForceLoadDialogComponent {
     });
 
     canCreateOperation = computed<boolean>(() =>
-        this.forceBuilderService.loadedForces().length >= 2 && !this.operationCreateBusy()
+        this.forceWorkspace.loadedForces().length >= 2 && !this.operationCreateBusy()
     );
 
     newOperationTitle = computed<string>(() => {
         if (this.operationCreateBusy()) {
             return 'Saving operation...';
         }
-        const forceCount = this.forceBuilderService.loadedForces().length;
+        const forceCount = this.forceWorkspace.loadedForces().length;
         if (forceCount >= 2) {
             return 'Create operation from deployed forces';
         }
@@ -479,6 +511,14 @@ export class ForceLoadDialogComponent {
     constructor() {
         // Load forces on init
         this.loadForces();
+        this.destroyRef.onDestroy(() => this.forceListSession?.dispose());
+
+        effect(() => {
+            if (this.activeTab() === 'Hangar' && !this.loading() && !this.hangarComplete()
+                && !this.hangarLoadError() && this.hangarRequiresComplete()) {
+                untracked(() => { void this.loadAllForces(false); });
+            }
+        });
 
         effect(() => {
             this.ensureHangarTagFilterIsValid();
@@ -555,7 +595,7 @@ export class ForceLoadDialogComponent {
         const MAX_GAP_CORRECTIONS = 3;
         let gapCorrectionPending: { destroy: () => void } | null = null;
         let gapCorrectionCount = 0;
-        let scrollGapTimer: any;
+        let scrollGapTimer: ReturnType<typeof setTimeout> | undefined;
         let currentViewportElement: HTMLElement | null = null;
         let viewportResizeObserver: ResizeObserver | null = null;
         let prevLayoutKey: string | undefined;
@@ -671,8 +711,8 @@ export class ForceLoadDialogComponent {
             const forceTagsVersion = this.forceTagsVersion();
             const expandedForceNotes = this.expandedForceNotes();
             this.overflowingForceNotes();
-            const unitDisplayName = this.optionsService.options().unitDisplayName;
-            const layoutKey = `${unitDisplayName}:${forceTagsVersion}:${Array.from(expandedForceNotes).sort().join('|')}`;
+            const { unitDisplayName, displayUnitNameFormat } = this.optionsService.options();
+            const layoutKey = `${unitDisplayName}:${displayUnitNameFormat}:${forceTagsVersion}:${Array.from(expandedForceNotes).sort().join('|')}`;
 
             untracked(() => {
                 if (!visible) {
@@ -786,15 +826,60 @@ export class ForceLoadDialogComponent {
     private async loadForces(): Promise<void> {
         this.loading.set(true);
         try {
-            const result = await this.dataService.listForces();
-            const enriched = (result || []).map(f => {
-                f._searchText = this.computeSearchText(f);
-                return f;
-            });
-            this.forces.set(enriched);
-            this.ensureHangarTagFilterIsValid();
+            const session = await this.forcePersistence.openForceList();
+            if (this.destroyRef.destroyed) { session.dispose(); return; }
+            this.forceListSession = session;
+            await session.loadNext();
+            this.publishForceList();
+        } catch (error) {
+            this.publishForceList();
+            if (!this.destroyRef.destroyed) this.hangarLoadError.set(String(error));
         } finally {
-            this.loading.set(false);
+            if (!this.destroyRef.destroyed) this.loading.set(false);
+        }
+    }
+
+    private publishForceList(): void {
+        const session = this.forceListSession;
+        if (!session || this.destroyRef.destroyed) return;
+        const entries = session.getEntries();
+        for (const entry of entries) entry._searchText ??= this.computeSearchText(entry);
+        this.forces.set(entries);
+        this.hangarComplete.set(session.complete);
+        this.ensureHangarTagFilterIsValid();
+        this.clearFilteredOutSelections();
+    }
+
+    async loadMoreForces(): Promise<void> {
+        if (this.loading() || this.hangarLoadingMore() || this.hangarLoadingAll() || this.hangarComplete()) return;
+        if (!this.forceListSession) { await this.loadForces(); return; }
+        this.hangarLoadingMore.set(true);
+        this.hangarLoadError.set('');
+        try {
+            await this.forceListSession.loadNext();
+            this.publishForceList();
+        } catch (error) {
+            this.publishForceList();
+            if (!this.destroyRef.destroyed) this.hangarLoadError.set(String(error));
+        } finally {
+            if (!this.destroyRef.destroyed) this.hangarLoadingMore.set(false);
+        }
+    }
+
+    async loadAllForces(explicit = true): Promise<void> {
+        if (this.loading() || this.hangarLoadingAll() || this.hangarComplete()) return;
+        if (!this.forceListSession) { await this.loadForces(); return; }
+        this.hangarLoadingAll.set(true);
+        this.hangarLoadError.set('');
+        try {
+            await this.forceListSession.loadAll(() => explicit
+                || (this.activeTab() === 'Hangar' && this.hangarRequiresComplete()));
+            this.publishForceList();
+        } catch (error) {
+            this.publishForceList();
+            if (!this.destroyRef.destroyed) this.hangarLoadError.set(String(error));
+        } finally {
+            if (!this.destroyRef.destroyed) this.hangarLoadingAll.set(false);
         }
     }
 
@@ -819,7 +904,7 @@ export class ForceLoadDialogComponent {
     private async loadOperations(selectOperationId?: string): Promise<void> {
         this.operationsLoading.set(true);
         try {
-            const result = await this.dataService.listOperations();
+            const result = await this.operationStorage.listOperations();
 
             // Build a local force lookup from the already-loaded forces list
             const forceMap = new Map<string, LoadForceEntry>();
@@ -857,7 +942,7 @@ export class ForceLoadDialogComponent {
             }
 
             if (missingInstanceIds.size > 0) {
-                const cloudInfo = await this.dataService.getForceInfoBulk(Array.from(missingInstanceIds));
+                const cloudInfo = await this.operationStorage.getForceInfoBulk(Array.from(missingInstanceIds));
                 if (cloudInfo.size > 0) {
                     // Apply cloud enrichment to the still-missing forces
                     for (const op of localOnlyOps) {
@@ -1043,12 +1128,12 @@ export class ForceLoadDialogComponent {
         this.clearFilteredOutSelections();
     }
 
-    onGameTypeFilter(type: 'all' | GameSystem.CLASSIC | GameSystem.ALPHA_STRIKE) {
+    onGameTypeFilter(type: 'all' | GameSystem.CBT | GameSystem.AS) {
         this.gameTypeFilter.set(type);
         this.clearFilteredOutSelections();
     }
 
-    getHangarGameTypeCount(type: 'all' | GameSystem.CLASSIC | GameSystem.ALPHA_STRIKE): number {
+    getHangarGameTypeCount(type: 'all' | GameSystem.CBT | GameSystem.AS): number {
         return this.hangarGameTypeCounts().get(type) ?? 0;
     }
 
@@ -1081,6 +1166,7 @@ export class ForceLoadDialogComponent {
     }
 
     getHangarEmptyStateMessage(): string {
+        if (!this.hangarComplete()) return 'The cloud list is not fully loaded.';
         if (this.searchText().trim().length > 0) {
             return 'No forces match the current search.';
         }
@@ -1133,7 +1219,7 @@ export class ForceLoadDialogComponent {
     private clearFilteredOutSelections() {
         // if selected force is filtered out, clear selection
         const selForce = this.selectedForce();
-        if (selForce && !this.filteredForces().includes(selForce)) {
+        if (selForce && this.hangarComplete() && !this.filteredForces().includes(selForce)) {
             this.selectedForce.set(null);
         }
         // if selected pack is filtered out, clear selection
@@ -1227,7 +1313,7 @@ export class ForceLoadDialogComponent {
     }
 
     /** Shared sort comparator for forces and packs */
-    private sortItems<T extends { name?: string; type?: GameSystem; bv?: number; pv?: number; faction?: Faction | null; factionId?: number; timestamp?: string; groups?: { units?: any[] }[]; units?: any[] }>(items: T[], sortKey: string, sortDir: SortDirection): T[] {
+    private sortItems<T extends { name?: string; type?: GameSystem; bv?: number; pv?: number; faction?: Faction | null; factionId?: number; timestamp?: string; groups?: { units?: unknown[] }[]; units?: unknown[] }>(items: T[], sortKey: string, sortDir: SortDirection): T[] {
         const dir = sortDir === 'asc' ? 1 : -1;
         return items.sort((a, b) => {
             switch (sortKey) {
@@ -1306,27 +1392,27 @@ export class ForceLoadDialogComponent {
     /** Pick the right point value: for hangar forces use per-entry type, for packs use current game system */
     private getForceValue(item: { type?: GameSystem; pv?: number; bv?: number }): number {
         const isAS = item.type != null
-            ? item.type === GameSystem.ALPHA_STRIKE   // Hangar: each force knows its own type
+            ? item.type === GameSystem.AS   // Hangar: each force knows its own type
             : this.gameService.isAlphaStrike();       // Packs: use current game system
         return isAS ? (item.pv ?? 0) : (item.bv ?? 0);
     }
 
     getGameTypeLabel(type: GameSystem | undefined): string {
-        return (type || GameSystem.CLASSIC) === GameSystem.ALPHA_STRIKE ? 'AS' : 'CBT';
+        return (type || GameSystem.CBT) === GameSystem.AS ? 'AS' : 'CBT';
     }
 
-    getGroupName(group: LoadForceGroup): string {
+    getGroupName(group: ForcePreviewGroup): string {
         if (!group.name) {
-            return LanceTypeIdentifierUtil.getFormationName(group.formationId) || '';
+            return FormationAnalyzer.getFormationName(group.formationId) || '';
         }
         return group.name;
     }
 
-    getGroupFormationName(group: LoadForceGroup): string | null {
+    getGroupFormationName(group: ForcePreviewGroup): string | null {
         if (!group.formationId) return null;
         if (group.formationId === NO_FORMATION_ID) return null;
         if (!group.name) return null; // We handle it in getGroupName
-        const formationName = LanceTypeIdentifierUtil.getFormationName(group.formationId);
+        const formationName = FormationAnalyzer.getFormationName(group.formationId);
         if (formationName && group.name.includes(formationName)) {
             return null;
         }
@@ -1335,11 +1421,6 @@ export class ForceLoadDialogComponent {
 
     getForceUnitCount(force: LoadForceEntry): number {
         return force.groups.reduce((sum, group) => sum + group.units.length, 0);
-    }
-
-    private matchesGameTypeFilter(item: { type?: GameSystem }, typeFilter: 'all' | GameSystem.CLASSIC | GameSystem.ALPHA_STRIKE): boolean {
-        const itemType = item.type || GameSystem.CLASSIC;
-        return typeFilter === 'all' || itemType === typeFilter;
     }
 
     private matchesHangarSearch(force: LoadForceEntry, tokens: readonly string[]): boolean {
@@ -1353,16 +1434,16 @@ export class ForceLoadDialogComponent {
     }
 
     private matchesHangarTagFilter(force: LoadForceEntry, filter: string): boolean {
-        const forceType = force.type || GameSystem.CLASSIC;
+        const forceType = force.type || GameSystem.CBT;
         const forceTags = this.getForceTags(force);
 
         switch (filter) {
             case HANGAR_FILTER_ALL:
                 return true;
             case HANGAR_FILTER_CLASSIC:
-                return forceType === GameSystem.CLASSIC;
+                return forceType === GameSystem.CBT;
             case HANGAR_FILTER_ALPHA_STRIKE:
-                return forceType === GameSystem.ALPHA_STRIKE;
+                return forceType === GameSystem.AS;
             case HANGAR_FILTER_UNFILED:
                 return forceTags.length === 0;
             default:
@@ -1461,16 +1542,17 @@ export class ForceLoadDialogComponent {
         if (!stored) {
             return HANGAR_FILTER_ALL;
         }
-        if (stored === GameSystem.CLASSIC) {
+        if (stored === GameSystem.CBT) {
             return HANGAR_FILTER_CLASSIC;
         }
-        if (stored === GameSystem.ALPHA_STRIKE) {
+        if (stored === GameSystem.AS) {
             return HANGAR_FILTER_ALPHA_STRIKE;
         }
         return stored;
     }
 
     private ensureHangarTagFilterIsValid(): void {
+        if (!this.hangarComplete()) return;
         const activeTag = this.hangarTagFilter();
         if (activeTag === HANGAR_FILTER_ALL || this.isVirtualHangarTagFilter(activeTag)) {
             return;
@@ -1487,7 +1569,7 @@ export class ForceLoadDialogComponent {
     }
 
     private ensureHangarFacetFiltersAreValid(): void {
-        if (this.loading()) {
+        if (this.loading() || !this.hangarComplete()) {
             return;
         }
 
@@ -1540,11 +1622,10 @@ export class ForceLoadDialogComponent {
             const text = await file.text();
             const { parseMulForce } = await import('../../utils/mul-file.util');
             const forceName = file.name.replace(/\.mul$/i, '').trim() || 'Imported MUL Force';
-            const { force, issues } = await parseMulForce(text, forceName, this.dataService, this.unitInitializer, this.injector);
-            force.instanceId.set(null);
+            const { force, issues } = await parseMulForce(text, forceName, this.dataService, this.injector);
 
             const warningCount = issues.filter(issue => issue.severity === 'warning').length;
-            const loadedCount = force.units().length;
+            const loadedCount = force.members().length;
             this.toastService.showToast(
                 warningCount > 0
                     ? `Loaded ${loadedCount} units from MUL with ${warningCount} warning${warningCount === 1 ? '' : 's'}.`
@@ -1563,7 +1644,7 @@ export class ForceLoadDialogComponent {
     }
 
     private async onLoadForce(force: Force): Promise<void> {
-        if (this.forceBuilderService.hasUserLoadedForces()) {
+        if (this.forceWorkspace.loadedForces().length > 0) {
             const ref = this.dialogsService.createDialog<string>(ConfirmDialogComponent, {
                 disableClose: true,
                 data: <ConfirmDialogData<string>>{
@@ -1597,7 +1678,7 @@ export class ForceLoadDialogComponent {
             return;
         }
         // If forces are already loaded, ask the user whether to replace or append
-        if (this.forceBuilderService.hasUserLoadedForces()) {
+        if (this.forceWorkspace.loadedForces().length > 0) {
             const ref = this.dialogsService.createDialog<string>(ConfirmDialogComponent, {
                 disableClose: true,
                 data: <ConfirmDialogData<string>>{
@@ -1626,7 +1707,7 @@ export class ForceLoadDialogComponent {
     }
 
     private async onAddForce(force?: Force): Promise<void> {
-        const currentForce = this.forceBuilderService.smartCurrentForce();
+        const currentForce = this.forceWorkspace.smartCurrentForce();
         const showInsert = !!currentForce && currentForce.owned();
         const ref = this.dialogsService.createDialog<ForceAddModePickerResult>(
             ForceAddModePickerDialogComponent,
@@ -1664,9 +1745,9 @@ export class ForceLoadDialogComponent {
         if (!this.canCreateOperation()) return;
         this.operationCreateBusy.set(true);
         try {
-            const saved = await this.forceBuilderService.saveOperation();
+            const saved = await this.operationService.saveOperation();
             if (!saved) return;
-            const operationId = this.forceBuilderService.currentOperation()?.operationId;
+            const operationId = this.operationService.currentOperation()?.operationId;
             if (operationId) {
                 await this.loadOperations(operationId);
             }
@@ -1684,7 +1765,7 @@ export class ForceLoadDialogComponent {
             'danger'
         );
         if (confirmed) {
-            await this.dataService.deleteOperation(op.operationId);
+            await this.operationStorage.deleteOperation(op.operationId);
             this.operations.update(ops => ops.filter(o => o !== op));
             this.selectedOperation.set(null);
         }
@@ -1726,7 +1807,7 @@ export class ForceLoadDialogComponent {
             }),
         };
 
-        await this.dataService.saveOperation(updatedOp);
+        await this.operationStorage.saveOperation(updatedOp);
 
         // Update the local list reactively
         op.name = result.name;
@@ -1737,7 +1818,7 @@ export class ForceLoadDialogComponent {
                 ...f,
                 timestamp: originalForce?.timestamp || new Date().toISOString(),
             };
-        }) as any;
+        });
         this.operations.set([...this.operations()]);
     }
 
@@ -1790,9 +1871,9 @@ export class ForceLoadDialogComponent {
             'danger'
         );
         if (confirmed) {
-            if (force.instanceId) {
-                await this.dataService.deleteForce(force.instanceId);
-            }
+            const deleted = await this.forceBuilderService.deleteForceByInstanceId(force.instanceId);
+            if (!deleted) return;
+            this.forceListSession?.remove(force.instanceId);
             this.forces.update(forces => forces.filter(f => f !== force));
             this.ensureHangarTagFilterIsValid();
             this.selectedForce.set(null);
@@ -1808,7 +1889,7 @@ export class ForceLoadDialogComponent {
     private async loadOrganizations(): Promise<void> {
         this.organizationsLoading.set(true);
         try {
-            const result = await this.dataService.listOrganizations();
+            const result = await this.organizationStorage.listOrganizations();
             this.organizations.set(result || []);
         } finally {
             this.organizationsLoading.set(false);
@@ -1842,12 +1923,12 @@ export class ForceLoadDialogComponent {
     async onOpenOrganization() {
         const org = this.selectedOrganization();
         if (!org) return;
-        const ref = await this.forceBuilderService.showForceOrgDialog(org.organizationId);
+        const ref = await this.forceDialogs.showForceOrgDialog(org.organizationId);
         await this.awaitOrgDialogOrForceLoad(ref);
     }
 
     async onNewOrganization() {
-        const ref = await this.forceBuilderService.showForceOrgDialog();
+        const ref = await this.forceDialogs.showForceOrgDialog();
         await this.awaitOrgDialogOrForceLoad(ref);
     }
 
@@ -1855,7 +1936,7 @@ export class ForceLoadDialogComponent {
      * Waits for the org dialog to close, but also closes the load dialog
      * immediately if a force is loaded/added while the org dialog is open.
      */
-    private async awaitOrgDialogOrForceLoad(ref: { closed: import('rxjs').Observable<any> }): Promise<void> {
+    private async awaitOrgDialogOrForceLoad(ref: { closed: import('rxjs').Observable<unknown> }): Promise<void> {
         const reason = await firstValueFrom(
             race([
                 ref.closed.pipe(map(() => 'closed' as const)),
@@ -1882,7 +1963,7 @@ export class ForceLoadDialogComponent {
             'danger'
         );
         if (confirmed) {
-            await this.dataService.deleteOrganization(org.organizationId);
+            await this.organizationStorage.deleteOrganization(org.organizationId);
             this.organizations.update(orgs => orgs.filter(o => o !== org));
             this.selectedOrganization.set(null);
         }
@@ -1891,7 +1972,7 @@ export class ForceLoadDialogComponent {
     private async reloadOrganizations(): Promise<void> {
         this.organizationsLoading.set(true);
         try {
-            const result = await this.dataService.listOrganizations();
+            const result = await this.organizationStorage.listOrganizations();
             const orgs = result || [];
             this.organizations.set(orgs);
             const prev = this.selectedOrganization();

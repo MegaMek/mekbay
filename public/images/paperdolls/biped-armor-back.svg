@@ -1,0 +1,39 @@
+<?xml version="1.0" encoding="utf-8"?>
+<svg width="100%" height="100%" viewBox="1.25 1.25 101.75 89.75" version="1.1" xmlns="http://www.w3.org/2000/svg" style="fill-rule:evenodd;clip-rule:evenodd;">
+  <path id="path56103" d="M99.689 30.806L70.626 29.161H67.884v-7.74l-1.666-1.646-2.688-.454c-1.547-3.972-2.079-5.636-4.657-7.771l-.436-3.902-1.75-1.645h-5.55L49.385 7.648l-.433 3.902c-2.578 2.135-4.197 3.799-5.745 7.771l-1.611 .454-1.669 1.646v7.74H37.186L8.112 30.806 5.919 33.548 7.563 68.643l1.646 1.645s19.203 1.097 23.042 1.645c1.095 16.451 5.483 18.033 5.483 18.033H70.077s4.936-1.582 6.033-18.033c3.839-.548 22.482-1.645 22.482-1.645l1.645-1.645 1.646-35.095-2.194-2.742z" style="fill:rgb(199,199,199);fill-rule:nonzero;"/>
+  <path id="paperdoll-art-armor-LT_R-armorLTR" class="armor unitLocation" data-loc="LT" data-rear="1" d="M29.759 73.592v-5s0-10.4 7.7-15.4V17.962l-.5 .44v7.74h-2.7l-29.1 1.65-2.2 2.74 1.7 35.06 1.6 1.7s19.2 1.1 23.1 1.6c.1 1.7 .2 3.3 .4 4.7z" style="fill:white;fill-rule:nonzero;"/>
+  <path id="paperdoll-art-armor-RT_R-armorRTR" class="armor unitLocation" data-loc="RT" data-rear="1" d="M64.859 18.352v34.84c7.7 5 8.3 15.4 8.3 15.4v.6-.3c3.9-.5 22.5-1.6 22.5-1.6l1.649-1.7 1.641-35.06-2.191-2.74-29.099-1.65h-2.7v-7.74l-.1-.05z" style="fill:white;fill-rule:nonzero;"/>
+  <path id="paperdoll-art-armor-CT_R-armorCTR" class="armor unitLocation" data-loc="CT" data-rear="1" d="M48.159 2.992l-1.7 1.6-.4 3.9c-2.6 2.2-4.2 3.8-5.8 7.8l-1.6 .5-1.2 1.17v35.23c-7.7 5-7.7 15.4-7.7 15.4v5c1.5 12.1 5 13.4 5 13.4h32.4s4.8-1.6 6-17.8v-.6s-.6-10.4-8.3-15.4V18.352l-1.6-1.56-2.7-.5c-1.5-4-2-5.6-4.6-7.8l-.5-3.9-1.7-1.6h-5.6z" style="fill:white;fill-rule:nonzero;"/>
+  <path id="path56621" d="M96.759 27.792L67.696 26.147H64.954v-7.74l-1.666-1.646-2.688-.454c-1.547-3.972-2.079-5.637-4.657-7.771l-.436-3.902-1.75-1.645h-5.55L46.455 4.634l-.433 3.902c-2.578 2.134-4.197 3.799-5.745 7.771l-1.611 .454-1.669 1.646v7.74H34.256L5.182 27.792 2.989 30.534 4.633 65.629l1.646 1.646s19.203 1.096 23.042 1.644c1.095 16.451 5.483 18.033 5.483 18.033H67.147s4.936-1.582 6.033-18.033c3.839-.548 22.482-1.644 22.482-1.644l1.645-1.646 1.646-35.095-2.194-2.742z" style="fill:none;fill-rule:nonzero;stroke:black;stroke-width:1.45px;"/>
+  <path id="path56625" d="M64.955 26.147V53.565c7.676 4.936 8.226 15.354 8.226 15.354" style="fill:none;fill-rule:nonzero;stroke:black;stroke-width:1.45px;"/>
+  <path id="path56629" d="M36.997 26.147V53.565c-7.676 4.936-7.676 15.354-7.676 15.354" style="fill:none;fill-rule:nonzero;stroke:black;stroke-width:1.45px;"/>
+  <rect x="40.108" y="21.009" width="21.775" height="61.991" style="fill: none; stroke: rgb(225, 29, 72); stroke-width: 1.2px; stroke-dasharray: 2.88, 1.44;" data-canon="armor" data-location="CT_R"/>
+  <rect data-canon="armor" data-location="LT_R" x="5.909" y="31.09" width="27.303" height="26.302" style="fill: none; stroke: rgb(225, 29, 72); stroke-width: 1.2px; stroke-dasharray: 2.88, 1.44;"/>
+  <rect data-canon="armor" data-location="RT_R" x="68.515" y="31.09" width="27.484" height="26.302" style="fill: none; stroke: rgb(225, 29, 72); stroke-width: 1.2px; stroke-dasharray: 2.88, 1.44;"/>
+  <path d="M 5.207 30.331 L 35.107 30.331 L 35.195 52.284 C 30.432 55.443 28.375 60.651 27.307 64.931 L 6.834 64.96 L 5.207 30.331 Z" style="fill: none; stroke-width: 1.2; stroke-dasharray: 2.88, 1.44; stroke: rgb(0, 0, 255);" data-fill="armor" data-location="LT_R"/>
+  <path d="M 96.841 30.331 L 66.941 30.331 L 66.853 52.284 C 71.616 55.443 73.673 60.651 74.741 64.931 L 95.214 64.96 L 96.841 30.331 Z" style="fill: none; stroke-width: 1.2; stroke-dasharray: 2.88, 1.44; stroke: rgb(0, 0, 255); transform-origin: 81.847px 47.645px;" data-fill="armor" data-location="RT_R"/>
+  <path d="M 39.715 19.95 L 61.848 19.95 L 61.941 56.465 C 66.708 58.24 69.459 63.897 70.117 69.031 C 70.766 74.1 65.632 84.277 65.632 84.277 L 36.305 84.183 C 36.305 84.183 31.366 73.75 31.96 68.658 C 32.391 64.96 35.648 58.059 39.715 56.558 L 39.715 19.95 Z" style="fill: none; stroke-width: 1.2; stroke-dasharray: 2.88, 1.44; stroke: rgb(0, 0, 255);" data-fill="armor" data-location="CT_R"/>
+
+  <!-- Editable ordered pip rails; removed by the paperdoll generator. -->
+    <g data-rail="armor" data-location="CT_R">
+      <path d="M 51.02 15.68 L 51.02 45.33" style="fill: none; stroke: rgb(0, 255, 0); stroke-width: 0.99; stroke-linecap: round; stroke-dasharray: 1.98;" data-rail-capacity="5" data-rail-index="1"/>
+      <path d="M 41.55 52 L 41.55 81.65" style="fill: none; stroke: rgb(0, 255, 0); stroke-width: 0.99; stroke-linecap: round; stroke-dasharray: 1.98;" data-rail-capacity="5" data-rail-index="2"/>
+      <path d="M 60.5 52 L 60.5 81.65" style="fill: none; stroke: rgb(0, 255, 0); stroke-width: 0.99; stroke-linecap: round; stroke-dasharray: 1.98;" data-rail-capacity="5" data-rail-index="3"/>
+      <path d="M 41.97 18.64 L 41.97 48.29" style="fill: none; stroke: rgb(0, 255, 0); stroke-width: 0.99; stroke-linecap: round; stroke-dasharray: 1.98;" data-rail-capacity="5" data-rail-index="4"/>
+      <path d="M 51.02 54.97 L 51.02 84.62" style="fill: none; stroke: rgb(0, 255, 0); stroke-width: 0.99; stroke-linecap: round; stroke-dasharray: 1.98;" data-rail-capacity="5" data-rail-index="5"/>
+      <path d="M 60.07 18.64 L 60.07 48.29" style="fill: none; stroke: rgb(0, 255, 0); stroke-width: 0.99; stroke-linecap: round; stroke-dasharray: 1.98;" data-rail-capacity="5" data-rail-index="6"/>
+    </g>
+    <g data-rail="armor" data-location="LT_R">
+      <path d="M 22.09 29.2 L 22.09 58.85" style="fill: none; stroke: rgb(0, 255, 0); stroke-width: 0.99; stroke-linecap: round; stroke-dasharray: 1.98;" data-rail-capacity="5" data-rail-index="1"/>
+      <path d="M 8.73 29.2 L 8.73 58.85" style="fill: none; stroke: rgb(0, 255, 0); stroke-width: 0.99; stroke-linecap: round; stroke-dasharray: 1.98;" data-rail-capacity="5" data-rail-index="2"/>
+      <path d="M 15.41 32.16 L 15.41 61.81" style="fill: none; stroke: rgb(0, 255, 0); stroke-width: 0.99; stroke-linecap: round; stroke-dasharray: 1.98;" data-rail-capacity="5" data-rail-index="3"/>
+      <path d="M 27.3 32.16 L 27.3 61.81" style="fill: none; stroke: rgb(0, 255, 0); stroke-width: 0.99; stroke-linecap: round; stroke-dasharray: 1.98;" data-rail-capacity="5" data-rail-index="4"/>
+    </g>
+    <g data-rail="armor" data-location="RT_R">
+      <path d="M 79.95 29.2 L 79.95 58.85" style="fill: none; stroke: rgb(0, 255, 0); stroke-width: 0.99; stroke-linecap: round; stroke-dasharray: 1.98;" data-rail-capacity="5" data-rail-index="1"/>
+      <path d="M 93.32 29.2 L 93.32 58.85" style="fill: none; stroke: rgb(0, 255, 0); stroke-width: 0.99; stroke-linecap: round; stroke-dasharray: 1.98;" data-rail-capacity="5" data-rail-index="2"/>
+      <path d="M 86.64 32.16 L 86.64 61.81" style="fill: none; stroke: rgb(0, 255, 0); stroke-width: 0.99; stroke-linecap: round; stroke-dasharray: 1.98;" data-rail-capacity="5" data-rail-index="3"/>
+      <path d="M 74.74 32.16 L 74.74 61.81" style="fill: none; stroke: rgb(0, 255, 0); stroke-width: 0.99; stroke-linecap: round; stroke-dasharray: 1.98;" data-rail-capacity="5" data-rail-index="4"/>
+    </g>
+</svg>
+

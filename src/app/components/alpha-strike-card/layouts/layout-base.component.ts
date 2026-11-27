@@ -2,7 +2,8 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 // Author: Drake
 
-import { Directive, input, output, computed, inject, signal } from '@angular/core';
+import { UnitNameService } from '../../../services/unit-name.service';
+import { Directive, input, output, computed, inject, signal, afterNextRender, DestroyRef } from '@angular/core';
 import type { ASForceUnit, AbilitySelection } from '../../../models/as-force-unit.model';
 import type { ColorScheme } from '../../../models/options.model';
 import type { AlphaStrikeUnitStats, UnitSummary } from '../../../models/unit-summary.model';
@@ -14,7 +15,7 @@ import { PILOT_ABILITIES, type PilotAbility, type ASCustomPilotAbility } from '.
 import { type CriticalHitsVariant, getLayoutForUnitType } from '../card-layout.config';
 import { adjustPointValueForSkill } from '../../../utils/pv-skill-adjustment.util';
 import { formatMovement, formatMovementWithAlternate } from '../../../utils/as-common.util';
-import { FormationAbilityAssignmentUtil, type FormationWideAbilityDescriptor } from '../../../utils/formation-ability-assignment.util';
+import { FormationAbilityAssignmentUtil, type FormationWideAbilityDescriptor } from '../../../utils/formation/formation-ability-assignment.util';
 import type { SpecialAbilityState } from '../../../models/as-special-ability-state.model';
 import { DEFAULT_GUNNERY_SKILL } from '../../../models/crew-member.model';
 
@@ -47,6 +48,14 @@ export interface SpecialAbilityClickEvent {
     event: MouseEvent;
 }
 
+export interface PositionedTextRun<T> {
+    item: T;
+    text: string;
+    x: number;
+    y: number;
+    width: number;
+}
+
 export interface PilotCardAbility {
     readonly kind: 'pilot';
     readonly selection: AbilitySelection;
@@ -61,6 +70,95 @@ export type CardAbility = PilotCardAbility | FormationWideCardAbility;
 
 @Directive()
 export abstract class AsLayoutBaseComponent {
+    private readonly textContext = document.createElement('canvas').getContext('2d')!;
+    private readonly fontsReady = signal(0);
+
+    constructor() {
+        const destroyRef = inject(DestroyRef);
+        afterNextRender(() => {
+            void document.fonts.ready.then(() => {
+                if (!destroyRef.destroyed) this.fontsReady.update(value => value + 1);
+            });
+        });
+    }
+
+    // Card layout is calculated before its SVG text exists. Use the same fonts
+    // and browser metrics as the rendered text, then reflow once fonts load.
+    protected measureText(text: string, font: string): number {
+        return this.textMetrics(text, font).width;
+    }
+
+    protected textMetrics(text: string, font: string): TextMetrics {
+        this.fontsReady();
+        this.textContext.font = font;
+        return this.textContext.measureText(text);
+    }
+
+    protected textBaseline(font: string, lineHeight: number): number {
+        const metrics = this.textMetrics('Mg', font);
+        return (lineHeight + metrics.fontBoundingBoxAscent - metrics.fontBoundingBoxDescent) / 2;
+    }
+
+    protected specialDisplayText(state: SpecialAbilityState, isLast: boolean): string {
+        const remaining = state.maxCount && state.consumedCount ? `[${state.maxCount - state.consumedCount}]` : '';
+        return `${state.effective}${remaining}${isLast ? '' : ','}`;
+    }
+
+    protected layoutTextRuns<T>(items: readonly T[], textFor: (item: T, index: number) => string,
+        startX: number, startY: number, rightX: number, lineHeight: number, font: string,
+        gap = 0, wrapX = startX): PositionedTextRun<T>[] {
+        let x = startX;
+        let y = startY;
+        return items.map((item, index) => {
+            const text = textFor(item, index);
+            const width = this.measureText(text, font);
+            if (x + width > rightX && x > wrapX) { x = wrapX; y += lineHeight; }
+            const run = { item, text, x, y, width };
+            x += width + gap;
+            return run;
+        });
+    }
+
+    protected plainMovement(text: string): string {
+        return text.replaceAll('<span class="hex-symbol">', '').replaceAll('</span>', '');
+    }
+
+    protected movementParts(text: string): string[] {
+        return this.plainMovement(text).split(/(⬢)/);
+    }
+
+    // Both card layouts display each pilot/formation ability as its own wrapped block.
+    protected layoutAbilityRuns(startX: number, rightX: number): { item: CardAbility; text: string; x: number; y: number }[] {
+        const runs: { item: CardAbility; text: string; x: number; y: number }[] = [];
+        const font = '700 28px Roboto';
+        let y = 0;
+        for (const item of this.abilities()) {
+            const words = this.layoutTextRuns(this.formatAbility(item).split(' '), word => word,
+                startX, y, rightX, 33.6, font, this.measureText(' ', font));
+            for (const word of words) {
+                const last = runs.at(-1);
+                if (last?.item === item && last.y === word.y) last.text += ` ${word.text}`;
+                else runs.push({ item, text: word.text, x: startX, y: word.y });
+            }
+            y = (runs.at(-1)?.y ?? y) + 33.6;
+        }
+        return runs;
+    }
+
+    // Keep the badge readable at catalog and 88 mm print sizes using fixed SVG units.
+    protected customBadge = computed(() => ({
+        width: this.measureText('CUSTOM', '700 21px Roboto') + 6 * 1.26 + 21,
+        height: 33.6,
+        baseline: 6.3 + this.textBaseline('700 21px Roboto', 21),
+    }));
+
+    protected customBadgeTop(baseline: number, adjacentFont: string): number {
+        // Header labels are uppercase; center the badge on their cap height.
+        return baseline - this.textMetrics('H', adjacentFont).actualBoundingBoxAscent / 2 - this.customBadge().height / 2;
+    }
+
+    protected movementText = computed(() => this.plainMovement(this.movementDisplay()));
+    readonly unitNames = inject(UnitNameService);
     protected readonly dataService = inject(DataService);
     protected readonly abilityLookup = inject(AsAbilityLookupService);
 
@@ -90,7 +188,7 @@ export abstract class AsLayoutBaseComponent {
     // Derived from unit
     asStats = computed<AlphaStrikeUnitStats>(() => this.unit().as);
     model = computed<string>(() => this.unit().model);
-    chassis = computed<string>(() => this.unit().chassis);
+    chassis = computed<string>(() => this.unitNames.chassis(this.unit()));
 
     // Critical hits variant from layout config
     criticalHitsVariant = computed<CriticalHitsVariant>(() => {
@@ -103,7 +201,13 @@ export abstract class AsLayoutBaseComponent {
     skill = computed<number>(() => this.forceUnit()?.getPilotStats() ?? this.skillOverride() ?? DEFAULT_GUNNERY_SKILL);
     basePV = computed<number>(() => this.asStats().PV);
     adjustedPV = computed<number>(() => {
+        const member = this.forceUnit();
+        if (member) return member.getBv();
         return adjustPointValueForSkill(this.asStats().PV, this.skill());
+    });
+    readonly vacant = computed(() => {
+        const member = this.forceUnit();
+        return member?.crewVacant() ?? false;
     });
     abilities = computed<CardAbility[]>(() => {
         const forceUnit = this.forceUnit();

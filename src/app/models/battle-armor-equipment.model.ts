@@ -1,0 +1,106 @@
+// Copyright (C) 2026 The MegaMek Team
+// SPDX-License-Identifier: GPL-3.0-or-later
+
+import type { Equipment } from './equipment.model';
+import type { EquipmentFlag } from './equipment-flags.type';
+import { isSneakCamoArmorKit } from './infantry-equipment.model';
+import { isApolloEquipment } from './apollo-mode.model';
+import { isArtemisEquipment } from './artemis-equipment.model';
+import { isBattleArmorStructuralUtility } from './utility-equipment.model';
+
+export function battleArmorMinesweeperToolFlags(): readonly EquipmentFlag[] {
+  return Object.freeze(['F_TOOLS', 'S_MINESWEEPER']);
+}
+
+export function isAntiPersonnelMountEquipment(equipment: Equipment | null | undefined): boolean {
+  return equipment?.hasFlag('F_AP_MOUNT') === true;
+}
+
+export function isArmoredGloveEquipment(equipment: Equipment | null | undefined): boolean {
+  return equipment?.hasFlag('F_ARMORED_GLOVE') === true;
+}
+
+export function isBattleArmorManipulatorEquipment(
+  equipment: Equipment | null | undefined,
+): boolean {
+  return equipment?.hasFlag('F_BA_MANIPULATOR') === true;
+}
+
+export function isBasicManipulatorEquipment(equipment: Equipment | null | undefined): boolean {
+  return equipment?.hasFlag('F_BASIC_MANIPULATOR') === true;
+}
+
+export function isBattleClawEquipment(equipment: Equipment | null | undefined): boolean {
+  return equipment?.hasFlag('F_BATTLE_CLAW') === true;
+}
+
+export function isElectronicInterfaceEquipment(equipment: Equipment | null | undefined): boolean {
+  return equipment?.hasFlag('F_EI_INTERFACE') === true;
+}
+
+export function isMagnetClawEquipment(equipment: Equipment | null | undefined): boolean {
+  return equipment?.hasFlag('F_MAGNET_CLAW') === true;
+}
+
+export function isBattleArmorMinesweeperTools(
+  equipment: Equipment | null | undefined,
+): boolean {
+  return battleArmorMinesweeperToolFlags().every(flag => equipment?.hasFlag(flag) === true);
+}
+
+export function isParafoilEquipment(equipment: Equipment | null | undefined): boolean {
+  return equipment?.hasFlag('F_PARAFOIL') === true;
+}
+
+/**
+ * The item a suit carries for its movement system. MegaMek keeps it at no location and takes no slot for it
+ * (BLKBattleArmorFile); the movement system decides it, so it is never picked or placed.
+ */
+export const BATTLE_ARMOR_PROPULSION_EQUIPMENT: Readonly<Record<string, string>> = Object.freeze({
+  Jump: 'BAJumpJet',
+  VTOL: 'BAVTOL',
+  UMU: 'BAUMU',
+});
+
+export function isBattleArmorVtolEquipment(equipment: Equipment | null | undefined): boolean {
+  return equipment?.hasFlag('F_BA_VTOL') === true;
+}
+
+export function isDetachableWeaponPackEquipment(
+  equipment: Equipment | null | undefined,
+): boolean {
+  return equipment?.hasFlag('F_DETACHABLE_WEAPON_PACK') === true;
+}
+
+/**
+ * Battle armor equipment that is part of the suit rather than an item of its own: weapon packs and mounts, armor
+ * treatments and the fire control its weapons already name. The record sheet leaves these off the inventory.
+ */
+export function isBattleArmorStructuralEquipment(equipment: Equipment | null | undefined): boolean {
+  return isApolloEquipment(equipment)
+    || isDetachableWeaponPackEquipment(equipment)
+    || isModularWeaponMountEquipment(equipment)
+    || isBattleArmorStructuralUtility(equipment)
+    || isArtemisEquipment(equipment)
+    || (isAntiPersonnelMountEquipment(equipment) && !isBattleArmorManipulatorEquipment(equipment));
+}
+
+/** Extended life support seals a suit for hostile environments (TM p. 257). */
+export function isExtendedLifeSupportEquipment(equipment: Equipment | null | undefined): boolean {
+  return equipment?.hasFlag('F_EXTENDED_LIFE_SUPPORT') === true;
+}
+
+export function isModularWeaponMountEquipment(
+  equipment: Equipment | null | undefined,
+): boolean {
+  return equipment?.hasFlag('F_MODULAR_WEAPON_MOUNT') === true;
+}
+
+export function battleArmorEquipmentAlphaStrikeAbility(
+  equipment: Equipment | null | undefined,
+): 'LMAS' | 'MSW' | 'PAR' | null {
+  if (isSneakCamoArmorKit(equipment)) return 'LMAS';
+  if (isBattleArmorMinesweeperTools(equipment)) return 'MSW';
+  if (isParafoilEquipment(equipment)) return 'PAR';
+  return null;
+}

@@ -2,12 +2,15 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 // Author: Drake
 
-import { Component, ChangeDetectionStrategy, inject, computed, effect, type ElementRef, viewChildren, signal, DestroyRef, viewChild } from '@angular/core';
+import { Component, ChangeDetectionStrategy, inject, computed, effect, type ElementRef, viewChildren, signal, viewChild } from '@angular/core';
 import { AlphaStrikeCardComponent } from '../alpha-strike-card/alpha-strike-card.component';
 import { OptionsService } from '../../services/options.service';
+import { viewerWheel } from '../../utils/viewer-wheel';
 import { ASForceUnit } from '../../models/as-force-unit.model';
 import { ASForce } from '../../models/as-force.model';
-import { ForceBuilderService } from '../../services/force-builder.service';
+import { ForceWorkspaceStateService } from '../../services/force-workspace-state.service';
+import { ForceDialogsService } from '../../services/force-dialogs.service';
+import { ForcePilotEditorService } from '../../services/force-pilot-editor.service';
 import { getLayoutForUnitType } from '../alpha-strike-card/card-layout.config';
 import { PageViewerCanvasControlsComponent } from '../page-viewer/canvas/page-viewer-canvas-controls.component';
 import { PageCanvasOverlayComponent } from '../page-viewer/canvas/page-canvas-overlay.component';
@@ -16,9 +19,9 @@ import { DbService } from '../../services/db.service';
 import { ASInteractionOverlayComponent } from './as-interaction-overlay.component';
 
 export interface CardRenderItem {
-    forceUnit: ASForceUnit;
-    cardIndex: number;
-    trackKey: string;
+    readonly forceUnit: ASForceUnit;
+    readonly cardIndex: number;
+    readonly trackKey: string;
 }
 
 // Layout constants
@@ -62,13 +65,14 @@ interface Point {
 })
 export class AlphaStrikeViewerComponent {
     private readonly optionsService = inject(OptionsService);
-    private readonly forceBuilder = inject(ForceBuilderService);
-    private readonly destroyRef = inject(DestroyRef);
+    private readonly forceWorkspace = inject(ForceWorkspaceStateService);
+    private readonly forceDialogs = inject(ForceDialogsService);
+    private readonly pilotEditor = inject(ForcePilotEditorService);
     private readonly dbService = inject(DbService);
     private readonly canvasService = inject(PageViewerCanvasService);
 
     readonly unit = computed(() => {
-        const selectedUnit = this.forceBuilder.selectedUnit();
+        const selectedUnit = this.forceWorkspace.selectedUnit();
         if (selectedUnit instanceof ASForceUnit) {
             return selectedUnit;
         }
@@ -120,8 +124,20 @@ export class AlphaStrikeViewerComponent {
     // Pinch gesture state
     private readonly pointers = new Map<number, Point>();
     
-    // Cache for CardRenderItems to prevent object recreation
-    private readonly cardRenderItemsCache = new Map<string, CardRenderItem[]>();
+    /** Reactive card rows; invalidates when force membership or a unit projection changes. */
+    private readonly cardRenderItems = computed(() => new Map(
+        (this.force()?.units() ?? []).map(forceUnit => [
+            forceUnit.id,
+            Object.freeze(Array.from(
+                { length: this.getCardCount(forceUnit) },
+                (_, cardIndex) => Object.freeze({
+                    forceUnit,
+                    cardIndex,
+                    trackKey: `${forceUnit.id}-card-${cardIndex}`,
+                }),
+            )),
+        ]),
+    ));
     private pinchState: {
         lastDistance: number;
         accumulatedDelta: number;
@@ -145,45 +161,21 @@ export class AlphaStrikeViewerComponent {
     
     constructor() {
         this.setupEffects();
-        this.destroyRef.onDestroy(() => {
-            this.cardRenderItemsCache.clear();
-            this.pointers.clear();
-        });
     }
     
     /**
      * Get the number of cards for a given unit type.
      */
     getCardCount(forceUnit: ASForceUnit): number {
-        const unitType = forceUnit.getUnit().as.TP;
+        const unitType = forceUnit.getSummary().as.TP;
         return getLayoutForUnitType(unitType).cards.length;
     }
     
     /**
-     * Generate card render items for a unit (handles multi-card units).
-     * Results are cached to prevent object recreation on every change detection cycle
+     * Return the computed render rows for one unit (including multi-card units).
      */
-    getCardRenderItems(forceUnit: ASForceUnit): CardRenderItem[] {
-        const cacheKey = forceUnit.id;
-        const cached = this.cardRenderItemsCache.get(cacheKey);
-        
-        // Return cached if exists
-        if (cached) {
-            return cached;
-        }
-        
-        // Create new items and cache them
-        const items: CardRenderItem[] = [];
-        const cardCount = this.getCardCount(forceUnit);
-        for (let i = 0; i < cardCount; i++) {
-            items.push({
-                forceUnit,
-                cardIndex: i,
-                trackKey: `${forceUnit.id}-card-${i}`
-            });
-        }
-        this.cardRenderItemsCache.set(cacheKey, items);
-        return items;
+    getCardRenderItems(forceUnit: ASForceUnit): readonly CardRenderItem[] {
+        return this.cardRenderItems().get(forceUnit.id) ?? Object.freeze([]);
     }
     
     /**
@@ -216,25 +208,10 @@ export class AlphaStrikeViewerComponent {
      * Handle print request from controls
      */
     onPrintRequested(): void {
-        this.forceBuilder.printAll();
+        void this.forceDialogs.printAll(this.forceWorkspace.currentForce());
     }
 
     private setupEffects(): void {
-        // Clean up stale cardRenderItemsCache entries when force changes
-        effect(() => {
-            const force = this.force();
-            if (!force) {
-                this.cardRenderItemsCache.clear();
-                return;
-            }
-
-            const currentUnitIds = new Set(force.units().map(u => u.id));
-            // Remove stale cache entries
-            this.cardRenderItemsCache.forEach((_, id) => {
-                if (!currentUnitIds.has(id)) this.cardRenderItemsCache.delete(id);
-            });
-        });
-        
         // Scroll to selected unit when selection changes externally
         effect(() => {
             const selectedUnit = this.unit();
@@ -341,7 +318,7 @@ export class AlphaStrikeViewerComponent {
     onCardCellClick(event: MouseEvent, unit: ASForceUnit): void {
         // Mark as internal selection to prevent the effect from scrolling
         this.internalSelectionInProgress = true;
-        this.forceBuilder.selectUnit(unit);
+        this.forceWorkspace.selectUnit(unit);
         
         // Scroll to the clicked card cell
         const cardCell = (event.currentTarget as HTMLElement);
@@ -349,7 +326,7 @@ export class AlphaStrikeViewerComponent {
     }
 
     onEditPilot(unit: ASForceUnit): void {
-        this.forceBuilder.editPilotOfUnit(unit);
+        void this.pilotEditor.editUnit(unit.force, unit.id);
     }
     
     toggleHexMode(): void {
@@ -407,9 +384,22 @@ export class AlphaStrikeViewerComponent {
         return Math.max(1, Math.floor((availableWidth + CELL_GAP) / (minCellWidth + CELL_GAP)));
     }
     
-    // Ctrl+Wheel to change column count
+    // Wheel zoom changes the column count; scrolling stays within the card list.
     onWheel(event: WheelEvent): void {
-        if (!event.ctrlKey) return;
+        if (event.defaultPrevented) return;
+        const container = this.viewerContainer()?.nativeElement;
+        if (!container) return;
+        const delta = viewerWheel(event, this.optionsService.options().mouseWheelAction, {
+            width: container.clientWidth, height: container.clientHeight,
+        });
+        if (delta.zoom === 1) {
+            this.wheelState = null;
+            if (event.ctrlKey || event.metaKey || event.shiftKey) {
+                event.preventDefault();
+                container.scrollBy({ left: delta.x, top: delta.y, behavior: 'instant' });
+            }
+            return;
+        }
         event.preventDefault();
 
         const deltaY = event.deltaY;

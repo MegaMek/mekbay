@@ -62,7 +62,7 @@ describe('ASPrintUtil', () => {
             serialize: () => ({ state: 'original' }),
             update: jasmine.createSpy('update'),
             repairAll: jasmine.createSpy('repairAll'),
-            getUnit: () => ({
+            getSummary: () => ({
                 as: { TP: 'BM' },
             }),
         };
@@ -118,7 +118,7 @@ describe('ASPrintUtil', () => {
             repairAll: jasmine.createSpy('repairAll'),
             setHeat: (value: number) => { heat = value; },
             setPendingHeat: (value: number) => { pendingHeat = value; },
-            getUnit: () => ({ as: { TP: 'BM' } }),
+            getSummary: () => ({ as: { TP: 'BM' } }),
         };
         const group = { units: () => [unit] };
 
@@ -178,7 +178,7 @@ describe('ASPrintUtil', () => {
             serialize: () => ({ state: 'original' }),
             update: jasmine.createSpy('update'),
             repairAll: jasmine.createSpy('repairAll'),
-            getUnit: () => ({ as: { TP: 'BM' } }),
+            getSummary: () => ({ as: { TP: 'BM' } }),
         };
         const group = { units: () => [unit] };
 
@@ -221,7 +221,7 @@ describe('ASPrintUtil', () => {
             serialize: () => ({ state: 'original' }),
             update: jasmine.createSpy('update'),
             repairAll: jasmine.createSpy('repairAll'),
-            getUnit: () => ({ as: { TP: 'BM' } }),
+            getSummary: () => ({ as: { TP: 'BM' } }),
         };
         const group = { units: () => [unit] };
         const renderError = new Error('render failed');

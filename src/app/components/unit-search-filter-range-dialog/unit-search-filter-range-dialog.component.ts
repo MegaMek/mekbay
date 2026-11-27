@@ -180,7 +180,7 @@ export class NumericInputDirective {
         class: 'fullscreen-dialog-host glass'
     },
     templateUrl: './unit-search-filter-range-dialog.component.html',
-    styleUrls: ['./unit-search-filter-range-dialog.component.scss']
+    styleUrl: './unit-search-filter-range-dialog.component.scss'
 })
 export class UnitSearchFilterRangeDialogComponent {
     public dialogRef = inject<DialogRef<RangeModel | null, UnitSearchFilterRangeDialogComponent>>(DialogRef);

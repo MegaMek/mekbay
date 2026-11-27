@@ -408,11 +408,8 @@
         left: 3px;
     }
 
-    .group-commander-icon {
+    commander-icon {
         width: 16px;
-        height: auto;
-        transform: rotate(180deg);
-        flex-shrink: 0;
     }
     
 }
@@ -466,7 +463,7 @@
 
 .sort-select {
     height: 32px;
-    padding: 0 8px;
+    padding: 0 20px 0 8px;
     font-size: 13px;
 }
 
@@ -582,14 +579,7 @@
 }
 
 .chevron {
-    color: var(--text-color-secondary);
-    transition: transform 0.15s ease;
-    flex-shrink: 0;
     margin-top: 2px;
-}
-
-.chevron.collapsed {
-    transform: rotate(-90deg);
 }
 
 .operation-timestamp {
@@ -659,4 +649,13 @@
         }
     }
 
+}
+.hangar-page-status {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    gap: 12px;
+    padding: 6px 0;
+    color: var(--text-color-secondary);
+    font-size: 0.8rem;
 }

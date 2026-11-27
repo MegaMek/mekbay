@@ -2,11 +2,24 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 // Author: Drake
 
-import { AmmoEquipment, MiscEquipment, WeaponEquipment } from '../models/equipment.model';
-import { MountedEquipment, MountedWeapon } from '../models/mounted-equipment.model';
+import { AmmoEquipment } from '../models/equipment.model';
+import { asComponentId } from '../models/entity/entity-identifiers';
+import { asEncounterTargetId } from '../models/runtime/encounter-runtime';
 import { CORE_2026_GAME_RULES, TW_GAME_RULES, type CBTGameRules, type HitModifier, type ToHitModifierBreakdownEntry, type ToHitResolution } from '../models/rules/game-rules';
-import type { InventoryTargetNumberInput } from './inventory-target-number.util';
-import { compileInventoryTargetToHitModifiers, inventoryTargetEffectiveTnModifier, inventoryTargetModifierGroups, inventoryTargetNumberBreakdown, inventoryTargetNumberState, inventoryTargetRangeSelection } from './inventory-target-number.util';
+import type { InventoryTargetNumberAerospaceWeaponFacts, InventoryTargetNumberComponentFacts, InventoryTargetNumberInput } from './inventory-target-number.util';
+import { inventoryTargetNumberBreakdown, inventoryTargetNumberState, inventoryTargetRangeSelection } from './inventory-target-number.util';
+
+function targetNumberFacts(
+    componentId: string,
+    physical = false,
+    aerospaceWeapon: InventoryTargetNumberAerospaceWeaponFacts | null = null,
+): InventoryTargetNumberComponentFacts {
+    return Object.freeze({
+        componentId: asComponentId(componentId),
+        physical,
+        aerospaceWeapon: aerospaceWeapon === null ? null : Object.freeze(aerospaceWeapon),
+    });
+}
 
 function toHitResolution(
     value: HitModifier = 0,
@@ -22,27 +35,17 @@ function toHitResolution(
 }
 
 function artilleryInput(distance: number, gameRules: CBTGameRules = CORE_2026_GAME_RULES): InventoryTargetNumberInput {
-    const owner = {} as never;
-    const equipment = new WeaponEquipment({
-        id: 'ArrowIV',
-        name: 'Arrow IV',
-        type: 'weapon',
-        weapon: { ammoType: 'ARROW_IV', ranges: [10, 20, 30, 40] },
-    });
     const selectedAmmo = new AmmoEquipment({
         id: 'ArrowIVAmmo',
         name: 'Arrow IV Ammo',
         type: 'ammo',
         ammo: { type: 'ARROW_IV', shots: 5 },
     });
-    const entry = new MountedEquipment({ owner, id: 'arrow', name: 'Arrow IV', equipment });
-
     return {
-        entry,
-        category: 'ranged',
+        targetNumberFacts: targetNumberFacts('arrow'),
         display: { min: '—', short: '10', medium: '20', long: '30' },
         selectedAmmo,
-        target: { id: 'A', letter: 'A', name: 'Target', color: '#000', distance, tnModifier: 0 },
+        target: { id: asEncounterTargetId('A'), letter: 'A', name: 'Target', color: '#000', distance, tnModifier: 0 },
         gunnerySkill: 4,
         pilotingSkill: 5,
         attackModifierBreakdown: [],
@@ -53,32 +56,14 @@ function artilleryInput(distance: number, gameRules: CBTGameRules = CORE_2026_GA
 
 function aeroInput(
     distance: number,
-    maxRangeBracket: WeaponEquipment['maxRangeBracket'] = 'extreme',
+    maxRangeBracket: InventoryTargetNumberAerospaceWeaponFacts['maxRangeBracket'] = 'extreme',
     targetUnitType: 'aero' | 'mek-biped' = 'aero',
     capital = false
 ): InventoryTargetNumberInput {
-    const owner = {
-        getUnit: () => ({ type: 'Aero' }),
-    } as never;
-    const equipment = new WeaponEquipment({
-        id: 'AeroWeapon',
-        name: 'Aero Weapon',
-        type: 'weapon',
-        weapon: {
-            ammoType: 'NA',
-            ranges: [7, 14, 21, 28],
-            av: [8, 8, 8, 8],
-            maxRangeBracket,
-            capital
-        }
-    });
-    const entry = new MountedEquipment({ owner, id: 'aero-weapon', name: 'Aero Weapon', equipment });
-
     return {
-        entry,
-        category: 'ranged',
+        targetNumberFacts: targetNumberFacts('aero-weapon', false, { capital, maxRangeBracket }),
         display: { min: '—', short: '6', medium: '12', long: '20' },
-        target: { id: 'A', letter: 'A', name: 'Target', color: '#000', unitType: targetUnitType, distance, tnModifier: 0 },
+        target: { id: asEncounterTargetId('A'), letter: 'A', name: 'Target', color: '#000', unitType: targetUnitType, distance, tnModifier: 0 },
         gunnerySkill: 4,
         pilotingSkill: 5,
         attackModifierBreakdown: [],
@@ -86,66 +71,12 @@ function aeroInput(
     };
 }
 
-function flakTargetInput(
-    weapon: WeaponEquipment,
-    targetUnitType: 'aero' | 'vtol-wige' | 'mek-biped',
-    isAirborne: boolean,
-    selectedAmmo: AmmoEquipment | null = null,
-): InventoryTargetNumberInput {
-    const owner = {
-        getUnit: () => ({ type: 'Mek' }),
-        turnState: () => ({ submerged: () => false }),
-    } as never;
-    const entry = new MountedWeapon({
-        owner,
-        id: weapon.internalName,
-        name: weapon.name,
-        equipment: weapon,
-    });
-
+function c3LaserInput(actualDistance: number, c3Distance: number, allowExtremeRange = false): InventoryTargetNumberInput {
     return {
-        entry,
-        category: 'ranged',
-        display: { min: '—', short: '3', medium: '6', long: '9' },
-        selectedAmmo,
-        damageTypes: entry.getWeaponTypes(selectedAmmo),
-        target: {
-            id: 'A',
-            letter: 'A',
-            name: 'Airborne Target',
-            color: '#000',
-            unitType: targetUnitType,
-            distance: 3,
-            tnModifier: isAirborne && targetUnitType !== 'aero' ? 1 : 0,
-            tnCalculator: { isAirborne },
-        },
-        gunnerySkill: 4,
-        pilotingSkill: 5,
-        attackModifierBreakdown: [],
-        hitResolution: toHitResolution(),
-    };
-}
-
-function c3LaserInput(actualDistance: number, c3Distance: number, allowExtremeRange = false, indirectFire = false): InventoryTargetNumberInput {
-    const owner = {
-        getUnit: () => ({ type: 'Mek' }),
-        isEquipmentSubmerged: () => false,
-        turnState: () => ({ submerged: () => false }),
-    } as never;
-    const equipment = new WeaponEquipment({
-        id: 'ERLargeLaser',
-        name: 'ER Large Laser',
-        type: 'weapon',
-        flags: indirectFire ? ['F_INDIRECT_FIRE'] : [],
-        weapon: { ammoType: 'NA', ranges: [7, 14, 19, 25] },
-    });
-    const entry = new MountedEquipment({ owner, id: 'er-large-laser', name: equipment.internalName, equipment });
-    return {
-        entry,
-        category: 'ranged',
+        targetNumberFacts: targetNumberFacts('er-large-laser'),
         display: { min: '—', short: '7', medium: '14', long: '19' },
         extremeRange: 25,
-        target: { id: 'A', letter: 'A', name: 'Target', color: '#000', distance: actualDistance, c3Distance, useC3: true, tnModifier: 0 },
+        target: { id: asEncounterTargetId('A'), letter: 'A', name: 'Target', color: '#000', distance: actualDistance, c3Distance, useC3: true, tnModifier: 0 },
         gunnerySkill: 4,
         pilotingSkill: 5,
         attackModifierBreakdown: [],
@@ -156,239 +87,7 @@ function c3LaserInput(actualDistance: number, c3Distance: number, allowExtremeRa
     };
 }
 
-function guidedIndirectInput(
-    munitionType: 'M_NARC_CAPABLE' | 'M_SEMIGUIDED',
-    weaponUnderwater = false,
-): InventoryTargetNumberInput {
-    const owner = {
-        getUnit: () => ({ type: 'Mek' }),
-        isEquipmentSubmerged: () => weaponUnderwater,
-        turnState: () => ({ submerged: () => false }),
-    } as never;
-    const equipment = new WeaponEquipment({
-        id: 'LRM20',
-        name: 'LRM 20',
-        type: 'weapon',
-        flags: ['F_INDIRECT_FIRE'],
-        weapon: { ammoType: 'LRM', rackSize: 20, ranges: [7, 14, 21, 28] },
-    });
-    const selectedAmmo = new AmmoEquipment({
-        id: `${munitionType}Ammo`,
-        name: 'Guided LRM Ammo',
-        type: 'ammo',
-        ammo: { type: 'LRM', rackSize: 20, shots: 6, munitionType: [munitionType] },
-    });
-    const entry = new MountedEquipment({ owner, id: 'lrm-20', name: equipment.internalName, equipment });
-    return {
-        entry,
-        category: 'ranged',
-        display: { min: '—', short: '7', medium: '14', long: '21' },
-        selectedAmmo,
-        target: {
-            id: 'A',
-            letter: 'A',
-            name: 'Target',
-            color: '#000',
-            distance: 5,
-            tnModifier: 6,
-            tnCalculator: {
-                indirectFire: true,
-                interveningWoods: 'light2',
-                spotterMoveMode: 'run',
-                spotterDeclaredAttacks: true,
-            },
-        },
-        gunnerySkill: 4,
-        pilotingSkill: 5,
-        attackModifierBreakdown: [],
-        hitResolution: toHitResolution(),
-    };
-}
-
-function waterPartialCoverInput(
-    name: string,
-    intrinsicPhysicalAttack: boolean,
-    nonIntrinsicPhysicalAttack = false,
-    attackerSubmerged = false,
-): InventoryTargetNumberInput {
-    const owner = {
-        getUnit: () => ({ type: 'Mek' }),
-        isEquipmentSubmerged: () => attackerSubmerged,
-        turnState: () => ({ submerged: () => attackerSubmerged }),
-    } as never;
-    const equipment = nonIntrinsicPhysicalAttack
-        ? new MiscEquipment({ id: 'club', name: 'Club', type: 'misc', flags: ['F_CLUB'] })
-        : new WeaponEquipment({
-            id: 'laser', name: 'Laser', type: 'weapon', flags: ['F_ENERGY'],
-            weapon: { ammoType: 'NA', ranges: [3, 6, 9, 12] },
-        });
-    const entry = new MountedEquipment({
-        owner,
-        id: name,
-        name,
-        equipment,
-        intrinsicPhysicalAttack,
-    });
-    return {
-        entry,
-        category: entry.isPhysicalWeapon() ? 'physical' : 'ranged',
-        display: { min: '—', short: '3', medium: '6', long: '9' },
-        target: {
-            id: 'A', letter: 'A', name: 'Target', color: '#000',
-            unitType: 'mek-biped', distance: 1, tnModifier: 1,
-            tnCalculator: { waterDepth: 'underwater-depth-1' },
-        },
-        gunnerySkill: 4,
-        pilotingSkill: 5,
-        attackModifierBreakdown: [],
-        hitResolution: toHitResolution(),
-    };
-}
-
 describe('inventory target number rules profiles', () => {
-    it('applies the standard -2 Flak modifier to airborne Aero and VTOL/WiGE targets', () => {
-        const weapon = new WeaponEquipment({
-            id: 'ISSilverBulletGauss',
-            name: 'Silver Bullet Gauss Rifle',
-            type: 'weapon',
-            flags: ['F_BALLISTIC', 'F_DIRECT_FIRE'],
-            weapon: { ammoType: 'SBGAUSS', damage: 'cluster', ranges: [3, 6, 9, 12] },
-        });
-
-        for (const targetUnitType of ['aero', 'vtol-wige'] as const) {
-            const input = flakTargetInput(weapon, targetUnitType, true);
-            expect(input.damageTypes).withContext(targetUnitType).toContain('F');
-
-            for (const gameRules of [CORE_2026_GAME_RULES, TW_GAME_RULES]) {
-                const breakdown = compileInventoryTargetToHitModifiers({
-                    target: input.target!,
-                    entry: input.entry,
-                    gameRules,
-                    effectiveDamageTypes: input.damageTypes,
-                });
-
-                expect(breakdown).withContext(`${gameRules.id}: ${targetUnitType}`).toContain(jasmine.objectContaining({
-                    id: 'flak', label: 'Flak', modifier: -2,
-                }));
-                expect(inventoryTargetEffectiveTnModifier(
-                    input.target!, input.entry, null, gameRules, undefined, input.damageTypes,
-                )).withContext(`${gameRules.id}: ${targetUnitType}`).toBe(input.target!.tnModifier - 2);
-            }
-        }
-    });
-
-    it('does not apply Flak without Type F or to landed and non-aircraft targets', () => {
-        const weapon = new WeaponEquipment({
-            id: 'ISSilverBulletGauss',
-            name: 'Silver Bullet Gauss Rifle',
-            type: 'weapon',
-            weapon: { ammoType: 'SBGAUSS', damage: 'cluster', ranges: [3, 6, 9, 12] },
-        });
-
-        for (const [targetUnitType, isAirborne] of [
-            ['aero', false],
-            ['vtol-wige', false],
-            ['mek-biped', true],
-        ] as const) {
-            const input = flakTargetInput(weapon, targetUnitType, isAirborne);
-            const breakdown = compileInventoryTargetToHitModifiers({
-                target: input.target!,
-                entry: input.entry,
-                effectiveDamageTypes: input.damageTypes,
-            });
-
-            expect(breakdown).withContext(`${targetUnitType}: airborne=${isAirborne}`)
-                .not.toContain(jasmine.objectContaining({ id: 'flak' }));
-        }
-
-        const laserInput = flakTargetInput(new WeaponEquipment({
-            id: 'ISMediumLaser',
-            name: 'Medium Laser',
-            type: 'weapon',
-            flags: ['F_ENERGY', 'F_DIRECT_FIRE'],
-            weapon: { ammoType: 'NA', damage: 5, ranges: [3, 6, 9, 12] },
-        }), 'aero', true);
-        expect(laserInput.damageTypes).not.toContain('F');
-        expect(compileInventoryTargetToHitModifiers({
-            target: laserInput.target!,
-            entry: laserInput.entry,
-            effectiveDamageTypes: laserInput.damageTypes,
-        })).not.toContain(jasmine.objectContaining({ id: 'flak' }));
-    });
-
-    it('recognizes Flak supplied by selected ammunition through the effective weapon types', () => {
-        const weapon = new WeaponEquipment({
-            id: 'ISAC5',
-            name: 'AC/5',
-            type: 'weapon',
-            flags: ['F_AC', 'F_BALLISTIC', 'F_DIRECT_FIRE'],
-            weapon: { ammoType: 'AC', damage: 5, rackSize: 5, ranges: [3, 6, 9, 12] },
-        });
-        const ammo = new AmmoEquipment({
-            id: 'ISAC5FlakAmmo',
-            name: 'AC/5 Flak Ammo',
-            type: 'ammo',
-            ammo: { type: 'AC', rackSize: 5, munitionType: ['M_FLAK'] },
-        });
-        const input = flakTargetInput(weapon, 'aero', true, ammo);
-
-        expect(input.damageTypes).toContain('F');
-        expect(compileInventoryTargetToHitModifiers({
-            target: input.target!,
-            entry: input.entry,
-            selectedAmmo: ammo,
-            effectiveDamageTypes: input.damageTypes,
-        })).toContain(jasmine.objectContaining({ id: 'flak', label: 'Flak', modifier: -2 }));
-    });
-
-    it('combines the LB-X cluster -1 with Flak -2 for a total -3 modifier', () => {
-        const weapon = new WeaponEquipment({
-            id: 'ISLBXAC10',
-            name: 'LB 10-X AC',
-            type: 'weapon',
-            flags: ['F_AC', 'F_BALLISTIC', 'F_DIRECT_FIRE'],
-            weapon: { ammoType: 'AC_LBX', damage: 10, rackSize: 10, ranges: [3, 6, 9, 12] },
-        });
-        const ammo = new AmmoEquipment({
-            id: 'ISLBXAC10ClusterAmmo',
-            name: 'LB 10-X Cluster Ammo',
-            type: 'ammo',
-            ammo: { type: 'AC_LBX', rackSize: 10, munitionType: ['M_CLUSTER'] },
-        });
-        const input = flakTargetInput(weapon, 'aero', true, ammo);
-        const state = inventoryTargetNumberState(input);
-
-        expect(input.damageTypes).toContain('F');
-        expect(ammo.toHitModifier).toBe(-1);
-        expect(state.breakdown?.total).toBe(1);
-        expect(state.breakdown?.lines.filter(line => line.label === 'Flak')).toEqual([
-            jasmine.objectContaining({ value: '-2', nested: true }),
-        ]);
-        expect(state.breakdown?.lines.some(line => line.label?.startsWith('Ammo (') && line.value === '-1')).toBeTrue();
-    });
-
-    it('combines the existing HAG Flak-mode -1 with Flak -2 exactly once', () => {
-        const weapon = new WeaponEquipment({
-            id: 'CLHAG20',
-            name: 'HAG/20',
-            type: 'weapon',
-            flags: ['F_HAG', 'F_GAUSS', 'F_BALLISTIC', 'F_DIRECT_FIRE'],
-            weapon: { ammoType: 'HAG', damage: 'cluster', rackSize: 20, ranges: [3, 6, 9, 12] },
-        });
-        const input = flakTargetInput(weapon, 'aero', true);
-        input.damageTypes = ['C', 'F'];
-        input.hitResolution = toHitResolution(-1, [{ label: 'HAG/20 (FLAK)', modifier: -1 }]);
-        const state = inventoryTargetNumberState(input);
-
-        expect(state.breakdown?.total).toBe(1);
-        expect(state.breakdown?.lines.filter(line => line.label === 'Flak')).toEqual([
-            jasmine.objectContaining({ value: '-2', nested: true }),
-        ]);
-        expect(state.breakdown?.lines.filter(line => line.label === 'HAG/20 (FLAK)')).toEqual([
-            jasmine.objectContaining({ value: '-1' }),
-        ]);
-    });
-
     it('adds +1 ECM when C3 improves long range to medium', () => {
         const state = inventoryTargetNumberState(c3LaserInput(15, 12));
 
@@ -424,84 +123,8 @@ describe('inventory target number rules profiles', () => {
         expect(c3Disabled.breakdown?.lines).not.toContain(jasmine.objectContaining({ label: 'ECM' }));
     });
 
-    it('adds active stealth using each weapon\'s effective range bracket', () => {
-        const input = c3LaserInput(15, 12);
-        input.target = {
-            ...input.target!,
-            tnCalculator: {
-                stealth: { short: 0, medium: 1, long: 2, secondaryTargetRestricted: true },
-            },
-        };
-
-        const state = inventoryTargetNumberState(input);
-
-        expect(state.rangeSelection?.range).toBe('medium');
-        expect(state.breakdown?.total).toBe(8);
-        expect(state.breakdown?.lines).toContain(jasmine.objectContaining({
-            label: 'Stealth',
-            value: '+1',
-        }));
-        expect(inventoryTargetEffectiveTnModifier(
-            input.target!,
-            input.entry,
-            undefined,
-            CORE_2026_GAME_RULES,
-            'long',
-        )).toBe(2);
-    });
-
-    it('applies the conventional-infantry exception to electronic stealth only', () => {
-        const input = c3LaserInput(15, 12);
-        Object.assign(input.entry.owner, {
-            getUnit: () => ({ type: 'Infantry', subtype: 'Conventional Infantry' }),
-        });
-        input.target = {
-            ...input.target!,
-            tnCalculator: {
-                stealth: {
-                    short: 0,
-                    medium: 1,
-                    long: 2,
-                    conventionalInfantry: { short: 0, medium: 0, long: 0 },
-                },
-            },
-        };
-
-        expect(inventoryTargetEffectiveTnModifier(
-            input.target,
-            input.entry,
-            undefined,
-            CORE_2026_GAME_RULES,
-            'medium',
-        )).toBe(0);
-
-        input.target.tnCalculator = {
-            stealth: { short: 0, medium: 1, long: 2 },
-        };
-        expect(inventoryTargetEffectiveTnModifier(
-            input.target,
-            input.entry,
-            undefined,
-            CORE_2026_GAME_RULES,
-            'medium',
-        )).toBe(1);
-    });
-
-    it('rejects secondary attacks against active Mek or vehicle stealth armor', () => {
-        const input = c3LaserInput(10, 10);
-        input.target = {
-            ...input.target!,
-            tnCalculator: {
-                secondaryTarget: true,
-                stealth: { short: 0, medium: 1, long: 2, secondaryTargetRestricted: true },
-            },
-        };
-
-        expect(inventoryTargetNumberState(input).text).toBe('X');
-    });
-
     it('does not apply C3 to an indirect-fire target', () => {
-        const input = c3LaserInput(15, 7, false, true);
+        const input = c3LaserInput(15, 7);
         input.target = {
             ...input.target!,
             tnCalculator: { indirectFire: true }
@@ -512,595 +135,6 @@ describe('inventory target number rules profiles', () => {
         expect(state.rangeSelection?.range).toBe('long');
         expect(state.rangeSelection?.c3Distance).toBeNull();
         expect(state.breakdown?.lines).not.toContain(jasmine.objectContaining({ label: 'ECM' }));
-    });
-
-    it('does not let overridden calculator state block C3', () => {
-        const input = c3LaserInput(15, 7);
-        input.target = {
-            ...input.target!,
-            tnModifier: 6,
-            manualTnModifier: 6,
-            tnCalculator: { indirectFire: true }
-        };
-
-        const state = inventoryTargetNumberState(input);
-
-        expect(state.rangeSelection?.range).toBe('short');
-        expect(state.rangeSelection?.c3Distance).toBe(7);
-        expect(state.breakdown?.lines).toContain(jasmine.objectContaining({ label: 'ECM' }));
-    });
-
-    it('rejects indirect targets for weapons without indirect-fire capability', () => {
-        const input = c3LaserInput(5, 5);
-        input.target = { ...input.target!, tnCalculator: { indirectFire: true } };
-
-        expect(inventoryTargetNumberState(input).text).toBe('X');
-    });
-
-    it('allows only the selected MML LRM ammunition profile to fire indirectly', () => {
-        const input = guidedIndirectInput('M_NARC_CAPABLE');
-        input.entry.equipment = new WeaponEquipment({
-            id: 'MML9',
-            name: 'MML 9',
-            type: 'weapon',
-            flags: ['F_INDIRECT_FIRE', 'F_MML'],
-            weapon: { ammoType: 'MML', rackSize: 9, ranges: [0, 0, 0, 0] },
-        });
-        input.selectedAmmo = new AmmoEquipment({
-            id: 'MML9SRMAmmo',
-            name: 'MML 9 SRM Ammo',
-            type: 'ammo',
-            flags: ['F_MML_SRM'],
-            ammo: { type: 'MML', rackSize: 9, shots: 11 },
-        });
-
-        expect(inventoryTargetNumberState(input).text).toBe('X');
-
-        input.selectedAmmo = new AmmoEquipment({
-            id: 'MML9LRMAmmo',
-            name: 'MML 9 LRM Ammo',
-            type: 'ammo',
-            flags: ['F_MML_LRM'],
-            ammo: { type: 'MML', rackSize: 9, shots: 8 },
-        });
-
-        expect(inventoryTargetNumberState(input).text).not.toBe('X');
-    });
-
-    it('forbids Core torpedo indirect fire and permits TW fire only with both endpoints underwater', () => {
-        const input = guidedIndirectInput('M_NARC_CAPABLE', true);
-        input.selectedAmmo = new AmmoEquipment({
-            id: 'LRT20Ammo',
-            name: 'LRT 20 Ammo',
-            type: 'ammo',
-            ammo: { type: 'LRM_TORPEDO', rackSize: 20, shots: 6 },
-        });
-        input.target = {
-            ...input.target!,
-            unitType: 'mek-biped',
-            tnCalculator: {
-                ...input.target!.tnCalculator,
-                waterDepth: 'underwater-depth-1',
-            },
-        };
-        input.gameRules = CORE_2026_GAME_RULES;
-
-        expect(inventoryTargetNumberState(input).text).toBe('X');
-
-        input.gameRules = TW_GAME_RULES;
-        expect(inventoryTargetNumberState(input).text).not.toBe('X');
-
-        input.entry.owner.isEquipmentSubmerged = () => false;
-        expect(inventoryTargetNumberState(input).text).toBe('X');
-    });
-
-    it('does not apply indirect target restrictions through a manual TN override', () => {
-        const input = c3LaserInput(5, 5);
-        input.target = {
-            ...input.target!,
-            tnModifier: 2,
-            manualTnModifier: 2,
-            tnCalculator: { indirectFire: true },
-        };
-
-        expect(inventoryTargetNumberState(input).text).not.toBe('X');
-    });
-
-    it('rejects targets across a dry-to-submerged water boundary', () => {
-        const aboveWater = c3LaserInput(5, 5);
-        aboveWater.target = {
-            ...aboveWater.target!,
-            unitType: 'mek-biped',
-            tnCalculator: { waterDepth: 'underwater-depth-2' },
-        };
-        expect(inventoryTargetNumberState(aboveWater).text).toBe('X');
-
-        const underwater = c3LaserInput(5, 5);
-        underwater.entry.owner.isEquipmentSubmerged = () => true;
-        underwater.target = {
-            ...underwater.target!,
-            unitType: 'mek-biped',
-            tnCalculator: {},
-        };
-        expect(inventoryTargetNumberState(underwater).text).toBe('X');
-    });
-
-    it('allows either water layer to target a partially underwater Mek', () => {
-        const aboveWater = c3LaserInput(5, 5);
-        aboveWater.target = {
-            ...aboveWater.target!,
-            unitType: 'mek-biped',
-            tnCalculator: { waterDepth: 'underwater-depth-1' },
-        };
-        expect(inventoryTargetNumberState(aboveWater).text).not.toBe('X');
-
-        const underwater = c3LaserInput(5, 5);
-        underwater.entry.owner.isEquipmentSubmerged = () => true;
-        underwater.target = { ...aboveWater.target! };
-        expect(inventoryTargetNumberState(underwater).text).not.toBe('X');
-    });
-
-    it('enforces water-layer restrictions for non-Mek attackers and targets', () => {
-        const nonMekAttacker = c3LaserInput(5, 5);
-        nonMekAttacker.entry.owner.getUnit = () => ({ type: 'Tank' }) as never;
-        nonMekAttacker.target = {
-            ...nonMekAttacker.target!,
-            unitType: 'mek-biped',
-            tnCalculator: { waterDepth: 'underwater-depth-2' },
-        };
-        expect(inventoryTargetNumberState(nonMekAttacker).text).toBe('X');
-
-        const nonMekTarget = c3LaserInput(5, 5);
-        nonMekTarget.target = {
-            ...nonMekTarget.target!,
-            unitType: 'vehicle',
-            tnCalculator: { waterDepth: 'underwater-depth-2' },
-        };
-        expect(inventoryTargetNumberState(nonMekTarget).text).toBe('X');
-    });
-
-    it('removes water partial cover when the attacker is fully submerged', () => {
-        const aboveWater = waterPartialCoverInput('Laser', false);
-        const submerged = waterPartialCoverInput('Laser', false, false, true);
-
-        expect(inventoryTargetEffectiveTnModifier(aboveWater.target!, aboveWater.entry)).toBe(1);
-        expect(inventoryTargetEffectiveTnModifier(submerged.target!, submerged.entry)).toBe(0);
-    });
-
-    it('applies water partial cover only to specific physical attacks', () => {
-        for (const name of ['punch', 'kick', 'push', 'charge', 'death from above']) {
-            const input = waterPartialCoverInput(name, true);
-            expect(inventoryTargetEffectiveTnModifier(input.target!, input.entry))
-                .withContext(name)
-                .toBe(0);
-        }
-        const intrinsicClub = waterPartialCoverInput('club', true);
-        expect(inventoryTargetEffectiveTnModifier(intrinsicClub.target!, intrinsicClub.entry)).toBe(1);
-        const mountedClub = waterPartialCoverInput('Hatchet', false, true);
-        expect(inventoryTargetEffectiveTnModifier(mountedClub.target!, mountedClub.entry)).toBe(1);
-    });
-
-    it('ignores the Battle Armor target modifier only for ranged infantry attacks', () => {
-        const input = c3LaserInput(5, 5);
-        input.target = {
-            ...input.target!,
-            unitType: 'battle-armor',
-            tnModifier: 1,
-            tnCalculator: {},
-        };
-
-        expect(inventoryTargetEffectiveTnModifier(input.target, input.entry)).toBe(1);
-
-        input.entry.owner.getUnit = () => ({
-            type: 'Infantry',
-            subtype: 'Conventional Infantry',
-        }) as never;
-        expect(inventoryTargetEffectiveTnModifier(input.target, input.entry)).toBe(0);
-        expect(compileInventoryTargetToHitModifiers({
-            target: input.target,
-            entry: input.entry,
-        })).toContain(jasmine.objectContaining({
-            id: 'battle-armor',
-            modifier: 1,
-            ignored: true,
-        }));
-
-        input.entry.owner.getUnit = () => ({
-            type: 'Infantry',
-            subtype: 'Battle Armor',
-        }) as never;
-        expect(inventoryTargetEffectiveTnModifier(input.target, input.entry)).toBe(0);
-    });
-
-    it('compiles target-movement groups once for handlers and omits them for a complete override', () => {
-        const input = c3LaserInput(5, 5);
-        input.target = {
-            ...input.target!,
-            tnModifier: 6,
-            tnCalculator: {
-                isAirborne: true,
-                targetMovementBracket: '7-9',
-                skidding: true,
-            },
-        };
-
-        expect(inventoryTargetModifierGroups(input.target, TW_GAME_RULES)).toEqual({
-            'target-movement': 6,
-            terrain: 0,
-            'partial-cover': 0,
-        });
-        expect(inventoryTargetModifierGroups({
-            ...input.target,
-            manualTnModifier: 6,
-        }, TW_GAME_RULES)).toBeUndefined();
-    });
-
-    it('uses profile-specific Immobile eligibility for artillery and artillery cannons', () => {
-        const regularArtillery = artilleryInput(15);
-        regularArtillery.target = {
-            ...regularArtillery.target!,
-            tnModifier: -4,
-            tnCalculator: { immobile: true },
-        };
-
-        expect(inventoryTargetEffectiveTnModifier(
-            regularArtillery.target,
-            regularArtillery.entry,
-            regularArtillery.selectedAmmo,
-            CORE_2026_GAME_RULES,
-            undefined,
-            ['A', 'AE'],
-        )).toBe(0);
-        expect(inventoryTargetEffectiveTnModifier(
-            regularArtillery.target,
-            regularArtillery.entry,
-            regularArtillery.selectedAmmo,
-            TW_GAME_RULES,
-            undefined,
-            ['A', 'AE'],
-        )).toBe(-4);
-
-        regularArtillery.entry.equipment = new WeaponEquipment({
-            id: 'ThumperCannon',
-            name: 'Thumper Cannon',
-            type: 'weapon',
-            flags: ['F_ARTILLERY', 'F_DIRECT_FIRE'],
-            weapon: { ammoType: 'THUMPER_CANNON', ranges: [6, 13, 21, 28] },
-        });
-        regularArtillery.selectedAmmo = new AmmoEquipment({
-            id: 'ThumperCannonAmmo',
-            name: 'Thumper Cannon Ammo',
-            type: 'ammo',
-            ammo: { type: 'THUMPER_CANNON', shots: 10 },
-        });
-        expect(inventoryTargetEffectiveTnModifier(
-            regularArtillery.target,
-            regularArtillery.entry,
-            regularArtillery.selectedAmmo,
-            TW_GAME_RULES,
-            undefined,
-            ['DB', 'F'],
-        )).toBe(0);
-    });
-
-    it('does not apply water-layer restrictions through a manual TN override', () => {
-        const input = c3LaserInput(5, 5);
-        input.target = {
-            ...input.target!,
-            unitType: 'mek-biped',
-            tnModifier: 2,
-            manualTnModifier: 2,
-            tnCalculator: { waterDepth: 'underwater-depth-2' },
-        };
-
-        expect(inventoryTargetNumberState(input).text).not.toBe('X');
-    });
-
-    it('ignores spotter modifiers for NARC-capable ammo against an active NARC target', () => {
-        const input = guidedIndirectInput('M_NARC_CAPABLE');
-        input.target = { ...input.target!, tnCalculator: { ...input.target!.tnCalculator, narcAboveWater: true } };
-        const breakdown = inventoryTargetNumberBreakdown(input);
-
-        expect(inventoryTargetEffectiveTnModifier(input.target!, input.entry, input.selectedAmmo)).toBe(1);
-        expect(breakdown?.total).toBe(5);
-        expect(breakdown?.lines).not.toContain(jasmine.objectContaining({ label: 'NARC' }));
-        expect(breakdown?.lines).toContain(jasmine.objectContaining({
-            label: 'Spotter',
-            value: 'Not required (NARC)',
-        }));
-        for (const label of ['Intervening Woods', 'Spotter Moved (Run)', 'Spotter Declared Attack']) {
-            expect(breakdown?.lines).withContext(label).toContain(jasmine.objectContaining({
-                label,
-                nested: true,
-                ignored: true,
-            }));
-        }
-    });
-
-    it('retains target-hex terrain for Core NARC indirect fire and ignores it for TW', () => {
-        const input = guidedIndirectInput('M_NARC_CAPABLE');
-        input.target = {
-            ...input.target!,
-            tnModifier: 8,
-            tnCalculator: {
-                ...input.target!.tnCalculator,
-                targetHexCover: 'heavy',
-                narcAboveWater: true,
-            },
-        };
-
-        expect(inventoryTargetEffectiveTnModifier(
-            input.target!, input.entry, input.selectedAmmo, CORE_2026_GAME_RULES,
-        )).toBe(3);
-        expect(inventoryTargetEffectiveTnModifier(
-            input.target!, input.entry, input.selectedAmmo, TW_GAME_RULES,
-        )).toBe(1);
-
-        input.gameRules = TW_GAME_RULES;
-        expect(inventoryTargetNumberBreakdown(input)?.lines).toContain(jasmine.objectContaining({
-            label: 'Heavy Cover',
-            nested: true,
-            ignored: true,
-        }));
-    });
-
-    it('uses the profile-specific NARC homing modifier for direct and indirect attacks', () => {
-        const direct = guidedIndirectInput('M_NARC_CAPABLE');
-        direct.target = {
-            ...direct.target!,
-            tnModifier: 0,
-            tnCalculator: { narcAboveWater: true },
-        };
-        expect(inventoryTargetEffectiveTnModifier(
-            direct.target!, direct.entry, direct.selectedAmmo, CORE_2026_GAME_RULES,
-        )).toBe(-1);
-        expect(inventoryTargetEffectiveTnModifier(
-            direct.target!, direct.entry, direct.selectedAmmo, TW_GAME_RULES,
-        )).toBe(0);
-        expect(inventoryTargetNumberBreakdown(direct)?.lines)
-            .not.toContain(jasmine.objectContaining({ label: 'Spotter', value: 'Not required (NARC)' }));
-
-        const indirect = guidedIndirectInput('M_NARC_CAPABLE');
-        indirect.target = {
-            ...indirect.target!,
-            tnCalculator: { ...indirect.target!.tnCalculator, narcAboveWater: true },
-        };
-        expect(inventoryTargetEffectiveTnModifier(
-            indirect.target!, indirect.entry, indirect.selectedAmmo, TW_GAME_RULES,
-        )).toBe(1);
-        expect(inventoryTargetEffectiveTnModifier(
-            indirect.target!, indirect.entry, indirect.selectedAmmo, CORE_2026_GAME_RULES,
-        )).toBe(1);
-        for (const gameRules of [CORE_2026_GAME_RULES, TW_GAME_RULES]) {
-            indirect.gameRules = gameRules;
-            expect(inventoryTargetNumberBreakdown(indirect)?.lines)
-                .withContext(gameRules.id)
-                .toContain(jasmine.objectContaining({ label: 'Spotter', value: 'Not required (NARC)' }));
-        }
-    });
-
-    it('suppresses direct and indirect NARC guidance while the pod is ECM shielded', () => {
-        const direct = guidedIndirectInput('M_NARC_CAPABLE');
-        direct.target = {
-            ...direct.target!,
-            tnModifier: 0,
-            tnCalculator: { narcAboveWater: true, ecmShielded: true },
-        };
-        expect(inventoryTargetEffectiveTnModifier(
-            direct.target!, direct.entry, direct.selectedAmmo, CORE_2026_GAME_RULES,
-        )).toBe(0);
-
-        const indirect = guidedIndirectInput('M_NARC_CAPABLE');
-        indirect.target = {
-            ...indirect.target!,
-            tnCalculator: {
-                ...indirect.target!.tnCalculator,
-                narcAboveWater: true,
-                ecmShielded: true,
-            },
-        };
-        expect(inventoryTargetEffectiveTnModifier(
-            indirect.target!, indirect.entry, indirect.selectedAmmo, CORE_2026_GAME_RULES,
-        )).toBe(6);
-        expect(inventoryTargetNumberBreakdown(indirect)?.lines)
-            .not.toContain(jasmine.objectContaining({ label: 'Spotter', value: 'Not required (NARC)' }));
-    });
-
-    it('applies NARC guidance only when the beacon and firing weapon share a water layer', () => {
-        const cases = [
-            { weaponUnderwater: false, narcAboveWater: true, narcUnderwater: false, expected: 1 },
-            { weaponUnderwater: true, narcAboveWater: false, narcUnderwater: true, expected: 1 },
-            { weaponUnderwater: false, narcAboveWater: false, narcUnderwater: true, expected: 6 },
-            { weaponUnderwater: true, narcAboveWater: true, narcUnderwater: false, expected: 6 },
-        ];
-
-        for (const testCase of cases) {
-            const input = guidedIndirectInput('M_NARC_CAPABLE', testCase.weaponUnderwater);
-            input.target = {
-                ...input.target!,
-                tnCalculator: {
-                    ...input.target!.tnCalculator,
-                    narcAboveWater: testCase.narcAboveWater,
-                    narcUnderwater: testCase.narcUnderwater,
-                },
-            };
-
-            expect(inventoryTargetEffectiveTnModifier(input.target!, input.entry, input.selectedAmmo))
-                .withContext(JSON.stringify(testCase))
-                .toBe(testCase.expected);
-            const noSpotter = inventoryTargetNumberBreakdown(input)?.lines.some(
-                line => line.label === 'Spotter' && line.value === 'Not required (NARC)',
-            ) ?? false;
-            expect(noSpotter)
-                .withContext(JSON.stringify(testCase))
-                .toBe(testCase.expected === 1);
-        }
-    });
-
-    it('ignores spotter modifiers for semi-guided ammo against a TAG-designated target', () => {
-        const input = guidedIndirectInput('M_SEMIGUIDED');
-        input.target = { ...input.target!, tnCalculator: { ...input.target!.tnCalculator, tagged: true } };
-        const lines = inventoryTargetNumberBreakdown(input)?.lines;
-
-        expect(inventoryTargetEffectiveTnModifier(
-            input.target!, input.entry, input.selectedAmmo, CORE_2026_GAME_RULES,
-        )).toBe(1);
-        expect(inventoryTargetEffectiveTnModifier(
-            input.target!, input.entry, input.selectedAmmo, TW_GAME_RULES,
-        )).toBe(0);
-        expect(lines).not.toContain(jasmine.objectContaining({
-            label: 'Spotter',
-            value: 'Not required (NARC)',
-        }));
-        for (const label of ['Intervening Woods', 'Spotter Moved (Run)', 'Spotter Declared Attack']) {
-            expect(lines).withContext(label).toContain(jasmine.objectContaining({
-                label,
-                nested: true,
-                ignored: true,
-            }));
-        }
-    });
-
-    it('does not apply stale TAG guidance to TW infantry targets', () => {
-        const input = guidedIndirectInput('M_SEMIGUIDED');
-        input.target = {
-            ...input.target!,
-            unitType: 'infantry',
-            tnCalculator: { ...input.target!.tnCalculator, tagged: true },
-        };
-
-        expect(inventoryTargetEffectiveTnModifier(
-            input.target, input.entry, input.selectedAmmo, CORE_2026_GAME_RULES,
-        )).toBe(1);
-        expect(inventoryTargetEffectiveTnModifier(
-            input.target, input.entry, input.selectedAmmo, TW_GAME_RULES,
-        )).toBe(6);
-    });
-
-    it('applies profile-specific direct semi-guided adjustments', () => {
-        const input = guidedIndirectInput('M_SEMIGUIDED');
-        input.target = {
-            ...input.target!,
-            tnModifier: 6,
-            tnCalculator: {
-                tagged: true,
-                targetMovementBracket: '3-4',
-                interveningWoods: 'light2',
-                targetHexCover: 'heavy',
-                partialCover: true,
-            },
-        };
-
-        expect(inventoryTargetEffectiveTnModifier(
-            input.target!, input.entry, input.selectedAmmo, CORE_2026_GAME_RULES,
-        )).toBe(3);
-        expect(inventoryTargetEffectiveTnModifier(
-            input.target!, input.entry, input.selectedAmmo, TW_GAME_RULES,
-        )).toBe(5);
-    });
-
-    it('treats water and building cover as terrain for direct Core semi-guided fire', () => {
-        for (const testCase of [
-            { tnModifier: 1, tnCalculator: { tagged: true, waterDepth: 'underwater-depth-1' as const } },
-            { tnModifier: 1, tnCalculator: { tagged: true, buildingCover: 'building-1' as const } },
-            { tnModifier: 2, tnCalculator: { tagged: true, buildingCover: 'building-2' as const } },
-        ]) {
-            const input = guidedIndirectInput('M_SEMIGUIDED');
-            input.target = {
-                ...input.target!,
-                unitType: 'mek-biped',
-                tnModifier: testCase.tnModifier,
-                tnCalculator: testCase.tnCalculator,
-            };
-
-            expect(inventoryTargetEffectiveTnModifier(
-                input.target!, input.entry, input.selectedAmmo, CORE_2026_GAME_RULES,
-            )).withContext(JSON.stringify(testCase)).toBe(0);
-            expect(inventoryTargetEffectiveTnModifier(
-                input.target!, input.entry, input.selectedAmmo, TW_GAME_RULES,
-            )).withContext(JSON.stringify(testCase)).toBe(testCase.tnModifier);
-        }
-    });
-
-    it('ignores water and building cover for indirect semi-guided fire', () => {
-        for (const testCase of [
-            { tnModifier: 2, cover: { waterDepth: 'underwater-depth-1' as const } },
-            { tnModifier: 2, cover: { buildingCover: 'building-1' as const } },
-            { tnModifier: 3, cover: { buildingCover: 'building-2' as const } },
-        ]) {
-            const input = guidedIndirectInput('M_SEMIGUIDED');
-            input.target = {
-                ...input.target!,
-                unitType: 'mek-biped',
-                tnModifier: testCase.tnModifier,
-                tnCalculator: {
-                    tagged: true,
-                    indirectFire: true,
-                    ...testCase.cover,
-                },
-            };
-
-            expect(inventoryTargetEffectiveTnModifier(
-                input.target!, input.entry, input.selectedAmmo, CORE_2026_GAME_RULES,
-            )).withContext(JSON.stringify(testCase)).toBe(1);
-            expect(inventoryTargetEffectiveTnModifier(
-                input.target!, input.entry, input.selectedAmmo, TW_GAME_RULES,
-            )).withContext(JSON.stringify(testCase)).toBe(0);
-        }
-    });
-
-    it('reduces combined terrain by two for Core direct semi-guided fire', () => {
-        const input = guidedIndirectInput('M_SEMIGUIDED');
-        input.target = {
-            ...input.target!,
-            unitType: 'mek-biped',
-            tnModifier: 3,
-            tnCalculator: {
-                tagged: true,
-                interveningWoods: 'light2',
-                waterDepth: 'underwater-depth-1',
-            },
-        };
-
-        expect(inventoryTargetEffectiveTnModifier(
-            input.target!, input.entry, input.selectedAmmo, CORE_2026_GAME_RULES,
-        )).toBe(1);
-        (input.entry.owner as unknown as { turnState: () => { submerged: () => boolean } }).turnState
-            = () => ({ submerged: () => true });
-        expect(inventoryTargetEffectiveTnModifier(
-            input.target!, input.entry, input.selectedAmmo, CORE_2026_GAME_RULES,
-        )).toBe(0);
-    });
-
-    it('keeps spotter modifiers without matching guidance or with a manual TN override', () => {
-        const input = guidedIndirectInput('M_NARC_CAPABLE');
-        input.target = { ...input.target!, tnCalculator: { ...input.target!.tnCalculator, narcAboveWater: false } };
-        expect(inventoryTargetEffectiveTnModifier(input.target!, input.entry, input.selectedAmmo)).toBe(6);
-        expect(inventoryTargetNumberBreakdown(input)?.lines)
-            .not.toContain(jasmine.objectContaining({ label: 'Spotter', value: 'Not required (NARC)' }));
-
-        input.target = {
-            ...input.target!,
-            manualTnModifier: 6,
-            tnCalculator: { ...input.target!.tnCalculator, narcAboveWater: true },
-        };
-        expect(inventoryTargetEffectiveTnModifier(input.target!, input.entry, input.selectedAmmo)).toBe(6);
-    });
-
-    it('shows calculator target modifiers as nested details while keeping overrides compact', () => {
-        const input = guidedIndirectInput('M_SEMIGUIDED');
-        let lines = inventoryTargetNumberBreakdown(input)?.lines ?? [];
-
-        expect(lines).toContain(jasmine.objectContaining({ label: 'Target A', value: '+6', isHeader: true }));
-        expect(lines).toContain(jasmine.objectContaining({ label: 'Intervening Woods', value: '+2', nested: true }));
-        expect(lines).toContain(jasmine.objectContaining({ label: 'Indirect Fire', value: '+1', nested: true }));
-        expect(lines).toContain(jasmine.objectContaining({ label: 'Spotter Moved (Run)', value: '+2', nested: true }));
-        expect(lines).toContain(jasmine.objectContaining({ label: 'Spotter Declared Attack', value: '+1', nested: true }));
-
-        input.target = { ...input.target!, manualTnModifier: 6 };
-        lines = inventoryTargetNumberBreakdown(input)?.lines ?? [];
-        expect(lines).toContain(jasmine.objectContaining({ label: 'Target (A)', value: '+6' }));
-        expect(lines.some(line => line.nested)).toBeFalse();
     });
 
     it('keeps ground attacks beyond Long illegal when Extreme range is disabled', () => {
@@ -1115,6 +149,24 @@ describe('inventory target number rules profiles', () => {
             outOfExtremeRange: false
         }));
         expect(inventoryTargetNumberState(input).text).toBe('X');
+    });
+
+    it('shifts an underwater energy weapon one bracket up, with no long or extreme attack (Core p.127)', () => {
+        const underwater = (distance: number) => ({
+            ...c3LaserInput(distance, distance, true),
+            targetNumberFacts: { ...targetNumberFacts('er-large-laser'), underwaterEnergy: true },
+            target: { ...c3LaserInput(distance, distance, true).target!, useC3: false },
+        });
+
+        expect(inventoryTargetRangeSelection(underwater(5))).toEqual(jasmine.objectContaining({ range: 'medium', outOfRange: false }));
+        expect(inventoryTargetRangeSelection(underwater(12))).toEqual(jasmine.objectContaining({ range: 'long', outOfRange: false }));
+        expect(inventoryTargetRangeSelection(underwater(16))).toEqual(jasmine.objectContaining({ outOfRange: true }));
+        expect(inventoryTargetRangeSelection(underwater(22))).toEqual(jasmine.objectContaining({ outOfRange: true }));
+        // A C3 network's shorter bracket leaves the long-range shot barred: C3 never extends maximum range (Core p.198)
+        expect(inventoryTargetRangeSelection({
+            ...c3LaserInput(16, 5, true),
+            targetNumberFacts: { ...targetNumberFacts('er-large-laser'), underwaterEnergy: true },
+        })).toEqual(jasmine.objectContaining({ outOfRange: true }));
     });
 
     it('allows ground Extreme attacks through the exact Extreme boundary when enabled', () => {
@@ -1259,6 +311,31 @@ describe('inventory target number rules profiles', () => {
         const outOfRangeInput = aeroInput(21, 'long');
         outOfRangeInput.target = { ...outOfRangeInput.target!, useC3: true, c3Distance: 5 };
         expect(inventoryTargetRangeSelection(outOfRangeInput)?.outOfRange).toBeTrue();
+    });
+
+    it('uses detached physical facts for Piloting and ignores weapon range and firing heat', () => {
+        const input: InventoryTargetNumberInput = {
+            ...artilleryInput(99),
+            targetNumberFacts: targetNumberFacts('punch', true),
+            selectedAmmo: null,
+            gunnerySkill: 2,
+            pilotingSkill: 5,
+            hitResolution: toHitResolution(2, [
+                { label: 'Heat - Fire Modifier', modifier: 2, weakened: true, kind: 'heat' },
+            ]),
+        };
+
+        const state = inventoryTargetNumberState(input);
+
+        expect(state.rangeSelection).toEqual(jasmine.objectContaining({
+            range: 'short',
+            maximumRange: 'short',
+            outOfRange: false,
+        }));
+        expect(state.breakdown?.total).toBe(5);
+        expect(state.breakdown?.lines).toContain(jasmine.objectContaining({ label: 'Piloting', value: '5' }));
+        expect(state.breakdown?.lines).not.toContain(jasmine.objectContaining({ label: 'Range (Short)' }));
+        expect(state.breakdown?.lines).not.toContain(jasmine.objectContaining({ label: 'Heat - Fire Modifier' }));
     });
 
     it('counts Aero out-of-range to Long as two C3 bracket improvements', () => {

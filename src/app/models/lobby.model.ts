@@ -2,7 +2,19 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 // Author: Drake
 
+import type { CBTRuleset } from './cbt-ruleset.model';
 import type { ForceAlignment } from './force-slot.model';
+import type { InitiativeOrderMode, InitiativeRecord } from './rules/initiative-rules';
+import type { CBTOptionalRules } from './options.model';
+
+/** The rules everyone in a lobby plays by; the host sets them, and they take precedence over local options. */
+export interface LobbyGameSettings {
+    ruleset: CBTRuleset;
+    initiativeOrder: InitiativeOrderMode;
+    initiativeDie: boolean;
+    /** The optional rules the lobby plays; a lobby that carries none leaves each player's own. */
+    optionalRules?: Partial<CBTOptionalRules>;
+}
 
 export interface LobbyParticipant {
     publicId: string;
@@ -11,12 +23,19 @@ export interface LobbyParticipant {
     host: boolean;
     connected: boolean;
     alignment: ForceAlignment;
+    /** Set by the host: this player's forces no longer hold the shared turn. */
+    away: boolean;
     instanceIds: string[];
 }
 
 export interface LobbyState {
     code: string;
     locked: boolean;
+    settings: LobbyGameSettings;
+    /** The current turn's Initiative, decided by the host. */
+    initiative: InitiativeRecord | null;
     isHost: boolean;
     participants: LobbyParticipant[];
 }
+
+

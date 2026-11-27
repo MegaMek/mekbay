@@ -6,6 +6,7 @@ on:
     branches:
       - main
       - next
+      - dev
 
 concurrency:
   group: pr-tests-${{ github.event.pull_request.number }}
@@ -58,7 +59,24 @@ jobs:
           MM_DATA_PATH: mm-data
         run: npm run gen-assets
 
+      - name: Verify deterministic asset and deployment pipelines
+        run: npm run check:asset-pipeline && npm run test:deploy-pipeline
+
+      - name: Verify script typechecks
+        run: npm run typecheck:scripts
+
+      - name: Verify SEO documents and route coverage
+        run: npm run test:seo
+
+      - name: Verify entity/runtime architecture boundaries
+        run: npm run test:convergence-architecture && npm run test:equipment-status-architecture && npm run typecheck:equipment-status-profile
+
       - name: Run Angular test suite
         env:
           MM_DATA_PATH: mm-data
         run: npm test -- --watch=false --browsers ChromeHeadless
+
+      # Assets were generated above; invoke the production target directly so
+      # the expensive mm-data and sprite generation is not repeated.
+      - name: Build production application
+        run: npm exec -- ng build --configuration=production && npm run postbuild

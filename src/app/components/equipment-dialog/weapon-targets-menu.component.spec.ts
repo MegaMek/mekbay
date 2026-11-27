@@ -3,13 +3,14 @@
 // Author: Drake
 
 import { ComponentFixture, TestBed } from '@angular/core/testing';
-import type { InventoryControlRuntimeTarget } from '../../models/inventory-control-runtime-state.model';
+import { asEncounterTargetId } from '../../models/runtime/encounter-runtime';
+import type { TargetingTarget } from '../../models/runtime/targeting-target';
 import { TW_GAME_RULES } from '../../models/rules/game-rules';
-import { getUnitConditionDefinition, NARC_CONDITION_COLOR } from '../../models/rules/unit-type-rules';
+import { getUnitConditionDefinition, NARC_CONDITION_COLOR } from '../../models/unit-status-presentation';
 import { WeaponTargetsMenuComponent } from './weapon-targets-menu.component';
 
-const TARGET: InventoryControlRuntimeTarget = {
-    id: 'A',
+const TARGET: TargetingTarget = {
+    id: asEncounterTargetId('A'),
     letter: 'A',
     name: 'Target A',
     color: '#1565C0',
@@ -18,6 +19,7 @@ const TARGET: InventoryControlRuntimeTarget = {
     useC3: true,
     tnModifier: 0
 };
+const OPFOR_TARGET_ID = asEncounterTargetId('opfor:enemy');
 
 describe('WeaponTargetsMenuComponent C3 degradation', () => {
     let fixture: ComponentFixture<WeaponTargetsMenuComponent>;
@@ -552,7 +554,7 @@ describe('WeaponTargetsMenuComponent C3 degradation', () => {
     });
 
     it('keeps derived OPFOR identity immutable while allowing presentation color changes', () => {
-        fixture.componentRef.setInput('targets', [{ ...TARGET, id: 'opfor:enemy', source: 'opfor', readOnly: true }]);
+        fixture.componentRef.setInput('targets', [{ ...TARGET, id: OPFOR_TARGET_ID, source: 'opfor', readOnly: true }]);
         const updates = jasmine.createSpy('updateRequest');
         component.updateRequest.subscribe(updates);
         fixture.detectChanges();
@@ -565,15 +567,15 @@ describe('WeaponTargetsMenuComponent C3 degradation', () => {
         expect(linkedNameStyle.backgroundImage).toBe('none');
         expect(linkedNameStyle.backgroundColor).toBe('rgba(0, 0, 0, 0)');
         expect(linkedNameStyle.borderColor).toBe('rgba(0, 0, 0, 0)');
-        component.updateName('opfor:enemy', 'Changed');
-        component.updateColor('opfor:enemy', '#fff');
+        component.updateName(OPFOR_TARGET_ID, 'Changed');
+        component.updateColor(OPFOR_TARGET_ID, '#fff');
         expect(updates).toHaveBeenCalledOnceWith({ targetId: 'opfor:enemy', patch: { color: '#fff' } });
     });
 
-    it('keeps equal delete-column widths for manual and linked targets in mixed lists', () => {
+    it('offers deletion only for manual targets in mixed lists', () => {
         fixture.componentRef.setInput('targets', [
             TARGET,
-            { ...TARGET, id: 'opfor:enemy', letter: 'B', source: 'opfor', readOnly: true }
+            { ...TARGET, id: OPFOR_TARGET_ID, letter: 'B', source: 'opfor', readOnly: true }
         ]);
         fixture.detectChanges();
 
@@ -585,7 +587,6 @@ describe('WeaponTargetsMenuComponent C3 degradation', () => {
         expect(linkedDeleteColumn).not.toBeNull();
         expect(manualDeleteColumn.querySelector('.target-delete')).not.toBeNull();
         expect(linkedDeleteColumn.querySelector('.target-delete')).toBeNull();
-        expect(getComputedStyle(manualDeleteColumn).width).toBe(getComputedStyle(linkedDeleteColumn).width);
     });
 
     it('removes the overlay when degradation clears', () => {
@@ -598,3 +599,83 @@ describe('WeaponTargetsMenuComponent C3 degradation', () => {
         expect(component.c3DistanceInputValue(TARGET)).toBe(12);
     });
 });
+
+describe('WeaponTargetsMenuComponent row layout', () => {
+    function render(width: number, showC3Distance: boolean): HTMLElement {
+        TestBed.configureTestingModule({ imports: [WeaponTargetsMenuComponent] });
+        const fixture = TestBed.createComponent(WeaponTargetsMenuComponent);
+        fixture.componentRef.setInput('targets', [
+            { ...TARGET, tnModifier: 3, manualTnModifier: 3 },
+            { ...TARGET, id: asEncounterTargetId('B'), letter: 'B', name: 'Target B', distance: 1 },
+        ]);
+        fixture.componentRef.setInput('showC3Distance', showC3Distance);
+        fixture.detectChanges();
+        const menu = fixture.nativeElement.querySelector('.weapon-targets-menu') as HTMLElement;
+        menu.style.width = `${width}px`;
+        return menu;
+    }
+
+    for (const width of [600, 561, 480, 320]) {
+        for (const showC3Distance of [false, true]) {
+            it(`keeps every caption and control apart at ${width}px${showC3Distance ? ' with C3' : ''}`, () => {
+                const menu = render(width, showC3Distance);
+                for (const row of menu.querySelectorAll<HTMLElement>('.weapon-target-row')) {
+                    const bounds = row.getBoundingClientRect();
+                    const parts = [...row.querySelectorAll<HTMLElement>([
+                        '.target-square', '.target-name', '.target-number-field > span:first-child:not(.target-stepper)',
+                        '.c3-distance-caption',
+                        '.target-stepper > *', '.direction-select', '.use-c3-toggle', '.calculator-button', '.target-delete',
+                    ].join(','))].map(part => ({ part, box: part.getBoundingClientRect() }))
+                        .filter(({ box }) => box.width > 0 && box.height > 0);
+
+                    expect(parts.length).toBeGreaterThan(10);
+                    for (const { part, box } of parts) {
+                        expect(box.left).withContext(part.className).toBeGreaterThanOrEqual(bounds.left - 0.5);
+                        expect(box.right).withContext(part.className).toBeLessThanOrEqual(bounds.right + 0.5);
+                        expect(part.scrollWidth).withContext(part.className).toBeLessThanOrEqual(part.clientWidth + 1);
+                    }
+                    for (const [index, first] of parts.entries()) {
+                        for (const second of parts.slice(index + 1)) {
+                            const apart = first.box.right <= second.box.left + 0.5 || second.box.right <= first.box.left + 0.5
+                                || first.box.bottom <= second.box.top + 0.5 || second.box.bottom <= first.box.top + 0.5;
+                            expect(apart).withContext(`${first.part.className} / ${second.part.className}`).toBeTrue();
+                        }
+                    }
+                }
+            });
+        }
+    }
+
+    it('keeps the C3 controls under the main controls, ending at the calculator', () => {
+        const menu = render(600, true);
+        const row = menu.querySelector('.weapon-target-row')!;
+        const [main, c3] = [...row.querySelectorAll<HTMLElement>('.target-controls-row')].map(controls => controls.getBoundingClientRect());
+
+        expect(c3.left).toBeCloseTo(main.left, 0);
+        expect(c3.right).toBeCloseTo(main.right, 0);
+        expect(row.querySelector('.calculator-spacer')!.getBoundingClientRect().left)
+            .toBeCloseTo(row.querySelector('.calculator-button')!.getBoundingClientRect().left, 0);
+    });
+});
+
+describe('WeaponTargetsMenuComponent attack direction', () => {
+    it('sets the attack direction from the target row, keeping the other calculator facts', () => {
+        TestBed.configureTestingModule({ imports: [WeaponTargetsMenuComponent] });
+        const fixture = TestBed.createComponent(WeaponTargetsMenuComponent);
+        const target: TargetingTarget = { ...TARGET, tnCalculator: { partialCover: true } };
+        fixture.componentRef.setInput('targets', [target]);
+        fixture.detectChanges();
+        const emitted = jasmine.createSpy('updateRequest');
+        fixture.componentInstance.updateRequest.subscribe(emitted);
+
+        const select = fixture.nativeElement.querySelector('.direction-select') as HTMLSelectElement;
+        expect(select.value).toBe('front');
+        select.value = 'rear';
+        select.dispatchEvent(new Event('change'));
+
+        expect(emitted).toHaveBeenCalledWith({
+            targetId: 'A', patch: { tnCalculator: { partialCover: true, attackDirection: 'rear' } },
+        });
+    });
+});
+

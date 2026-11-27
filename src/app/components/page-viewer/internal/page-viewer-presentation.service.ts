@@ -4,8 +4,8 @@
 
 import { Injectable } from '@angular/core';
 
-import type { CBTForceUnit } from '../../../models/cbt-force-unit.model';
 import { resolveCenterPanelTables } from '../../../utils/record-sheet-center-panel.util';
+import type { PageViewerMember } from './types';
 
 @Injectable()
 export class PageViewerPresentationService {
@@ -17,9 +17,9 @@ export class PageViewerPresentationService {
         });
     }
 
-    setDisplayedFluffImageVisibility(displayedUnits: readonly CBTForceUnit[], showFluff: boolean): void {
+    setDisplayedFluffImageVisibility(displayedUnits: readonly PageViewerMember[], showFluff: boolean): void {
         displayedUnits.forEach((unit) => {
-            const svg = unit.svg();
+            const svg = unit.recordSheet();
             if (!svg) {
                 return;
             }

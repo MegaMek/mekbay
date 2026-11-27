@@ -1,0 +1,7 @@
+*.json
+*.csv
+/generated/
+
+# Repository-authored catalog inputs. These are intentionally versioned; the
+# generated asset manifest binds their deployed bytes at build time.
+!/static/**

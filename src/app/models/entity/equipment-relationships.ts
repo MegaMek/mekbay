@@ -21,7 +21,7 @@ export type EquipmentMountIndex = ReadonlyMap<MountId, EntityMountedEquipment>;
 /** Immutable relationship graph for an entity's mounted equipment. */
 export class EquipmentRelationships {
   readonly #links: ReadonlyMap<MountId, MountId>;
-  readonly #reverseLinks: ReadonlyMap<MountId, MountId>;
+  readonly #reverseLinks: ReadonlyMap<MountId, readonly MountId[]>;
   readonly #bays: readonly EquipmentBayDefinition[];
 
   constructor(
@@ -30,12 +30,11 @@ export class EquipmentRelationships {
   ) {
     this.#links = new Map(links);
     validateLinks(this.#links);
-    const reverseLinks = new Map<MountId, MountId>();
+    const reverseLinks = new Map<MountId, MountId[]>();
     for (const [sourceId, targetId] of this.#links) {
-      if (reverseLinks.has(targetId)) {
-        throw new Error(`Equipment mount "${targetId}" is already linked`);
-      }
-      reverseLinks.set(targetId, sourceId);
+      const sources = reverseLinks.get(targetId);
+      if (sources) sources.push(sourceId);
+      else reverseLinks.set(targetId, [sourceId]);
     }
     this.#reverseLinks = reverseLinks;
     validateBays(bays);
@@ -50,26 +49,21 @@ export class EquipmentRelationships {
     return targetId ? mountsById.get(targetId) : undefined;
   }
 
-  linkingMount(
+  linkingMounts(
     target: EntityMountedEquipment,
     mountsById: EquipmentMountIndex,
-  ): EntityMountedEquipment | undefined {
-    const sourceId = this.#reverseLinks.get(target.mountId);
-    return sourceId ? mountsById.get(sourceId) : undefined;
+  ): readonly EntityMountedEquipment[] {
+    return (this.#reverseLinks.get(target.mountId) ?? []).flatMap(id => {
+      const mount = mountsById.get(id);
+      return mount ? [mount] : [];
+    });
   }
 
   withLink(source: EntityMountedEquipment, target: EntityMountedEquipment): EquipmentRelationships {
     if (source.mountId === target.mountId) throw new Error('Equipment cannot link to itself');
-    const existingSource = this.#reverseLinks.get(target.mountId);
-    if (existingSource === source.mountId) return this;
-    if (existingSource) throw new Error(`Equipment mount "${target.mountId}" is already linked`);
+    if (this.#links.get(source.mountId) === target.mountId) return this;
 
     const links = new Map(this.#links).set(source.mountId, target.mountId);
-    let nextId: MountId | undefined = target.mountId;
-    while (nextId) {
-      if (nextId === source.mountId) throw new Error('Equipment links cannot form a cycle');
-      nextId = links.get(nextId);
-    }
     return new EquipmentRelationships(links, this.#bays);
   }
 

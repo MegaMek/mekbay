@@ -2,11 +2,10 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 // Author: Drake
 
-import { CommonModule } from '@angular/common';
 import { CdkVirtualScrollViewport, ScrollingModule } from '@angular/cdk/scrolling';
 import { Overlay } from '@angular/cdk/overlay';
 import { Dialog } from '@angular/cdk/dialog';
-import { computed, provideZonelessChangeDetection, signal } from '@angular/core';
+import { Component, computed, provideZonelessChangeDetection, signal } from '@angular/core';
 import { TestBed } from '@angular/core/testing';
 import { NEVER, Subject, of } from 'rxjs';
 import { GameSystem } from '../../models/common.model';
@@ -15,27 +14,35 @@ import type { UnitSummary } from '../../models/unit-summary.model';
 import { AsAbilityLookupService } from '../../services/as-ability-lookup.service';
 import { DataService } from '../../services/data.service';
 import { DialogsService } from '../../services/dialogs.service';
-import { ForceBuilderService } from '../../services/force-builder.service';
+import { ForceImportService } from '../../services/force-import.service';
+import { ForceWorkspaceCommandsService } from '../../services/force-workspace-commands.service';
+import { ForceWorkspaceStateService } from '../../services/force-workspace-state.service';
 import { GameService } from '../../services/game.service';
 import { LayoutService } from '../../services/layout.service';
 import { LongPressDirective } from '../../directives/long-press.directive';
 import { OptionsService } from '../../services/options.service';
 import { OverlayManagerService } from '../../services/overlay-manager.service';
 import { SavedSearchesService } from '../../services/saved-searches.service';
-import { SpriteStorageService } from '../../services/sprite-storage.service';
 import { TaggingService } from '../../services/tagging.service';
-import { MEGAMEK_RARITY_PRODUCTION_SORT_KEY } from '../../services/unit-search-filters.model';
+import { FORMATION_TARGET_FILTER_KEY, MEGAMEK_RARITY_PRODUCTION_SORT_KEY } from '../../services/unit-search-filters.model';
 import { UnitSearchFiltersService } from '../../services/unit-search-filters.service';
 import { createEmptyUnit, type TestUnitOverrides } from '../../testing/unit-test-helpers';
 import { UnitCardExpandedComponent } from '../unit-card-expanded/unit-card-expanded.component';
 import { calculateDataTableMinWidth } from '../data-table/data-table.component';
 import { UnitSearchComponent } from './unit-search.component';
+import { CBTForceMember, type ForceMember } from '../../models/force-member.model';
+import type { CBTForce } from '../../models/cbt-force.model';
+import { TestBipedMekEntity } from '../../models/entity/testing/test-entities';
+import type { FormationUnitLike } from '../../utils/formation/formation-facts.util';
+
+@Component({ template: '<button type="button">Dialog content</button>' })
+class SearchEscapeTestDialog {}
 
 describe('UnitSearchComponent card virtualization', () => {
     const filteredUnitsSignal = signal<UnitSummary[]>([]);
-    const currentGameSystemSignal = signal(GameSystem.ALPHA_STRIKE);
+    const currentGameSystemSignal = signal(GameSystem.AS);
     const closePanelsRequestSignal = signal({ requestId: 0, exitExpandedView: false });
-    const isSearchSettledSignal = signal(true);
+    const interactionReadySignal = signal(true);
     const advOptionsSignal = signal<Record<string, any>>({});
     const budgetModeSignal = signal<'force-limit' | 'bv-normalization' | null>(null);
     const classicBvNormalizationSettingsSignal = signal({
@@ -74,11 +81,13 @@ describe('UnitSearchComponent card virtualization', () => {
         viewMode: signal<'list' | 'card' | 'chassis' | 'table'>('list'),
         closePanelsRequest: closePanelsRequestSignal,
         filteredUnits: () => filteredUnitsSignal(),
-        isSearchSettled: () => isSearchSettledSignal(),
         isDataReady: () => true,
+        isInteractionReady: () => interactionReadySignal(),
         searchTokens: () => [],
         isComplexQuery: () => false,
         filterState: () => ({}),
+        semanticFilterKeys: signal(new Set<string>()),
+        setFormationTargetExistingUnits: jasmine.createSpy('setFormationTargetExistingUnits'),
         advOptions: () => advOptionsSignal(),
         resetFilters: jasmine.createSpy('resetFilters'),
         setSearchText: jasmine.createSpy('setSearchText'),
@@ -116,14 +125,18 @@ describe('UnitSearchComponent card virtualization', () => {
         getSafeAreaInsets: () => ({ top: 0, bottom: 0, left: 0, right: 0 }),
     };
 
-    const forceBuilderServiceStub = {
+    const forceWorkspaceStub = {
+        selectedUnit: signal<ForceMember | null>(null),
         smartCurrentForce: () => null,
         hasForces: () => false,
+    };
+
+    const forceCommandsStub = {
         addUnit: jasmine.createSpy('addUnit').and.resolveTo(true),
     };
 
     const gameServiceStub = {
-        isAlphaStrike: computed(() => currentGameSystemSignal() === GameSystem.ALPHA_STRIKE),
+        isAlphaStrike: computed(() => currentGameSystemSignal() === GameSystem.AS),
         currentGameSystem: currentGameSystemSignal,
     };
 
@@ -181,9 +194,29 @@ describe('UnitSearchComponent card virtualization', () => {
         return event;
     }
 
+    function dispatchEscape(target: EventTarget = document.body): KeyboardEvent {
+        const event = new KeyboardEvent('keydown', {
+            key: 'Escape',
+            keyCode: 27,
+            bubbles: true,
+            cancelable: true,
+        });
+        target.dispatchEvent(event);
+        return event;
+    }
+
+    async function waitForDialogOpen(): Promise<void> {
+        for (let attempt = 0; attempt < 20 && dialogsServiceStub.createDialog.calls.count() === 0; attempt += 1) {
+            await new Promise<void>(resolve => setTimeout(resolve, 0));
+        }
+    }
+
     beforeEach(async () => {
         openDialogs = [];
         filteredUnitsSignal.set([]);
+        forceWorkspaceStub.selectedUnit.set(null);
+        filtersServiceStub.semanticFilterKeys.set(new Set());
+        filtersServiceStub.setFormationTargetExistingUnits.calls.reset();
         optionsSignal.set({
             ASUseHex: false,
             colorScheme: 'default',
@@ -195,7 +228,7 @@ describe('UnitSearchComponent card virtualization', () => {
         filtersServiceStub.advOpen.set(false);
         filtersServiceStub.searchText.set('');
         advOptionsSignal.set({});
-        isSearchSettledSignal.set(true);
+        interactionReadySignal.set(true);
         filtersServiceStub.budgetMode.set(null);
         filtersServiceStub.classicBvNormalizationSettings.set({
             targetBv: { min: 0, max: 999_999 },
@@ -217,8 +250,8 @@ describe('UnitSearchComponent card virtualization', () => {
         filtersServiceStub.unsetFilter.calls.reset();
         filtersServiceStub.setBudgetMode.calls.reset();
         filtersServiceStub.setBvNormalizationSettings.calls.reset();
-        forceBuilderServiceStub.addUnit.calls.reset();
-        forceBuilderServiceStub.addUnit.and.resolveTo(true);
+        forceCommandsStub.addUnit.calls.reset();
+        forceCommandsStub.addUnit.and.resolveTo(true);
         dataServiceStub.getUnitByUuid.calls.reset();
         dataServiceStub.getUnitByUuid.and.returnValue(undefined);
         filtersServiceStub.setSearchText.and.callFake((text: string) => {
@@ -241,7 +274,7 @@ describe('UnitSearchComponent card virtualization', () => {
         layoutServiceStub.windowWidth.set(1280);
         layoutServiceStub.windowHeight.set(900);
         savedSearchesServiceStub.version.set(0);
-        currentGameSystemSignal.set(GameSystem.ALPHA_STRIKE);
+        currentGameSystemSignal.set(GameSystem.AS);
 
         await TestBed.configureTestingModule({
             imports: [UnitSearchComponent],
@@ -249,7 +282,12 @@ describe('UnitSearchComponent card virtualization', () => {
                 provideZonelessChangeDetection(),
                 { provide: UnitSearchFiltersService, useValue: filtersServiceStub },
                 { provide: LayoutService, useValue: layoutServiceStub },
-                { provide: ForceBuilderService, useValue: forceBuilderServiceStub },
+                { provide: ForceWorkspaceStateService, useValue: forceWorkspaceStub },
+                { provide: ForceWorkspaceCommandsService, useValue: forceCommandsStub },
+                {
+                    provide: ForceImportService,
+                    useValue: { showSearchForceGeneratorDialog: jasmine.createSpy('showSearchForceGeneratorDialog') },
+                },
                 { provide: GameService, useValue: gameServiceStub },
                 { provide: OptionsService, useValue: optionsServiceStub },
                 { provide: SavedSearchesService, useValue: savedSearchesServiceStub },
@@ -258,23 +296,18 @@ describe('UnitSearchComponent card virtualization', () => {
                 { provide: Dialog, useValue: { openDialogs } },
                 { provide: Overlay, useValue: overlayStub },
                 { provide: DataService, useValue: dataServiceStub },
-                {
-                    provide: SpriteStorageService,
-                    useValue: {
-                        loading: signal(false),
-                        getCachedSpriteInfo: () => null,
-                        getSpriteInfo: () => Promise.resolve(null),
-                    },
-                },
                 { provide: TaggingService, useValue: taggingServiceStub },
                 { provide: AsAbilityLookupService, useValue: abilityLookupServiceStub },
             ],
         })
             .overrideComponent(UnitSearchComponent, {
                 set: {
-                    imports: [CommonModule, ScrollingModule, LongPressDirective, UnitCardExpandedComponent],
+                    imports: [ScrollingModule, LongPressDirective, UnitCardExpandedComponent],
                     template: `
                         <div #resultsDropdown class="results-dropdown" style="width: 920px;" [hidden]="!resultsVisible()">
+                            @if (resultsLoading()) {
+                            <div class="results-status loading-results">Loading results...</div>
+                            }
                             @if (viewMode() === 'card' && gameService.isAlphaStrike()) {
                             <cdk-virtual-scroll-viewport
                                 class="results-dropdown-viewport card-view-viewport"
@@ -308,13 +341,152 @@ describe('UnitSearchComponent card virtualization', () => {
                             <ng-template #tableNameCell let-unit>{{ unit.name }}</ng-template>
                             <ng-template #tableYearCell let-unit>{{ unit.year }}</ng-template>
                             <ng-template #tableBvCell let-unit>{{ unit.bv }}</ng-template>
-                            <ng-template #tableClassicMovementCell let-unit>{{ unit.walk }}</ng-template>
+                            <ng-template #tableCBTMovementCell let-unit>{{ unit.walk }}</ng-template>
                             <ng-template #tableTagsCell let-unit>{{ unit.name }}</ng-template>
                         </div>
                     `,
                 },
             })
             .compileComponents();
+    });
+
+    it('keeps formation search context current without opening the advanced panel', () => {
+        const members = signal<readonly FormationUnitLike[]>([]);
+        const force = { getRosterGroupId: () => 'selected', groups: () => [group] } as unknown as CBTForce;
+        const group = { id: 'selected', force, organizationalResult: () => ({ groups: [] }), formationUnits: members };
+        const first = new CBTForceMember('first', force, new TestBipedMekEntity());
+        const second = new CBTForceMember('second', force, new TestBipedMekEntity());
+        members.set([first]);
+        forceWorkspaceStub.selectedUnit.set(first);
+        filtersServiceStub.semanticFilterKeys.set(new Set([FORMATION_TARGET_FILTER_KEY]));
+        const fixture = TestBed.createComponent(UnitSearchComponent);
+        fixture.detectChanges();
+        expect(filtersServiceStub.advOpen()).toBeFalse();
+        expect(filtersServiceStub.setFormationTargetExistingUnits).toHaveBeenCalledWith([first]);
+
+        members.set([first, second]);
+        fixture.detectChanges();
+        expect(filtersServiceStub.setFormationTargetExistingUnits.calls.mostRecent().args[0]).toEqual([first, second]);
+
+        forceWorkspaceStub.selectedUnit.set(null);
+        fixture.detectChanges();
+        expect(filtersServiceStub.setFormationTargetExistingUnits.calls.mostRecent().args[0]).toEqual([]);
+    });
+
+    it('uses the same filtered results in selection mode without opening details or adding to a force', async () => {
+        const fixture = TestBed.createComponent(UnitSearchComponent);
+        fixture.componentRef.setInput('selectionMode', true);
+        const component = fixture.componentInstance;
+        const unit = createUnit('Workshop source');
+        filteredUnitsSignal.set([unit]);
+        const selected = jasmine.createSpy('selected');
+        component.unitSelected.subscribe(selected);
+        component.onUnitCardClick(unit);
+        expect(selected).toHaveBeenCalledOnceWith(unit);
+        expect(component.displayedUnits()).toEqual([unit]);
+        expect(component.showInlinePanel()).toBeFalse();
+        component.selectAll();
+        expect(component.selectedUnits().size).toBe(0);
+        selected.calls.reset();
+        await component.showUnitDetails(unit);
+        expect(selected).toHaveBeenCalledOnceWith(unit);
+    });
+
+    it('cancels selection when the expanded-view control is pressed', () => {
+        const fixture = TestBed.createComponent(UnitSearchComponent);
+        fixture.componentRef.setInput('selectionMode', true);
+        const canceled = jasmine.createSpy('canceled');
+        fixture.componentInstance.selectionCanceled.subscribe(canceled);
+        fixture.componentInstance.toggleExpandedView();
+        expect(canceled).toHaveBeenCalledOnceWith(undefined);
+    });
+
+    for (const hasForces of [false, true]) {
+        it(`collapses expanded ${hasForces ? 'sidebar' : 'homepage'} search with Escape outside the component`, () => {
+            spyOn(forceWorkspaceStub, 'hasForces').and.returnValue(hasForces);
+            optionsSignal.update(options => ({ ...options, unitSearchViewMode: 'table' }));
+            const fixture = TestBed.createComponent(UnitSearchComponent);
+            const component = fixture.componentInstance;
+            fixture.detectChanges();
+
+            component.openExpandedSearch(new MouseEvent('click', { cancelable: true }));
+            fixture.detectChanges();
+            expect(component.expandedView()).toBeTrue();
+            expect(component.viewMode()).toBe('table');
+
+            const event = dispatchEscape();
+
+            expect(event.defaultPrevented).toBeTrue();
+            expect(component.expandedView()).toBeFalse();
+            expect(component.viewMode()).toBe('list');
+        });
+    }
+
+    it('closes search controls one layer per Escape from inside or outside the component', () => {
+        const fixture = TestBed.createComponent(UnitSearchComponent);
+        const component = fixture.componentInstance;
+        spyOn(component, 'updateAdvPanelPosition');
+        component.expandedView.set(true);
+        component.advOpen.set(true);
+        component.viewModeMenuOpen.set(true);
+        fixture.detectChanges();
+
+        const input = document.createElement('input');
+        fixture.nativeElement.appendChild(input);
+        dispatchEscape(input);
+        expect(component.viewModeMenuOpen()).toBeFalse();
+        expect(component.advOpen()).toBeTrue();
+        expect(component.expandedView()).toBeTrue();
+
+        dispatchEscape();
+        expect(component.advOpen()).toBeFalse();
+        expect(component.expandedView()).toBeTrue();
+
+        dispatchEscape(input);
+        expect(component.expandedView()).toBeFalse();
+    });
+
+    it('closes nested CDK dialogs before collapsing expanded search on a separate Escape', () => {
+        TestBed.overrideProvider(Dialog, { useFactory: () => new Dialog() });
+        TestBed.overrideProvider(Overlay, { useFactory: () => new Overlay() });
+        const fixture = TestBed.createComponent(UnitSearchComponent);
+        const component = fixture.componentInstance;
+        component.expandedView.set(true);
+        fixture.detectChanges();
+        const dialog = TestBed.inject(Dialog);
+        const outer = dialog.open(SearchEscapeTestDialog);
+        const inner = dialog.open(SearchEscapeTestDialog);
+
+        dispatchEscape(inner.overlayRef.overlayElement);
+        expect(dialog.openDialogs).toEqual([outer]);
+        expect(component.expandedView()).toBeTrue();
+
+        dispatchEscape(outer.overlayRef.overlayElement);
+        expect(dialog.openDialogs).toEqual([]);
+        expect(component.expandedView()).toBeTrue();
+
+        dispatchEscape();
+        expect(component.expandedView()).toBeFalse();
+    });
+
+    it('leaves search open while another dialog owns Escape, even if focus is still in search', () => {
+        const fixture = TestBed.createComponent(UnitSearchComponent);
+        const component = fixture.componentInstance;
+        component.expandedView.set(true);
+        fixture.detectChanges();
+        openDialogs.push({});
+
+        dispatchEscape(fixture.nativeElement);
+        dispatchEscape();
+
+        expect(component.expandedView()).toBeTrue();
+    });
+
+    it('does not consume Escape when compact search is inactive', () => {
+        const fixture = TestBed.createComponent(UnitSearchComponent);
+        fixture.detectChanges();
+
+        expect(dispatchEscape().defaultPrevented).toBeFalse();
     });
 
     it('groups card-mode results into width-derived virtual rows', () => {
@@ -352,11 +524,11 @@ describe('UnitSearchComponent card virtualization', () => {
         expect(component.displayedUnitKeys()).toEqual([]);
     });
 
-    it('shows normalized Gunnery/Piloting immediately after BV in the Classic table', () => {
+    it('shows normalized Gunnery/Piloting immediately after BV in the CBT table', () => {
         const fixture = TestBed.createComponent(UnitSearchComponent);
         const component = fixture.componentInstance;
         const unit = createUnit('Normalized Unit');
-        currentGameSystemSignal.set(GameSystem.CLASSIC);
+        currentGameSystemSignal.set(GameSystem.CBT);
         filtersServiceStub.budgetMode.set('bv-normalization');
         filtersServiceStub.getSearchResultPilotContext.and.returnValue({ kind: 'bv', adjustedValue: 1234, gunnery: 3, piloting: 6 });
         fixture.detectChanges();
@@ -378,7 +550,7 @@ describe('UnitSearchComponent card virtualization', () => {
     it('omits the Gunnery/Piloting column when BV normalization is inactive', () => {
         const fixture = TestBed.createComponent(UnitSearchComponent);
         const component = fixture.componentInstance;
-        currentGameSystemSignal.set(GameSystem.CLASSIC);
+        currentGameSystemSignal.set(GameSystem.CBT);
         filtersServiceStub.budgetMode.set(null);
         fixture.detectChanges();
 
@@ -465,7 +637,7 @@ describe('UnitSearchComponent card virtualization', () => {
 
         await component.addSelectedUnits();
 
-        expect(forceBuilderServiceStub.addUnit.calls.allArgs()).toEqual([
+        expect(forceCommandsStub.addUnit.calls.allArgs()).toEqual([
             [first, 4, 5],
             [second, 4, 5],
         ]);
@@ -480,13 +652,13 @@ describe('UnitSearchComponent card virtualization', () => {
         const second = createUnit('Second');
         filteredUnitsSignal.set([first, second]);
         dataServiceStub.getUnitByUuid.and.callFake((uuid: string) => uuid === first.uuid ? first : second);
-        forceBuilderServiceStub.addUnit.and.resolveTo(false);
+        forceCommandsStub.addUnit.and.resolveTo(false);
         fixture.detectChanges();
         component.selectedUnits.set(new Set([first.uuid, second.uuid]));
 
         await component.addSelectedUnits();
 
-        expect(forceBuilderServiceStub.addUnit).toHaveBeenCalledOnceWith(first, 4, 5);
+        expect(forceCommandsStub.addUnit).toHaveBeenCalledOnceWith(first, 4, 5);
         expect(dataServiceStub.getUnitByUuid).toHaveBeenCalledOnceWith(first.uuid);
         expect(component.selectedUnits().size).toBe(0);
     });
@@ -502,7 +674,7 @@ describe('UnitSearchComponent card virtualization', () => {
         await component.addSelectedUnits();
 
         expect(dataServiceStub.getUnitByUuid).toHaveBeenCalledOnceWith(missing.uuid);
-        expect(forceBuilderServiceStub.addUnit).not.toHaveBeenCalled();
+        expect(forceCommandsStub.addUnit).not.toHaveBeenCalled();
         expect(component.selectedUnits().size).toBe(0);
     });
 
@@ -532,6 +704,25 @@ describe('UnitSearchComponent card virtualization', () => {
         expect(component.resultsVisible()).toBeTrue();
         expect(cdkViewport.getViewportSize()).toBe(4000);
         expect(renderedRange.end - renderedRange.start).toBeGreaterThanOrEqual(minimumVisibleRows);
+    });
+
+    it('shows a loading result body in expanded view until the initial worker result is ready', () => {
+        const fixture = TestBed.createComponent(UnitSearchComponent);
+        const component = fixture.componentInstance;
+        filtersServiceStub.expandedView.set(true);
+        interactionReadySignal.set(false);
+        fixture.detectChanges();
+
+        expect(component.resultsVisible()).toBeTrue();
+        expect(component.resultsLoading()).toBeTrue();
+        expect(fixture.nativeElement.querySelector('.loading-results')?.textContent.trim()).toBe('Loading results...');
+
+        interactionReadySignal.set(true);
+        fixture.detectChanges();
+
+        expect(component.resultsVisible()).toBeTrue();
+        expect(component.resultsLoading()).toBeFalse();
+        expect(fixture.nativeElement.querySelector('.loading-results')).toBeNull();
     });
 
     for (const budgetMode of ['force-limit', 'bv-normalization'] as const) {
@@ -593,6 +784,24 @@ describe('UnitSearchComponent card virtualization', () => {
             expect(filtersServiceStub.setBudgetMode).toHaveBeenCalledTimes(3);
         });
     }
+
+    it('enables budget-mode transitions only after panel interaction and resets them on close', () => {
+        const fixture = TestBed.createComponent(UnitSearchComponent);
+        const component = fixture.componentInstance;
+        fixture.detectChanges();
+
+        expect(component.budgetModeSwitchTransitionsEnabled()).toBeFalse();
+
+        filtersServiceStub.advOpen.set(true);
+        expect(component.budgetModeSwitchTransitionsEnabled()).toBeFalse();
+
+        component.toggleSearchBudgetMode('force-limit');
+        expect(component.budgetModeSwitchTransitionsEnabled()).toBeTrue();
+
+        filtersServiceStub.advOpen.set(false);
+        fixture.detectChanges();
+        expect(component.budgetModeSwitchTransitionsEnabled()).toBeFalse();
+    });
 
     it('keeps compact results hidden without search input, filters, or a BV mode', () => {
         const fixture = TestBed.createComponent(UnitSearchComponent);
@@ -788,8 +997,8 @@ describe('UnitSearchComponent card virtualization', () => {
         expect(component.inlinePanelUnit()).toBeNull();
     });
 
-    it('disables Alpha Strike card view while in Classic mode', () => {
-        currentGameSystemSignal.set(GameSystem.CLASSIC);
+    it('disables Alpha Strike card view while in CBT mode', () => {
+        currentGameSystemSignal.set(GameSystem.CBT);
         filtersServiceStub.viewMode.set('list');
         const fixture = TestBed.createComponent(UnitSearchComponent);
         const component = fixture.componentInstance;
@@ -1050,7 +1259,7 @@ describe('UnitSearchComponent card virtualization', () => {
         expect(scrollToMakeVisible).toHaveBeenCalledWith(1, 'auto');
     });
 
-    it('uses instant scrolling for unit details dialog navigation', () => {
+    it('uses instant scrolling for unit details dialog navigation', async () => {
         const fixture = TestBed.createComponent(UnitSearchComponent);
         const component = fixture.componentInstance;
         const scrollToMakeVisible = spyOn<any>(component, 'scrollToMakeVisible');
@@ -1069,7 +1278,7 @@ describe('UnitSearchComponent card virtualization', () => {
         filteredUnitsSignal.set(units);
         fixture.detectChanges();
 
-        component.showUnitDetails(units[0]);
+        await component.showUnitDetails(units[0]);
         indexChange.next(2);
 
         expect(component.activeIndex()).toBe(2);
@@ -1077,7 +1286,7 @@ describe('UnitSearchComponent card virtualization', () => {
         expect(scrollToMakeVisible).toHaveBeenCalledWith(2, 'auto');
     });
 
-    it('queues Enter until a debounced search commits before opening a result', () => {
+    it('commits a debounced search before Enter opens its first result', async () => {
         const fixture = TestBed.createComponent(UnitSearchComponent);
         const component = fixture.componentInstance;
         const previousUnit = createUnit('Atlas');
@@ -1086,12 +1295,13 @@ describe('UnitSearchComponent card virtualization', () => {
         dialogsServiceStub.createDialog.and.returnValue({ closed: NEVER });
         filtersServiceStub.setSearchText.and.callFake((text: string) => {
             filtersServiceStub.searchText.set(text);
-            isSearchSettledSignal.set(false);
+            filteredUnitsSignal.set([nextUnit]);
             return text;
         });
         filtersServiceStub.searchText.set('atlas');
         filteredUnitsSignal.set([previousUnit]);
         fixture.detectChanges();
+        await import('../unit-details-dialog/unit-details-dialog.component');
 
         component.setSearch('catapult');
         const event = new KeyboardEvent('keydown', { key: 'Enter', cancelable: true });
@@ -1100,39 +1310,9 @@ describe('UnitSearchComponent card virtualization', () => {
         expect(event.defaultPrevented).toBeTrue();
         expect(dialogsServiceStub.createDialog).not.toHaveBeenCalled();
 
-        filteredUnitsSignal.set([nextUnit]);
-        isSearchSettledSignal.set(true);
-        fixture.detectChanges();
+        await waitForDialogOpen();
 
         expect(filtersServiceStub.setSearchText).toHaveBeenCalledWith('catapult');
-        expect(dialogsServiceStub.createDialog).toHaveBeenCalledTimes(1);
-        const dialogConfig = dialogsServiceStub.createDialog.calls.mostRecent().args[1] as any;
-        expect(dialogConfig.data.unitList).toEqual([nextUnit]);
-        expect(dialogConfig.data.unitIndex).toBe(0);
-    });
-
-    it('queues Enter until worker results settle before opening a result', () => {
-        const fixture = TestBed.createComponent(UnitSearchComponent);
-        const component = fixture.componentInstance;
-        const previousUnit = createUnit('Atlas');
-        const nextUnit = createUnit('Catapult');
-
-        dialogsServiceStub.createDialog.and.returnValue({ closed: NEVER });
-        filtersServiceStub.searchText.set('atlas');
-        filteredUnitsSignal.set([previousUnit]);
-        isSearchSettledSignal.set(false);
-        fixture.detectChanges();
-
-        const event = new KeyboardEvent('keydown', { key: 'Enter', cancelable: true });
-        component.onKeydown(event);
-
-        expect(event.defaultPrevented).toBeTrue();
-        expect(dialogsServiceStub.createDialog).not.toHaveBeenCalled();
-
-        filteredUnitsSignal.set([nextUnit]);
-        isSearchSettledSignal.set(true);
-        fixture.detectChanges();
-
         expect(dialogsServiceStub.createDialog).toHaveBeenCalledTimes(1);
         const dialogConfig = dialogsServiceStub.createDialog.calls.mostRecent().args[1] as any;
         expect(dialogConfig.data.unitList).toEqual([nextUnit]);
@@ -1255,17 +1435,17 @@ describe('UnitSearchComponent card virtualization', () => {
 
         fixture.detectChanges();
 
-        expect(component.advPanelFilterGameSystem()).toBe(GameSystem.ALPHA_STRIKE);
+        expect(component.advPanelFilterGameSystem()).toBe(GameSystem.AS);
         expect(component.dropdownFilters().some(filter => filter.key === 'as.TP')).toBeTrue();
         expect(component.dropdownFilters().some(filter => filter.key === 'type')).toBeFalse();
 
-        component.setAdvPanelFilterGameSystem(GameSystem.CLASSIC);
+        component.setAdvPanelFilterGameSystem(GameSystem.CBT);
         fixture.detectChanges();
 
-        expect(component.advPanelFilterGameSystem()).toBe(GameSystem.CLASSIC);
+        expect(component.advPanelFilterGameSystem()).toBe(GameSystem.CBT);
         expect(component.dropdownFilters().some(filter => filter.key === 'type')).toBeTrue();
         expect(component.dropdownFilters().some(filter => filter.key === 'as.TP')).toBeFalse();
-        expect(currentGameSystemSignal()).toBe(GameSystem.ALPHA_STRIKE);
+        expect(currentGameSystemSignal()).toBe(GameSystem.AS);
     });
 
     it('resyncs the visible advanced filter set when the global game mode changes', () => {
@@ -1273,22 +1453,22 @@ describe('UnitSearchComponent card virtualization', () => {
         const component = fixture.componentInstance;
 
         fixture.detectChanges();
-        component.setAdvPanelFilterGameSystem(GameSystem.CLASSIC);
+        component.setAdvPanelFilterGameSystem(GameSystem.CBT);
         fixture.detectChanges();
 
-        expect(component.advPanelFilterGameSystem()).toBe(GameSystem.CLASSIC);
+        expect(component.advPanelFilterGameSystem()).toBe(GameSystem.CBT);
 
-        currentGameSystemSignal.set(GameSystem.CLASSIC);
+        currentGameSystemSignal.set(GameSystem.CBT);
         fixture.detectChanges();
-        expect(component.advPanelFilterGameSystem()).toBe(GameSystem.CLASSIC);
+        expect(component.advPanelFilterGameSystem()).toBe(GameSystem.CBT);
 
-        component.setAdvPanelFilterGameSystem(GameSystem.ALPHA_STRIKE);
+        component.setAdvPanelFilterGameSystem(GameSystem.AS);
         fixture.detectChanges();
-        expect(component.advPanelFilterGameSystem()).toBe(GameSystem.ALPHA_STRIKE);
+        expect(component.advPanelFilterGameSystem()).toBe(GameSystem.AS);
 
-        currentGameSystemSignal.set(GameSystem.ALPHA_STRIKE);
+        currentGameSystemSignal.set(GameSystem.AS);
         fixture.detectChanges();
-        expect(component.advPanelFilterGameSystem()).toBe(GameSystem.ALPHA_STRIKE);
+        expect(component.advPanelFilterGameSystem()).toBe(GameSystem.AS);
         expect(component.dropdownFilters().some(filter => filter.key === 'as.TP')).toBeTrue();
         expect(component.dropdownFilters().some(filter => filter.key === 'type')).toBeFalse();
     });

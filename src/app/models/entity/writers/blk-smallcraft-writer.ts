@@ -14,6 +14,7 @@ import {
   writeBlkPreamble,
   writeEngine,
   writeEquipmentByLocation,
+  writeEmbeddedImages,
   writeFluffBlocks,
   writeInternalType,
   writeManualBV,
@@ -83,5 +84,7 @@ export function writeBlkSmallCraft(entity: SmallCraftEntity): string {
   w.addBlock('designtype', encodeBlkAeroDesignType(entity.designType()));
   writeBlkCrew(w, entity);
 
-  return w.toString();
+  writeEmbeddedImages(w, entity);
+
+  return w.toString(entity.nativeSourceTrailingNewlines || 2);
 }

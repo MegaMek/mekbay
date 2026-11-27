@@ -2,6 +2,8 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 // Author: Drake
 
+import type { DisplayUnitNameFormat } from '../models/options.model';
+import { formatUnitName } from './unit-display-name.util';
 import type { ASSpecialAbility } from '../models/as-abilities.model';
 import type { AbilitySelection, ASForceUnit } from '../models/as-force-unit.model';
 import { COMMAND_ABILITIES } from '../models/command-abilities.model';
@@ -19,8 +21,8 @@ import {
     type FormationAssignmentPreview,
     type FormationEffectPreview,
     type FormationSharedPoolPreview,
-} from './formation-ability-assignment.util';
-import type { FormationWideAbility } from './formation-type.model';
+} from './formation/formation-ability-assignment.util';
+import type { FormationWideAbility } from './formation/formation-type.model';
 
 export interface ASPrintFormationApplication {
     abilityNames: string[];
@@ -85,8 +87,9 @@ export function collectASPrintRulesReferenceData(
     abilityLookup: AbilityLookup,
     useHex: boolean,
     previewResolver: FormationPreviewResolver = group => FormationAbilityAssignmentUtil.previewGroupFormationAssignments(group),
+    nameFormat: DisplayUnitNameFormat = 'innerSphereClan',
 ): ASPrintRulesReferenceData {
-    const unitNames = collectUnitNames(groups);
+    const unitNames = collectUnitNames(groups, nameFormat);
     const abilities = new Map<string, MutableAbilityReference>();
     const specials = new Map<string, MutableSpecialReference>();
     const formations: ASPrintFormationReference[] = [];
@@ -180,9 +183,10 @@ export function createASPrintRulesReferencePage(
     abilityLookup: AbilityLookup,
     useHex: boolean,
     forceName: string = '',
+    nameFormat: DisplayUnitNameFormat = 'innerSphereClan',
 ): HTMLElement {
     return renderASPrintRulesReferencePage(
-        collectASPrintRulesReferenceData(groups, abilityLookup, useHex),
+        collectASPrintRulesReferenceData(groups, abilityLookup, useHex, undefined, nameFormat),
         forceName,
     );
 }
@@ -433,13 +437,13 @@ export function getASPrintRulesReferenceStyles(): string {
     `;
 }
 
-function collectUnitNames(groups: UnitGroup<ASForceUnit>[]): Map<string, string> {
+function collectUnitNames(groups: UnitGroup<ASForceUnit>[], nameFormat: DisplayUnitNameFormat): Map<string, string> {
     const unitNames = new Map<string, string>();
 
     for (const group of groups) {
         for (const unit of group.units()) {
-            const unitData = unit.getUnit();
-            const baseName = [unitData.chassis, unitData.model].filter(Boolean).join(' ') || unitData.name || unit.id;
+            const unitData = unit.getSummary();
+            const baseName = formatUnitName(unitData, nameFormat) || unit.id;
             unitNames.set(unit.id, baseName);
         }
     }
@@ -468,7 +472,7 @@ function collectUnitSpecials(
     abilityLookup: AbilityLookup,
     specials: Map<string, MutableSpecialReference>,
 ): void {
-    for (const specialText of unit.getUnit().as.specials ?? []) {
+    for (const specialText of unit.getSummary().as.specials ?? []) {
         collectParsedSpecial(abilityLookup.parseAbility(specialText), unit.id, specials);
     }
 }
@@ -547,7 +551,7 @@ function ensureRegisteredAbility(
         const key = `pilot:${abilityId}`;
         let entry = abilities.get(key);
         if (!entry) {
-            const details = getAbilityDetails(pilotAbility, GameSystem.ALPHA_STRIKE);
+            const details = getAbilityDetails(pilotAbility, GameSystem.AS);
             const description = details.description?.length ? details.description : details.summary;
             entry = createMutableAbilityReference({
                 key,
@@ -854,3 +858,4 @@ function appendTextElement<K extends keyof HTMLElementTagNameMap>(
     parent.appendChild(element);
     return element;
 }
+

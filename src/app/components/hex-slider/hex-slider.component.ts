@@ -17,8 +17,6 @@ import {
 
 @Component({
     selector: 'hex-slider',
-    standalone: true,
-    imports: [],
     changeDetection: ChangeDetectionStrategy.OnPush,
     templateUrl: './hex-slider.component.html',
     styleUrl: './hex-slider.component.scss'
@@ -70,20 +68,11 @@ export class HexSliderComponent {
     readonly clampedValue = computed(() => this.alignToStep(this.value()));
     readonly valueLabel = computed(() => this.label() ?? `${this.clampedValue()}`);
     readonly valuePercent = computed(() => this.percentForValue(this.clampedValue()));
-    readonly blockedMinPercent = computed(() => {
-        const min = this.minValue();
-        const effectiveMin = this.effectiveMinValue();
-        if (effectiveMin <= min) return 0;
-        const previousValue = Math.max(min, effectiveMin - this.stepValue());
-        return this.percentForValue((previousValue + effectiveMin) / 2);
-    });
-    readonly blockedMaxPercent = computed(() => {
-        const max = this.maxValue();
-        const effectiveMax = this.effectiveMaxValue();
-        if (effectiveMax >= max) return 0;
-        const nextValue = Math.min(max, effectiveMax + this.stepValue());
-        return 100 - this.percentForValue((effectiveMax + nextValue) / 2);
-    });
+    readonly blockedMinPercent = computed(() => this.effectiveMinValue() > this.minValue() ? this.percentForValue(this.effectiveMinValue()) : 0);
+    readonly blockedMaxPercent = computed(() => this.effectiveMaxValue() < this.maxValue()
+        ? 100 - this.percentForValue(this.effectiveMaxValue())
+        : 0
+    );
     readonly displayTicks = computed(() => {
         const explicitTicks = this.ticks();
         if (explicitTicks !== null) {

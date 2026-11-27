@@ -1,0 +1,68 @@
+// Copyright (C) 2026 The MegaMek Team
+// SPDX-License-Identifier: GPL-3.0-or-later
+// Author: Drake
+
+import { clearActivePageElements, prepareActiveDisplay } from './page-viewer-active-display';
+
+function createUnit(id: string, hasSvg: boolean = true) {
+    return {
+        id,
+        recordSheet: () => hasSvg ? document.createElementNS('http://www.w3.org/2000/svg', 'svg') : null
+    } as never;
+}
+
+describe('page-viewer active-display', () => {
+    it('clears active page content and removes transient wrappers', () => {
+        const content = document.createElement('div');
+        const declarative = document.createElement('div');
+        declarative.dataset['renderMode'] = 'declarative';
+        declarative.innerHTML = '<span>a</span>';
+        const transient = document.createElement('div');
+        transient.innerHTML = '<span>b</span>';
+        content.appendChild(declarative);
+        content.appendChild(transient);
+
+        const nextPageElements = clearActivePageElements(content, [declarative, transient]);
+
+        expect(nextPageElements).toEqual([]);
+        expect(declarative.innerHTML).toBe('');
+        expect(transient.innerHTML).toBe('');
+        expect(content.contains(declarative)).toBeTrue();
+        expect(content.contains(transient)).toBeFalse();
+    });
+
+    it('prepares the displayed unit window when the current unit svg is ready', () => {
+        const units = [createUnit('a'), createUnit('b'), createUnit('c')];
+
+        const preparation = prepareActiveDisplay({
+            currentUnit: units[0],
+            allUnits: units,
+            visiblePages: 2,
+            viewStartIndex: 1
+        });
+
+        expect(preparation).toEqual({
+            canRender: true,
+            displayedUnits: [units[1], units[2]],
+            loadError: null
+        });
+    });
+
+    it('returns a loading state when the current unit svg is not ready', () => {
+        const unit = createUnit('a', false);
+
+        const preparation = prepareActiveDisplay({
+            currentUnit: unit,
+            allUnits: [unit],
+            visiblePages: 1,
+            viewStartIndex: 0
+        });
+
+        expect(preparation).toEqual({
+            canRender: false,
+            displayedUnits: [],
+            loadError: 'Loading record sheet...'
+        });
+    });
+
+});

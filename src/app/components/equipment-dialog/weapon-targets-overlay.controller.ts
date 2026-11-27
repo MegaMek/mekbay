@@ -2,26 +2,62 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 // Author: Drake
 
-import { effect, type DestroyRef, type EffectRef, Injector, type ComponentRef } from '@angular/core';
+import { type DestroyRef, Injector, type ComponentRef } from '@angular/core';
 import { DialogRef, DIALOG_DATA } from '@angular/cdk/dialog';
-import { type Overlay } from '@angular/cdk/overlay';
+import { type ConnectedPosition, type Overlay } from '@angular/cdk/overlay';
 import { ComponentPortal } from '@angular/cdk/portal';
 import { outputToObservable, takeUntilDestroyed } from '@angular/core/rxjs-interop';
-import type { CBTForceUnit } from '../../models/cbt-force-unit.model';
-import { WeaponEquipment } from '../../models/equipment.model';
+import { merge, type Subscription } from 'rxjs';
+import type { CBTForce } from '../../models/cbt-force.model';
+import { isCBTMekForceMember, type CBTForceMember } from '../../models/force-member.model';
+import {
+    combineTargetCalculator,
+    splitTargetCalculatorByOwner,
+    type TargetingTarget,
+} from '../../models/runtime/targeting-target';
+import type {
+    AttackerLocalCalculatorInputs,
+} from '../../models/runtime/attacker-targeting-state';
+import {
+    CORE_2026_GAME_RULES,
+    TW_GAME_RULES,
+    type CBTGameRules,
+} from '../../models/rules/game-rules';
+import {
+    calculateTargetTnModifier,
+    normalizeTargetCustomModifier,
+    type TnTargetNumberCalculatorState,
+} from '../../models/target-number-calculator.model';
+import {
+    asEncounterTargetId,
+    createEncounterTargetId,
+    DEFAULT_ENCOUNTER_TARGET_COLORS,
+    encounterTargetLetter,
+    MAX_ENCOUNTER_TARGETS,
+    reclaimableTargetRegistryOpfor,
+    type EncounterTarget,
+    type TargetRegistryCommandResult,
+    type TargetRegistryTargetPatch,
+} from '../../models/runtime/encounter-runtime';
 import type { OverlayManagerService } from '../../services/overlay-manager.service';
-import { getInventoryControlAmmoSelectionOptions } from '../../utils/inventory-control.util';
-import { WeaponTargetsMenuComponent, type NarcCapableWeaponLayers, type WeaponTargetCalculatorRequest, type WeaponTargetUpdateRequest } from './weapon-targets-menu.component';
+import { LoggerService } from '../../services/logger.service';
+import { ToastService } from '../../services/toast.service';
+import {
+    WeaponTargetsMenuComponent,
+    type NarcCapableWeaponLayers,
+    type WeaponTargetCalculatorRequest,
+    type WeaponTargetUpdateRequest,
+} from './weapon-targets-menu.component';
 import { TnCalculatorDialogComponent, type TnCalculatorDialogData, type TnCalculatorDialogResult } from './tn-calculator-dialog.component';
-import { ForceBuilderService } from '../../services/force-builder.service';
+import { InventoryControlOpforService } from '../../services/inventory-control-opfor.service';
 
-const WEAPON_TARGET_OVERLAY_POSITIONS = [
+const WEAPON_TARGET_OVERLAY_POSITIONS: ConnectedPosition[] = [
     { originX: 'end', originY: 'bottom', overlayX: 'end', overlayY: 'top', offsetY: 4 },
     { originX: 'end', originY: 'top', overlayX: 'end', overlayY: 'bottom', offsetY: -4 },
     { originX: 'start', originY: 'bottom', overlayX: 'start', overlayY: 'top', offsetY: 4 },
     { originX: 'start', originY: 'top', overlayX: 'start', overlayY: 'bottom', offsetY: -4 },
 ];
-const TN_CALCULATOR_OVERLAY_POSITIONS = [
+const TN_CALCULATOR_OVERLAY_POSITIONS: ConnectedPosition[] = [
     { originX: 'end', originY: 'bottom', overlayX: 'end', overlayY: 'top', offsetY: 4 },
     { originX: 'start', originY: 'center', overlayX: 'end', overlayY: 'center', offsetX: -4 },
     { originX: 'end', originY: 'top', overlayX: 'end', overlayY: 'bottom', offsetY: -4 },
@@ -36,18 +72,20 @@ export interface WeaponTargetsOverlayControllerDeps {
     destroyRef: DestroyRef;
 }
 
-export interface WeaponTargetsOverlayOpenOptions {
+interface WeaponTargetsOverlayOpenOptionsBase {
     overlayKey: string;
     target: HTMLElement;
-    unit: CBTForceUnit;
     readOnly?: () => boolean;
     sensitiveAreaReferenceElement?: HTMLElement;
-    afterTargetUpdate?: (unit: CBTForceUnit) => void;
+}
+
+export interface WeaponTargetsOverlayOpenOptions extends WeaponTargetsOverlayOpenOptionsBase {
+    readonly member: CBTForceMember;
 }
 
 export class WeaponTargetsOverlayController {
     private targetsCompRef: ComponentRef<WeaponTargetsMenuComponent> | null = null;
-    private targetsSyncEffect: EffectRef | null = null;
+    private targetsSyncSubscription: Subscription | null = null;
     private tnCalculatorCompRef: ComponentRef<TnCalculatorDialogComponent> | null = null;
     private tnCalculatorTargetId: string | null = null;
 
@@ -83,37 +121,32 @@ export class WeaponTargetsOverlayController {
         });
         this.targetsCompRef = componentRef;
         this.syncInputs(options);
-        this.targetsSyncEffect = effect(() => {
-            options.unit.inventoryControl.inventoryViewVersion();
-            this.syncInputs(options);
-        }, { injector: this.deps.injector });
+        this.targetsSyncSubscription = merge(
+            options.member.force.changed,
+            options.member.force.sessionChanged,
+        ).subscribe(() => this.syncInputs(options));
 
         outputToObservable(componentRef.instance.addRequest).pipe(takeUntilDestroyed(this.deps.destroyRef)).subscribe(() => {
-            options.unit.createInventoryControlTarget();
-            this.syncAfterTargetUpdate(options);
+            this.createTarget(options);
+            this.syncInputs(options);
         });
         outputToObservable(componentRef.instance.opforToggleRequest).pipe(takeUntilDestroyed(this.deps.destroyRef)).subscribe(enabled => {
-            this.forceBuilderService().setInventoryControlOpforEnabled(options.unit.force, enabled);
-            this.syncAfterTargetUpdate(options);
+            this.opforService().setEnabled(this.force(options), enabled);
+            this.syncInputs(options);
         });
         outputToObservable(componentRef.instance.resetRequest).pipe(takeUntilDestroyed(this.deps.destroyRef)).subscribe(() => {
-            options.unit.resetInventoryControlTargets();
-            this.syncAfterTargetUpdate(options);
+            this.resetTargets(options);
+            this.syncInputs(options);
         });
         outputToObservable(componentRef.instance.updateRequest).pipe(takeUntilDestroyed(this.deps.destroyRef)).subscribe((request: WeaponTargetUpdateRequest) => {
-            if (request.manualTnOverride && request.patch.tnModifier !== undefined) {
-                options.unit.overrideInventoryControlTargetModifier(request.targetId, request.patch.tnModifier);
-            } else {
-                options.unit.updateInventoryControlTarget(request.targetId, request.patch);
-            }
-            this.syncAfterTargetUpdate(options);
+            void this.updateTarget(options, request).finally(() => this.syncInputs(options));
         });
         outputToObservable(componentRef.instance.calculatorRequest).pipe(takeUntilDestroyed(this.deps.destroyRef)).subscribe(request => {
             this.openTnCalculator(options, request);
         });
         outputToObservable(componentRef.instance.deleteRequest).pipe(takeUntilDestroyed(this.deps.destroyRef)).subscribe(targetId => {
-            options.unit.deleteInventoryControlTarget(targetId);
-            this.syncAfterTargetUpdate(options);
+            this.deleteTarget(options, targetId);
+            this.syncInputs(options);
         });
         closed.pipe(takeUntilDestroyed(this.deps.destroyRef)).subscribe(() => {
             this.closeTnCalculator(options.overlayKey);
@@ -124,26 +157,23 @@ export class WeaponTargetsOverlayController {
         });
     }
 
-    private syncAfterTargetUpdate(options: WeaponTargetsOverlayOpenOptions): void {
-        options.afterTargetUpdate?.(options.unit);
-        this.syncInputs(options);
-    }
-
     private syncInputs(options: WeaponTargetsOverlayOpenOptions): void {
         if (!this.targetsCompRef) return;
-        this.targetsCompRef.setInput('targets', options.unit.getInventoryControlTargets());
-        this.targetsCompRef.setInput('readOnly', options.readOnly ? options.readOnly() : options.unit.readOnly());
-        this.targetsCompRef.setInput('unassignedMovement', options.unit.turnState().missingAttackMovementModifier());
-        this.targetsCompRef.setInput('showC3Distance', this.showC3Distance(options.unit));
-        this.targetsCompRef.setInput('gameRules', options.unit.gameRules);
-        const guidanceCapabilities = this.guidanceCapabilities(options.unit);
-        this.targetsCompRef.setInput('hasSemiGuidedMissiles', guidanceCapabilities.hasSemiGuidedMissiles);
-        this.targetsCompRef.setInput('narcCapableWeaponLayers', guidanceCapabilities.narcCapableWeaponLayers);
-        this.targetsCompRef.setInput('opforAvailable', this.forceBuilderService().isInventoryControlOpforAvailable(options.unit.force));
-        this.targetsCompRef.setInput('opforEnabled', options.unit.force.inventoryControlOpforEnabled());
-        const c3Degraded = options.unit.c3DegradationSource() !== 'none';
+        const force = this.force(options);
+        const c3State = this.c3State(options);
+        this.targetsCompRef.setInput('targets', this.targets(options));
+        this.targetsCompRef.setInput('readOnly', this.readOnly(options));
+        this.targetsCompRef.setInput('unassignedMovement', this.unassignedMovement(options));
+        this.targetsCompRef.setInput('showC3Distance', c3State !== 'none');
+        this.targetsCompRef.setInput('gameRules', this.gameRules(options));
+        const guidance = this.guidanceCapabilities(options);
+        this.targetsCompRef.setInput('hasSemiGuidedMissiles', guidance.hasSemiGuidedMissiles);
+        this.targetsCompRef.setInput('narcCapableWeaponLayers', guidance.narcCapableWeaponLayers);
+        this.targetsCompRef.setInput('opforAvailable', this.opforService().isAvailable(force));
+        this.targetsCompRef.setInput('opforEnabled', force.inventoryControlOpforEnabled());
+        const c3Degraded = c3State === 'degraded';
         this.targetsCompRef.setInput('c3Degraded', c3Degraded);
-        this.targetsCompRef.setInput('c3DegradationLabel', options.unit.gameRules.c3DegradationLabel);
+        this.targetsCompRef.setInput('c3DegradationLabel', this.gameRules(options).c3DegradationLabel);
         this.targetsCompRef.changeDetectorRef.detectChanges();
         if (this.tnCalculatorCompRef) {
             this.tnCalculatorCompRef.instance.setC3Degraded(c3Degraded);
@@ -153,6 +183,7 @@ export class WeaponTargetsOverlayController {
     }
 
     private openTnCalculator(options: WeaponTargetsOverlayOpenOptions, request: WeaponTargetCalculatorRequest): void {
+        if (this.readOnly(options)) return;
         const overlayKey = this.tnCalculatorOverlayKey(options.overlayKey);
         if (this.deps.overlayManager.has(overlayKey)) {
             const sameTarget = this.tnCalculatorTargetId === request.targetId;
@@ -160,28 +191,25 @@ export class WeaponTargetsOverlayController {
             if (sameTarget) return;
         }
 
-        const target = options.unit.getInventoryControlTarget(request.targetId);
+        const target = this.targets(options).find(candidate => candidate.id === request.targetId);
         if (!target) return;
 
         const closeWithResult = (result?: TnCalculatorDialogResult | null) => {
             this.closeTnCalculator(options.overlayKey);
             if (result) {
-                options.unit.updateInventoryControlTarget(result.targetId, result.patch);
-                this.syncAfterTargetUpdate(options);
+                void this.updateTarget(options, result).finally(() => this.syncInputs(options));
             }
-        };
-        const dialogData: TnCalculatorDialogData = {
-            target,
-            gameRules: options.unit.gameRules,
-            targetStateReadOnly: target.readOnly === true,
-            showC3Distance: this.showC3Distance(options.unit),
-            c3Degraded: options.unit.c3DegradationSource() !== 'none',
-            indirectFireAvailable: options.unit.getInventory()
-                .some(entry => entry.equipment?.hasFlag('F_INDIRECT_FIRE') === true),
         };
         const portal = new ComponentPortal(TnCalculatorDialogComponent, null, Injector.create({
             providers: [
-                { provide: DIALOG_DATA, useValue: dialogData },
+                { provide: DIALOG_DATA, useValue: {
+                    target,
+                    gameRules: this.gameRules(options),
+                    targetStateReadOnly: target.readOnly === true,
+                    showC3Distance: this.c3State(options) !== 'none',
+                    c3Degraded: this.c3State(options) === 'degraded',
+                    indirectFireAvailable: this.indirectFireAvailable(options),
+                } satisfies TnCalculatorDialogData },
                 { provide: DialogRef, useValue: { close: closeWithResult } },
             ],
             parent: this.deps.injector,
@@ -222,48 +250,334 @@ export class WeaponTargetsOverlayController {
         return typeof window !== 'undefined' && window.matchMedia(TN_CALCULATOR_FULLSCREEN_QUERY).matches;
     }
 
-    private showC3Distance(unit: CBTForceUnit): boolean {
-        return unit.hasLinkedC3Network();
+    private createTarget(options: WeaponTargetsOverlayOpenOptions): void {
+        if (this.readOnly(options)) return;
+        const force = this.force(options);
+        const snapshot = force.queryInventoryControlTargetRegistry();
+        const usedLetters = new Set(snapshot.targets.map(target => target.letter));
+        let target: EncounterTarget | null = null;
+        for (let index = 0; index < MAX_ENCOUNTER_TARGETS; index += 1) {
+            const letter = encounterTargetLetter(index);
+            if (usedLetters.has(letter)) continue;
+            target = {
+                id: createEncounterTargetId(),
+                letter,
+                name: `Target ${letter}`,
+                color: DEFAULT_ENCOUNTER_TARGET_COLORS[index % DEFAULT_ENCOUNTER_TARGET_COLORS.length],
+                source: 'manual',
+            };
+            break;
+        }
+        if (!target && snapshot.targets.length >= MAX_ENCOUNTER_TARGETS) {
+            const reclaimable = reclaimableTargetRegistryOpfor(snapshot.targets);
+            if (reclaimable) {
+                target = {
+                    id: createEncounterTargetId(),
+                    letter: reclaimable.letter,
+                    name: `Target ${reclaimable.letter}`,
+                    color: reclaimable.color,
+                    source: 'manual',
+                };
+            }
+        }
+        if (!target) {
+            const message = 'Could not add target: the target registry is full.';
+            this.deps.injector.get(LoggerService).error(message);
+            this.deps.injector.get(ToastService).showToast(message, 'error');
+            return;
+        }
+        this.handleTargetRegistryResult(force.dispatchInventoryControlTargetRegistry({
+            kind: 'create-target',
+            target,
+        }, 'user'), 'add target');
     }
 
-    private guidanceCapabilities(unit: CBTForceUnit): {
+    private async updateTarget(options: WeaponTargetsOverlayOpenOptions, request: WeaponTargetUpdateRequest): Promise<void> {
+        if (this.readOnly(options)) return;
+        const force = this.force(options);
+        const snapshot = force.queryInventoryControlTargetRegistry();
+        const existing = snapshot.targets.find(target => target.id === request.targetId);
+        const calculator = splitTargetCalculatorByOwner(request.patch.tnCalculator);
+        const sharedPatch: {
+            name?: TargetRegistryTargetPatch['name'];
+            color?: TargetRegistryTargetPatch['color'];
+            unitType?: TargetRegistryTargetPatch['unitType'];
+            tnCalculator?: TargetRegistryTargetPatch['tnCalculator'];
+        } = {};
+        if (request.patch.name !== undefined && request.patch.name !== existing?.name) {
+            sharedPatch.name = request.patch.name;
+        }
+        if (request.patch.color !== undefined && request.patch.color !== existing?.color) {
+            sharedPatch.color = request.patch.color;
+        }
+        if (request.patch.unitType !== undefined && request.patch.unitType !== existing?.unitType) {
+            sharedPatch.unitType = request.patch.unitType;
+        }
+        if (calculator.encounter) {
+            const nextCalculator = { ...existing?.tnCalculator, ...calculator.encounter };
+            if (!shallowRecordsEqual(existing?.tnCalculator, nextCalculator)) {
+                sharedPatch.tnCalculator = nextCalculator;
+            }
+        }
+
+        // OPFOR/linked target identity and calculator facts are force-owned and
+        // read-only, while presentation color remains editable. Distance, C3
+        // use and attacker-relative TN inputs are independent unit-local state.
+        // The calculator returns a complete form, so filter its forbidden shared
+        // defaults instead of letting READ_ONLY_TARGET abort the local delta.
+        const registryPatch = existing?.readOnly === true
+            ? (sharedPatch.color === undefined ? {} : { color: sharedPatch.color })
+            : sharedPatch;
+        if (Object.keys(registryPatch).length > 0) {
+            const accepted = this.handleTargetRegistryResult(force.dispatchInventoryControlTargetRegistry({
+                kind: 'update-target',
+                targetId: asEncounterTargetId(request.targetId),
+                patch: registryPatch,
+            }, 'user'), 'update target');
+            if (!accepted && existing?.readOnly !== true) return;
+        }
+
+        const hasAttackerEdit = request.patch.distance !== undefined
+            || request.patch.c3Distance !== undefined
+            || request.patch.useC3 !== undefined
+            || request.patch.tnModifier !== undefined
+            || calculator.attacker !== undefined;
+        if (!hasAttackerEdit) return;
+        await this.updateAttackerTarget(options.member, request, calculator.attacker);
+    }
+
+    private deleteTarget(options: WeaponTargetsOverlayOpenOptions, targetId: string): void {
+        if (this.readOnly(options)) return;
+        const force = this.force(options);
+        this.handleTargetRegistryResult(force.dispatchInventoryControlTargetRegistry({
+            kind: 'delete-target',
+            targetId: asEncounterTargetId(targetId),
+        }, 'user'), 'delete target');
+    }
+
+    private resetTargets(options: WeaponTargetsOverlayOpenOptions): void {
+        if (this.readOnly(options)) return;
+        const force = this.force(options);
+        const accepted = this.handleTargetRegistryResult(force.dispatchInventoryControlTargetRegistry({
+            kind: 'reset-targets',
+        }, 'registry-reset'), 'reset targets');
+        if (accepted) force.inventoryControlOpforEnabled.set(false);
+    }
+
+    private handleTargetRegistryResult(result: TargetRegistryCommandResult, action: string): boolean {
+        if (result.accepted) return true;
+        const message = `Could not ${action}: the target is read-only.`;
+        this.deps.injector.get(LoggerService).error(message);
+        this.deps.injector.get(ToastService).showToast(message, 'error');
+        return false;
+    }
+
+    private force(options: WeaponTargetsOverlayOpenOptions): CBTForce {
+        return options.member.force;
+    }
+
+    private targets(options: WeaponTargetsOverlayOpenOptions): TargetingTarget[] {
+        const registry = options.member.force.queryInventoryControlTargetRegistry();
+        const targeting = options.member.force.getAttackerTargeting(options.member.id);
+        if (!targeting) return [];
+        const rules = this.gameRules(options);
+        return registry.targets.map(target => {
+            const local = targeting.state.targets.get(target.id);
+            const distance = local?.distance ?? 1;
+            const calculator = combineTargetCalculator(
+                target.tnCalculator,
+                local?.calculator,
+            );
+            return {
+                id: target.id,
+                letter: target.letter,
+                name: target.name,
+                color: target.color,
+                ...(target.source === undefined ? {} : { source: target.source }),
+                ...(target.readOnly === undefined ? {} : { readOnly: target.readOnly }),
+                ...(target.unitType === undefined ? {} : { unitType: target.unitType }),
+                distance,
+                ...(local?.c3Distance === undefined ? {} : { c3Distance: local.c3Distance }),
+                ...(local?.useC3 === true ? { useC3: true } : {}),
+                tnModifier: local?.manualTnOverride?.modifier ?? calculateTargetTnModifier({
+                    ...calculator,
+                    unitType: target.unitType,
+                    range: distance,
+                }, rules),
+                ...(calculator === undefined ? {} : { tnCalculator: calculator }),
+                ...(local?.manualTnOverride === undefined
+                    ? {}
+                    : { manualTnModifier: local.manualTnOverride.modifier }),
+            };
+        });
+    }
+
+    private indirectFireAvailable(options: WeaponTargetsOverlayOpenOptions): boolean {
+        return options.member.force.getEquipmentPanelSnapshot(options.member.id)
+            ?.components.some(row => row.equipment?.hasFlag('F_INDIRECT_FIRE') === true) === true;
+    }
+
+    private guidanceCapabilities(options: WeaponTargetsOverlayOpenOptions): {
         hasSemiGuidedMissiles: boolean;
         narcCapableWeaponLayers: NarcCapableWeaponLayers;
     } {
         let hasSemiGuidedMissiles = false;
-        const narcCapableWeaponLayers: NarcCapableWeaponLayers = {
-            aboveWater: false,
-            underwater: false,
-        };
-        const equipmentCatalog = unit.getEquipmentRegistry();
-
-        for (const entry of unit.getInventory()) {
-            if (!(entry.equipment instanceof WeaponEquipment) || !unit.isEquipmentOperational(entry)) continue;
-
-            const ammoOptions = getInventoryControlAmmoSelectionOptions(
-                entry,
-                equipmentCatalog,
-                (weapon, ammo, mode) => unit.matchesInventoryControlAmmo(weapon, ammo, mode),
-            );
-            for (const option of ammoOptions) {
-                if (!option.usable) continue;
-                if (option.ammo.hasMunitionType('M_SEMIGUIDED')) hasSemiGuidedMissiles = true;
-                if (option.ammo.hasMunitionType('M_NARC_CAPABLE')) {
-                    if (unit.isEquipmentSubmerged(entry)) narcCapableWeaponLayers.underwater = true;
-                    else narcCapableWeaponLayers.aboveWater = true;
+        const narcCapableWeaponLayers = { aboveWater: false, underwater: false };
+        const panel = options.member.force.getEquipmentPanelSnapshot(options.member.id);
+        for (const row of panel?.components ?? []) {
+            if (row.status !== 'available' || row.weapon?.selectable !== true) continue;
+            for (const source of row.weapon.ammoSources) {
+                if (source.status !== 'available' || source.remaining <= 0) continue;
+                for (const loadout of source.loadouts) {
+                    if (loadout.equipment.hasMunitionType('M_SEMIGUIDED')) {
+                        hasSemiGuidedMissiles = true;
+                    }
+                    if (loadout.equipment.hasMunitionType('M_NARC_CAPABLE')) {
+                        if (row.weapon.underwater) narcCapableWeaponLayers.underwater = true;
+                        else narcCapableWeaponLayers.aboveWater = true;
+                    }
                 }
             }
         }
-
         return { hasSemiGuidedMissiles, narcCapableWeaponLayers };
     }
 
-    private destroyTargetsSyncEffect(): void {
-        this.targetsSyncEffect?.destroy();
-        this.targetsSyncEffect = null;
+    private gameRules(options: WeaponTargetsOverlayOpenOptions): CBTGameRules {
+        const snapshot = options.member.force.getUnitSnapshot(options.member.id);
+        switch (snapshot?.ruleset) {
+            case 'total-warfare': return TW_GAME_RULES;
+            case 'core-2026': return CORE_2026_GAME_RULES;
+            default: throw new Error('CBT unit is missing its exact CBT ruleset');
+        }
     }
 
-    private forceBuilderService(): ForceBuilderService {
-        return this.deps.injector.get(ForceBuilderService);
+    private c3State(options: WeaponTargetsOverlayOpenOptions): 'none' | 'operational' | 'degraded' {
+        return options.member.force.getC3State(options.member.id);
     }
+
+    private unassignedMovement(options: WeaponTargetsOverlayOpenOptions): boolean {
+        return isCBTMekForceMember(options.member)
+            && options.member.force.getMekTurnPanelSnapshot(options.member.id)
+                ?.movementState.movement === null;
+    }
+
+    private async updateAttackerTarget(
+        member: CBTForceMember,
+        request: WeaponTargetUpdateRequest,
+        attackerCalculator: TnTargetNumberCalculatorState | undefined,
+    ): Promise<void> {
+        const targeting = member.force.getAttackerTargeting(member.id);
+        const current = targeting?.state.targets.get(asEncounterTargetId(request.targetId));
+        if (!targeting) {
+            this.reportTargetingRejection('update target');
+            return;
+        }
+        const next: {
+            distance?: number;
+            c3Distance?: number;
+            useC3?: true;
+            calculator?: AttackerLocalCalculatorInputs;
+            manualTnOverride?: { readonly kind: 'user-manual'; readonly modifier: number };
+        } = { ...current };
+        if (request.patch.distance !== undefined) next.distance = request.patch.distance;
+        if (request.patch.c3Distance !== undefined) next.c3Distance = request.patch.c3Distance;
+        if (request.patch.useC3 !== undefined) {
+            if (request.patch.useC3) next.useC3 = true;
+            else delete next.useC3;
+        }
+        if (request.patch.tnCalculator !== undefined) {
+            const canonical = canonicalCalculator(attackerCalculator);
+            if (canonical) next.calculator = canonical;
+            else delete next.calculator;
+        }
+        if (request.manualTnOverride === true && request.patch.tnModifier !== undefined) {
+            next.manualTnOverride = { kind: 'user-manual', modifier: request.patch.tnModifier };
+        } else if (request.patch.tnModifier !== undefined) {
+            delete next.manualTnOverride;
+        }
+
+        const result = await member.force.dispatchAttackerTargeting(member.id, {
+            type: 'edit-attacker-targeting',
+            edit: {
+                kind: 'set-target-facts',
+                targetId: asEncounterTargetId(request.targetId),
+                facts: Object.keys(next).length === 0 ? null : next,
+            },
+        });
+        if (!result.accepted) {
+            this.reportTargetingRejection('update target');
+        } else if (request.patch.distance !== undefined) {
+            this.opforService().mirrorTargetDistance(member, request.targetId, request.patch.distance);
+        }
+    }
+
+    private reportTargetingRejection(action: string): void {
+        const message = `Could not ${action}: this force is read-only.`;
+        this.deps.injector.get(LoggerService).error(message);
+        this.deps.injector.get(ToastService).showToast(message, 'error');
+    }
+
+    private readOnly(options: WeaponTargetsOverlayOpenOptions): boolean {
+        if (options.readOnly) return options.readOnly();
+        return options.member.force.readOnly();
+    }
+
+    private destroyTargetsSyncEffect(): void {
+        this.targetsSyncSubscription?.unsubscribe();
+        this.targetsSyncSubscription = null;
+    }
+
+    private opforService(): InventoryControlOpforService {
+        return this.deps.injector.get(InventoryControlOpforService);
+    }
+}
+
+function canonicalCalculator(
+    calculator: TnTargetNumberCalculatorState | undefined,
+): AttackerLocalCalculatorInputs | undefined {
+    if (!calculator) return undefined;
+    const indirectFire = calculator.indirectFire === true;
+    const secondaryTarget = calculator.secondaryTarget === true;
+    const customModifier = normalizeTargetCustomModifier(calculator.customModifier);
+    const result: AttackerLocalCalculatorInputs = {
+        ...(calculator.interveningWoods === 'light1' || calculator.interveningWoods === 'light2'
+            ? { interveningWoods: calculator.interveningWoods }
+            : {}),
+        ...(calculator.partialCover === true ? { partialCover: true } : {}),
+        ...(calculator.targetLevelDifference ? { targetLevelDifference: calculator.targetLevelDifference } : {}),
+        ...(calculator.attackDirection !== undefined && calculator.attackDirection !== 'front'
+            ? { attackDirection: calculator.attackDirection }
+            : {}),
+        ...(indirectFire ? { indirectFire: true } : {}),
+        ...(calculator.angelEcm ? { angelEcm: true } : {}),
+        ...(calculator.buildingCf ? { buildingCf: calculator.buildingCf } : {}),
+        ...(calculator.levelsBelowRoof ? { levelsBelowRoof: calculator.levelsBelowRoof } : {}),
+        ...(calculator.shelteringBuilding ? { shelteringBuilding: calculator.shelteringBuilding } : {}),
+        ...(calculator.infantryBuildingType ? { infantryBuildingType: calculator.infantryBuildingType } : {}),
+        ...(calculator.insideTargetBuilding ? { insideTargetBuilding: true as const } : {}),
+        ...(secondaryTarget
+            ? { secondaryTarget: true }
+            : calculator.secondaryTargetSideBack === true
+                ? { secondaryTargetSideBack: true }
+                : {}),
+        ...(indirectFire && (calculator.spotterMoveMode === 'walk'
+            || calculator.spotterMoveMode === 'run'
+            || calculator.spotterMoveMode === 'jump')
+            ? { spotterMoveMode: calculator.spotterMoveMode }
+            : {}),
+        ...(indirectFire && calculator.spotterDeclaredAttacks
+            ? { spotterDeclaredAttacks: calculator.spotterDeclaredAttacks }
+            : {}),
+        ...(customModifier === 0 ? {} : { customModifier }),
+    };
+    return Object.keys(result).length === 0 ? undefined : result;
+}
+
+function shallowRecordsEqual(current: object | undefined, next: object | undefined): boolean {
+    if (current === next) return true;
+    if (!current || !next) return false;
+    const currentEntries = Object.entries(current);
+    const nextRecord = next as Record<string, unknown>;
+    return currentEntries.length === Object.keys(next).length
+        && currentEntries.every(([key, value]) => value === nextRecord[key]);
 }

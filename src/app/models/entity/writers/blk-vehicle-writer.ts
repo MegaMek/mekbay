@@ -13,6 +13,7 @@ import {
   writeBlkPreamble,
   writeEngine,
   writeEquipmentByLocation,
+  writeEmbeddedImages,
   writeFluffBlocks,
   writeInternalType,
   writeManualBV,
@@ -25,8 +26,8 @@ import {
 import { encodeEquipmentLine } from './equipment-encoder';
 import {
   LST_ARMOR_LOCS,
-  SUPERHEAVY_ARMOR_LOCS,
-  VEHICLE_ARMOR_LOCS,
+  ordinaryVehicleArmorLocations,
+  superheavyVehicleArmorLocations,
   VTOL_ARMOR_LOCS,
 } from '../parsers/blk-constants';
 
@@ -61,7 +62,7 @@ export function writeBlkVehicle(entity: VehicleEntity): string {
   writeEngine(w, entity);
 
   // 7. Armor: armor_type, armor_tech_rating, armor_tech_level
-  writeArmorBlocks(w, entity);
+  writeArmorBlocks(w, entity, entity.armorLocations);
 
   // 8. internal_type (only if not Standard)
   writeInternalType(w, entity);
@@ -86,25 +87,13 @@ export function writeBlkVehicle(entity: VehicleEntity): string {
     }
     w.addBlock('armor', ...base);
   } else if (entity.isSuperHeavy() && !(entity instanceof VtolEntity)) {
-    // Superheavy Tank: Front, Front Right, Front Left, Rear Right, Rear Left, Rear[, Turret[, Rear Turret]]
-    const base: number[] = SUPERHEAVY_ARMOR_LOCS.slice(0, 6).map(loc => armorMap.get(loc)?.front ?? 0);
-    if (entity.hasTurret()) {
-      base.push(armorMap.get('Turret')?.front ?? 0);
-    }
-    if (entity.hasDualTurret()) {
-      base.push(armorMap.get('Rear Turret')?.front ?? 0);
-    }
-    w.addBlock('armor', ...base);
+    const count = 6 + (entity.hasDualTurret() ? 2 : entity.hasTurret() ? 1 : 0);
+    const locations = superheavyVehicleArmorLocations(count).slice(0, count);
+    w.addBlock('armor', ...locations.map(location => armorMap.get(location)?.front ?? 0));
   } else {
-    // Tank: Front, Right, Left, Rear[, Turret] or Rear Turret, Front Turret
-    const base: number[] = VEHICLE_ARMOR_LOCS.slice(0, 4).map(loc => armorMap.get(loc)?.front ?? 0);
-    if (entity.hasDualTurret()) {
-      base.push(armorMap.get('Rear Turret')?.front ?? 0);
-      base.push(armorMap.get('Front Turret')?.front ?? 0);
-    } else if (entity.hasTurret()) {
-      base.push(armorMap.get('Turret')?.front ?? 0);
-    }
-    w.addBlock('armor', ...base);
+    const count = 4 + (entity.hasDualTurret() ? 2 : entity.hasTurret() ? 1 : 0);
+    const locations = ordinaryVehicleArmorLocations(count).slice(0, count);
+    w.addBlock('armor', ...locations.map(location => armorMap.get(location)?.front ?? 0));
   }
 
   // 11. Equipment per location
@@ -180,12 +169,12 @@ export function writeBlkVehicle(entity: VehicleEntity): string {
   // 18. Omni chassis weights (after tonnage, only for Omni vehicles)
   if (entity.omni()) {
     if (entity.baseChassisTurretWeight() >= 0) {
-      const tw = entity.baseChassisTurretWeight();
-      w.addBlock('baseChassisTurretWeight', Number.isInteger(tw) ? tw.toFixed(1) : String(tw));
+      const turretWeight = entity.baseChassisTurretWeight();
+      w.addBlock('baseChassisTurretWeight', Number.isInteger(turretWeight) ? turretWeight.toFixed(1) : String(turretWeight));
     }
     if (entity.baseChassisTurret2Weight() >= 0) {
-      const tw2 = entity.baseChassisTurret2Weight();
-      w.addBlock('baseChassisTurret2Weight', Number.isInteger(tw2) ? tw2.toFixed(1) : String(tw2));
+      const turretWeight2 = entity.baseChassisTurret2Weight();
+      w.addBlock('baseChassisTurret2Weight', Number.isInteger(turretWeight2) ? turretWeight2.toFixed(1) : String(turretWeight2));
     }
   }
 
@@ -219,5 +208,7 @@ export function writeBlkVehicle(entity: VehicleEntity): string {
     w.addBlock('extra_seats', entity.extraSeats());
   }
 
-  return w.toString();
+  writeEmbeddedImages(w, entity);
+
+  return w.toString(entity.nativeSourceTrailingNewlines || 2);
 }

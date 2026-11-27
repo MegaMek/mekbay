@@ -3,7 +3,7 @@
 // Author: Drake
 
 import { Component, inject, signal, ChangeDetectionStrategy, computed, Injector, DestroyRef } from '@angular/core';
-import { CommonModule } from '@angular/common';
+import { DecimalPipe } from '@angular/common';
 import { DialogRef, DIALOG_DATA } from '@angular/cdk/dialog';
 import { ComponentPortal } from '@angular/cdk/portal';
 import { outputToObservable, takeUntilDestroyed } from '@angular/core/rxjs-interop';
@@ -44,9 +44,9 @@ interface CustomizableUnit extends PackUnitEntry {
 @Component({
     selector: 'customize-force-pack-dialog',
     changeDetection: ChangeDetectionStrategy.OnPush,
-    imports: [CommonModule, BaseDialogComponent, UnitCardCompactComponent, VariantDropdownPanelComponent],
+    imports: [DecimalPipe, BaseDialogComponent, UnitCardCompactComponent, VariantDropdownPanelComponent],
     templateUrl: './customize-force-pack-dialog.component.html',
-    styleUrls: ['./customize-force-pack-dialog.component.css']
+    styleUrl: './customize-force-pack-dialog.component.css'
 })
 export class CustomizeForcePackDialogComponent {
     private dialogRef = inject(DialogRef<CustomizeForcePackDialogResult | null>);
@@ -60,7 +60,7 @@ export class CustomizeForcePackDialogComponent {
     private taggingService = inject(TaggingService);
     layoutService = inject(LayoutService);
     forceBuilderService = inject(ForceBuilderService);
-    ALPHA_STRIKE = GameSystem.ALPHA_STRIKE;
+    ALPHA_STRIKE = GameSystem.AS;
 
     // The pack we're customizing
     pack = this.data.pack;
@@ -110,7 +110,7 @@ export class CustomizeForcePackDialogComponent {
     // Check if any unit has been modified
     hasChanges = computed(() => {
         const units = this.customizableUnits();
-        return units.some(u => u.unit?.name !== u.originalUnit?.name);
+        return units.some(u => u.unit?.uuid !== u.originalUnit?.uuid);
     });
 
     constructor() {
@@ -167,8 +167,8 @@ export class CustomizeForcePackDialogComponent {
         
         // Set inputs
         componentRef.setInput('variants', variants);
-        componentRef.setInput('originalUnitName', unit.originalUnit?.name ?? null);
-        componentRef.setInput('currentUnitName', unit.unit?.name ?? null);
+        componentRef.setInput('originalUnitUuid', unit.originalUnit?.uuid ?? null);
+        componentRef.setInput('currentUnitUuid', unit.unit?.uuid ?? null);
 
         // Handle selection - cleanup when dialog closes
         outputToObservable(componentRef.instance.selected).pipe(takeUntilDestroyed(this.destroyRef)).subscribe((variant: UnitSummary) => {
@@ -252,7 +252,7 @@ export class CustomizeForcePackDialogComponent {
 
     /** Open unit details for a variant in the dropdown - SELECT selects the unit */
     private async showVariantInfo(variant: UnitSummary, variants: UnitSummary[], unitIndex: number): Promise<void> {
-        const variantIdx = variants.findIndex(v => v.name === variant.name);
+        const variantIdx = variants.findIndex(v => v.uuid === variant.uuid);
 
         const ref = this.dialogsService.createDialog(
             UnitDetailsDialogComponent,

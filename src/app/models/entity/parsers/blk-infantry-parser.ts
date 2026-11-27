@@ -11,32 +11,14 @@ import {
 } from '../../equipment.model';
 import {
   INFANTRY_SPECIALIZATION_FROM_BIT,
+  PREDEFINED_INFANTRY_MOUNTS,
   InfantryMount,
   InfantrySpecialization,
-  MotiveType,
 } from '../types';
-import { BuildingBlock } from './building-block';
+import { BuildingBlock, parseExactFiniteNumber, parseExactInteger } from './building-block';
 import { parseBaseBlk, parseBlkEquipment } from './blk-base-parser';
 import { ParseContext } from './parse-context';
 import { decodeMotiveType } from './motive-type-codec';
-
-// ============================================================================
-// Predefined beast mounts (loaded from inline data matching infantry-mounts.json)
-// ============================================================================
-
-const PREDEFINED_MOUNTS: ReadonlyMap<string, InfantryMount> = new Map([
-  ['Donkey',            { name: 'Donkey',            size: 'Large',      weight: 0.15, movementPoints: 2, movementMode: 'Leg',       burstDamage: 0,  vehicleDamage: 0, damageDivisor: 1.0, maxWaterDepth: 0,  secondaryGroundMP: 0, uwEndurance: 0 }],
-  ['Coventry Kangaroo', { name: 'Coventry Kangaroo', size: 'Large',      weight: 0.11, movementPoints: 3, movementMode: 'Leg',       burstDamage: 1,  vehicleDamage: 1, damageDivisor: 1.0, maxWaterDepth: 0,  secondaryGroundMP: 0, uwEndurance: 0 }],
-  ['Horse',             { name: 'Horse',             size: 'Large',      weight: 0.5,  movementPoints: 3, movementMode: 'Leg',       burstDamage: 0,  vehicleDamage: 0, damageDivisor: 1.0, maxWaterDepth: 0,  secondaryGroundMP: 0, uwEndurance: 0 }],
-  ['Camel',             { name: 'Camel',             size: 'Large',      weight: 0.65, movementPoints: 2, movementMode: 'Leg',       burstDamage: 0,  vehicleDamage: 0, damageDivisor: 1.0, maxWaterDepth: 0,  secondaryGroundMP: 0, uwEndurance: 0 }],
-  ['Branth',            { name: 'Branth',            size: 'Large',      weight: 0.72, movementPoints: 6, movementMode: 'VTOL',      burstDamage: 2,  vehicleDamage: 1, damageDivisor: 1.0, maxWaterDepth: 0,  secondaryGroundMP: 0, uwEndurance: 0 }],
-  ['Odessan Raxx',      { name: 'Odessan Raxx',      size: 'Large',      weight: 2.4,  movementPoints: 2, movementMode: 'Leg',       burstDamage: 1,  vehicleDamage: 1, damageDivisor: 1.0, maxWaterDepth: 0,  secondaryGroundMP: 0, uwEndurance: 0 }],
-  ['Tabiranth',         { name: 'Tabiranth',         size: 'Large',      weight: 0.25, movementPoints: 2, movementMode: 'Leg',       burstDamage: 1,  vehicleDamage: 1, damageDivisor: 1.0, maxWaterDepth: 0,  secondaryGroundMP: 0, uwEndurance: 0 }],
-  ['Tariq',             { name: 'Tariq',             size: 'Large',      weight: 0.51, movementPoints: 5, movementMode: 'Leg',       burstDamage: 0,  vehicleDamage: 0, damageDivisor: 1.0, maxWaterDepth: 0,  secondaryGroundMP: 0, uwEndurance: 0 }],
-  ['Elephant',          { name: 'Elephant',          size: 'Very Large', weight: 6.0,  movementPoints: 2, movementMode: 'Leg',       burstDamage: 1,  vehicleDamage: 1, damageDivisor: 2.0, maxWaterDepth: 1,  secondaryGroundMP: 0, uwEndurance: 0 }],
-  ['Orca',              { name: 'Orca',              size: 'Very Large', weight: 7.2,  movementPoints: 5, movementMode: 'Submarine', burstDamage: 2,  vehicleDamage: 1, damageDivisor: 2.0, maxWaterDepth: -1, secondaryGroundMP: 0, uwEndurance: 180 }],
-  ['Hipposaur',         { name: 'Hipposaur',         size: 'Monstrous',  weight: 35.5, movementPoints: 2, movementMode: 'Submarine', burstDamage: 10, vehicleDamage: 4, damageDivisor: 4.0, maxWaterDepth: -1, secondaryGroundMP: 1, uwEndurance: 2 }],
-] as [string, InfantryMount][]);
 
 /** Java BeastSize enum names → our BeastSize type */
 const BEAST_SIZE_MAP: Record<string, 'Large' | 'Very Large' | 'Monstrous'> = {
@@ -66,15 +48,15 @@ function parseInfantryMotionType(raw: string, entity: InfantryEntity, ctx: Parse
         entity.mount.set({
           name: fields[0],
           size,
-          weight: parseFloat(fields[2]) || 0,
-          movementPoints: parseInt(fields[3], 10) || 0,
+          weight: parseCustomBeastNumber(fields[2], 'weight', ctx, false, 0),
+          movementPoints: parseCustomBeastNumber(fields[3], 'movement points', ctx, true, 0),
           movementMode: decodeMotiveType(fields[4]),
-          burstDamage: parseInt(fields[5], 10) || 0,
-          vehicleDamage: parseInt(fields[6], 10) || 0,
-          damageDivisor: parseFloat(fields[7]) || 1,
-          maxWaterDepth: parseInt(fields[8], 10) || 0,
-          secondaryGroundMP: parseInt(fields[9], 10) || 0,
-          uwEndurance: parseInt(fields[10], 10) || 0,
+          burstDamage: parseCustomBeastNumber(fields[5], 'burst damage', ctx, true, 0),
+          vehicleDamage: parseCustomBeastNumber(fields[6], 'vehicle damage', ctx, true, 0),
+          damageDivisor: parseCustomBeastNumber(fields[7], 'damage divisor', ctx, false, 1),
+          maxWaterDepth: parseCustomBeastNumber(fields[8], 'water depth', ctx, true, 0),
+          secondaryGroundMP: parseCustomBeastNumber(fields[9], 'secondary ground MP', ctx, true, 0),
+          uwEndurance: parseCustomBeastNumber(fields[10], 'underwater endurance', ctx, true, 0),
           custom: true,
         });
       } else {
@@ -82,7 +64,7 @@ function parseInfantryMotionType(raw: string, entity: InfantryEntity, ctx: Parse
       }
     } else {
       // Predefined beast: "Beast:Tariq"
-      const predefined = PREDEFINED_MOUNTS.get(afterBeast);
+      const predefined = PREDEFINED_INFANTRY_MOUNTS.get(afterBeast);
       if (predefined) {
         entity.mount.set(predefined);
       } else {
@@ -126,6 +108,21 @@ function parseInfantryMotionType(raw: string, entity: InfantryEntity, ctx: Parse
   entity.motiveType.set(decodeMotiveType(trimmed));
 }
 
+function parseCustomBeastNumber(
+  value: string,
+  label: string,
+  ctx: ParseContext,
+  integer: boolean,
+  fallback: number,
+): number {
+  const parsed = integer ? parseExactInteger(value) : parseExactFiniteNumber(value);
+  if (Number.isNaN(parsed)) {
+    ctx.warn('motion_type', `Invalid custom beast ${label}: "${value}"`);
+    return fallback;
+  }
+  return parsed;
+}
+
 // ============================================================================
 // Public API
 // ============================================================================
@@ -155,15 +152,17 @@ export function parseBlkInfantry(bb: BuildingBlock, ctx: ParseContext): Infantry
   if (bb.exists('squad_size')) entity.squadSize.set(bb.getFirstInt('squad_size'));
   if (bb.exists('squadn'))    entity.squadCount.set(bb.getFirstInt('squadn'));
 
-  // ── Weapons ──
+  // ── Weapons (mounted last so earlier mount IDs stay stable) ──
+  let primaryWeapon: InfantryWeaponEquipment | null = null;
+  let secondaryWeapon: InfantryWeaponEquipment | null = null;
   if (bb.exists('Primary')) {
-    entity.primaryWeapon.set(resolveInfantryWeapon(bb.getFirstString('Primary'), 'Primary', entity, ctx));
+    primaryWeapon = resolveInfantryWeapon(bb.getFirstString('Primary'), 'Primary', entity, ctx);
   } else {
     ctx.error('Primary', 'Could not find primary weapon');
   }
   if (bb.exists('Secondary')) {
-    entity.secondaryWeapon.set(resolveInfantryWeapon(bb.getFirstString('Secondary'), 'Secondary', entity, ctx));
-    if (entity.secondaryWeapon() && bb.exists('secondn')) {
+    secondaryWeapon = resolveInfantryWeapon(bb.getFirstString('Secondary'), 'Secondary', entity, ctx);
+    if (secondaryWeapon && bb.exists('secondn')) {
       const secondaryCount = bb.getFirstInt('secondn');
       if (ctx.validateNonNegativeInt('secondn', secondaryCount)) {
         entity.secondaryCount.set(secondaryCount);
@@ -189,7 +188,7 @@ export function parseBlkInfantry(bb: BuildingBlock, ctx: ParseContext): Infantry
   if (bb.exists('sneakecm'))        entity.sneakECM.set(true);
 
   // ── Anti-mek ──
-  if (bb.exists('antimek') && bb.getFirstInt('antimek') !== 8 && !entity.canAntiMech()) {
+  if (bb.exists('antimek') && bb.getFirstInt('antimek') !== 8 && !entity.hasAntiMekGear()) {
     entity.addEquipment({
       equipmentId: 'AntiMekGear',
       equipment: ctx.resolveEquipment('AntiMekGear', 'antimek', entity.techBase()) ?? undefined,
@@ -245,12 +244,43 @@ export function parseBlkInfantry(bb: BuildingBlock, ctx: ParseContext): Infantry
     entity.extraneousPair2.set(bb.getFirstString('extraneousPair2'));
   }
 
+  entity.setPlatoonWeapon('primary', primaryWeapon);
+  entity.setPlatoonWeapon('secondary', secondaryWeapon);
+  if (bb.exists('disposableWeapon')) {
+    const disposable = resolveInfantryWeapon(bb.getFirstString('disposableWeapon'), 'disposableWeapon', entity, ctx);
+    if (disposable && !disposable.hasFlag('F_INF_DISPOSABLE')) {
+      ctx.error('disposableWeapon', `Not a disposable weapon: "${disposable.id}"`);
+    } else if (disposable) {
+      entity.setPlatoonWeapon('disposable', disposable);
+    }
+  }
+  // MegaMek reads any other value as Standard, the default. Without the block, a withdrawn Inferno launcher name
+  // declares Inferno, which is what the platoon was built to carry.
+  if (bb.exists('srmMunition')) {
+    entity.infernoSrmsDeclared.set(bb.getFirstString('srmMunition').trim().toLowerCase() === 'inferno');
+  } else if ((['Primary', 'Secondary'] as const).some((field) => bb.exists(field)
+    && WITHDRAWN_INFERNO_SRM_LAUNCHERS.has(bb.getFirstString(field).trim().toLowerCase()))) {
+    entity.infernoSrmsDeclared.set(true);
+  }
+
   return entity;
 }
 
+/**
+ * Inferno SRM launchers withdrawn by the TechManual errata (pp. 350-352). The equipment data loads each as the plain
+ * launcher; MegaMek WithdrawnInfernoSrmLaunchers lists the same names.
+ */
+const WITHDRAWN_INFERNO_SRM_LAUNCHERS: ReadonlySet<string> = new Set([
+  'InfantrySRMLightInferno', 'SRM Launcher (Light) - Inferno', 'Light SRM (Inferno)',
+  'InfantryStandardSRMInferno', 'SRM Launcher (Std, Two-Shot) - Inferno', 'Infantry2ShotSRMInferno',
+  'Infantry Two-Shot SRM Launcher (Inferno)',
+  'InfantryHeavySRMInferno', 'SRM Launcher (Heavy) w/ Inferno', 'Infantry Heavy SRM Launcher (Inferno)',
+  'SRM Launcher (Hvy, One-Shot) w/ Inferno',
+].map((name) => name.toLowerCase()));
+
 function resolveInfantryWeapon(
   equipmentId: string,
-  field: 'Primary' | 'Secondary',
+  field: 'Primary' | 'Secondary' | 'disposableWeapon',
   entity: InfantryEntity,
   ctx: ParseContext,
 ): InfantryWeaponEquipment | null {

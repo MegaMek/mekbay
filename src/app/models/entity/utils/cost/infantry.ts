@@ -4,14 +4,11 @@
 
 import type { BattleArmorEntity } from '../../entities/infantry/battle-armor-entity';
 import type { InfantryEntity } from '../../entities/infantry/infantry-entity';
-import { WeaponEquipment } from '../../../equipment.model';
+import type { PlatoonWeaponRole } from '../../types';
+import { WeaponEquipment, type InfantryWeaponEquipment } from '../../../equipment.model';
 import { getEquipmentCost } from './equipment-pricing';
 import { amount, buildCostReport, multiplier, type EntityCostEntry, type EntityCostReport } from './cost-report';
-
-/** Mirrors MegaMek's BattleArmorCostCalculator, including training costs. */
-export function calculateBattleArmorCost(entity: BattleArmorEntity, equipmentCost: number): number {
-  return calculateBattleArmorCostReport(entity, [amount('Equipment', equipmentCost)]).total;
-}
+import { isBattleArmorManipulatorEquipment } from '../../../battle-armor-equipment.model';
 
 export function calculateBattleArmorCostReport(
   entity: BattleArmorEntity, equipment: readonly EntityCostEntry[],
@@ -39,7 +36,7 @@ export function calculateBattleArmorCostReport(
       propulsionCost = propulsionMP * 50000;
   }
   const manipulatorCost = entity.equipment().reduce<number>((total, mount) =>
-    total + (mount.equipment?.hasFlag('F_BA_MANIPULATOR')
+    total + (isBattleArmorManipulatorEquipment(mount.equipment)
       ? Math.trunc(getEquipmentCost(entity, mount) ?? 0)
       : 0), 0);
   const armor = entity.uniformArmor()?.armor;
@@ -57,19 +54,16 @@ export function calculateBattleArmorCostReport(
   ]);
 }
 
-/** Mirrors MegaMek's InfantryCostCalculator. */
-export function calculateInfantryCost(entity: InfantryEntity): number {
-  return calculateInfantryCostReport(entity).total;
-}
-
 export function calculateInfantryCostReport(entity: InfantryEntity): EntityCostReport {
   const troopers = entity.squadSize() * entity.squadCount();
-  const primaryCount = (entity.squadSize() - entity.secondaryCount()) * entity.squadCount();
-  const secondaryCount = troopers - primaryCount;
-  const primaryCost = entity.primaryWeapon()?.cost;
-  const secondaryCost = entity.secondaryWeapon()?.cost;
-  const weaponsCost = primaryCount * (typeof primaryCost === 'number' ? Math.sqrt(primaryCost) * 2000 : 0)
-    + secondaryCount * (typeof secondaryCost === 'number' ? Math.sqrt(secondaryCost) * 2000 : 0);
+  // Base Trooper Cost = 2,000 x sqrt(Weapon Cost) (TechManual p. 282), for each weapon a trooper carries. The rules
+  // don't price disposable weapons; every trooper carries one and fires it as a platoon weapon (TO:AuE p. 116), so it
+  // is priced like the primary weapon. MegaMek leaves it out.
+  const trooperWeaponsCost = (role: PlatoonWeaponRole, weapon: InfantryWeaponEquipment | null) =>
+    entity.platoonWeaponTroopers(role) * (typeof weapon?.cost === 'number' ? Math.sqrt(weapon.cost) * 2000 : 0);
+  const weaponsCost = trooperWeaponsCost('primary', entity.primaryWeapon())
+    + trooperWeaponsCost('secondary', entity.secondaryWeapon())
+    + trooperWeaponsCost('disposable', entity.disposableWeapon());
 
   const armorKit = entity.armorKit();
   let armorCost = typeof armorKit?.cost === 'number' ? armorKit.cost : 0;
@@ -102,7 +96,7 @@ export function calculateInfantryCostReport(entity: InfantryEntity): EntityCostR
 }
 
 function calculateInfantryPriceMultiplier(entity: InfantryEntity): number {
-  let multiplier = entity.canAntiMech() ? 5 : 1;
+  let multiplier = entity.hasAntiMekGear() ? 5 : 1;
   const costMotiveType = entity.mount()?.movementMode ?? entity.motiveType();
   switch (costMotiveType) {
     case 'UMU': multiplier *= entity.umuMP() > 1 ? 2.5 : 2; break;

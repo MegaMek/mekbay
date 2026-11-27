@@ -33,6 +33,20 @@ describe('EntityMountedEquipment characteristics', () => {
     expect(mount.getNumCriticalSlots(entity)).toBe(8);
   });
 
+  it('builds the mounted display name from the short name and mount modifiers', () => {
+    const equipment = new WeaponEquipment({
+      id: 'long-ppc-name',
+      name: 'An Excessively Long Particle Projector Cannon Name',
+      shortName: 'PPC',
+      type: 'weapon',
+    });
+
+    expect(mounted(equipment, { rearMounted: true, turretMounted: true }).displayName())
+      .toBe('PPC (R, T)');
+    expect(mounted(equipment, { turretType: 'sponson' }).displayName())
+      .toBe('PPC (S)');
+  });
+
   it('uses mounted ammo shots when present and definition shots otherwise', () => {
     const ammo = new AmmoEquipment({
       id: 'ammo', name: 'Ammo', type: 'ammo', ammo: { type: 'AC', shots: 20 },
@@ -40,6 +54,18 @@ describe('EntityMountedEquipment characteristics', () => {
 
     expect(mounted(ammo).getAmmoShots()).toBe(20);
     expect(mounted(ammo, { shotsCount: 7 }).getAmmoShots()).toBe(7);
+  });
+
+  it('formats installed ammo with its configured shots and mount modifiers', () => {
+    const ammo = new AmmoEquipment({
+      id: 'mml-ammo', name: 'MML 7 LRM Ammo', shortName: 'MML 7/LRM', type: 'ammo',
+      ammo: { shots: 17 },
+    });
+
+    expect(mounted(ammo).displayName()).toBe('MML 7/LRM Ammo');
+    expect(mounted(ammo).displayName(true)).toBe('MML 7/LRM Ammo (17)');
+    expect(mounted(ammo, { shotsCount: 7, rearMounted: true }).displayName(true)).toBe('MML 7/LRM Ammo (7) (R)');
+    expect(mounted(ammo, { shotsCount: 0 }).displayName(true)).toBe('MML 7/LRM Ammo (0)');
   });
 
   it('classifies physical weapons and resolves damage from its attached entity', () => {

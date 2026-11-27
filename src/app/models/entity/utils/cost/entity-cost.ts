@@ -32,28 +32,15 @@ import { calculateMekCostReport } from './meks';
 import { calculateProtoMekCostReport } from './protomeks';
 import { calculateSmallCraftCostReport } from './small-craft';
 import { calculateVehicleCostReport } from './vehicles';
+import type { StaticEmplacementEntity } from '../../entities/misc/static-emplacement-entity';
+import { calculateBuildingCostReport } from './buildings';
 
 export interface EntityCostOptions {
   /** Excludes ammunition other than coolant pods. MegaMek's exported cost uses false. */
   readonly ignoreAmmo?: boolean;
 }
 
-/**
- * Calculates the construction cost represented by canonical entity state.
- *
- * Equipment prices come from the equipment database through
- * `EntityMountedEquipment.getCost()`. That method only calculates a price
- * when the database marks the equipment cost as `variable`; fixed prices are
- * returned unchanged.
- */
-export function calculateEntityCost(
-  entity: BaseEntity,
-  options: EntityCostOptions = {},
-): number {
-  return calculateEntityCostDetails(entity, options).total;
-}
-
-/** Returns the canonical calculation report used by `calculateEntityCost`. */
+/** Returns the canonical construction-cost report for the entity state. */
 export function calculateEntityCostDetails(
   entity: BaseEntity,
   options: EntityCostOptions = {},
@@ -61,6 +48,9 @@ export function calculateEntityCostDetails(
   const ignoreAmmo = options.ignoreAmmo ?? false;
   const equipment = calculateMountedEquipmentCostBreakdown(entity, ignoreAmmo);
   const equipmentCost = equipment.total;
+  if (entity.entityType === 'BuildingEntity' || entity.entityType === 'MobileStructure') {
+    return calculateBuildingCostReport(entity as StaticEmplacementEntity, equipment.entries);
+  }
 
   // MegaMek prices a handheld weapon's equipment once as its structure and
   // once as its equipment payload.

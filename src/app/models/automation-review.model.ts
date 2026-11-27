@@ -1,16 +1,5 @@
 // Copyright (C) 2026 The MegaMek Team
 // SPDX-License-Identifier: GPL-3.0-or-later
-// Author: Drake
-
-export interface AutomationReviewEvent {
-    id: string;
-    subject: string;
-    event: string;
-    description: string;
-    delta?: number;
-    breakdown?: readonly AutomationReviewBreakdownItem[];
-    effects?: readonly string[];
-}
 
 export interface AutomationReviewBreakdownItem {
     readonly id: string;
@@ -18,13 +7,23 @@ export interface AutomationReviewBreakdownItem {
     readonly value: number;
 }
 
+export interface AutomationReviewEvent {
+    readonly id: string;
+    readonly subject: string;
+    readonly event: string;
+    readonly description: string;
+    readonly delta?: number;
+    readonly breakdown?: readonly AutomationReviewBreakdownItem[];
+    readonly effects?: readonly string[];
+}
+
 export interface AutomationReviewDialogData {
-    title: string;
-    message: string;
-    events: readonly AutomationReviewEvent[];
-    allowCancel: boolean;
+    readonly title: string;
+    readonly message: string;
+    readonly events: readonly AutomationReviewEvent[];
+    readonly allowCancel: boolean;
 }
 
 export interface AutomationReviewResult {
-    acceptedEventIds: string[];
+    readonly acceptedEventIds: string[];
 }

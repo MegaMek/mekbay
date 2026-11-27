@@ -7,12 +7,18 @@ import { provideZonelessChangeDetection, signal } from '@angular/core';
 import { TestBed } from '@angular/core/testing';
 import { Subject } from 'rxjs';
 import { GameSystem } from '../../models/common.model';
-import { LoadForceEntry } from '../../models/load-force-entry.model';
+import { rectsOverlap } from './force-org-layout';
+import { computeSearchText } from './force-org-sidebar';
+import type { LoadForceEntry } from '../../models/load-force-entry.model';
+import { createForcePreviewEntryData } from '../../models/force-preview.model';
+import { ForceListSession, type ForceListCursor } from '../../models/force-list-session';
 import type { UnitSummary } from '../../models/unit-summary.model';
 import { DataService } from '../../services/data.service';
 import { DialogsService } from '../../services/dialogs.service';
-import { ForceBuilderService } from '../../services/force-builder.service';
+import { ForcePersistenceService } from '../../services/force-persistence.service';
+import { ForceWorkspaceStateService } from '../../services/force-workspace-state.service';
 import { LayoutService } from '../../services/layout.service';
+import { OrganizationStorageService } from '../../services/organization-storage.service';
 import { createEmptyUnit } from '../../testing/unit-test-helpers';
 import { UrlService } from '../../services/url.service';
 import { ForceOrgDialogComponent } from './force-org-dialog.component';
@@ -29,10 +35,16 @@ describe('ForceOrgDialogComponent', () => {
     };
 
     const dataServiceStub = {
-        listForces: jasmine.createSpy('listForces').and.resolveTo([]),
-        getLoadForceEntriesByIds: jasmine.createSpy('getLoadForceEntriesByIds').and.resolveTo([]),
-        getFactionById: jasmine.createSpy('getFactionById').and.returnValue(undefined),
+        getFactions: jasmine.createSpy('getFactions').and.returnValue([]),
         getEras: jasmine.createSpy('getEras').and.returnValue([]),
+    };
+
+    const forcePersistenceStub = {
+        openForceList: jasmine.createSpy('openForceList'),
+        getLoadForceEntriesByIds: jasmine.createSpy('getLoadForceEntriesByIds').and.resolveTo([]),
+    };
+
+    const organizationStorageStub = {
         saveOrganization: jasmine.createSpy('saveOrganization').and.resolveTo(undefined),
         getOrganization: jasmine.createSpy('getOrganization').and.resolveTo(null),
     };
@@ -59,12 +71,12 @@ describe('ForceOrgDialogComponent', () => {
 
     beforeEach(async () => {
         nextPlacementId = 0;
-        dataServiceStub.listForces.calls.reset();
-        dataServiceStub.listForces.and.resolveTo([]);
-        dataServiceStub.getLoadForceEntriesByIds.calls.reset();
-        dataServiceStub.getLoadForceEntriesByIds.and.resolveTo([]);
-        dataServiceStub.getOrganization.calls.reset();
-        dataServiceStub.getOrganization.and.resolveTo(null);
+        forcePersistenceStub.openForceList.calls.reset();
+        forcePersistenceStub.openForceList.and.callFake(async () => new ForceListSession([], async () => ({ entries: [] }), () => {}));
+        forcePersistenceStub.getLoadForceEntriesByIds.calls.reset();
+        forcePersistenceStub.getLoadForceEntriesByIds.and.resolveTo([]);
+        organizationStorageStub.getOrganization.calls.reset();
+        organizationStorageStub.getOrganization.and.resolveTo(null);
         dialogRefStub = {
             close: jasmine.createSpy('close'),
             backdropClick: new Subject<MouseEvent>(),
@@ -78,8 +90,10 @@ describe('ForceOrgDialogComponent', () => {
                 provideZonelessChangeDetection(),
                 { provide: DialogRef, useValue: dialogRefStub },
                 { provide: DataService, useValue: dataServiceStub },
+                { provide: ForcePersistenceService, useValue: forcePersistenceStub },
+                { provide: OrganizationStorageService, useValue: organizationStorageStub },
                 { provide: DialogsService, useValue: dialogsServiceStub },
-                { provide: ForceBuilderService, useValue: forceBuilderServiceStub },
+                { provide: ForceWorkspaceStateService, useValue: forceBuilderServiceStub },
                 { provide: LayoutService, useValue: layoutServiceStub },
                 { provide: UrlService, useValue: urlServiceStub },
             ],
@@ -88,6 +102,7 @@ describe('ForceOrgDialogComponent', () => {
         fixture = TestBed.createComponent(ForceOrgDialogComponent);
         component = fixture.componentInstance;
         fixture.detectChanges();
+        await fixture.whenStable();
         dialogsServiceStub.choose.calls.reset();
         urlServiceStub.setQueryParams.calls.reset();
     });
@@ -98,7 +113,7 @@ describe('ForceOrgDialogComponent', () => {
             force: {
                 instanceId,
                 groups: [],
-                type: GameSystem.CLASSIC,
+                type: GameSystem.CBT,
             },
             x: signal(x),
             y: signal(y),
@@ -137,10 +152,10 @@ describe('ForceOrgDialogComponent', () => {
         units: UnitSummary[],
         overrides: { bv?: number; pv?: number; type?: GameSystem } = {},
     ): LoadForceEntry {
-        return new LoadForceEntry({
+        return createForcePreviewEntryData({
             instanceId,
             name: `Force ${instanceId}`,
-            type: overrides.type ?? GameSystem.CLASSIC,
+            type: overrides.type ?? GameSystem.CBT,
             bv: overrides.bv,
             pv: overrides.pv,
             groups: [{
@@ -163,6 +178,111 @@ describe('ForceOrgDialogComponent', () => {
         await Promise.resolve();
         await Promise.resolve();
     }
+
+    function pagedForces(count = 400, maximumReturned = 100) {
+        const unit = createBattleMek('Atlas');
+        const entries = Array.from({ length: count }, (_, index) => {
+            const entry = createLoadForce(`force-${index}`, [unit]);
+            entry.timestamp = new Date(1_700_000_000_000 - index).toISOString();
+            return entry;
+        });
+        const fetchPage = jasmine.createSpy('fetchPage').and.callFake(async (cursor: ForceListCursor | undefined, size: number) => {
+            const start = cursor ? entries.findIndex(entry => entry.instanceId === cursor.instanceId) + 1 : 0;
+            const page = entries.slice(start, start + Math.min(size, maximumReturned));
+            const last = page[page.length - 1];
+            return { entries: page, ...(start + page.length < entries.length && last ? {
+                next: { instanceId: last.instanceId, timestamp: Date.parse(last.timestamp) },
+            } : {}) };
+        });
+        const session = new ForceListSession([], fetchPage, () => {});
+        forcePersistenceStub.openForceList.and.resolveTo(session);
+        return { entries, fetchPage, session };
+    }
+
+    it('loads the sidebar progressively while resolving a canvas force beyond the first page by ID', async () => {
+        const { entries, fetchPage } = pagedForces();
+        const referenced = entries[399]!;
+        forcePersistenceStub.getLoadForceEntriesByIds.and.resolveTo([referenced]);
+        organizationStorageStub.getOrganization.and.resolveTo({
+            organizationId: 'org-paged', name: 'Paged', timestamp: Date.now(), owned: true,
+            forces: [{ instanceId: referenced.instanceId, x: 0, y: 0, zIndex: 0, groupId: null }], groups: [],
+        });
+        await component['loadOrganization']('org-paged');
+        expect(fetchPage).toHaveBeenCalledOnceWith(undefined, 100);
+        expect(forcePersistenceStub.getLoadForceEntriesByIds).toHaveBeenCalledWith([referenced.instanceId]);
+        expect(component['placedForces']()[0]!.force).toBe(referenced);
+        expect(component['sidebarForces']().length).toBe(100);
+        expect(component['sidebarComplete']()).toBeFalse();
+        await component['loadSidebarPage']();
+        expect(component['sidebarForces']().length).toBe(200);
+        expect(component['placedForces']()[0]!.force).toBe(referenced);
+        component['placedForces'].set([]);
+        await component['loadSidebarPage']();
+        expect(component['sidebarForces']().length).toBe(301);
+        expect(component['sidebarForces']()).toContain(referenced);
+    });
+
+    it('automatically fills the actual sidebar when 19 first-page forces are already placed', async () => {
+        // The byte budget can return fewer than the requested 100 summaries.
+        const { entries, fetchPage } = pagedForces(100, 20);
+        const deployed = entries.slice(0, 19);
+        forcePersistenceStub.getLoadForceEntriesByIds.and.resolveTo(deployed);
+        organizationStorageStub.getOrganization.and.resolveTo({
+            organizationId: 'org-deployed', name: 'Deployed', timestamp: Date.now(), owned: true,
+            forces: deployed.map((force, index) => ({ instanceId: force.instanceId, x: index * 240, y: 0, zIndex: index, groupId: null })),
+            groups: [],
+        });
+        const viewport = fixture.nativeElement.querySelector('.forces-list') as HTMLElement;
+        viewport.style.flex = 'none';
+        viewport.style.height = '300px';
+        await component['loadOrganization']('org-deployed');
+        await fixture.whenStable();
+        expect(fetchPage.calls.count()).toBe(2);
+        expect(component['sidebarForces']().length).toBe(21);
+        expect(component['placedForces']().every(placed => !placed.force.missing)).toBeTrue();
+    });
+
+    it('finishes remaining summaries for account-wide search in 100-row batches', async () => {
+        const { fetchPage } = pagedForces(200);
+        await component['loadForces']();
+        component['sidebarSearchText'].set('force-199');
+        await fixture.whenStable();
+        // The effect starts an async page chain outside Angular's pending-task tracker.
+        await new Promise<void>(resolve => setTimeout(resolve, 0));
+        await fixture.whenStable();
+        expect(fetchPage.calls.allArgs().map(args => args[1])).toEqual([100, 100]);
+        expect(component['sidebarForces']().map(force => force.instanceId)).toEqual(['force-199']);
+        expect(component['sidebarComplete']()).toBeTrue();
+    });
+
+    it('retains local sidebar entries on cloud failure and allows a deliberate retry', async () => {
+        const local = createLoadForce('local', [createBattleMek('Atlas')]);
+        const fetchPage = jasmine.createSpy('fetchPage').and.rejectWith(new Error('offline'));
+        forcePersistenceStub.openForceList.and.resolveTo(new ForceListSession([local], fetchPage, () => {}));
+        await component['loadForces']();
+        await fixture.whenStable();
+        expect(component['sidebarForces']()).toEqual([local]);
+        expect(component['sidebarLoadError']()).toContain('offline');
+        expect(fetchPage).toHaveBeenCalledTimes(1);
+        fetchPage.and.resolveTo({ entries: [] });
+        await component['loadSidebarPage']();
+        expect(component['sidebarLoadError']()).toBe('');
+        expect(component['sidebarComplete']()).toBeTrue();
+    });
+
+    it('disposes the sidebar session and ignores a page arriving after the dialog closes', async () => {
+        const pending = createDeferred<import('../../models/force-list-session').ForceListPage>();
+        const delayed = new ForceListSession([], () => pending.promise, () => {});
+        forcePersistenceStub.openForceList.and.resolveTo(delayed);
+        const dispose = spyOn(delayed, 'dispose').and.callThrough();
+        const loading = component['loadForces']();
+        await flushPromises();
+        fixture.destroy();
+        expect(dispose).toHaveBeenCalled();
+        pending.resolve({ entries: [createLoadForce('late', [])] });
+        await loading;
+        expect(component['allForces']()).toEqual([]);
+    });
 
     function setDirtyState(isDirty: boolean): void {
         const baseline = isDirty
@@ -297,11 +417,11 @@ describe('ForceOrgDialogComponent', () => {
         const shadowForce = createPlacedForce('force-1', 40, 0, null, 'shadow-placement');
 
         (component as any).placedForces.set([mainForce, shadowForce]);
-        dataServiceStub.saveOrganization.calls.reset();
+        organizationStorageStub.saveOrganization.calls.reset();
 
         await (component as any).saveOrganization();
 
-        expect(dataServiceStub.saveOrganization).toHaveBeenCalledWith(jasmine.objectContaining({
+        expect(organizationStorageStub.saveOrganization).toHaveBeenCalledWith(jasmine.objectContaining({
             forces: [
                 jasmine.objectContaining({ placementId: 'main-placement', instanceId: 'force-1' }),
                 jasmine.objectContaining({ placementId: 'shadow-placement', instanceId: 'force-1' }),
@@ -361,16 +481,16 @@ describe('ForceOrgDialogComponent', () => {
         const upperRect = { x: upperGroup.x(), y: upperGroup.y(), width: upperGroup.width(), height: upperGroup.height() };
         const lowerRect = { x: lowerGroup.x(), y: lowerGroup.y(), width: lowerGroup.width(), height: lowerGroup.height() };
 
-        expect((component as any).rectsOverlap(createdRect, upperRect)).toBeFalse();
-        expect((component as any).rectsOverlap(createdRect, lowerRect)).toBeFalse();
+        expect(rectsOverlap(createdRect, upperRect)).toBeFalse();
+        expect(rectsOverlap(createdRect, lowerRect)).toBeFalse();
     });
 
     it('normalizes loaded group bounds and collisions', async () => {
         const forceA = createLoadForce('force-a', [createBattleMek('Atlas')]);
         const forceB = createLoadForce('force-b', [createBattleMek('Locust')]);
 
-        dataServiceStub.listForces.and.resolveTo([forceA, forceB]);
-        dataServiceStub.getOrganization.and.resolveTo({
+        forcePersistenceStub.openForceList.and.callFake(async () => new ForceListSession([forceA, forceB], async () => ({ entries: [] }), () => {}));
+        organizationStorageStub.getOrganization.and.resolveTo({
             organizationId: 'org-1',
             name: 'Loaded Org',
             timestamp: Date.now(),
@@ -395,7 +515,7 @@ describe('ForceOrgDialogComponent', () => {
         expect(groupA.height()).toBeGreaterThan(20);
         expect(groupB.width()).toBeGreaterThan(20);
         expect(groupB.height()).toBeGreaterThan(20);
-        expect((component as any).rectsOverlap(rectA, rectB)).toBeFalse();
+        expect(rectsOverlap(rectA, rectB)).toBeFalse();
     });
 
     it('uses the saved force BV for group totals instead of recalculating from units', () => {
@@ -414,7 +534,7 @@ describe('ForceOrgDialogComponent', () => {
         (component as any).placedForces.set([placedForce]);
         fixture.detectChanges();
 
-        expect(group.totals()).toBe('BV: 1,800');
+        expect((component as any).groupMetadata().get(group.id).totals).toBe('BV: 1,800');
     });
 
     it('does not mark the TO&E dirty when clicking a force without starting a drag', () => {
@@ -535,8 +655,8 @@ describe('ForceOrgDialogComponent', () => {
     it('shows a centered loading message while the organization shell is pending', async () => {
         const orgDeferred = createDeferred<any>();
 
-        dataServiceStub.getOrganization.and.returnValue(orgDeferred.promise);
-        dataServiceStub.getLoadForceEntriesByIds.and.resolveTo([]);
+        organizationStorageStub.getOrganization.and.returnValue(orgDeferred.promise);
+        forcePersistenceStub.getLoadForceEntriesByIds.and.resolveTo([]);
 
         const loadPromise = (component as any).loadOrganization('org-slow');
         fixture.detectChanges();
@@ -564,7 +684,7 @@ describe('ForceOrgDialogComponent', () => {
         const forceDeferred = createDeferred<LoadForceEntry[]>();
         const hydratedForce = createLoadForce('force-a', [createBattleMek('Atlas')]);
 
-        dataServiceStub.getOrganization.and.resolveTo({
+        organizationStorageStub.getOrganization.and.resolveTo({
             organizationId: 'org-shared',
             name: 'Shared Org',
             timestamp: Date.now(),
@@ -577,7 +697,7 @@ describe('ForceOrgDialogComponent', () => {
                 { id: 'group-a', name: 'Alpha', x: 20, y: 20, width: 240, height: 180, zIndex: 0, parentGroupId: null },
             ],
         });
-        dataServiceStub.getLoadForceEntriesByIds.and.returnValue(forceDeferred.promise);
+        forcePersistenceStub.getLoadForceEntriesByIds.and.returnValue(forceDeferred.promise);
 
         const loadPromise = (component as any).loadOrganization('org-shared');
         await flushPromises();
@@ -720,8 +840,8 @@ describe('ForceOrgDialogComponent', () => {
     it('treats non-owned organizations as read-only and blocks saving', async () => {
         const forceA = createLoadForce('force-a', [createBattleMek('Atlas')]);
 
-        dataServiceStub.getLoadForceEntriesByIds.and.resolveTo([forceA]);
-        dataServiceStub.getOrganization.and.resolveTo({
+        forcePersistenceStub.getLoadForceEntriesByIds.and.resolveTo([forceA]);
+        organizationStorageStub.getOrganization.and.resolveTo({
             organizationId: 'org-shared',
             name: 'Shared Org',
             timestamp: Date.now(),
@@ -736,20 +856,20 @@ describe('ForceOrgDialogComponent', () => {
         await (component as any).loadOrganization('org-shared');
     setDirtyState(true);
         fixture.detectChanges();
-        dataServiceStub.saveOrganization.calls.reset();
+        organizationStorageStub.saveOrganization.calls.reset();
 
         await (component as any).saveOrganization();
 
         expect((component as any).readOnly()).toBeTrue();
-        expect(dataServiceStub.saveOrganization).not.toHaveBeenCalled();
+        expect(organizationStorageStub.saveOrganization).not.toHaveBeenCalled();
         expect(urlServiceStub.setQueryParams).toHaveBeenCalledWith({ toe: 'org-shared' });
     });
 
     it('opens force details when clicking a force card in read-only mode', async () => {
         const forceA = createLoadForce('force-a', [createBattleMek('Atlas')]);
 
-        dataServiceStub.getLoadForceEntriesByIds.and.resolveTo([forceA]);
-        dataServiceStub.getOrganization.and.resolveTo({
+        forcePersistenceStub.getLoadForceEntriesByIds.and.resolveTo([forceA]);
+        organizationStorageStub.getOrganization.and.resolveTo({
             organizationId: 'org-shared',
             name: 'Shared Org',
             timestamp: Date.now(),
@@ -805,8 +925,8 @@ describe('ForceOrgDialogComponent', () => {
     it('does not open force details when the readonly card gesture turns into a drag', async () => {
         const forceA = createLoadForce('force-a', [createBattleMek('Atlas')]);
 
-        dataServiceStub.getLoadForceEntriesByIds.and.resolveTo([forceA]);
-        dataServiceStub.getOrganization.and.resolveTo({
+        forcePersistenceStub.getLoadForceEntriesByIds.and.resolveTo([forceA]);
+        organizationStorageStub.getOrganization.and.resolveTo({
             organizationId: 'org-shared',
             name: 'Shared Org',
             timestamp: Date.now(),
@@ -867,9 +987,9 @@ describe('ForceOrgDialogComponent', () => {
     it('loads foreign organization forces by instance id instead of listing the viewer\'s own forces', async () => {
         const foreignForce = createLoadForce('force-foreign', [createBattleMek('Atlas')]);
 
-        dataServiceStub.listForces.calls.reset();
-        dataServiceStub.getLoadForceEntriesByIds.and.resolveTo([foreignForce]);
-        dataServiceStub.getOrganization.and.resolveTo({
+        forcePersistenceStub.openForceList.calls.reset();
+        forcePersistenceStub.getLoadForceEntriesByIds.and.resolveTo([foreignForce]);
+        organizationStorageStub.getOrganization.and.resolveTo({
             organizationId: 'org-foreign',
             name: 'Foreign Org',
             timestamp: Date.now(),
@@ -883,15 +1003,15 @@ describe('ForceOrgDialogComponent', () => {
 
         await (component as any).loadOrganization('org-foreign');
 
-        expect(dataServiceStub.listForces).not.toHaveBeenCalled();
-        expect(dataServiceStub.getLoadForceEntriesByIds).toHaveBeenCalledWith(['force-foreign']);
+        expect(forcePersistenceStub.openForceList).not.toHaveBeenCalled();
+        expect(forcePersistenceStub.getLoadForceEntriesByIds).toHaveBeenCalledWith(['force-foreign']);
         expect((component as any).placedForces().map((pf: any) => pf.force.instanceId)).toEqual(['force-foreign']);
     });
 
     it('keeps missing force references as placeholders so saving the TO&E preserves them', async () => {
-        dataServiceStub.listForces.and.resolveTo([]);
-        dataServiceStub.getLoadForceEntriesByIds.and.resolveTo([]);
-        dataServiceStub.getOrganization.and.resolveTo({
+        forcePersistenceStub.openForceList.and.callFake(async () => new ForceListSession([], async () => ({ entries: [] }), () => {}));
+        forcePersistenceStub.getLoadForceEntriesByIds.and.resolveTo([]);
+        organizationStorageStub.getOrganization.and.resolveTo({
             organizationId: 'org-missing',
             name: 'Missing Org',
             timestamp: Date.now(),
@@ -904,13 +1024,13 @@ describe('ForceOrgDialogComponent', () => {
         });
 
         await (component as any).loadOrganization('org-missing');
-        dataServiceStub.saveOrganization.calls.reset();
+        organizationStorageStub.saveOrganization.calls.reset();
 
         await (component as any).saveOrganization();
 
         expect((component as any).placedForces().length).toBe(1);
         expect((component as any).placedForces()[0].force.missing).toBeTrue();
-        expect(dataServiceStub.saveOrganization).toHaveBeenCalledWith(jasmine.objectContaining({
+        expect(organizationStorageStub.saveOrganization).toHaveBeenCalledWith(jasmine.objectContaining({
             organizationId: 'org-missing',
             forces: [jasmine.objectContaining({ instanceId: 'force-missing' })],
         }));
@@ -960,11 +1080,60 @@ describe('ForceOrgDialogComponent', () => {
             createBattleMek('Shadow Hawk'),
         ]);
 
-        force._searchText = (component as any).computeSearchText(force);
+        force._searchText = computeSearchText(force);
         (component as any).allForces.set([force]);
         (component as any).sidebarSearchText.set('lance');
 
         expect((component as any).sidebarForces()).toEqual([force]);
+    });
+
+    it('derives metadata immediately after reparenting and keeps geometry and previews out of the base result', () => {
+        const root = createGroup('root', 0, 0, 500, 400);
+        const child = createGroup('child', 40, 80, 260, 180);
+        child.parentGroupId = root.id;
+        const entry = createLoadForce('one', [createBattleMek('Atlas')], { bv: 1800 });
+        const placed = { ...createPlacedForce('one', 60, 140, child.id), force: entry };
+        component['groups'].set([root, child]);
+        component['placedForces'].set([placed]);
+
+        const base = component['groupMetadata']();
+        expect(base.get(root.id)!.totals).toBe('BV: 1,800');
+        root.x.set(100);
+        placed.y.set(160);
+        expect(component['groupMetadata']()).toBe(base);
+
+        component['previewExtraForces'].set({ targetGroupId: child.id, entries: [entry] });
+        expect(component['previewGroupInfo']().get(root.id)!.totals).toBe('BV: 3,600');
+        expect(component['groupMetadata']()).toBe(base);
+
+        child.parentGroupId = null;
+        component['groups'].set([root, child]);
+        expect(component['groupMetadata']().get(root.id)!.descendants).toEqual([]);
+        expect(component['previewGroupInfo']().has(root.id)).toBeFalse();
+        expect(component['groupMetadata']().get(child.id)!.totals).toBe('BV: 1,800');
+    });
+
+    it('counts sidebar tags before facets and builds each facet against the opposite selection', () => {
+        const faction = (id: number) => ({ id, name: `Faction ${id}`, group: 'Inner Sphere' as const, img: '', eras: {} });
+        const era = (id: number) => ({ id, name: `Era ${id}`, years: { from: 3000 + id }, factions: [], units: [] });
+        const a = createForcePreviewEntryData({ instanceId: 'a', name: 'Match A', tags: ['Scout'], faction: faction(1), era: era(1) });
+        const b = createForcePreviewEntryData({ instanceId: 'b', name: 'Match B', tags: ['scout'], faction: faction(2), era: era(1) });
+        const c = createForcePreviewEntryData({ instanceId: 'c', name: 'Match C', tags: ['Scout'], faction: faction(1), era: era(2) });
+        const hidden = createForcePreviewEntryData({ instanceId: 'hidden', name: 'Other', tags: ['Assault'], faction: faction(1), era: era(1) });
+        component['primeForceSearchText']([a, b, c, hidden]);
+        component['allForces'].set([a, b, c, hidden]);
+        component['sidebarComplete'].set(true);
+        component['sidebarSearchText'].set('match');
+        component['sidebarFilter'].set('tag:scout');
+        component['sidebarFactionFilter'].set(1);
+        component['sidebarEraFilter'].set(1);
+
+        expect(component['sidebarForces']()).toEqual([a]);
+        expect(component['sidebarFactionOptions']().map(option => [option.id, option.count])).toEqual([[1, 1], [2, 1]]);
+        expect(component['sidebarEraOptions']().map(option => [option.id, option.count])).toEqual([[1, 1], [2, 1]]);
+        expect(component['sidebarTags']()).toEqual([
+            { id: 'tag:assault', label: 'Assault', count: 0 }, { id: 'tag:scout', label: 'Scout', count: 3 },
+        ]);
     });
 
     it('keeps the current group highlighted while a dragged force still overlaps it', () => {

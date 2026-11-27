@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 // Author: Drake
 
+import { UnitNameService } from '../../../services/unit-name.service';
 import { ChangeDetectionStrategy, Component, inject, signal, viewChild, type AfterViewInit, computed } from '@angular/core';
 import { DialogRef, DIALOG_DATA } from '@angular/cdk/dialog';
 import { DiceRollerComponent } from '../../dice-roller/dice-roller.component';
@@ -52,30 +53,6 @@ function getMotiveRollModifier(moveType: MoveType | undefined): number {
         default:
             // Default to tracked modifier for unknown types
             return 0;
-    }
-}
-
-/**
- * Get display name for motive type category.
- */
-function getMotiveTypeName(moveType: MoveType | undefined): string {
-    switch (moveType) {
-        case 'Tracked':
-            return 'Tracked';
-        case 'Naval':
-        case 'Submarine':
-        case 'Hydrofoil':
-            return 'Naval';
-        case 'Wheeled':
-            return 'Wheeled';
-        case 'Hover':
-            return 'Hovercraft';
-        case 'VTOL':
-            return 'VTOL';
-        case 'WiGE':
-            return 'WiGE';
-        default:
-            return moveType ?? 'Unknown';
     }
 }
 
@@ -283,13 +260,14 @@ const MOTIVE_DAMAGE_TABLE: Record<number, MotiveTableEntry> = {
     `]
 })
 export class MotiveDamageRollDialogComponent implements AfterViewInit {
+    readonly unitNames = inject(UnitNameService);
     private readonly dialogRef = inject(DialogRef);
     private readonly data = inject<MotiveDamageRollDialogData>(DIALOG_DATA);
 
     private readonly mainRoller = viewChild<DiceRollerComponent>('mainRoller');
 
     private readonly forceUnit = this.data.forceUnit;
-    readonly moveType = this.forceUnit.getUnit().moveType;
+    readonly moveType = this.forceUnit.getSummary().moveType;
 
     readonly result = signal<MotiveDamageResult | null>(null);
 
@@ -304,8 +282,8 @@ export class MotiveDamageRollDialogComponent implements AfterViewInit {
 
     /** Display name combining chassis, model, and optional alias */
     readonly unitDisplayName = computed(() => {
-        const unit = this.forceUnit.getUnit();
-        const chassisModel = `${unit.chassis} ${unit.model}`;
+        const unit = this.forceUnit.getSummary();
+        const chassisModel = this.unitNames.name(unit);
         const alias = this.forceUnit.alias();
         return alias ? `${chassisModel} (${alias})` : chassisModel;
     });

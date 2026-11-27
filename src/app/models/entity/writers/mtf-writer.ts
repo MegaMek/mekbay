@@ -3,6 +3,7 @@
 // Author: Drake
 
 import { APP_VERSION_STRING } from '../../../build-meta';
+import { formatForceGeneratorAvailability } from '../types/force-generator-availability';
 import { MekEntity } from '../entities/mek/mek-entity';
 import { QuadMekEntity } from '../entities/mek/quad-mek-entity';
 import { TripodMekEntity } from '../entities/mek/tripod-mek-entity';
@@ -13,10 +14,9 @@ import {
   EntityMountedEquipment,
   formatCriticalSlotEquipment,
   MEK_SLOTS_PER_LOCATION,
-  MekLocation,
-
 } from '../types';
-import { WeaponEquipment } from '../../equipment.model';
+import { isStandardCaseEquipment } from '../../case-equipment.model';
+import { isJumpJetEquipment } from '../../jump-equipment.model';
 import {
   encodeMtfArmor,
   encodeMtfEngine,
@@ -24,6 +24,9 @@ import {
   encodeMtfHeatSinkType,
   encodeMtfRiscHeatSinkOverrideKit,
   encodeMtfStructure,
+  mtfCriticalSectionOrder,
+  mtfListedWeapons,
+  mtfMountKey,
 } from '../parsers/mtf-codec';
 
 // ============================================================================
@@ -31,25 +34,30 @@ import {
 // ============================================================================
 
 const LOC_DISPLAY_NAMES: Record<string, string> = {
-  HD: 'Head', CT: 'Center Torso', LT: 'Left Torso', RT: 'Right Torso',
-  LA: 'Left Arm', RA: 'Right Arm', LL: 'Left Leg', RL: 'Right Leg',
-  FLL: 'Front Left Leg', FRL: 'Front Right Leg',
-  RLL: 'Rear Left Leg', RRL: 'Rear Right Leg',
+  HD: 'Head',
+  CT: 'Center Torso',
+  LT: 'Left Torso',
+  RT: 'Right Torso',
+  LA: 'Left Arm',
+  RA: 'Right Arm',
+  LL: 'Left Leg',
+  RL: 'Right Leg',
+  FLL: 'Front Left Leg',
+  FRL: 'Front Right Leg',
+  RLL: 'Rear Left Leg',
+  RRL: 'Rear Right Leg',
   CL: 'Center Leg',
 };
-
-/** MTF crit-section output order: biped */
-const CRIT_ORDER_BIPED: MekLocation[] = ['LA', 'RA', 'LT', 'RT', 'CT', 'HD', 'LL', 'RL'];
-/** MTF crit-section output order: quad */
-const CRIT_ORDER_QUAD: MekLocation[] = ['FLL', 'FRL', 'LT', 'RT', 'CT', 'HD', 'RLL', 'RRL'];
-/** MTF crit-section output order: tripod */
-const CRIT_ORDER_TRIPOD: MekLocation[] = ['LA', 'RA', 'LT', 'RT', 'CT', 'HD', 'LL', 'RL', 'CL'];
 
 // ============================================================================
 // Armor output order
 // ============================================================================
 
-interface ArmorOutputEntry { label: string; loc: string; face: 'front' | 'rear' }
+interface ArmorOutputEntry {
+  label: string;
+  loc: string;
+  face: 'front' | 'rear';
+}
 
 const ARMOR_ORDER_BIPED: ArmorOutputEntry[] = [
   { label: 'LA armor', loc: 'LA', face: 'front' },
@@ -105,7 +113,8 @@ const ARMOR_ORDER_TRIPOD: ArmorOutputEntry[] = [
  * and the structured `armorValues` (LocationArmor) for armor output.
  */
 export function writeMtf(entity: MekEntity): string {
-  const lines: string[] = [];
+  // MegaMek keeps one blank row between its ignored license header and MTF data.
+  const lines: string[] = [''];
   const isQuad = entity instanceof QuadMekEntity;
   const isTripod = entity instanceof TripodMekEntity;
 
@@ -116,10 +125,11 @@ export function writeMtf(entity: MekEntity): string {
   writeMovement(entity, lines);
   writeArmor(entity, lines, isQuad, isTripod);
   writeWeapons(entity, lines);
-  writeCriticals(entity, lines, isQuad, isTripod);
+  writeCriticals(entity, lines);
   writeFluff(entity, lines);
 
-  return lines.join('\n');
+  while (lines.at(-1) === '') lines.pop();
+  return `${lines.join('\n')}${'\n'.repeat(entity.nativeSourceTrailingNewlines || 1)}`;
 }
 
 // ============================================================================
@@ -128,11 +138,14 @@ export function writeMtf(entity: MekEntity): string {
 
 function writeIdentity(entity: MekEntity, lines: string[]): void {
   lines.push(`uuid:${entity.uuid()}`);
+  if (entity.refitFromUUID() && entity.refitFromUUID() != entity.uuid()) {
+    lines.push(`refitfromuuid:${entity.refitFromUUID()}`);
+  }
   lines.push(`generator:MekBay ${APP_VERSION_STRING}`);
   lines.push(`chassis:${entity.chassis()}`);
   if (entity.clanName()) lines.push(`clanname:${entity.clanName()}`);
   lines.push(`model:${entity.model()}`);
-  if (entity.mulId() >= 0) lines.push(`mul id:${entity.mulId()}`);
+  if ((entity.mulId() ?? 0) > 0) lines.push(`mul id:${entity.mulId()}`);
   lines.push('');
 }
 
@@ -140,11 +153,28 @@ function writeConfig(entity: MekEntity, lines: string[]): void {
   lines.push(`Config:${getConfigString(entity)}`);
   lines.push(`techbase:${formatTechBase(entity)}`);
   lines.push(`era:${entity.year()}`);
-  if (entity.originalBuildYear() > 0) lines.push(`original era:${entity.originalBuildYear()}`);
-  if (entity.source().length > 0) lines.push(`source:${entity.source().map(source => source.abbrev).join(',')}`);
-  if (entity.published().length > 0) lines.push(`published:${entity.published().map(source => source.abbrev).join(',')}`);
+  if (entity.originalBuildYear() > 0 && entity.originalBuildYear() !== entity.year())
+    lines.push(`original era:${entity.originalBuildYear()}`);
+  if (entity.source().length > 0)
+    lines.push(
+      `source:${entity
+        .source()
+        .map((source) => source.abbrev)
+        .join(',')}`,
+    );
+  if (entity.published().length > 0)
+    lines.push(
+      `published:${entity
+        .published()
+        .map((source) => source.abbrev)
+        .join(',')}`,
+    );
   lines.push(`rules level:${entity.rulesLevel()}`);
   if (entity.role()) lines.push(`role:${entity.role()}`);
+  for (const availability of entity.forceGeneratorAvailability()) {
+    lines.push(`availability:${formatForceGeneratorAvailability(availability)}`);
+  }
+  if (entity.missionRoles()) lines.push(`missionroles:${entity.missionRoles()}`);
   if (entity.faction() !== 'None') lines.push(`faction:${entity.faction()}`);
   lines.push('');
 }
@@ -152,24 +182,28 @@ function writeConfig(entity: MekEntity, lines: string[]): void {
 function writePhysical(entity: MekEntity, lines: string[]): void {
   lines.push(`mass:${entity.tonnage()}`);
   const engine = entity.mountedEngine();
-  lines.push(`engine:${encodeMtfEngine(engine ? {
-    rating: engine.rating,
-    type: engine.type(),
-    techBase: engine.techBase,
-    mixedTech: entity.mixedTech(),
-  } : null)}`);
+  lines.push(
+    `engine:${encodeMtfEngine(
+      engine
+        ? {
+            rating: engine.rating,
+            type: engine.type(),
+            techBase: engine.techBase,
+            mixedTech: entity.mixedTech(),
+          }
+        : null,
+    )}`,
+  );
   lines.push(`structure:${getStructureString(entity)}`);
   if (entity.hasHybridStructure()) {
-    const order = entity instanceof TripodMekEntity ? CRIT_ORDER_TRIPOD
-      : entity instanceof QuadMekEntity ? CRIT_ORDER_QUAD : CRIT_ORDER_BIPED;
-    for (const location of order) {
+    for (const location of mtfCriticalSectionOrder(entity)) {
       const structure = entity.structureAt(location);
       const structurePrefix = entity.hasMixedStructureMaterials()
         ? `${encodeMtfStructure(
-          structure.structure.name,
-          structure.techBase === 'All' ? null : structure.techBase,
-          false,
-        )}:`
+            structure.structure.name,
+            structure.techBase === 'All' ? null : structure.techBase,
+            false,
+          )}:`
         : '';
       lines.push(`${location} structure:${structurePrefix}${structure.tonnage}`);
     }
@@ -203,37 +237,37 @@ function writePhysical(entity: MekEntity, lines: string[]): void {
 function writeMovement(entity: MekEntity, lines: string[]): void {
   lines.push(`heat sinks:${entity.totalHeatSinks()} ${encodeMtfHeatSinkType(entity.heatSinkEquipment())}`);
   if (entity.omni()) {
-    lines.push(`base chassis heat sinks:${entity.mountedEngine().getBaseChassisHeatSinks(entity.heatSinkType() === 'Compact')}`);
+    lines.push(
+      `base chassis heat sinks:${entity.mountedEngine().getBaseChassisHeatSinks(entity.heatSinkType() === 'Compact')}`,
+    );
   }
-  // Nocrit: misc equipment with 0 crit slots, excluding CASE, armor, and structure
-  // (matches MegaMek's Mek.getMtf() nocrit logic)
-  const nocritMounts = entity.equipment().filter(m => {
+  // Nocrit: misc equipment with 0 crit slots, excluding armor, structure, and Clan CASE that
+  // every loader regenerates (Clan chassis with Clan structure; matches MegaMek's Mek.getMtf()).
+  // A Clan chassis on IS structure must keep its Clan CASE explicit.
+  const nocritMounts = entity.equipment().filter((m) => {
+    if (m.allocation.kind !== 'location') return false;
     const eq = m.equipment;
     if (!eq) return false;
     if (eq.type !== 'misc') return false;
     if (eq.critSlots !== 0) return false;
-    if (eq.hasFlag('F_CASE')) return false;
+    if (isStandardCaseEquipment(eq) && entity.techBase() === 'Clan' && entity.supportsAutomaticClanCaseAt(m.location))
+      return false;
     return true;
   });
   for (const m of nocritMounts) {
     lines.push(`nocrit:${m.equipmentId}:${m.location}`);
   }
   lines.push(`walk mp:${entity.originalWalkMP()}`);
-  lines.push(`jump mp:${entity.installedJumpJetMP()}`);
+  // MegaMek reads this as the number of jump jets, which TechManual prices (200 × jets² × tons);
+  // UMUs, partial wings, boosters, shields and modular armor are counted from their own equipment.
+  lines.push(`jump mp:${entity.equipment().filter((mount) => isJumpJetEquipment(mount.equipment)).length}`);
   lines.push('');
 }
 
-function writeArmor(
-  entity: MekEntity, lines: string[],
-  isQuad: boolean, isTripod: boolean,
-): void {
+function writeArmor(entity: MekEntity, lines: string[], isQuad: boolean, isTripod: boolean): void {
   const uniformArmor = entity.uniformArmor();
   const armorDisplayName = uniformArmor?.armor.name ?? 'Standard';
-  lines.push(`armor:${encodeMtfArmor(
-    armorDisplayName,
-    uniformArmor?.techBase ?? entity.techBase(),
-    !uniformArmor,
-  )}`);
+  lines.push(`armor:${encodeMtfArmor(armorDisplayName, uniformArmor?.techBase ?? entity.techBase(), !uniformArmor)}`);
 
   const order = isTripod ? ARMOR_ORDER_TRIPOD : isQuad ? ARMOR_ORDER_QUAD : ARMOR_ORDER_BIPED;
   const armorMap = entity.armorValues();
@@ -243,8 +277,9 @@ function writeArmor(
     // For patchwork armor, front-facing entries include per-location armor type
     if (!uniformArmor && entry.face === 'front') {
       const armor = entity.armorAt(entry.loc);
-      const locType = `${armor.techBase === 'Clan' ? 'Clan' : 'IS'} ${armor.armor.name}`
-        + `(${armor.techBase === 'Clan' ? 'Clan' : 'Inner Sphere'})`;
+      const locType =
+        `${armor.techBase === 'Clan' ? 'Clan' : 'IS'} ${armor.armor.name}` +
+        `(${armor.techBase === 'Clan' ? 'Clan' : 'Inner Sphere'})`;
       lines.push(`${entry.label}:${locType}:${value}`);
     } else {
       lines.push(`${entry.label}:${value}`);
@@ -258,12 +293,24 @@ function writeArmor(
  * index order (LOC_LLEG=7 first … LOC_HEAD=0 last).
  */
 const WEAPON_LOC_ORDER: Record<string, number> = {
-  CL: 0, LL: 1, RL: 2, LA: 3, RA: 4, LT: 5, RT: 6, CT: 7, HD: 8,
-  RLL: 1, RRL: 2, FLL: 3, FRL: 4,
+  CL: 0,
+  LL: 1,
+  RL: 2,
+  LA: 3,
+  RA: 4,
+  LT: 5,
+  RT: 6,
+  CT: 7,
+  HD: 8,
+  RLL: 1,
+  RRL: 2,
+  FLL: 3,
+  FRL: 4,
 };
 
+/** The mounts an MTF `Weapons:` block lists. */
 function writeWeapons(entity: MekEntity, lines: string[]): void {
-  const mounts = entity.equipment().filter(m => m.location !== 'None' && m.equipment instanceof WeaponEquipment);
+  const mounts = mtfListedWeapons(entity);
 
   // Sort by first crit-slot appearance: location order, then slot index
   mounts.sort((a, b) => {
@@ -286,14 +333,11 @@ function writeWeapons(entity: MekEntity, lines: string[]): void {
   lines.push('');
 }
 
-function writeCriticals(
-  entity: MekEntity, lines: string[],
-  isQuad: boolean, isTripod: boolean,
-): void {
-  const critOrder = isTripod ? CRIT_ORDER_TRIPOD : isQuad ? CRIT_ORDER_QUAD : CRIT_ORDER_BIPED;
+function writeCriticals(entity: MekEntity, lines: string[]): void {
   const grid = entity.criticalSlotGrid();
+  const rowTags = mtfRowTags(entity, grid);
 
-  for (const loc of critOrder) {
+  for (const loc of mtfCriticalSectionOrder(entity)) {
     const header = LOC_DISPLAY_NAMES[loc];
     if (!header) continue;
     lines.push(`${header}:`);
@@ -308,7 +352,7 @@ function writeCriticals(
         const name = slot.systemType === 'Engine' ? 'Fusion Engine' : slot.systemType!;
         lines.push(slot.armored ? `${name} (ARMORED)` : name);
       } else {
-        lines.push(formatEquipmentSlot(slot));
+        lines.push(formatEquipmentSlot(slot, rowTags));
       }
     }
     const donor = entity.hasHybridStructure() ? entity.structureDonorAt(loc) : null;
@@ -327,13 +371,14 @@ function writeQuirks(entity: MekEntity, lines: string[]): void {
   for (const wq of entity.weaponQuirks()) {
     lines.push(`weaponquirk:${wq.name}:${wq.location}:${wq.slot}:${wq.weaponName}`);
   }
-  if (entity.quirks().length > 0 || entity.weaponQuirks().length > 0) {
-    lines.push('');
-  }
+  lines.push('');
 }
 
 function writeFluff(entity: MekEntity, lines: string[]): void {
   const fluff = entity.fluff();
+  if (entity.fluffImageEncoded()) lines.push(`fluffimage:${entity.fluffImageEncoded()}`);
+  if (entity.iconEncoded()) lines.push(`icon:${entity.iconEncoded()}`);
+  if (entity.iconPath()) lines.push(`iconpath:${entity.iconPath()}`);
   const writeField = (key: string, value: string | undefined): void => {
     if (value) lines.push(`${key}:${value}`, '');
   };
@@ -365,19 +410,41 @@ function writeFluff(entity: MekEntity, lines: string[]): void {
 // Formatting helpers
 // ============================================================================
 
-function formatEquipmentSlot(
-  slot: Extract<CriticalSlotView, { type: 'equipment' }>,
-): string {
-  return formatCriticalSlotEquipment(slot, (mount, isLast) =>
-    formatMountedEquipmentSlot(mount, isLast && slot.armored, isLast && slot.omniPod));
+/**
+ * Rows alone can't tell a split mount from another mount of its equipment in a location they share, so such a split
+ * mount tags its rows (MegaMek MtfFile.mountTags). Tags number them 1..k per equipment in the order they are written.
+ */
+function mtfRowTags(entity: MekEntity, grid: ReturnType<MekEntity['criticalSlotGrid']>):
+  ReadonlyMap<EntityMountedEquipment, number> {
+  const locations = (mount: EntityMountedEquipment) => new Set(mount.placements?.map(placement => placement.location));
+  const placed = entity.equipment().filter(mount => mount.placements?.length);
+  const sharesALocation = (mount: EntityMountedEquipment) => locations(mount).size > 1 && !mount.equipment?.isSpreadable
+    && placed.some(other => other !== mount && mtfMountKey(other) === mtfMountKey(mount)
+      && [...locations(other)].some(location => locations(mount).has(location)));
+  const tags = new Map<EntityMountedEquipment, number>();
+  const counts = new Map<string, number>();
+  for (const location of mtfCriticalSectionOrder(entity)) {
+    for (const slot of grid.get(location) ?? []) {
+      if (slot.type !== 'equipment') continue;
+      for (const mount of slot.mounts) {
+        if (tags.has(mount) || !sharesALocation(mount)) continue;
+        const key = mtfMountKey(mount);
+        counts.set(key, (counts.get(key) ?? 0) + 1);
+        tags.set(mount, counts.get(key)!);
+      }
+    }
+  }
+  return tags;
 }
 
-function formatMountedEquipmentSlot(
-  mount: EntityMountedEquipment,
-  armored: boolean,
-  omniPod: boolean,
-): string {
+function formatEquipmentSlot(slot: Extract<CriticalSlotView, { type: 'equipment' }>, rowTags: ReadonlyMap<EntityMountedEquipment, number>): string {
+  return formatCriticalSlotEquipment(slot, (mount, isLast) => {
+    const tag = rowTags.get(mount);
+    return formatMountedEquipmentSlot(mount, isLast && slot.armored, isLast && slot.omniPod) + (tag ? `#${tag}` : '');
+  });
+}
 
+function formatMountedEquipmentSlot(mount: EntityMountedEquipment, armored: boolean, omniPod: boolean): string {
   let name = mount.equipmentId;
   if (mount.rearMounted) name += ' (R)';
   if (mount.turretMounted) name += ' (T)';
@@ -417,21 +484,24 @@ function getStructureString(entity: MekEntity): string {
   if (entity.hasMixedStructureMaterials()) return encodeMtfStructure('Standard', null, true);
   const structure = entity.uniformStructureMaterial();
   if (!structure) throw new Error('Cannot write an MTF Mek without an installed structure');
-  return encodeMtfStructure(
-    structure.structure.name,
-    structure.techBase === 'All' ? null : structure.techBase,
-    false,
-  );
+  return encodeMtfStructure(structure.structure.name, structure.techBase === 'All' ? null : structure.techBase, false);
 }
 
 function facingLabel(facing: number): string {
   switch (facing) {
-    case 0: return 'FL';
-    case 1: return 'FR';
-    case 2: return 'F';
-    case 3: return 'R';
-    case 4: return 'RL';
-    case 5: return 'RR';
-    default: return '';
+    case 0:
+      return 'FL';
+    case 1:
+      return 'FR';
+    case 2:
+      return 'F';
+    case 3:
+      return 'R';
+    case 4:
+      return 'RL';
+    case 5:
+      return 'RR';
+    default:
+      throw new Error(`Invalid equipment facing: ${facing}`);
   }
 }

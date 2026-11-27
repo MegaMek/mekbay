@@ -182,7 +182,7 @@ describe('TagsService', () => {
     });
 
     it('migrates each V3 unit name to the one unit carrying it and drops names no unit carries', async () => {
-        const sameNameTwin = createEmptyUnit({ name: 'Dasher A', chassis: 'Dasher', type: 'Mek' });
+        const customTwin = createEmptyUnit({ name: 'Dasher A', chassis: 'Dasher', type: 'Mek', isCustom: true });
         tagData = {
             tags: {
                 scout: {
@@ -201,10 +201,10 @@ describe('TagsService', () => {
             { k: '', t: 'Scout', c: 0, a: 2, ts: 2, n: 'Recon' },
         ];
 
-        const migrated = await service.migrateTagKeys([...units, sameNameTwin], tagData);
+        const migrated = await service.migrateTagKeys([...units, customTwin], tagData);
 
         expect(migrated.formatVersion).toBe(5);
-        // Names are exact; the first unit carrying a name gets its tags.
+        // Names are exact; the core unit precedes its same-named custom twin.
         expect(migrated.tags).toEqual({
             scout: { label: 'Scout', units: { [dasherA.uuid]: { q: 3 }, [dasherB.uuid]: { q: 2 } }, chassis: {} },
         });

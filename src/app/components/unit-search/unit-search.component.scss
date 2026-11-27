@@ -96,7 +96,7 @@
     left: 4px;
     right: 4px;
     width: calc(100dvw - 8px);
-    background: #222;
+    background-color: #222;
 }
 
 .searchbar-input-container {
@@ -261,7 +261,7 @@
     box-sizing: border-box;
     margin: 0;
     padding: 2px;
-    background: #222;
+    background-color: #222;
 }
 
 .results-dropdown-content {
@@ -270,7 +270,7 @@
     flex-direction: column;
     width: 100%;
     height: 100%;
-    background: #222;
+    background-color: #222;
 }
 
 .results-dropdown-viewport {
@@ -306,13 +306,29 @@
     border-bottom: 0;
 }
 
-.results-dropdown-item.no-results {
+.results-status {
+    display: flex;
+    flex: 1;
+    align-items: center;
     justify-content: center;
     width: 100%;
-    height: 100%;
     min-height: 80px;
     color: var(--text-color-secondary);
     font-style: italic;
+    text-align: center;
+}
+
+.formation-search-blocker {
+    --formation-failure-color: var(--text-color);
+    margin: 12px;
+    padding: 12px;
+    background: color-mix(in srgb, var(--danger) 10%, transparent);
+    color: var(--text-color);
+    line-height: 1.4;
+    overflow-y: auto;
+
+    strong { color: var(--danger); }
+    p { margin: 8px 0 0; }
 }
 
 .card-view-viewport {
@@ -495,7 +511,14 @@
     line-height: 1.05;
 }
 
+.chassis-view-name-row {
+    display: flex;
+    align-items: center;
+    min-width: 0;
+}
+
 .chassis-view-chassis-name {
+    min-width: 0;
     color: #fff;
 }
 
@@ -581,7 +604,7 @@
 
 .results-sort .sort-select {
     height: 32px;
-    padding: 0 4px;
+    padding: 0 20px 0 4px;
     background-color: #222;
 }
 
@@ -612,7 +635,7 @@
     padding: 10px;
     overflow-y: auto;
     color: #fff;
-    background: #222;
+    background-color: #222;
 }
 
 .adv-panel.docked {

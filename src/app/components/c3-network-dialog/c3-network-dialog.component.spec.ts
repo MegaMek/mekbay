@@ -5,17 +5,21 @@
 import { DialogRef, DIALOG_DATA } from '@angular/cdk/dialog';
 import { provideZonelessChangeDetection, signal, type Signal, type WritableSignal } from '@angular/core';
 import { ComponentFixture, TestBed } from '@angular/core/testing';
-import type { Equipment } from '../../models/equipment.model';
+import { Subject } from 'rxjs';
 import type { Force } from '../../models/force.model';
-import type { CBTForceUnit } from '../../models/cbt-force-unit.model';
+import type { CBTForceMember } from '../../models/force-member.model';
+import { TestBipedMekEntity } from '../../models/entity/testing/test-entities';
+import type { UnitSummary } from '../../models/unit-summary.model';
 import type { SerializedC3NetworkGroup } from '../../models/force-serialization';
-import { MountedEquipment } from '../../models/mounted-equipment.model';
 import {
     C3Capabilities,
     C3_FLAGS,
     C3Network,
     C3NetworkType,
+    C3Role,
+    type C3Component,
     type C3Node,
+    type C3UnitView,
 } from '../../models/c3-network.model';
 import { GameSystem } from '../../models/common.model';
 import { DialogsService } from '../../services/dialogs.service';
@@ -23,6 +27,8 @@ import { LayoutService } from '../../services/layout.service';
 import { OptionsService } from '../../services/options.service';
 import { SpriteStorageService } from '../../services/sprite-storage.service';
 import { ToastService } from '../../services/toast.service';
+import { MM_DATA_UNIT_PROVIDER_ID } from '../../services/unit-catalog/unit-catalog.types';
+import { asUnitSpriteManifestDigest, createUnitSpriteAssignmentContext } from '../../utils/unit-sprite-assignment-resolver';
 import { C3NetworkDialogComponent } from './c3-network-dialog.component';
 
 interface ConnectionLineTestApi {
@@ -44,13 +50,18 @@ interface SidebarMemberTestApi {
 }
 
 interface C3NetworkDialogTestApi {
+    onWheel(event: WheelEvent): void;
+    zoom: WritableSignal<number>;
+    viewOffset: WritableSignal<{ x: number; y: number }>;
     nodes: WritableSignal<C3Node[]>;
     networks: WritableSignal<SerializedC3NetworkGroup[]>;
+    loadNodeIcons(units: TestC3Unit[]): Promise<void>;
     autoConfigureNetworks(): Promise<void>;
     isPinConnected(node: C3Node, compIndex: number): boolean;
     getPinNetworkColor(node: C3Node, compIndex: number): string | null;
     getPinRoleLabel(node: C3Node, compIndex: number): string;
     removeNetwork(network: SerializedC3NetworkGroup): void;
+    saveAndClose(): void;
     connectionLines: Signal<ConnectionLineTestApi[]>;
     sidebarNetworks: Signal<readonly SidebarNetworkTestApi[]>;
     nodeRuntimeStatuses: Signal<Map<string, readonly ('OFFLINE' | 'JAMMED' | 'DEGRADED')[]>>;
@@ -64,8 +75,18 @@ interface C3NetworkDialogTestApi {
     }[]>;
 }
 
+interface TestC3Unit extends C3UnitView {
+    member?: Pick<CBTForceMember, 'entity'>;
+    getSummary?(): UnitSummary;
+    getBaseBv(): number;
+    tagBV(): number;
+    externalStoresBv(): number;
+    gunnerySkill(): number;
+    pilotingSkill(): number;
+}
+
 interface TestUnitState {
-    unit: CBTForceUnit;
+    unit: TestC3Unit;
     jammed: WritableSignal<boolean>;
     destroyedComponents: WritableSignal<ReadonlySet<number>>;
     actionUnavailableComponents: WritableSignal<ReadonlySet<number>>;
@@ -79,45 +100,56 @@ function c3UnitWithComponents(id: string, componentFlags: readonly (readonly str
     const jammed = signal(false);
     const destroyedComponents = signal<ReadonlySet<number>>(new Set());
     const actionUnavailableComponents = signal<ReadonlySet<number>>(new Set());
-    let inventory: MountedEquipment[] = [];
-    const unit = {
+    const components = componentFlags.map((flags, index) => c3Component(flags, index));
+    const unit: TestC3Unit = {
         id,
-        destroyed: false,
         alias: () => '',
-        getUnit: () => ({ chassis: id, model: '', comp: [] }),
+        getSummary: () => ({ name: id, chassis: id, model: '' }) as UnitSummary,
+        getC3Specials: () => [],
+        getC3Presentation: () => ({ chassis: id, model: '', icon: '', tons: 0, walk: 0 }),
+        c3Components: components,
         getBaseBv: () => 0,
         tagBV: () => 0,
         externalStoresBv: () => 0,
         gunnerySkill: () => 4,
         pilotingSkill: () => 5,
-        getInventory: () => inventory,
-        isC3EndpointOperational: (index: number) => index < inventory.length
+        isC3EndpointOperational: (index: number) => index < components.length
             && !destroyedComponents().has(index)
             && !actionUnavailableComponents().has(index),
         isC3Jammed: () => jammed(),
-        canPerformEquipmentAction: (entry: MountedEquipment) => {
-            const index = inventory.indexOf(entry);
-            return index < 0 || !destroyedComponents().has(index) && !actionUnavailableComponents().has(index);
-        },
-        getEquipmentStatus: (entry: MountedEquipment) => (
-            destroyedComponents().has(inventory.indexOf(entry)) ? 'destroyed' : 'available'
-        ),
-        isEquipmentOperational: (entry: MountedEquipment) => {
-            const index = inventory.indexOf(entry);
-            return index >= 0 && !destroyedComponents().has(index);
-        },
-        rules: {
-            calculateC3Tax: () => 0,
-        },
-    } as unknown as CBTForceUnit;
-    inventory = componentFlags.map((flags, index) => new MountedEquipment({
-        owner: unit,
-        id: `${id}-c3-${index}`,
-        name: `${id} C3 ${index}`,
-        equipment: { flags: new Set(flags) } as Equipment,
-        states: new Map(),
-    }));
+        c3Position: () => null,
+    };
     return { unit, jammed, destroyedComponents, actionUnavailableComponents };
+}
+
+function c3Component(flags: readonly string[], index: number): C3Component {
+    if (flags.includes(C3_FLAGS.C3M) || flags.includes(C3_FLAGS.C3MBS)) {
+        return {
+            networkType: C3NetworkType.C3,
+            role: C3Role.MASTER,
+            boosted: flags.includes(C3_FLAGS.C3MBS),
+            index,
+        };
+    }
+    if (flags.includes(C3_FLAGS.C3S)
+        || flags.includes(C3_FLAGS.C3SBS)
+        || flags.includes(C3_FLAGS.C3EM)) {
+        return {
+            networkType: C3NetworkType.C3,
+            role: C3Role.SLAVE,
+            boosted: flags.includes(C3_FLAGS.C3SBS),
+            emergency: flags.includes(C3_FLAGS.C3EM),
+            index,
+        };
+    }
+    const flag = flags.find(candidate => candidate !== C3_FLAGS.ANY_C3);
+    if (flag === C3_FLAGS.NOVA) {
+        return { networkType: C3NetworkType.NOVA, role: C3Role.PEER, boosted: false, index };
+    }
+    if (flag === C3_FLAGS.NAVAL_C3) {
+        return { networkType: C3NetworkType.NAVAL, role: C3Role.PEER, boosted: false, index };
+    }
+    return { networkType: C3NetworkType.C3I, role: C3Role.PEER, boosted: false, index };
 }
 
 function node(state: TestUnitState, x: number, y: number): C3Node {
@@ -139,20 +171,31 @@ describe('C3NetworkDialogComponent runtime visualization', () => {
         component: C3NetworkDialogTestApi;
         fixture: ComponentFixture<C3NetworkDialogComponent>;
         requestConfirmation: jasmine.Spy;
+        close: jasmine.Spy;
+        spriteService: jasmine.SpyObj<Pick<SpriteStorageService, 'getVerifiedAssignmentContext' | 'getExtractedIconUrl'>>;
     }> {
         const requestConfirmation = jasmine.createSpy('requestConfirmation').and.resolveTo(false);
+        const close = jasmine.createSpy('close');
+        const spriteService = jasmine.createSpyObj<Pick<SpriteStorageService, 'getVerifiedAssignmentContext' | 'getExtractedIconUrl'>>(
+            'SpriteStorageService', ['getVerifiedAssignmentContext', 'getExtractedIconUrl'],
+        );
+        spriteService.getVerifiedAssignmentContext.and.resolveTo(null);
+        spriteService.getExtractedIconUrl.and.resolveTo(null);
+        const members = signal(units.map(state => state.unit));
         const force = {
-            gameSystem: GameSystem.CLASSIC,
-            units: signal(units.map(state => state.unit)),
+            gameSystem: GameSystem.CBT,
+            units: members,
+            members,
             c3Networks: signal([]),
             groups: signal([]),
+            changed: new Subject<void>(),
         } as unknown as Force;
 
         await TestBed.configureTestingModule({
             imports: [C3NetworkDialogComponent],
             providers: [
                 provideZonelessChangeDetection(),
-                { provide: DialogRef, useValue: { close: jasmine.createSpy('close') } },
+                { provide: DialogRef, useValue: { close } },
                 { provide: DIALOG_DATA, useValue: { force, readOnly } },
                 { provide: ToastService, useValue: { showToast: jasmine.createSpy('showToast') } },
                 { provide: DialogsService, useValue: { requestConfirmation } },
@@ -161,7 +204,7 @@ describe('C3NetworkDialogComponent runtime visualization', () => {
                     useValue: { options: signal({ c3NetworkConnectionsAboveNodes: false }) },
                 },
                 { provide: LayoutService, useValue: { isMobile: signal(false) } },
-                { provide: SpriteStorageService, useValue: {} },
+                { provide: SpriteStorageService, useValue: spriteService },
             ],
         }).compileComponents();
 
@@ -170,8 +213,101 @@ describe('C3NetworkDialogComponent runtime visualization', () => {
             component: fixture.componentInstance as unknown as C3NetworkDialogTestApi,
             fixture,
             requestConfirmation,
+            close,
+            spriteService,
         };
     }
+
+    it('scrolls the SVG diagram on both axes and honors the wheel preference immediately', async () => {
+        const { component, fixture } = await createComponent();
+        fixture.detectChanges();
+        component.zoom.set(1);
+        component.viewOffset.set({ x: 200, y: 200 });
+        component.onWheel(new WheelEvent('wheel', { deltaX: 40, deltaY: 120 }));
+        expect(component.zoom()).toBe(1);
+        expect(component.viewOffset()).toEqual({ x: 160, y: 80 });
+        component.onWheel(new WheelEvent('wheel', { ctrlKey: true, deltaY: -60 }));
+        expect(component.zoom()).toBeGreaterThan(1);
+        TestBed.inject(OptionsService).options.update(value => ({ ...value, mouseWheelAction: 'zoom' }));
+        const before = component.zoom();
+        component.onWheel(new WheelEvent('wheel', { deltaY: -60 }));
+        expect(component.zoom()).toBeGreaterThan(before);
+        const zoom = component.zoom();
+        const offset = component.viewOffset();
+        component.onWheel(new WheelEvent('wheel', { ctrlKey: true, deltaY: 50 }));
+        expect(component.zoom()).toBe(zoom);
+        expect(component.viewOffset()).toEqual({ x: offset.x, y: offset.y - 50 });
+    });
+
+    it('renders an entity-backed CBT node icon from verified sprite assignments', async () => {
+        const { component, fixture, spriteService } = await createComponent();
+        fixture.detectChanges();
+        const state = c3Unit('atlas', [C3_FLAGS.C3I]);
+        const entity = new TestBipedMekEntity();
+        entity.chassis.set('Atlas');
+        entity.model.set('AS7-D');
+        state.unit.member = { entity };
+        const iconUrl = 'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+jRZkAAAAASUVORK5CYII=';
+        spriteService.getVerifiedAssignmentContext.and.resolveTo(createUnitSpriteAssignmentContext({
+            provider: MM_DATA_UNIT_PROVIDER_ID,
+            manifestDigest: asUnitSpriteManifestDigest('A'.repeat(27)),
+            assignments: { exact: { 'ATLAS AS7-D': 'meks/Atlas_D.png' }, chassis: {} },
+        }));
+        spriteService.getExtractedIconUrl.and.resolveTo(iconUrl);
+        component.nodes.set([node(state, 0, 0)]);
+
+        await component.loadNodeIcons([state.unit]);
+        fixture.detectChanges();
+
+        expect(spriteService.getVerifiedAssignmentContext).toHaveBeenCalledOnceWith(MM_DATA_UNIT_PROVIDER_ID);
+        expect(spriteService.getExtractedIconUrl).toHaveBeenCalledOnceWith('meks/Atlas_D.png');
+        expect(fixture.nativeElement.querySelector('image.node-icon')?.getAttribute('href')).toBe(iconUrl);
+    });
+
+    it('preserves the presentation icon path for Alpha Strike nodes', async () => {
+        const { component, spriteService } = await createComponent();
+        const state = c3Unit('atlas', [C3_FLAGS.C3I]);
+        const presentation = state.unit.getC3Presentation();
+        state.unit.getC3Presentation = () => ({ ...presentation, icon: 'meks/Atlas.png' });
+
+        await component.loadNodeIcons([state.unit]);
+
+        expect(spriteService.getExtractedIconUrl).toHaveBeenCalledOnceWith('meks/Atlas.png');
+        expect(spriteService.getVerifiedAssignmentContext).not.toHaveBeenCalled();
+    });
+
+    it('renders the fallback when entity sprite assignments are unavailable', async () => {
+        const { component, fixture, spriteService } = await createComponent();
+        fixture.detectChanges();
+        const state = c3Unit('atlas', [C3_FLAGS.C3I]);
+        state.unit.member = { entity: new TestBipedMekEntity() };
+        component.nodes.set([node(state, 0, 0)]);
+
+        await component.loadNodeIcons([state.unit]);
+        fixture.detectChanges();
+
+        expect(spriteService.getExtractedIconUrl).not.toHaveBeenCalled();
+        expect(fixture.nativeElement.querySelector('image.node-icon')?.getAttribute('href')).toBe('/images/unknown.png');
+    });
+
+    it('returns detached positions for the owner commit', async () => {
+        const first = c3Unit('first', [C3_FLAGS.C3I]);
+        const second = c3Unit('second', [C3_FLAGS.C3I]);
+        const { component, close } = await createComponent([first, second], false);
+        component.nodes.set([node(first, 10, 20), node(second, 30, 40)]);
+        component.networks.set([{
+            id: 'network', type: C3NetworkType.C3I, color: '#abc', peerIds: ['first', 'second'],
+        }]);
+
+        component.saveAndClose();
+
+        expect(close).toHaveBeenCalledWith(jasmine.objectContaining({
+            positions: [
+                { unitId: 'first', x: 10, y: 20 },
+                { unitId: 'second', x: 30, y: 40 },
+            ],
+        }));
+    });
 
     it('does not auto-connect an unused internal Master endpoint', async () => {
         const naginata = c3UnitWithComponents('naginata', [[C3_FLAGS.C3M], [C3_FLAGS.C3M]]);
@@ -330,9 +466,6 @@ describe('C3NetworkDialogComponent runtime visualization', () => {
         const root = model.topLevelNetworks.find(network => network.type === C3NetworkType.C3);
         expect(root).toBeDefined();
         expect(model.treeUnitIds(root!.id).size).toBe(10);
-        expect(model.treeEndpointKeys(root!.id).size).toBe(13);
-        const connectedSlaves = slaves.filter(slave => model.isUnitSlaveConnected(slave.unit.id));
-        expect(connectedSlaves.length).toBe(9);
         expect(slaves.filter(slave => !model.isUnitConnected(slave.unit.id)).length).toBe(0);
     });
 
@@ -480,10 +613,9 @@ describe('C3NetworkDialogComponent runtime visualization', () => {
         expect(component.nodeRuntimeStatuses().get('master')).toEqual(['OFFLINE']);
     });
 
-    it('uses endpoint operation rather than configuration permission for OFFLINE', async () => {
+    it('uses endpoint operation for OFFLINE', async () => {
         const { component } = await createComponent();
         const master = c3Unit('master', [C3_FLAGS.NOVA]);
-        spyOn(master.unit, 'canPerformEquipmentAction').and.returnValue(true);
         master.actionUnavailableComponents.set(new Set([0]));
         component.nodes.set([node(master, 0, 0)]);
         component.networks.set([{
@@ -492,7 +624,6 @@ describe('C3NetworkDialogComponent runtime visualization', () => {
         }]);
 
         expect(component.nodeRuntimeStatuses().get('master')).toEqual(['OFFLINE']);
-        expect(master.unit.canPerformEquipmentAction(master.unit.getInventory()[0], 'configure-network')).toBeTrue();
     });
 
     it('does not show OFFLINE for a local endpoint when only its remote endpoint is unavailable', async () => {

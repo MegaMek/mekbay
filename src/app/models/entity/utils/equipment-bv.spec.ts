@@ -3,12 +3,15 @@
 // Author: Drake
 
 import { EquipmentFlag } from '../../equipment-flags.type';
-import { MiscEquipment } from '../../equipment.model';
+import { AmmoEquipment, MiscEquipment } from '../../equipment.model';
+import { CORE_2026_GAME_RULES, TW_GAME_RULES } from '../../rules/game-rules';
+import { createTestEquipmentRegistry } from '../testing/test-equipment-registry';
 import {
     TestBipedMekEntity as BipedMekEntity,
     TestVtolEntity as VtolEntity,
 } from '../testing/test-entities';
 import { EntityMountedEquipment } from '../types';
+import { calculateBattleValueDetails } from './battle-value/factory';
 
 describe('getEquipmentBV', () => {
     let entity: BipedMekEntity;
@@ -67,6 +70,37 @@ describe('getEquipmentBV', () => {
         expect(mount('ram-plate', 'CT', variableEquipment('ram plate', ['F_RAM_PLATE'])).getBV(entity)).toBe(35.2);
     });
 
+    for (const catalogBV of [30, 80]) {
+        it('prices mounted and armored ammo by ruleset with catalog BV ' + catalogBV, () => {
+            const standard = new AmmoEquipment({
+                id: 'ISArrowIVAmmo', name: 'IS Arrow IV Ammo', type: 'ammo',
+                stats: { bv: 30 }, ammo: { type: 'ARROW_IV', rackSize: 20, shots: 5 },
+            });
+            const thunder = new AmmoEquipment({
+                id: 'ISArrowIVThunder', name: 'IS Arrow IV Thunder Ammo', type: 'ammo',
+                stats: { bv: catalogBV, criticalSlots: 1 },
+                ammo: { type: 'ARROW_IV', rackSize: 20, shots: 5,
+                    baseAmmo: standard.id, munitionType: ['M_FASCAM'] },
+            });
+            const registry = createTestEquipmentRegistry({ [standard.id]: standard, [thunder.id]: thunder });
+            const mek = new BipedMekEntity(registry);
+            const bin = mount(thunder.id, 'LT', thunder).clone({ armored: true });
+            mek.setEquipment([bin]);
+
+            expect(bin.getBV(mek)).toBe(30);
+            for (const [rules, expected] of [
+                [CORE_2026_GAME_RULES, 30], [TW_GAME_RULES, 80], [CORE_2026_GAME_RULES, 30],
+            ] as const) {
+                expect(bin.getBV(mek, rules)).toBe(expected);
+                const details = calculateBattleValueDetails(mek, undefined, rules.id).details;
+                const armored = details.find(detail => detail.type === 'Defensive Battle Rating')
+                    ?.details?.find(detail => detail.type === 'Armored Components');
+                expect(armored?.delta).toBe(expected * 0.05);
+            }
+            expect(thunder.bv).toBe(catalogBV);
+        });
+    }
+
     it('passes through fixed BV', () => {
         expect(mount('fixed', 'CT', fixedEquipment('fixed', [], 25)).getBV(entity)).toBe(25);
     });
@@ -96,7 +130,7 @@ function fixedEquipment(name: string, flags: EquipmentFlag[], bv = 0): MiscEquip
     return new MiscEquipment({ id: name, name, type: 'misc', flags, stats: { bv } });
 }
 
-function mount(mountId: string, location: string, equipment: MiscEquipment): EntityMountedEquipment {
+function mount(mountId: string, location: string, equipment: AmmoEquipment | MiscEquipment): EntityMountedEquipment {
     return new EntityMountedEquipment({
         mountId,
         equipmentId: equipment.id,

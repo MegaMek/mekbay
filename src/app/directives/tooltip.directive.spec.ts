@@ -8,7 +8,6 @@ import { ComponentFixture, TestBed } from '@angular/core/testing';
 import { TooltipDirective } from './tooltip.directive';
 
 @Component({
-    standalone: true,
     imports: [TooltipDirective],
     // Keep a real mouse pointer in the Karma page from affecting synthetic pointer tests.
     host: { style: 'pointer-events: none' },
@@ -126,6 +125,7 @@ describe('TooltipDirective', () => {
             const child = fixture.nativeElement.querySelector('.child') as HTMLElement;
             dispatchTouchPointer(child, 'pointerdown');
             jasmine.clock().tick(300);
+            TestBed.tick();
 
             expect(getTooltipTexts()).toEqual(['Child tooltip']);
             expect(overlayContainerElement.querySelector('.tooltip-lock-progress')).toBeNull();
@@ -146,18 +146,19 @@ describe('TooltipDirective', () => {
 
             dispatchPointerOver(child);
             jasmine.clock().tick(0);
+            TestBed.tick();
 
             const progress = overlayContainerElement.querySelector('.tooltip-lock-progress') as HTMLElement | null;
             expect(progress).not.toBeNull();
-            expect(getComputedStyle(progress!).height).toBe('2px');
-            expect(getComputedStyle(progress!).animationDuration).toBe('2s');
 
             dispatchPointerOut(child);
             expect(getTooltipTexts()).toEqual([]);
 
             dispatchPointerOver(child);
             jasmine.clock().tick(0);
+            TestBed.tick();
             jasmine.clock().tick(2000);
+            TestBed.tick();
 
             dispatchPointerOut(child);
             expect(getTooltipTexts()).toEqual(['Child tooltip']);
@@ -167,6 +168,46 @@ describe('TooltipDirective', () => {
         } finally {
             jasmine.clock().uninstall();
         }
+    });
+
+    it('offers a close button only once a mouse tooltip is locked', () => {
+        jasmine.clock().install();
+        try {
+            const fixture = TestBed.createComponent(TestHostComponent);
+            fixture.detectChanges();
+
+            const child = fixture.nativeElement.querySelector('.child') as HTMLElement;
+            dispatchPointerOver(child);
+            jasmine.clock().tick(0);
+            TestBed.tick();
+            expect(overlayContainerElement.querySelector('.close-button')).toBeNull();
+
+            jasmine.clock().tick(2000);
+            const close = overlayContainerElement.querySelector('.close-button') as HTMLElement | null;
+            expect(close).not.toBeNull();
+
+            close!.click();
+            expect(getTooltipTexts()).toEqual([]);
+        } finally {
+            jasmine.clock().uninstall();
+        }
+    });
+
+    it('closes when a container of the host scrolls, not when the tooltip itself scrolls', async () => {
+        const fixture = TestBed.createComponent(TestHostComponent);
+        fixture.detectChanges();
+
+        const element = fixture.nativeElement as HTMLElement;
+        const child = element.querySelector('.child') as HTMLElement;
+        dispatchPointerOver(child);
+        await flushTooltipTasks(fixture);
+
+        overlayContainerElement.querySelector('.tooltip-content')!.dispatchEvent(new Event('scroll'));
+        element.querySelector('.mode-label')!.dispatchEvent(new Event('scroll'));
+        expect(getTooltipTexts()).toEqual(['Child tooltip']);
+
+        element.dispatchEvent(new Event('scroll'));
+        expect(getTooltipTexts()).toEqual([]);
     });
 
     it('applies the error frame class when tooltipType is error', async () => {

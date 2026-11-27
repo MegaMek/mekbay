@@ -24,6 +24,10 @@ describe('formatWeaponDamage', () => {
             { values: [5], maximum: 10, unit: 'shot' },
             { shotSuffix: '/Sht' },
         )).toBe('5/Sht');
+        expect(formatWeaponDamage(
+            { values: [5], maximum: 10, unit: 'shot' },
+            { shotSuffix: '/Shot' },
+        )).toBe('5/Shot');
         expect(formatWeaponDamage({ values: [20], maximum: 20, unit: 'artillery' })).toBe('20A');
     });
 

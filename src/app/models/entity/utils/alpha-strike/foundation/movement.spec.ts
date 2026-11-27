@@ -8,6 +8,7 @@ import {
   TestJumpShipEntity as JumpShipEntity,
   TestLamEntity as LamEntity,
   TestQuadVeeEntity as QuadVeeEntity,
+  TestTankEntity as TankEntity,
   TestWarShipEntity as WarShipEntity,
 } from '../../../testing/test-entities';
 import {
@@ -20,13 +21,14 @@ import {
 
 describe('Alpha Strike movement', () => {
   it('converts ordinary ground movement and preserves the empty movement code', () => {
-    const entity = new BipedMekEntity();
+    const entity = new TankEntity();
     entity.originalWalkMP.set(5);
+    entity.motiveType.set('Tracked');
 
     const movement = alphaStrikeMovement(entity);
 
-    expect(movement).toEqual({ values: { '': 10 }, primary: '' });
-    expect(movementString('BM', movement.values)).toBe('10"');
+    expect(movement).toEqual({ values: { t: 10 }, primary: 't' });
+    expect(movementString('CV', movement.values)).toBe('10"t');
     expect(primaryTmmMovement(entity, movement)).toBe(10);
   });
 
@@ -70,6 +72,22 @@ describe('Alpha Strike movement', () => {
 
     entity.motiveType.set('Wheel');
     expect(movementCode(entity)).toBe('qw');
+  });
+
+  it('uses BattleMek ground movement without a motive suffix', () => {
+    const entity = new BipedMekEntity();
+    entity.originalWalkMP.set(5);
+
+    expect(alphaStrikeMovement(entity)).toEqual({ values: { '': 10 }, primary: '' });
+  });
+
+  it('selects ordinary vehicle movement codes', () => {
+    const entity = new TankEntity();
+    entity.motiveType.set('Tracked');
+    expect(movementCode(entity)).toBe('t');
+
+    entity.motiveType.set('Wheeled');
+    expect(movementCode(entity)).toBe('w');
   });
 
   it('converts every TMM boundary', () => {

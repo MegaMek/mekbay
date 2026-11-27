@@ -1,316 +1,265 @@
 // Copyright (C) 2026 The MegaMek Team
 // SPDX-License-Identifier: GPL-3.0-or-later
-// Author: Drake
 
-import { CBTPrintUtil, type CBTPrintServices } from './cbtprint.util';
-import { CBTForceUnit } from '../models/cbt-force-unit.model';
+import { TestAeroSpaceFighterEntity, TestBattleArmorEntity, TestBipedMekEntity, TestInfantryEntity, TestProtoMekEntity, TestTankEntity } from '../models/entity/testing/test-entities';
+import { createTestEquipmentRegistry } from '../models/entity/testing/test-equipment-registry';
+import { addTestEquipment } from '../models/entity/testing/test-mounted-equipment';
 import { WeaponEquipment } from '../models/equipment.model';
-import { createEmptyUnit } from '../testing/unit-test-helpers';
-import { INVENTORY_CONTROL_MODE_STATE } from './inventory-control.util';
-import { waitForPrintImages } from './print-overlay.util';
+import { componentIdForMount } from '../models/runtime/unit-runtime-index';
+import { renderRecordSheetCrewName } from '../components/page-viewer/record-sheet-dom';
+import { CBTForce } from '../models/cbt-force.model';
+import { CORE_2026_RULESET, TOTAL_WARFARE_RULESET } from '../models/cbt-ruleset.model';
+import { CBTForceMember } from '../models/force-member.model';
+import type { PrintAllOptions } from '../models/print-options.model';
+import { projectNonMekRecordSheet } from '../models/runtime/non-mek-record-sheet';
+import { createNonMekRuntimeForTest } from '../models/runtime/testing/unit-runtime-owner-fixture';
+import { createDirectMekRuntimeFixture } from '../models/runtime/testing/direct-mek-runtime-fixture';
+import { isCBTNonMekUnit, type CBTUnit } from '../models/runtime/cbt-unit';
+import { asUnitUuid } from '../services/unit-catalog/unit-catalog.types';
+import type { RecordSheetSourceService } from '../services/record-sheet-source.service';
+import { CBTPrintUtil } from './cbtprint.util';
+import { RecordSheetSvgGenerator } from './sheets/record-sheet-svg-generator';
+import { recordSheetLayoutProfile } from './sheets/layouts/record-sheet-layout-resolver';
+import { recordSheetPageProfile } from './sheets/record-sheet-layout';
 
-describe('CBTPrintUtil', () => {
-    for (const failRefresh of [false, true]) {
-        it(failRefresh
-            ? 'removes the measurement container and destroys the print unit if layout refresh fails'
-            : 'measures the print sheet during deferred repaint and final refresh before detaching it', async () => {
-            const svg = createSheetSvg();
-            const line = document.createElementNS('http://www.w3.org/2000/svg', 'text');
-            line.setAttribute('font-size', '8');
-            line.textContent = 'Ammo: (Arrow IV ADA) 5, (Arrow IV FA) 5';
-            svg.appendChild(line);
-            const measuredWidths: number[] = [];
-            let layoutContainer: Element | undefined;
-            const refreshError = new Error('Layout refresh failed');
-            const printUnit = {
-                load: jasmine.createSpy('load').and.resolveTo(),
-                svg: () => svg,
-                update: jasmine.createSpy('update').and.callFake(() => {
-                    expect(svg.isConnected).toBeTrue();
-                    layoutContainer = svg.parentElement ?? undefined;
-                }),
-                repairAll: jasmine.createSpy('repairAll'),
-                getInventory: () => [],
-                clearInventoryControlSelection: jasmine.createSpy('clearInventoryControlSelection'),
-                turnState: () => ({ update: jasmine.createSpy('updateTurnState') }),
-                syncInventoryControlSelectionSvg: jasmine.createSpy('syncInventoryControlSelectionSvg'),
-                svgService: {
-                    forceRepaint: () => requestAnimationFrame(() => {
-                        measuredWidths.push(line.getComputedTextLength());
-                    }),
-                    refreshLayoutDependentDisplays: jasmine.createSpy('refreshLayoutDependentDisplays').and.callFake(() => {
-                        measuredWidths.push(line.getComputedTextLength());
-                        if (failRefresh) throw refreshError;
-                    }),
-                },
-                destroy: jasmine.createSpy('destroy'),
-            };
-            const sourceUnit = { serialize: () => ({}), force: {} } as unknown as CBTForceUnit;
-            spyOn(CBTForceUnit, 'deserialize').and.returnValue(printUnit as unknown as CBTForceUnit);
+describe('bulk record sheet pagination and printing', () => {
+    afterEach(() => window.dispatchEvent(new Event('afterprint')));
 
-            const result = createPrintUnit(sourceUnit, {} as CBTPrintServices, true);
-            if (failRefresh) {
-                await expectAsync(result).toBeRejectedWith(refreshError);
-                expect(printUnit.destroy).toHaveBeenCalledTimes(1);
-            } else {
-                expect(await result).toBe(printUnit as unknown as CBTForceUnit);
-                expect(printUnit.destroy).not.toHaveBeenCalled();
-            }
-
-            expect(measuredWidths).toHaveSize(2);
-            measuredWidths.forEach(width => expect(width).toBeGreaterThan(0));
-            expect(printUnit.svgService.refreshLayoutDependentDisplays).toHaveBeenCalledTimes(1);
-            expect(layoutContainer).toBeDefined();
-            expect(layoutContainer?.isConnected).toBeFalse();
-            expect(svg.isConnected).toBeFalse();
-            expect(svg.parentElement).toBeNull();
-        });
+    for (const printPilotData of [true, false]) {
+        for (const name of ['', 'Morgan']) {
+            it(`shows only missing-field blanks with pilot data ${printPilotData} and name "${name}"`, async () => {
+                const svg = await RecordSheetSvgGenerator.generate(new TestBipedMekEntity(), { ruleset: 'total-warfare' });
+                renderRecordSheetCrewName(svg, 0, name);
+                document.body.appendChild(svg);
+                try {
+                    const skills = [...svg.querySelectorAll('.skillValue')];
+                    const blanks = [...svg.querySelectorAll('.skillBlank')];
+                    expect(skills.length).toBe(2);
+                    expect(blanks.length).toBe(2);
+                    for (const blank of blanks) expect(getComputedStyle(blank).display).toBe('none');
+                    (CBTPrintUtil as unknown as { applyPilotDataPrintOption: (svg: SVGSVGElement, show: boolean) => void })
+                        .applyPilotDataPrintOption(svg, printPilotData);
+                    svg.classList.add('print-preview');
+                    for (const skill of skills) expect(getComputedStyle(skill).display === 'none').toBe(!printPilotData);
+                    for (const blank of blanks) expect(getComputedStyle(blank).display === 'none').toBe(printPilotData);
+                    const showName = printPilotData && name.length > 0;
+                    expect(getComputedStyle(svg.getElementById('pilotName0')!).visibility)
+                        .toBe(showName ? 'visible' : 'hidden');
+                    expect(getComputedStyle(svg.getElementById('blankCrewName0')!).visibility)
+                        .toBe(showName ? 'hidden' : 'visible');
+                } finally {
+                    svg.remove();
+                }
+            });
+        }
     }
 
-    it('keeps the injected HTML fluff image visible when it loads successfully', async () => {
-        const svg = createSheetSvg();
-        const foreignObject = document.createElementNS('http://www.w3.org/2000/svg', 'foreignObject');
-        foreignObject.setAttribute('id', 'fluff-image-fo');
-        foreignObject.style.display = 'block';
-
-        const image = document.createElementNS('http://www.w3.org/1999/xhtml', 'img') as HTMLImageElement;
-        image.setAttribute('id', 'fluff-image-injected');
-        image.setAttribute('src', 'https://example.invalid/fluff.png');
-        foreignObject.appendChild(image);
-        svg.appendChild(foreignObject);
-
-        const wait = waitForSvgImagesToLoad(svg);
-        image.dispatchEvent(new Event('load'));
-
-        await wait;
-
-        expect(foreignObject.style.display).toBe('block');
-        expect(getReferenceTable(svg).style.display).toBe('none');
+    it('retains generated per-trooper battle value when printing without pilot data', async () => {
+        const entity = new TestBattleArmorEntity();
+        entity.setArmorValue('Squad', 'front', 6);
+        const svg = await RecordSheetSvgGenerator.generate(entity, { ruleset: 'total-warfare', pageFormat: 'letter' });
+        const bv = svg.getElementById('bv')!;
+        const suffix = bv.getAttribute('data-mekbay-bv-suffix');
+        expect(suffix).toMatch(/^\/\d+$/);
+        (CBTPrintUtil as unknown as { applyPilotDataPrintOption: (svg: SVGSVGElement, show: boolean, bv: number) => void })
+            .applyPilotDataPrintOption(svg, false, 123);
+        expect(bv.textContent).toBe(`123${suffix}`);
     });
 
-    it('restores reference tables when the injected HTML fluff image fails to load', async () => {
-        const svg = createSheetSvg();
-        const foreignObject = document.createElementNS('http://www.w3.org/2000/svg', 'foreignObject');
-        foreignObject.setAttribute('id', 'fluff-image-fo');
-        foreignObject.style.display = 'block';
+    for (const ruleset of [CORE_2026_RULESET, TOTAL_WARFARE_RULESET]) {
+        for (const family of ['Mek', 'Tank'] as const) {
+            it(`reprojects clean ${family} movement, crew and BV without changing live ${ruleset} damage`, async () => {
+                let runtime: CBTUnit;
+                if (family === 'Mek') {
+                    runtime = createDirectMekRuntimeFixture(ruleset).instance;
+                } else {
+                    const tank = new TestTankEntity();
+                    tank.uuid.set(asUnitUuid('019f6767-0dcb-7bb8-992f-aef08202f5e1'));
+                    tank.setTonnage(50);
+                    tank.originalWalkMP.set(4);
+                    runtime = createNonMekRuntimeForTest('clean-print-unit', {
+                        entity: tank.uuid(), ruleset,
+                        initialStateProfile: { profileId: 'pristine-non-mek' },
+                    }, tank, ruleset);
+                }
+                const entity = runtime.getUnit();
+                const crewPosition = runtime.getCrewAssignment().positions[0];
+                // Exercise the production force projections with a real bound runtime.
+                const force: CBTForce = Object.assign(Object.create(CBTForce.prototype), {
+                    unitStore: { mekUnit: () => runtime, nonMekUnit: () => runtime },
+                    memberRegistry: { member: () => null },
+                    getEquipmentPanelSnapshot: () => null,
+                    getUnitSnapshot: () => ({
+                        entity, ruleset, index: runtime.getIndex(), state: runtime.snapshot(), query: runtime.query(),
+                        editContext: { owner: runtime, state: runtime.snapshot() },
+                    }),
+                    currentHeatPolicy: () => 'manual',
+                    currentEndTurnCalculatesHeat: () => false,
+                    currentTurnTracked: () => false,
+                    optionalRules: () => ({}),
+                    queryInventoryControlTargetRegistry: () => ({ revision: 0, targets: [] }),
+                    getUnitCurrentBaseBattleValue: () => 300,
+                    getUnitAdjustedBattleValue: () => 350,
+                    getUnitPristineBattleValue: () => 1000,
+                    getUnitPristineAdjustedBattleValue: () => 1200,
+                    getUnitCrewAssignment: () => runtime.getCrewAssignment(),
+                });
+                const member = new CBTForceMember(runtime.instanceId, force, entity);
+                const source = jasmine.createSpyObj<RecordSheetSourceService>('recordSheets', ['load', 'applyUnitName']);
+                source.load.and.callFake(async (loadedEntity, options) => ({
+                    svgs: await RecordSheetSvgGenerator.generatePages(loadedEntity, { ...options, ruleset }),
+                }));
+                const prepare = (clean: boolean) => (CBTPrintUtil as unknown as {
+                    createPrintSheets: (member: CBTForceMember, clean: boolean, paper: 'letter', source: RecordSheetSourceService)
+                        => Promise<readonly { svg: SVGSVGElement }[]>;
+                }).createPrintSheets(member, clean, 'letter', source);
+                const pristineSheet = (await prepare(true))[0].svg;
+                const pristineWalk = pristineSheet.getElementById('mpWalk')!.textContent;
+                expect(Number(pristineWalk)).toBeGreaterThan(0);
 
-        const image = document.createElementNS('http://www.w3.org/1999/xhtml', 'img') as HTMLImageElement;
-        image.setAttribute('id', 'fluff-image-injected');
-        image.setAttribute('src', 'https://example.invalid/fluff.png');
-        foreignObject.appendChild(image);
-        svg.appendChild(foreignObject);
+                if (family === 'Mek') {
+                    expect(runtime.dispatch({ type: 'set-heat', heat: 15 }).accepted).toBeTrue();
+                } else if (isCBTNonMekUnit(runtime)) {
+                    const track = [...runtime.getIndex().damageTracks.values()].find(row => row.system === 'engine')!;
+                    expect(runtime.dispatch({ type: 'damage-track', damageTrackId: track.id,
+                        amount: 1, target: 'committed', timestamp: 1 }).accepted).toBeTrue();
+                }
+                expect(runtime.dispatch({ type: 'set-crew-state', positionId: crewPosition.positionId,
+                    wounds: 2, unconscious: true, ejected: false }).accepted).toBeTrue();
+                const damagedState = runtime.snapshot();
+                const damagedSheet = (await prepare(false))[0].svg;
+                const cleanSheet = (await prepare(true))[0].svg;
 
-        const wait = waitForSvgImagesToLoad(svg);
-        image.dispatchEvent(new Event('error'));
+                expect(damagedSheet.getElementById('mpWalk')!.textContent).not.toBe(pristineWalk);
+                expect(cleanSheet.getElementById('mpWalk')!.textContent).toBe(pristineWalk);
+                expect(cleanSheet.getElementById('mpRun')!.textContent)
+                    .toBe(pristineSheet.getElementById('mpRun')!.textContent);
+                expect(cleanSheet.getElementById('bv')!.textContent).toBe('1,200 (1,000)');
+                const cleanProjection = family === 'Mek'
+                    ? force.getMekRecordSheetSnapshot(runtime.instanceId, true)!
+                    : force.getNonMekRecordSheetSnapshot(runtime.instanceId, true)!;
+                expect(cleanProjection.crew[0].state.wounds).toBe(0);
+                expect(cleanProjection.crew[0].effectiveState).toBe('healthy');
+                expect(cleanProjection.crew[0].gunnery).toBe(crewPosition.gunnery);
+                expect(cleanProjection.editContext.state).not.toBe(damagedState);
+                expect(runtime.snapshot()).toBe(damagedState);
+                (CBTPrintUtil as unknown as { applyPilotDataPrintOption: (svg: SVGSVGElement, show: boolean, bv: number) => void })
+                    .applyPilotDataPrintOption(cleanSheet, false, 1000);
+                expect(cleanSheet.getElementById('bv')!.textContent).toBe('1,000');
+            });
+        }
+    }
 
-        await wait;
-
-        expect(foreignObject.style.display).toBe('none');
-        expect(getReferenceTable(svg).style.display).toBe('block');
-    });
-
-    it('restores reference tables when an injected SVG fluff image fails to load', async () => {
-        const svg = createSheetSvg();
-        const image = document.createElementNS('http://www.w3.org/2000/svg', 'image');
-        image.setAttribute('id', 'fluff-image-injected');
-        image.setAttribute('href', 'https://example.invalid/fluff.png');
-        image.style.display = 'block';
-        svg.appendChild(image);
-
-        const wait = waitForSvgImagesToLoad(svg);
-        image.dispatchEvent(new Event('error'));
-
-        await wait;
-
-        expect(image.style.display).toBe('none');
-        expect(getReferenceTable(svg).style.display).toBe('block');
-    });
-
-    it('resets persisted inventory modes to sheet defaults before printing', () => {
-        const entryEl = createInventoryEntryWithModes();
-        const entry = {
-            id: 'weapon',
-            states: new Map([[INVENTORY_CONTROL_MODE_STATE, 'Pulse']]),
-            el: entryEl,
-            owner: { getUnit: () => createEmptyUnit() },
-            equipment: new WeaponEquipment({
-                id: 'ATM6',
-                name: 'ATM 6',
-                type: 'weapon',
-                weapon: { ammoType: 'ATM', rackSize: 6 }
+    it('prints a grouped inventory in its current state, damaged weapons on a row of their own', async () => {
+        const laser = new WeaponEquipment({ id: 'ISMediumLaser', name: 'Medium Laser', type: 'weapon',
+            weapon: { heat: 3, damage: 5, ranges: [3, 6, 9] } });
+        const entity = new TestTankEntity(createTestEquipmentRegistry({ [laser.id]: laser }));
+        entity.uuid.set(asUnitUuid('019f6767-0dcb-7bb8-992f-aef08202f5e1'));
+        entity.setTonnage(50);
+        const ids = [0, 1, 2].map(() => componentIdForMount(addTestEquipment(entity, laser, { location: entity.locationOrder[0] })));
+        const runtime = createNonMekRuntimeForTest('grouped-print-unit', {
+            entity: entity.uuid(), ruleset: CORE_2026_RULESET,
+            initialStateProfile: { profileId: 'pristine-non-mek' },
+        }, entity, CORE_2026_RULESET);
+        expect(runtime.dispatch({ type: 'set-component-status', componentId: ids[2], status: 'destroyed', target: 'committed' })
+            .accepted).toBeTrue();
+        const force = {
+            getEquipmentPanelSnapshot: () => null,
+            getUnitSnapshot: () => ({ entity, ruleset: CORE_2026_RULESET }),
+            getNonMekRecordSheetSnapshot: () => ({
+                ...projectNonMekRecordSheet(entity, runtime.getIndex(), runtime.snapshot(), CORE_2026_RULESET, runtime.query(), 100, 100),
+                editContext: { owner: runtime, state: runtime.snapshot() },
             }),
-            isPhysicalWeapon: () => false,
-            deleteState(name: string): boolean {
-                if (!this.states.has(name)) return false;
-                this.states = new Map(this.states);
-                this.states.delete(name);
-                return true;
-            }
-        };
-        const printUnit = {
-            getInventory: () => [entry],
-            getInventoryControlRules: () => ({}),
-            setInventoryEntry: jasmine.createSpy('setInventoryEntry')
-        };
+        } as unknown as CBTForce;
+        const source = jasmine.createSpyObj<RecordSheetSourceService>('recordSheets', ['load', 'applyUnitName']);
+        source.load.and.callFake(async (loadedEntity, options) => ({
+            svgs: await RecordSheetSvgGenerator.generatePages(loadedEntity, { ...options, ruleset: CORE_2026_RULESET, groupWeapons: true }),
+        }));
 
-        resetInventoryControlModes(printUnit);
+        const sheets = await (CBTPrintUtil as unknown as {
+            createPrintSheets: (member: CBTForceMember, clean: boolean, paper: 'letter', source: RecordSheetSourceService)
+                => Promise<readonly { svg: SVGSVGElement }[]>;
+        }).createPrintSheets(new CBTForceMember('grouped-print-unit', force, entity), false, 'letter', source);
 
-        expect(entry.states.has(INVENTORY_CONTROL_MODE_STATE)).toBeFalse();
-        expect(printUnit.setInventoryEntry).toHaveBeenCalledWith(entry);
-        expect(entryEl.querySelector(':scope > .alternativeMode.selected')?.getAttribute('mode')).toBe('Standard');
+        const lasers = [...sheets[0].svg.querySelectorAll('.inventoryEntry')]
+            .filter(row => row.querySelector(':scope > .name')?.textContent === 'Medium Laser');
+        expect(lasers.map(row => [row.querySelector(':scope > .quantity')?.textContent, row.classList.contains('damaged')]))
+            .toEqual([['2', false], ['1', true]]);
     });
 
-    it('prints default skills and a pilot name when pilot data is enabled', () => {
-        const svg = createPilotDataSvg();
-        const skillValue = svg.getElementById('gunnerySkill0')!;
-        const skillBlank = svg.getElementById('blankGunnerySkill0')!;
-        const pilotName = svg.getElementById('pilotName0') as SVGElement;
-        const nameBlank = svg.getElementById('blankCrewName0') as SVGElement;
+    for (const format of ['letter', 'a4'] as const) {
+        for (const Factory of [TestAeroSpaceFighterEntity, TestTankEntity]) {
+            it(`generates and prints ${Factory.name} using ${format} for both SVG geometry and @page`, async () => {
+                const entity = new Factory();
+                entity.uuid.set(asUnitUuid('019f6767-0dcb-7bb8-992f-aef08202f5e1'));
+                const runtime = createNonMekRuntimeForTest('print-unit', {
+                    entity: entity.uuid(), ruleset: CORE_2026_RULESET,
+                    initialStateProfile: { profileId: 'pristine-non-mek' },
+                }, entity, CORE_2026_RULESET);
+                const force = {
+                    getEquipmentPanelSnapshot: () => null,
+                    getUnitSnapshot: () => ({ entity, ruleset: CORE_2026_RULESET }),
+                    getNonMekRecordSheetSnapshot: () => ({
+                        ...projectNonMekRecordSheet(entity, runtime.getIndex(), runtime.snapshot(),
+                            CORE_2026_RULESET,
+                            runtime.query(), 100, 100),
+                        editContext: { owner: runtime, state: runtime.snapshot() },
+                    }),
+                } as unknown as CBTForce;
+                const member = new CBTForceMember('print-unit', force, entity);
+                const source = jasmine.createSpyObj<RecordSheetSourceService>('recordSheets', ['load', 'applyUnitName']);
+                source.load.and.callFake(async (loadedEntity, options) => ({
+                    svgs: [await RecordSheetSvgGenerator.generate(loadedEntity, { ruleset: 'total-warfare', ...options })],
+                }));
+                const options: PrintAllOptions = {
+                    paperSize: format, clean: false, printPilotData: true, printMargin: 'none',
+                    recordSheetCenterPanelContent: 'clusterTable', ASPrintCardSize: 'standard', ASPrintPageBreakOnGroups: true,
+                };
+                const print = spyOn(window, 'print').and.stub();
 
-        skillValue.classList.add('screen-only');
-        skillBlank.classList.add('print-show');
-        pilotName.style.visibility = 'visible';
-        nameBlank.style.visibility = 'hidden';
+                await CBTPrintUtil.multipagePrint([member], options, source);
 
-        applyPilotDataPrintOption(svg, true);
+                const profile = recordSheetLayoutProfile(entity, format);
+                expect(source.load).toHaveBeenCalledOnceWith(entity, {
+                    format: profile.compact ? 'compact' : format, pageFormat: format, ruleset: CORE_2026_RULESET,
+                });
+                const overlay = document.getElementById('record-sheet-print-container')!;
+                const pages = overlay.querySelectorAll(':scope > .record-sheet-print-page > svg');
+                const page = recordSheetPageProfile(format);
+                expect(pages.length).toBe(1);
+                expect(pages[0].getAttribute('viewBox')).toBe(`0 0 ${page.width} ${page.height}`);
+                expect(overlay.querySelector(':scope > style')!.textContent)
+                    .toContain(`size: ${format === 'a4' ? 'A4' : 'Letter'} portrait`);
+                expect(print).toHaveBeenCalledOnceWith();
+            });
+        }
 
-        expect(skillValue.classList).not.toContain('screen-only');
-        expect(skillBlank.classList).not.toContain('print-show');
-        expect(pilotName.style.visibility).toBe('visible');
-        expect(nameBlank.style.visibility).toBe('hidden');
-    });
-
-    it('hides skills and pilot names but shows writing lines when pilot data is disabled', () => {
-        const svg = createPilotDataSvg();
-        const skillValue = svg.getElementById('gunnerySkill0')!;
-        const skillBlank = svg.getElementById('blankGunnerySkill0')!;
-        const pilotName = svg.getElementById('pilotName0') as SVGElement;
-        const nameBlank = svg.getElementById('blankCrewName0') as SVGElement;
-
-        pilotName.style.visibility = 'visible';
-        nameBlank.style.visibility = 'hidden';
-
-        applyPilotDataPrintOption(svg, false, 1000);
-
-        expect(skillValue.classList).toContain('screen-only');
-        expect(skillBlank.classList).toContain('print-show');
-        expect(pilotName.style.visibility).toBe('hidden');
-        expect(nameBlank.style.visibility).toBe('visible');
-        expect(svg.getElementById('bv')?.textContent).toBe('1000');
-    });
-
-    it('keeps the skill-adjusted sheet BV when pilot data is enabled', () => {
-        const svg = createPilotDataSvg();
-
-        applyPilotDataPrintOption(svg, true, 1000);
-
-        expect(svg.getElementById('bv')?.textContent).toBe('1500 (1000)');
-    });
-
-    it('builds a sheets-only print container', async () => {
-        await generateMultipagePrintContainer(
-            ['<svg xmlns="http://www.w3.org/2000/svg"></svg>'],
-            'none',
-            false,
-        );
-
-        const overlay = document.getElementById('multipage-container')!;
-        expect(overlay.querySelectorAll('.svg-container')).toHaveSize(1);
-        expect(overlay.querySelector('.cbt-roster-summary')).toBeNull();
-
-        window.dispatchEvent(new Event('click'));
-    });
-
-    it('adds px only to unitless SVG font sizes', () => {
-        expect(normalizeFontSizeUnits('font-size: 12; font-size: 14px; font-size: 75%'))
-            .toBe('font-size: 12px; font-size: 14px; font-size: 75%');
-        expect(normalizeFontSizeUnits('font-size: 10.5'))
-            .toBe('font-size: 10.5px');
-    });
+        for (const [Factory, capacity] of [[TestBattleArmorEntity, 5], [TestInfantryEntity, 4], [TestProtoMekEntity, 5], [TestTankEntity, 2]] as const) {
+            it(`prints ${capacity} ${Factory.name} units together on ${format}`, async () => {
+                const entity = new Factory();
+                if (entity instanceof TestInfantryEntity) entity.squadSize.set(7);
+                const svg = await RecordSheetSvgGenerator.generate(entity, { ruleset: 'total-warfare', format: 'compact', pageFormat: format });
+                const profile = recordSheetLayoutProfile(entity, format);
+                // Isolate runtime binding while exercising the bulk print planner, compositor, and print overlay.
+                spyOn(CBTPrintUtil as unknown as { createPrintSheets: () => Promise<unknown[]> }, 'createPrintSheets').and.callFake(async () => [{
+                    ...profile, svg: svg.cloneNode(true), pristineBattleValue: 0,
+                }]);
+                const options = { paperSize: format, clean: true, printPilotData: true, printMargin: 'none',
+                    recordSheetCenterPanelContent: 'clusterTable' } as PrintAllOptions;
+                await CBTPrintUtil.multipagePrint(Array.from({ length: capacity + 1 }, () => ({} as CBTForceMember)),
+                    options, {} as RecordSheetSourceService, false);
+                const overlay = document.getElementById('record-sheet-print-container')!;
+                const pages = [...overlay.querySelectorAll('svg')];
+                expect(pages.map(page => page.querySelectorAll('.compact-sheet-block').length)).toEqual([capacity, 1]);
+                if (Factory === TestBattleArmorEntity || Factory === TestInfantryEntity) {
+                    expect(pages[0].querySelector('[data-mekbay-reference="cluster-hits"]')).toBeNull();
+                    expect(pages[1].querySelector('[data-mekbay-reference="cluster-hits"]')).not.toBeNull();
+                }
+                expect(pages[0].getAttribute('width')).toBe(String(recordSheetPageProfile(format).width));
+                expect(pages[0].getAttribute('height')).toBe(String(recordSheetPageProfile(format).height));
+                expect(overlay.querySelector(':scope > style')!.textContent).toContain('margin: 0 !important');
+                expect(overlay.querySelector(':scope > style')!.textContent).not.toContain('0.16in');
+            });
+        }
+    }
 });
-
-function createSheetSvg(): SVGSVGElement {
-    const svg = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
-    const referenceTable = document.createElementNS('http://www.w3.org/2000/svg', 'g');
-    referenceTable.classList.add('referenceTable');
-    referenceTable.style.display = 'none';
-    svg.appendChild(referenceTable);
-    return svg;
-}
-
-function createPrintUnit(unit: CBTForceUnit, services: CBTPrintServices, clean: boolean): Promise<CBTForceUnit> {
-    return (CBTPrintUtil as unknown as {
-        createPrintUnit(unit: CBTForceUnit, services: CBTPrintServices, clean: boolean): Promise<CBTForceUnit>;
-    }).createPrintUnit(unit, services, clean);
-}
-
-function getReferenceTable(svg: SVGSVGElement): SVGGraphicsElement {
-    return svg.querySelector('.referenceTable') as SVGGraphicsElement;
-}
-
-function createPilotDataSvg(): SVGSVGElement {
-    return new DOMParser().parseFromString(`
-        <svg xmlns="http://www.w3.org/2000/svg">
-            <text id="gunnerySkill0" class="skillValue">4</text>
-            <path id="blankGunnerySkill0" />
-            <g id="crewNameButton0" textElement="pilotName0" blankElement="blankCrewName0" />
-            <text id="pilotName0">Morgan</text>
-            <path id="blankCrewName0" />
-            <text id="bv">1500 (1000)</text>
-        </svg>
-    `, 'image/svg+xml').documentElement as unknown as SVGSVGElement;
-}
-
-function waitForSvgImagesToLoad(root: ParentNode): Promise<void> {
-    return waitForPrintImages(root, image => fallbackFluffImageToReferenceTables(image));
-}
-
-function fallbackFluffImageToReferenceTables(image: Element): void {
-    (CBTPrintUtil as unknown as {
-        fallbackFluffImageToReferenceTables(image: Element): void;
-    }).fallbackFluffImageToReferenceTables(image);
-}
-
-function createInventoryEntryWithModes(): SVGElement {
-    const parser = new DOMParser();
-    return parser.parseFromString(`
-        <svg xmlns="http://www.w3.org/2000/svg">
-            <g class="inventoryEntry">
-                <g class="alternativeMode" mode="Standard"><g class="name"><text>Standard</text></g><g class="damage"><text>5</text></g></g>
-                <g class="alternativeMode selected" mode="Pulse"><g class="name"><text>Pulse</text></g><g class="damage"><text>5</text></g></g>
-            </g>
-        </svg>
-    `, 'image/svg+xml').querySelector('.inventoryEntry') as SVGElement;
-}
-
-function resetInventoryControlModes(printUnit: unknown): void {
-    return (CBTPrintUtil as unknown as {
-        resetInventoryControlModes(printUnit: unknown): void;
-    }).resetInventoryControlModes(printUnit);
-}
-
-function applyPilotDataPrintOption(svg: SVGSVGElement, printPilotData: boolean, baseBv?: number): void {
-    (CBTPrintUtil as unknown as {
-        applyPilotDataPrintOption(svg: SVGSVGElement, printPilotData: boolean, baseBv?: number): void;
-    }).applyPilotDataPrintOption(svg, printPilotData, baseBv);
-}
-
-function generateMultipagePrintContainer(
-    svgStrings: string[],
-    printMargin: 'none' | 'browserDefined',
-    triggerPrint: boolean,
-): Promise<void> {
-    return (CBTPrintUtil as unknown as {
-        generateMultipagePrintContainer(
-            svgStrings: string[],
-            printMargin: 'none' | 'browserDefined',
-            triggerPrint: boolean,
-        ): Promise<void>;
-    }).generateMultipagePrintContainer(svgStrings, printMargin, triggerPrint);
-}
-
-function normalizeFontSizeUnits(style: string): string {
-    return (CBTPrintUtil as unknown as {
-        normalizeFontSizeUnits(style: string): string;
-    }).normalizeFontSizeUnits(style);
-}

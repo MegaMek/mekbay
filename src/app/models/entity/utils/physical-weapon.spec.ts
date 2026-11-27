@@ -20,7 +20,6 @@ describe('physical weapon utilities', () => {
       expect(isPhysicalWeaponEquipment(misc(['F_CLUB']))).toBeTrue();
       expect(isPhysicalWeaponEquipment(misc(['F_HAND_WEAPON']))).toBeTrue();
       expect(isPhysicalWeaponEquipment(misc(['F_TALON']))).toBeTrue();
-      expect(isPhysicalWeaponEquipment(misc(['F_SHIELD']))).toBeTrue();
     });
 
     it('classifies physical flags independently of equipment subclass', () => {
@@ -36,25 +35,13 @@ describe('physical weapon utilities', () => {
   });
 
   describe('resolvePhysicalWeaponDamage', () => {
-    it('uses shield absorption values instead of the generic club tonnage formula', () => {
-      const cases: readonly [EquipmentFlag[], number, number][] = [
-        [['F_SHIELD', 'S_SHIELD_SMALL'], 1, 3],
-        [['F_SHIELD', 'S_SHIELD_MEDIUM'], 2, 5],
-        [['F_SHIELD', 'S_SHIELD_LARGE'], 3, 7],
-      ];
-
-      for (const [flags, bashBonus, damageAbsorption] of cases) {
-        const equipment = misc(flags);
-        expect(resolveShieldProfile(equipment)).withContext(flags.join(', ')).toEqual(jasmine.objectContaining({
-          bashBonus,
-          damageAbsorption,
-        }));
-        expect(resolvePhysicalWeaponDamage(equipment, 75)).withContext(flags.join(', '))
-          .toEqual({ kind: 'fixed', value: damageAbsorption });
-      }
-
-      expect(resolvePhysicalWeaponDamage(misc(['F_SHIELD']), 75))
-        .toEqual({ kind: 'fixed', value: 0 });
+    it('uses the shield absorption track as static TW attack damage', () => {
+      expect(resolvePhysicalWeaponDamage(misc(['F_SHIELD', 'S_SHIELD_SMALL']), 55))
+        .toEqual({ kind: 'fixed', value: 3 });
+      expect(resolvePhysicalWeaponDamage(misc(['F_SHIELD', 'S_SHIELD_MEDIUM']), 55))
+        .toEqual({ kind: 'fixed', value: 5 });
+      expect(resolvePhysicalWeaponDamage(misc(['F_SHIELD', 'S_SHIELD_LARGE']), 55))
+        .toEqual({ kind: 'fixed', value: 7 });
     });
 
     it('resolves fixed subtype damage formulas', () => {
@@ -91,6 +78,19 @@ describe('physical weapon utilities', () => {
       expect(resolvePhysicalWeaponDamage(misc(['F_TALON']), 55)).toEqual({ kind: 'fixed', value: 17 });
       expect(resolvePhysicalWeaponDamage(misc(['F_CLUB', 'S_HATCHET']), 4)).toEqual({ kind: 'fixed', value: 0 });
       expect(resolvePhysicalWeaponDamage(misc(['F_CLUB', 'S_HATCHET']), 5)).toEqual({ kind: 'fixed', value: 1 });
+    });
+  });
+
+  describe('resolveShieldProfile', () => {
+    it('resolves all three shield sizes from equipment flags', () => {
+      expect(resolveShieldProfile(misc(['F_SHIELD', 'S_SHIELD_SMALL'])))
+        .toEqual({ bashBonus: 1, damageAbsorption: 3, damageCapacity: 11 });
+      expect(resolveShieldProfile(misc(['F_SHIELD', 'S_SHIELD_MEDIUM'])))
+        .toEqual({ bashBonus: 2, damageAbsorption: 5, damageCapacity: 18 });
+      expect(resolveShieldProfile(misc(['F_SHIELD', 'S_SHIELD_LARGE'])))
+        .toEqual({ bashBonus: 3, damageAbsorption: 7, damageCapacity: 25 });
+      expect(resolveShieldProfile(misc(['F_CLUB']))).toBeUndefined();
+      expect(resolveShieldProfile()).toBeUndefined();
     });
   });
 });

@@ -3,9 +3,9 @@
 // Author: Drake
 
 import { ChangeDetectionStrategy, Component, computed, inject, signal } from '@angular/core';
-import { CommonModule } from '@angular/common';
 import { DialogRef, DIALOG_DATA } from '@angular/cdk/dialog';
 import { GameSystem } from '../../models/common.model';
+import type { RecordSheetGroupWeapons } from '../../models/options.model';
 import type { PrintAllOptions } from '../../models/print-options.model';
 import { OptionsService } from '../../services/options.service';
 
@@ -13,13 +13,12 @@ import { OptionsService } from '../../services/options.service';
 export interface PrintOptionsDialogData {
     gameSystem: GameSystem;
     printSummary: (printOptions: PrintAllOptions) => Promise<void>;
+    printUnits: (printOptions: PrintAllOptions) => Promise<void>;
 }
 
 @Component({
     selector: 'print-options-dialog',
-    standalone: true,
     changeDetection: ChangeDetectionStrategy.OnPush,
-    imports: [CommonModule],
     host: {
         class: 'fullscreen-dialog-host glass'
     },
@@ -27,7 +26,7 @@ export interface PrintOptionsDialogData {
     <div class="wide-dialog print-dialog">
         <h2 class="wide-dialog-title">Print Options</h2>
         <div class="wide-dialog-body">
-            <p class="message">These settings only apply to this print job.</p>
+            <p class="message">Changes are saved. Paper size, center panel and weapon grouping also apply to the record sheets.</p>
 
             <div class="option-grid">
                 <div class="option-col">
@@ -41,7 +40,22 @@ export interface PrintOptionsDialogData {
                     </div>
                 </div>
 
-                @if (isClassic()) {
+                <div class="option-col">
+                    <div class="option-row">
+                        <label for="printPaperSize">Paper size:</label>
+                        <select id="printPaperSize" class="bt-select option-select"
+                            [value]="printOptions().paperSize"
+                            (change)="onPaperSizeChange($event)">
+                            <option value="letter">Letter</option>
+                            <option value="a4">A4</option>
+                        </select>
+                    </div>
+                    <div class="description">
+                        <p>For printer output, also select the matching paper size in the browser's print dialog.</p>
+                    </div>
+                </div>
+
+                @if (isCBT()) {
                 <div class="option-col">
                     <div class="option-row">
                         <label for="printPilotData">Pilot data:</label>
@@ -63,6 +77,22 @@ export interface PrintOptionsDialogData {
                             <option value="clusterTable">Hit location and cluster table</option>
                             <option value="fluffImage">Artwork</option>
                         </select>
+                    </div>
+                </div>
+
+                <div class="option-col">
+                    <div class="option-row">
+                        <label for="recordSheetGroupWeapons">Group identical weapons:</label>
+                        <select id="recordSheetGroupWeapons" class="bt-select option-select"
+                            [value]="groupWeapons()"
+                            (change)="onGroupWeaponsChange($event)">
+                            <option value="disabled">Disabled</option>
+                            <option value="previews">Only previews</option>
+                            <option value="enabled">Enabled</option>
+                        </select>
+                    </div>
+                    <div class="description">
+                        <p>Count identical weapons on one inventory row instead of printing a row each. Only previews prints a row each.</p>
                     </div>
                 </div>
                 }
@@ -102,16 +132,20 @@ export interface PrintOptionsDialogData {
                         <select id="printMargin" class="bt-select option-select"
                             [value]="printOptions().printMargin"
                             (change)="onPrintMarginChange($event)">
-                            <option value="none">None</option>
+                            <option value="none">None (recommended)</option>
                             <option value="browserDefined">Handled by browser</option>
                         </select>
+                    </div>
+                    <div class="description">
+                        <p>None is recommended for record sheets. Summaries and unit tiles always include a small page margin. If headers and footers appear, turn them off in the browser's print dialog.</p>
                     </div>
                 </div>
             </div>
         </div>
         <div class="wide-dialog-actions">
-            <button class="bt-button primary" [disabled]="isPrinting()" (click)="onPrint()">{{ isClassic() ? 'SHEETS' : 'CARDS' }}</button>
+            <button class="bt-button primary" [disabled]="isPrinting()" (click)="onPrint()">{{ isCBT() ? 'SHEETS' : 'CARDS' }}</button>
             <button class="bt-button" [disabled]="isPrinting()" (click)="onPrintSummary()">SUMMARY</button>
+            <button class="bt-button" [disabled]="isPrinting()" (click)="onPrintUnits()">UNITS</button>
             <button class="bt-button" [disabled]="isPrinting()" (click)="onClose()">DISMISS</button>
         </div>
     </div>
@@ -194,32 +228,40 @@ export class PrintOptionsDialogComponent {
     private data = inject<PrintOptionsDialogData>(DIALOG_DATA);
     private optionsService = inject(OptionsService);
 
-    protected readonly printOptions = signal<PrintAllOptions>({
-        ...this.optionsService.options().printAllOptions,
-    });
+    protected readonly printOptions = computed(() => this.optionsService.options().printAllOptions);
+    protected readonly groupWeapons = computed(() => this.optionsService.options().recordSheetGroupWeapons);
     protected readonly isPrinting = signal(false);
 
-    protected readonly isClassic = computed(() => this.data.gameSystem === GameSystem.CLASSIC);
-    protected readonly isAlphaStrike = computed(() => this.data.gameSystem === GameSystem.ALPHA_STRIKE);
+    protected readonly isCBT = computed(() => this.data.gameSystem === GameSystem.CBT);
+    protected readonly isAlphaStrike = computed(() => this.data.gameSystem === GameSystem.AS);
 
     protected onBooleanChange(key: 'clean' | 'printPilotData' | 'ASPrintPageBreakOnGroups', event: Event): void {
         const value = (event.target as HTMLSelectElement).value === 'true';
-        this.printOptions.update(current => ({ ...current, [key]: value }));
+        void this.optionsService.setPrintOption(key, value);
+    }
+
+    protected onGroupWeaponsChange(event: Event): void {
+        void this.optionsService.setOption('recordSheetGroupWeapons', (event.target as HTMLSelectElement).value as RecordSheetGroupWeapons);
     }
 
     protected onCenterPanelChange(event: Event): void {
         const value = (event.target as HTMLSelectElement).value as PrintAllOptions['recordSheetCenterPanelContent'];
-        this.printOptions.update(current => ({ ...current, recordSheetCenterPanelContent: value }));
+        void this.optionsService.setPrintOption('recordSheetCenterPanelContent', value);
+    }
+
+    protected onPaperSizeChange(event: Event): void {
+        const value = (event.target as HTMLSelectElement).value as PrintAllOptions['paperSize'];
+        void this.optionsService.setPrintOption('paperSize', value);
     }
 
     protected onASPrintCardSizeChange(event: Event): void {
         const value = (event.target as HTMLSelectElement).value as PrintAllOptions['ASPrintCardSize'];
-        this.printOptions.update(current => ({ ...current, ASPrintCardSize: value }));
+        void this.optionsService.setPrintOption('ASPrintCardSize', value);
     }
 
     protected onPrintMarginChange(event: Event): void {
         const value = (event.target as HTMLSelectElement).value as PrintAllOptions['printMargin'];
-        this.printOptions.update(current => ({ ...current, printMargin: value }));
+        void this.optionsService.setPrintOption('printMargin', value);
     }
 
     protected onClose(): void {
@@ -235,20 +277,17 @@ export class PrintOptionsDialogComponent {
         await this.runPrint(printOptions => this.data.printSummary(printOptions));
     }
 
+    protected async onPrintUnits(): Promise<void> {
+        await this.runPrint(printOptions => this.data.printUnits(printOptions));
+    }
+
     private async runPrint(action: (printOptions: PrintAllOptions) => void | Promise<void>): Promise<void> {
         if (this.isPrinting()) return;
         this.isPrinting.set(true);
         try {
-            const printOptions = await this.savePrintOptions();
-            await action(printOptions);
+            await action(this.printOptions());
         } finally {
             this.isPrinting.set(false);
         }
-    }
-
-    private async savePrintOptions(): Promise<PrintAllOptions> {
-        const printOptions = this.printOptions();
-        await this.optionsService.setOption('printAllOptions', printOptions);
-        return printOptions;
     }
 }

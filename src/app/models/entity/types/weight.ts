@@ -80,15 +80,6 @@ export const VEHICLE_WEIGHT_LIMITS = {
   fallback: 'Super Heavy',
 } as const satisfies WeightClassTable;
 
-export const GUN_EMPLACEMENT_WEIGHT_LIMITS = {
-  bands: [
-    { maxInclusive: 15, weightClass: 'Light' },
-    { maxInclusive: 40, weightClass: 'Medium' },
-    { maxInclusive: 90, weightClass: 'Heavy' },
-  ],
-  fallback: 'Assault',
-} as const satisfies WeightClassTable;
-
 export const ASF_WEIGHT_LIMITS = {
   bands: [
     { maxInclusive: 45, weightClass: 'Light' },

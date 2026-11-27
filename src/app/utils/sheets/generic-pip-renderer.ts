@@ -1,0 +1,461 @@
+import type { PipPoint, PipRenderOptions, PipShapeSpan } from './pip-renderer.types';
+import { PipRendererShared } from './pip-renderer.shared';
+import type { PipShapeProfile } from './pip-shape-profile';
+
+interface GenericPipLayout {
+    readonly points: readonly PipPoint[];
+    readonly maximumRadius: number;
+    readonly rowCount: number;
+}
+
+interface GenericLayoutCandidate {
+    readonly rowCount: number;
+    readonly maximumRadiusUpperBound: number;
+}
+
+export class GenericPipRenderer {
+
+    public static createPips(
+        count: number,
+        containerWidth: number,
+        containerHeight: number,
+        options: PipRenderOptions = {},
+        type = 'generic',
+        location = '',
+        shapeProfile?: PipShapeProfile,
+    ): SVGGElement | null {
+        if (!Number.isFinite(count) || count <= 0 || containerWidth <= 0 || containerHeight <= 0) {
+            return null;
+        }
+
+        const pipCount = Math.floor(count);
+        if (pipCount <= 0) {
+            return null;
+        }
+        const strokeWidthRatio = PipRendererShared.getStrokeWidthRatio(options);
+        const requestedRadius = PipRendererShared.getRequestedPipRadius(options);
+        const layout = this.getBestLayout(
+            pipCount,
+            containerWidth,
+            containerHeight,
+            PipRendererShared.getInset(options),
+            PipRendererShared.getPipGap(options),
+            strokeWidthRatio,
+            requestedRadius,
+            shapeProfile?.normalizedSpans ?? [],
+        );
+        if (!layout) {
+            return null;
+        }
+
+        const group = PipRendererShared.createGroup(options, type, location, pipCount, 'generic');
+        const radius = PipRendererShared.getPipRadiusWithinBounds(
+            PipRendererShared.getRequestedPipRadius(options),
+            options,
+            layout.maximumRadius,
+        );
+        const strokeWidth = radius * strokeWidthRatio;
+        for (const point of layout.points) {
+            group.appendChild(PipRendererShared.createPipElement(
+                point,
+                radius,
+                options,
+                strokeWidth,
+            ));
+        }
+        return group;
+    }
+
+    private static getBestLayout(
+        pipCount: number,
+        containerWidth: number,
+        containerHeight: number,
+        inset: number,
+        pipGap: number,
+        strokeWidthRatio: number,
+        requestedRadius: number,
+        rows: readonly PipShapeSpan[],
+    ): GenericPipLayout | null {
+        const availableWidth = containerWidth - inset * 2;
+        const availableHeight = containerHeight - inset * 2;
+        if (availableWidth <= 0 || availableHeight <= 0) {
+            return null;
+        }
+
+        if (rows.length > 0) {
+            const unrestrictedLayout = this.getBestLayout(
+                pipCount,
+                containerWidth,
+                containerHeight,
+                inset,
+                pipGap,
+                strokeWidthRatio,
+                requestedRadius,
+                [],
+            );
+            const placementRadius = Math.min(
+                requestedRadius,
+                unrestrictedLayout?.maximumRadius ?? requestedRadius,
+            );
+            const rowLayout = this.getBestRowLayout(
+                pipCount,
+                containerWidth,
+                containerHeight,
+                inset,
+                pipGap,
+                strokeWidthRatio,
+                placementRadius,
+                rows,
+            );
+            if (rowLayout) {
+                return rowLayout;
+            }
+            return unrestrictedLayout;
+        }
+
+        let bestLayout: GenericPipLayout | null = null;
+        const candidates = Array.from({ length: pipCount }, (_value, index) => {
+            const rowCount = index + 1;
+            return {
+                rowCount,
+                maximumRadiusUpperBound: this.getUnrestrictedRadiusUpperBound(
+                    pipCount,
+                    rowCount,
+                    availableWidth,
+                    availableHeight,
+                    strokeWidthRatio,
+                    pipGap,
+                ),
+            };
+        }).sort((left, right) =>
+            right.maximumRadiusUpperBound - left.maximumRadiusUpperBound
+            || right.rowCount - left.rowCount);
+        for (const candidate of candidates) {
+            if (!this.canImproveLayout(candidate, bestLayout, containerWidth, containerHeight)) {
+                continue;
+            }
+            const rowCount = candidate.rowCount;
+            const rowPipCounts = this.getInterleavedRowCounts(pipCount, rowCount);
+            const maximumRowPipCount = Math.max(...rowPipCounts);
+            const horizontalSpacing = availableWidth / maximumRowPipCount;
+            const verticalSpacing = availableHeight / rowCount;
+            const points: PipPoint[] = [];
+            for (let row = 0; row < rowCount; row++) {
+                const rowPipCount = rowPipCounts[row];
+                const rowWidth = (rowPipCount - 1) * horizontalSpacing;
+                const firstX = inset + (availableWidth - rowWidth) / 2;
+                const y = inset + (row + 0.5) * verticalSpacing;
+                for (let column = 0; column < rowPipCount; column++) {
+                    points.push({
+                        x: firstX + column * horizontalSpacing,
+                        y,
+                    });
+                }
+            }
+
+            const maximumRadius = PipRendererShared.getMaximumRadiusForPoints(
+                points,
+                {
+                    left: 0,
+                    top: 0,
+                    right: containerWidth,
+                    bottom: containerHeight,
+                },
+                strokeWidthRatio,
+                inset,
+                pipGap,
+            );
+            if (!bestLayout
+                || maximumRadius > bestLayout.maximumRadius
+                || maximumRadius === bestLayout.maximumRadius && rowCount > bestLayout.rowCount) {
+                bestLayout = { points, maximumRadius, rowCount };
+            }
+        }
+        return bestLayout;
+    }
+
+    private static getUnrestrictedRadiusUpperBound(
+        pipCount: number,
+        rowCount: number,
+        availableWidth: number,
+        availableHeight: number,
+        strokeWidthRatio: number,
+        pipGap: number,
+    ): number {
+        const maximumRowPipCount = Math.ceil(pipCount / rowCount);
+        const horizontalSpacing = availableWidth / maximumRowPipCount;
+        const verticalSpacing = availableHeight / rowCount;
+        const footprintFactor = PipRendererShared.getPipFootprintFactor(strokeWidthRatio);
+        let upperBound = Math.min(horizontalSpacing, verticalSpacing) / (2 * footprintFactor);
+        if (maximumRowPipCount > 1) {
+            upperBound = Math.min(
+                upperBound,
+                (horizontalSpacing - pipGap) / (2 * footprintFactor),
+            );
+        }
+        if (rowCount > 1) {
+            upperBound = Math.min(
+                upperBound,
+                (Math.hypot(verticalSpacing, horizontalSpacing / 2) - pipGap)
+                    / (2 * footprintFactor),
+            );
+        }
+        return Math.max(upperBound, 0);
+    }
+
+    private static canImproveLayout(
+        candidate: GenericLayoutCandidate,
+        bestLayout: GenericPipLayout | null,
+        containerWidth: number,
+        containerHeight: number,
+    ): boolean {
+        if (!bestLayout) {
+            return true;
+        }
+        const tolerance = Number.EPSILON * Math.max(containerWidth, containerHeight, 1) * 16;
+        return candidate.maximumRadiusUpperBound + tolerance >= bestLayout.maximumRadius;
+    }
+
+    private static getBestRowLayout(
+        pipCount: number,
+        containerWidth: number,
+        containerHeight: number,
+        inset: number,
+        pipGap: number,
+        strokeWidthRatio: number,
+        requestedRadius: number,
+        rows: readonly PipShapeSpan[],
+    ): GenericPipLayout | null {
+        const usableRows = rows.filter(row =>
+            row.width > inset * 2 && row.height > 0)
+            .slice()
+            .sort((left, right) => left.y - right.y || left.x - right.x);
+        if (usableRows.length === 0) {
+            return null;
+        }
+
+        let bestLayout: GenericPipLayout | null = null;
+        const maximumRowCount = pipCount;
+        const footprintMargin = PipRendererShared.getPipFootprintRadius(
+            requestedRadius,
+            strokeWidthRatio,
+        );
+        for (let rowCount = 1; rowCount <= maximumRowCount; rowCount++) {
+            const selectedRows = this.selectRows(usableRows, rowCount, containerHeight, inset);
+            const rowPipCounts = this.getWeightedRowCounts(selectedRows, pipCount, inset);
+            const horizontalSpacing = this.getSharedHorizontalSpacing(
+                selectedRows,
+                rowPipCounts,
+                inset,
+                footprintMargin,
+            );
+            if (!Number.isFinite(horizontalSpacing) || horizontalSpacing <= 0) {
+                continue;
+            }
+            if (rowPipCounts.some(count => count > 1)) {
+                const maximumRadiusUpperBound = Math.max(
+                    (horizontalSpacing - pipGap)
+                        / (2 * PipRendererShared.getPipFootprintFactor(strokeWidthRatio)),
+                    0,
+                );
+                if (!this.canImproveLayout(
+                    { rowCount, maximumRadiusUpperBound },
+                    bestLayout,
+                    containerWidth,
+                    containerHeight,
+                )) {
+                    continue;
+                }
+            }
+            const points: PipPoint[] = [];
+            for (let rowIndex = 0; rowIndex < selectedRows.length; rowIndex++) {
+                const row = selectedRows[rowIndex];
+                const rowPipCount = rowPipCounts[rowIndex];
+                if (rowPipCount <= 0) {
+                    continue;
+                }
+                for (let column = 0; column < rowPipCount; column++) {
+                    const point = {
+                        x: this.getRowPointX(
+                            row,
+                            rowCount,
+                            rowPipCount,
+                            column,
+                            containerWidth,
+                            inset,
+                            horizontalSpacing,
+                            footprintMargin,
+                        ),
+                        y: this.getRowPointY(row, rowIndex, rowCount, containerHeight, inset),
+                    };
+                    points.push(point);
+                }
+            }
+
+            if (points.length !== pipCount) {
+                continue;
+            }
+            const maximumRadius = PipRendererShared.getMaximumRadiusForPoints(
+                points,
+                {
+                    left: 0,
+                    top: 0,
+                    right: containerWidth,
+                    bottom: containerHeight,
+                },
+                strokeWidthRatio,
+                inset,
+                pipGap,
+            );
+            if (!bestLayout
+                || maximumRadius > bestLayout.maximumRadius
+                || maximumRadius === bestLayout.maximumRadius
+                    && rowCount > bestLayout.rowCount) {
+                bestLayout = {
+                    points,
+                    maximumRadius,
+                    rowCount,
+                };
+            }
+        }
+        return bestLayout;
+    }
+
+    private static getSharedHorizontalSpacing(
+        rows: readonly PipShapeSpan[],
+        rowPipCounts: readonly number[],
+        inset: number,
+        footprintMargin: number,
+    ): number {
+        return rows.reduce((spacing, row, index) => {
+            const rowPipCount = rowPipCounts[index];
+            if (rowPipCount <= 0) {
+                return spacing;
+            }
+            const availableWidth = row.width - inset * 2;
+            const safeWidth = availableWidth - footprintMargin * 2;
+            const rowSpacing = rowPipCount > 1
+                ? safeWidth / (rowPipCount - 1)
+                : Infinity;
+            return Math.min(spacing, availableWidth / rowPipCount, rowSpacing);
+        }, Infinity);
+    }
+
+    private static getRowPointX(
+        row: PipShapeSpan,
+        rowCount: number,
+        rowPipCount: number,
+        column: number,
+        containerWidth: number,
+        inset: number,
+        horizontalSpacing: number,
+        footprintMargin: number,
+    ): number {
+        const safeLeft = row.x + inset + footprintMargin;
+        const safeRight = row.x + row.width - inset - footprintMargin;
+        const availableRowWidth = Math.max(safeRight - safeLeft, 0);
+        const boxCenter = containerWidth / 2;
+        if (rowCount === 1
+            && rowPipCount === 1
+            && boxCenter >= safeLeft
+            && boxCenter <= safeRight) {
+            return boxCenter;
+        }
+        const pipRowWidth = (rowPipCount - 1) * horizontalSpacing;
+        const firstX = safeLeft + (availableRowWidth - pipRowWidth) / 2;
+        return firstX + column * horizontalSpacing;
+    }
+
+    private static getRowPointY(
+        row: PipShapeSpan,
+        rowIndex: number,
+        rowCount: number,
+        containerHeight: number,
+        inset: number,
+    ): number {
+        const targetY = inset
+            + (rowIndex + 0.5) * (containerHeight - inset * 2) / rowCount;
+        return targetY >= row.y && targetY <= row.y + row.height
+            ? targetY
+            : row.y + row.height / 2;
+    }
+
+    private static selectRows(
+        rows: readonly PipShapeSpan[],
+        rowCount: number,
+        containerHeight: number,
+        inset: number,
+    ): PipShapeSpan[] {
+        const usedRows = rowCount <= rows.length ? new Set<number>() : null;
+        return Array.from({ length: rowCount }, (_value, index) => {
+            const targetY = inset
+                + (index + 0.5) * (containerHeight - inset * 2) / rowCount;
+            let selectedIndex = -1;
+            let selectedContainmentScore = Infinity;
+            let selectedDistance = Infinity;
+            for (let rowIndex = 0; rowIndex < rows.length; rowIndex++) {
+                if (usedRows?.has(rowIndex)) {
+                    continue;
+                }
+                const row = rows[rowIndex];
+                const containsTarget = targetY >= row.y && targetY <= row.y + row.height;
+                const containmentScore = containsTarget ? 0 : 1;
+                const distance = Math.abs(targetY - (row.y + row.height / 2));
+                if (containmentScore < selectedContainmentScore
+                    || containmentScore === selectedContainmentScore
+                        && distance < selectedDistance) {
+                    selectedIndex = rowIndex;
+                    selectedContainmentScore = containmentScore;
+                    selectedDistance = distance;
+                }
+            }
+            if (selectedIndex < 0) {
+                return rows[Math.min(index, rows.length - 1)];
+            }
+            usedRows?.add(selectedIndex);
+            return rows[selectedIndex];
+        });
+    }
+
+    private static getWeightedRowCounts(
+        rows: readonly PipShapeSpan[],
+        pipCount: number,
+        inset: number,
+    ): number[] {
+        const weights = rows.map(row =>
+            Math.max(row.width - inset * 2, 0) * Math.max(row.height - inset * 2, 0));
+        const totalWeight = weights.reduce((sum, weight) => sum + weight, 0);
+        if (totalWeight <= 0) {
+            return Array.from({ length: rows.length }, () => 0);
+        }
+
+        const counts = Array.from({ length: rows.length }, () => 0);
+        let accumulatedWeight = 0;
+        let allocated = 0;
+        for (let index = 0; index < weights.length; index++) {
+            accumulatedWeight += weights[index];
+            const cumulativeAllocation = Math.min(
+                pipCount,
+                Math.floor(accumulatedWeight * pipCount / totalWeight + 0.5),
+            );
+            counts[index] = cumulativeAllocation - allocated;
+            allocated = cumulativeAllocation;
+        }
+        return counts;
+    }
+
+    private static getInterleavedRowCounts(pipCount: number, rowCount: number): number[] {
+        const basePipCount = Math.floor(pipCount / rowCount);
+        const remainder = pipCount % rowCount;
+        const rowPipCounts = Array.from({ length: rowCount }, () => basePipCount);
+        const evenRowCount = Math.ceil(rowCount / 2);
+        for (let index = 0; index < remainder; index++) {
+            const rowIndex = index < evenRowCount
+                ? index * 2
+                : (index - evenRowCount) * 2 + 1;
+            rowPipCounts[rowIndex]++;
+        }
+        return rowPipCounts;
+    }
+}
+

@@ -1,0 +1,332 @@
+// Copyright (C) 2026 The MegaMek Team
+// SPDX-License-Identifier: GPL-3.0-or-later
+
+import type { CrewAssignment } from '../runtime/crew-assignment';
+
+import type { CBTRuleset } from '../cbt-ruleset.model';
+import { CrewMember,type CrewMemberState } from '../crew-member.model';
+import { isDroneOperatingSystemEquipment } from '../drone-operating-system.model';
+import type { VehicleEntity } from '../entity/entities/vehicle/vehicle-entity';
+import type { ComponentId } from '../entity/entity-identifiers';
+import { ImmutableIndex,ImmutableSet } from '../entity/immutable-collections';
+import { BV_MOVEMENT_CALCULATION, STANDARD_MOVEMENT_CALCULATION, type MovementCalculationOptions } from '../entity/types';
+import type { EquipmentStatus } from '../equipment-status.model';
+import { WeaponEquipment } from '../equipment.model';
+import { isMascEquipment } from '../escalating-equipment.model';
+import { isRamPlateEquipment } from '../physical-augmentation.model';
+import { projectComponentLocationStatuses } from '../runtime/component-status-projection';
+import type { NonMekRuntimeIndex } from '../runtime/non-mek-runtime-index';
+import type {
+NonMekUnitRuntimeState,
+} from '../runtime/non-mek-unit-instance';
+import { getDefaultAttackerMovementModifier } from '../target-number-calculator.model';
+import type { UnitConditionKey } from '../unit-condition.model';
+import {
+calculateChargeDamage,
+type ChargeDamageProjection,
+} from './charge-damage';
+import { gameRulesFor, type ToHitModifierBreakdownEntry } from './game-rules';
+import { systemDamageId, type SystemDamageKind } from './system-damage-rules';
+
+export interface VehicleMotiveHit {
+    readonly level: number;
+    readonly timestamp: number;
+}
+
+export interface VehicleRuntimeSystems {
+    readonly crewKilled: boolean;
+    readonly crewStunned: boolean;
+    readonly commanderHit: boolean;
+    readonly copilotHit: boolean;
+    readonly driverOrPilotHit: boolean;
+    readonly engineHit: boolean;
+    readonly hasDroneOperatingSystem: boolean;
+    readonly hasWorkingSupercharger: boolean;
+    readonly sensorHits: number;
+    readonly rotorHits: number;
+    readonly flightStabilizerHit: boolean;
+    readonly motiveHits: readonly VehicleMotiveHit[];
+    readonly stabilizerLocations: ReadonlySet<string>;
+}
+
+export interface VehicleRuntimeMovement {
+    readonly moveImpaired: boolean;
+    readonly walk: number;
+    readonly maxWalk: number;
+    readonly run: number;
+    readonly maxRun: number;
+}
+
+export interface VehicleRuntimeRuleModifiers {
+    readonly ranged: readonly ToHitModifierBreakdownEntry[];
+    readonly physical: readonly ToHitModifierBreakdownEntry[];
+    readonly psr: readonly ToHitModifierBreakdownEntry[];
+}
+
+/**
+ * Effective vehicle rules derived from one VehicleEntity and one sparse runtime snapshot.
+ * Pending damage is projected only into preview component status; it never applies effects early.
+ */
+export interface VehicleRuntimeRulesProjection {
+    readonly destroyed: boolean;
+    readonly computedConditions: readonly UnitConditionKey[];
+    readonly conditionControlKeys: readonly UnitConditionKey[];
+    readonly crewStateControlKeys: readonly CrewMemberState[];
+    readonly crewStateDisplayKeys: readonly CrewMemberState[];
+    readonly systems: VehicleRuntimeSystems;
+    readonly movement: VehicleRuntimeMovement;
+    /** The same damage over BV-calculation base movement, which ignores e.g. modular armor (MegaMek BV_CALCULATION). */
+    readonly battleValueMovement: VehicleRuntimeMovement;
+    readonly attackMovementModifier: number;
+    readonly chargeDamage: ChargeDamageProjection;
+    readonly modifiers: VehicleRuntimeRuleModifiers;
+    readonly componentStatuses: ReadonlyMap<ComponentId, EquipmentStatus>;
+    readonly previewComponentStatuses: ReadonlyMap<ComponentId, EquipmentStatus>;
+    readonly fireBlockedComponentIds: ReadonlySet<ComponentId>;
+    readonly stabilizerAffectedComponentIds: ReadonlySet<ComponentId>;
+}
+
+/**
+ * TW p. 148 excludes VTOLs, WiGEs and airships from charging (fixed-wing support vehicles are aerospace), and a trailer
+ * cannot move under its own power to charge (TW p. 205). Core supersedes the charge damage but does not address them,
+ * so the limits hold under both rulesets.
+ */
+export function navalBreachThreshold(motive: string, location: string, submerged: boolean, attackerUnderwater: boolean): number | null {
+    if (motive === 'Submarine') return submerged ? 10 : null;
+    if ((motive !== 'Naval' && motive !== 'Hydrofoil') || location.includes('Turret') || location === 'Body') return null;
+    return attackerUnderwater ? 10 : 12;
+}
+
+export const TURRET_CLEAR_ACTIONS = {
+    'clear-turret-jam': 'Turret',
+    'clear-front-turret-jam': 'Front Turret',
+    'clear-rear-turret-jam': 'Rear Turret',
+} as const;
+
+export function vehicleHasChargeAttack(entity: VehicleEntity): boolean {
+    return !['VTOL', 'WiGE', 'Airship'].includes(entity.motiveType()) && !entity.effectiveIsTrailer();
+}
+
+export function projectVehicleRuntimeRules(
+    entity: VehicleEntity,
+    index: NonMekRuntimeIndex,
+    state: NonMekUnitRuntimeState,
+    ruleset: CBTRuleset,
+    crewAssignment?: CrewAssignment,
+): VehicleRuntimeRulesProjection {
+    const activeDamageTracks = [...index.damageTracks.values()]
+        .filter(track => (state.damageTracks.get(track.id)?.hits ?? 0) > 0);
+    const hasDamage = (system: SystemDamageKind): boolean => activeDamageTracks.some(track => track.system === system);
+    const rawCommanderHit = hasDamage('commander');
+    const occupied = crewAssignment?.positions.map(position => position.positionId) ?? [...index.crewPositions.keys()];
+    const vacant = index.crewPositions.size > 0 && occupied.length === 0;
+    const crewKilled = occupied.some(positionId =>
+        CrewMember.from(state.crew.get(positionId)).isDeathCommitted());
+    const crewStunned = (state.vehicleCrewStun !== undefined && state.turn.turnCounter >= state.vehicleCrewStun[0]
+        && state.turn.turnCounter <= state.vehicleCrewStun[1]) || occupied.some(positionId =>
+        CrewMember.from(state.crew.get(positionId)).hasState('stunned'));
+    const motiveHits = Object.freeze(activeDamageTracks.flatMap(track => {
+        if (track.motiveLevel === undefined) return [];
+        return (state.damageTracks.get(track.id)?.hitTimestamps ?? [])
+            .map(timestamp => Object.freeze({ level: track.motiveLevel!, timestamp }));
+    }).sort((left, right) => left.timestamp - right.timestamp));
+    const sensorHits = activeDamageTracks.reduce((highest, track) => {
+        return track.system === 'sensors' ? Math.max(highest, track.stage ?? 0) : highest;
+    }, 0);
+    const engineHit = hasDamage('engine');
+    const rotor = [...index.damageTracks.values()].find(track => track.system === 'rotor');
+    const rotorHits = entity.unitType() === 'VTOL' && rotor !== undefined
+        ? state.damageTracks.get(rotor.id)?.hits ?? 0
+        : 0;
+    const stabilizerLocations = new Set<string>();
+    for (const track of activeDamageTracks) {
+        if (track.system === 'stabilizer' && track.scope !== undefined) {
+            stabilizerLocations.add(track.scope);
+        }
+    }
+
+    const previewEngineHit = [...index.damageTracks.values()].some(track =>
+        track.system === 'engine'
+        && (state.damageTracks.get(track.id)?.hits ?? 0)
+            + (state.pendingCombat.damageTrackHits.get(track.id)?.hitDelta ?? 0) > 0);
+    const statuses = projectComponentLocationStatuses(index, state, { committed: engineHit, preview: previewEngineHit });
+    const baseStatuses = statuses.committed;
+    const previewStatuses = statuses.preview;
+    const droneComponents = [...index.components.values()].filter(component =>
+        isDroneOperatingSystemEquipment(component.mount.equipment));
+    const hasDroneOperatingSystem = droneComponents.length > 0;
+    const disconnected = hasDroneOperatingSystem && (rawCommanderHit
+        || droneComponents.some(component => baseStatuses.get(component.id) !== 'available'));
+    const hasWorkingSupercharger = [...index.components.values()].some(component =>
+        isMascEquipment(component.mount.equipment)
+        && baseStatuses.get(component.id) === 'available');
+    const systems: VehicleRuntimeSystems = Object.freeze({
+        crewKilled,
+        crewStunned,
+        commanderHit: !hasDroneOperatingSystem && rawCommanderHit,
+        copilotHit: !hasDroneOperatingSystem && hasDamage('copilot'),
+        driverOrPilotHit: !hasDroneOperatingSystem
+            && (hasDamage('driver') || hasDamage('pilot')),
+        engineHit,
+        hasDroneOperatingSystem,
+        hasWorkingSupercharger,
+        sensorHits,
+        rotorHits,
+        flightStabilizerHit: hasDamage('flight-stabilizer'),
+        motiveHits,
+        stabilizerLocations: new ImmutableSet(stabilizerLocations),
+    });
+    const motiveImmobile = motiveHits.some(hit => hit.level === 4);
+    const storedImmobile = state.conditions.has('immobile');
+    const computedConditions = new Set<UnitConditionKey>();
+    if (state.towedBy) computedConditions.add('hitched');
+    if ((crewKilled || vacant) && !hasDroneOperatingSystem) computedConditions.add('abandoned');
+    if (disconnected) computedConditions.add('disconnected');
+    if (crewKilled || (vacant && !hasDroneOperatingSystem) || motiveImmobile || engineHit || disconnected
+        || (entity.effectiveIsTrailer() && !state.towedBy && !state.conditions.has('hitched'))) {
+        computedConditions.add('immobile');
+    }
+    // A fuel tank critical is a fuel explosion: MegaMek dooms the vehicle outright (TWGameManager CRIT_FUEL_TANK).
+    const destroyed = state.explicitlyDestroyed || hasDamage('hull-breach') || hasDamage('fuel-tank')
+        || [...index.locations.values()].some(location =>
+            location.internalPoints > 0
+            && (state.locations.get(location.id)?.internalDamage ?? 0) >= location.internalPoints);
+    const immobile = destroyed || storedImmobile || computedConditions.has('immobile')
+        || state.conditions.has('disconnected');
+    const movement = vehicleMovement(entity, systems, immobile, STANDARD_MOVEMENT_CALCULATION);
+    const battleValueMovement = vehicleMovement(entity, systems, immobile, BV_MOVEMENT_CALCULATION);
+    const fireBlockedComponentIds = new Set<ComponentId>();
+    const stabilizerAffectedComponentIds = new Set<ComponentId>();
+    const clearing = (Object.keys(TURRET_CLEAR_ACTIONS) as (keyof typeof TURRET_CLEAR_ACTIONS)[]).some(key => state.conditions.has(key));
+    for (const component of index.components.values()) {
+        const equipment = component.mount.equipment;
+        if ((sensorHits >= 4 || crewStunned || crewKilled || clearing || state.conditions.has('crashed')) && equipment instanceof WeaponEquipment
+            && !component.mount.isPhysicalWeapon()) fireBlockedComponentIds.add(component.id);
+        if (component.mount.getOccupiedLocations().some(location =>
+            stabilizerLocations.has(location))) {
+            stabilizerAffectedComponentIds.add(component.id);
+        }
+    }
+    const conditionControlKeys: UnitConditionKey[] = ['swarmed', 'tagged', 'ecm-shielded'];
+    for (const [key, turret] of Object.entries(TURRET_CLEAR_ACTIONS)) {
+        const hit = (kind: SystemDamageKind) => (state.damageTracks.get(systemDamageId(kind, undefined, turret))?.hits ?? 0) > 0;
+        if (hit('turret-jam') && !hit('turret-jam-cleared') && !hit('turret-lock') && !engineHit) conditionControlKeys.push(key as UnitConditionKey);
+    }
+    if (entity.effectiveIsTrailer()) conditionControlKeys.push('hitched');
+    if (gameRulesFor(ruleset).supportsSkidding) conditionControlKeys.push('skidding');
+    conditionControlKeys.push('jammed');
+    if (hasDroneOperatingSystem) conditionControlKeys.push('disconnected');
+    const movementMode = state.turn.movement?.mode ?? null;
+    const ramPlates = [...index.components.values()].filter(component =>
+        isRamPlateEquipment(component.mount.equipment));
+    const chargeDamage = calculateChargeDamage({
+        ruleset,
+        massTons: entity.tonnage(),
+        movementMode,
+        movementDistance: state.turn.movement?.distance ?? 0,
+        maximumDistance: entity.maxRunMP(),
+        hasRamPlate: ramPlates.length > 0,
+        hasWorkingRamPlate: ramPlates.some(component =>
+            baseStatuses.get(component.id) === 'available'),
+    });
+
+    const crewStateControlKeys = Object.freeze(hasDroneOperatingSystem
+        ? []
+        : ['killed', 'stunned'] as const);
+    return Object.freeze({
+        destroyed,
+        computedConditions: Object.freeze([...computedConditions]),
+        conditionControlKeys: Object.freeze(conditionControlKeys),
+        crewStateControlKeys,
+        crewStateDisplayKeys: crewStateControlKeys,
+        systems,
+        movement,
+        battleValueMovement,
+        attackMovementModifier: getDefaultAttackerMovementModifier(movementMode),
+        chargeDamage,
+        modifiers: vehicleModifiers(entity, systems, state.turn.movement?.erratic === true),
+        componentStatuses: new ImmutableIndex(baseStatuses),
+        previewComponentStatuses: new ImmutableIndex(previewStatuses),
+        fireBlockedComponentIds: new ImmutableSet(fireBlockedComponentIds),
+        stabilizerAffectedComponentIds: new ImmutableSet(stabilizerAffectedComponentIds),
+    });
+}
+
+function vehicleMovement(
+    entity: VehicleEntity,
+    systems: VehicleRuntimeSystems,
+    immobile: boolean,
+    options: MovementCalculationOptions,
+): VehicleRuntimeMovement {
+    const baseWalk = Math.max(0, entity.computeWalkMP(options));
+    const baseRun = baseWalk === 0 ? 0 : Math.round(baseWalk * 1.5);
+    if (immobile) {
+        return Object.freeze({ moveImpaired: true, walk: 0, maxWalk: 0, run: 0, maxRun: 0 });
+    }
+    let walk = systems.engineHit ? 0 : applyMotiveDamage(baseWalk, systems.motiveHits);
+    if (entity.unitType() === 'VTOL') walk = Math.max(0, walk - systems.rotorHits);
+    let run = walk === 0 ? 0 : Math.round(walk * 1.5);
+    let maxRun = walk === 0 ? 0 : Math.round(walk * (systems.hasWorkingSupercharger ? 2 : 1.5));
+    if (systems.flightStabilizerHit || systems.crewStunned) {
+        run = 0;
+        maxRun = 0;
+    }
+    return Object.freeze({
+        moveImpaired: walk !== baseWalk || run !== baseRun,
+        walk,
+        maxWalk: walk,
+        run,
+        maxRun,
+    });
+}
+
+function applyMotiveDamage(base: number, hits: readonly VehicleMotiveHit[]): number {
+    let current = base;
+    for (const hit of hits) {
+        if (current <= 0) return 0;
+        if (hit.level === 2) current = Math.max(0, current - 1);
+        else if (hit.level === 3) current = Math.ceil(current / 2);
+        else if (hit.level === 4) current = 0;
+    }
+    return current;
+}
+
+function vehicleModifiers(
+    entity: VehicleEntity,
+    systems: VehicleRuntimeSystems,
+    erratic: boolean,
+): VehicleRuntimeRuleModifiers {
+    const ranged: ToHitModifierBreakdownEntry[] = [];
+    const physical: ToHitModifierBreakdownEntry[] = [];
+    const psr: ToHitModifierBreakdownEntry[] = [];
+    // Erratic manoeuvres make every Driving Skill Roll of the turn 1 harder (TW p. 222).
+    if (erratic) psr.push(Object.freeze({ label: 'Erratic manoeuvres', modifier: 1 }));
+    if (entity.uniformArmor()?.armor.name === 'Hardened') psr.push(weakened('Mounts Hardened Armor', 1));
+    if (systems.commanderHit) {
+        ranged.push(weakened('Commander hit', 1));
+        physical.push(weakened('Commander hit', 1));
+        psr.push(weakened('Commander hit', 1));
+    }
+    if (systems.copilotHit) ranged.push(weakened('Co-pilot hit', 1));
+    if (systems.driverOrPilotHit) psr.push(weakened('Driver/Pilot hit', 2));
+    if (systems.flightStabilizerHit) {
+        ranged.push(weakened('Flight stabilizer hit', 1));
+        psr.push(weakened('Flight stabilizer hit', 3));
+    }
+    if (systems.sensorHits > 0) ranged.push(weakened('Sensor hits', systems.sensorHits));
+    const motiveLevels = new Set<number>();
+    for (const hit of systems.motiveHits) {
+        if (hit.level < 1 || hit.level > 3 || motiveLevels.has(hit.level)) continue;
+        motiveLevels.add(hit.level);
+        psr.push(weakened('Motive system hit', hit.level));
+    }
+    return Object.freeze({
+        ranged: Object.freeze(ranged),
+        physical: Object.freeze(physical),
+        psr: Object.freeze(psr),
+    });
+}
+
+function weakened(label: string, modifier: number): ToHitModifierBreakdownEntry {
+    return Object.freeze({ label, modifier, weakened: true });
+}

@@ -6,7 +6,6 @@ import {
   ASF_WEIGHT_LIMITS,
   CAPITAL_SHIP_WEIGHT_LIMITS,
   DROPSHIP_WEIGHT_LIMITS,
-  GUN_EMPLACEMENT_WEIGHT_LIMITS,
   MEK_WEIGHT_LIMITS,
   PROTOMEK_WEIGHT_LIMITS,
   resolveSupportVehicleWeightClass,
@@ -23,7 +22,6 @@ describe('weight classes', () => {
   const tables: readonly [string, WeightClassTable, readonly WeightClass[]][] = [
     ['Mek', MEK_WEIGHT_LIMITS, ['Ultra Light', 'Light', 'Medium', 'Heavy', 'Assault', 'Super Heavy']],
     ['vehicle', VEHICLE_WEIGHT_LIMITS, ['Light', 'Medium', 'Heavy', 'Assault', 'Super Heavy']],
-    ['gun emplacement', GUN_EMPLACEMENT_WEIGHT_LIMITS, ['Light', 'Medium', 'Heavy', 'Assault']],
     ['aerospace fighter', ASF_WEIGHT_LIMITS, ['Light', 'Medium', 'Heavy']],
     ['DropShip', DROPSHIP_WEIGHT_LIMITS, ['Small DropShip', 'Medium DropShip', 'Large DropShip']],
     ['capital ship', CAPITAL_SHIP_WEIGHT_LIMITS, ['Small Capital', 'Large Capital']],

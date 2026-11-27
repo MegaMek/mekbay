@@ -213,8 +213,8 @@
                             @if (unitDisplayName() === 'chassisModel'
                             || unitDisplayName() === 'both'
                             || !node.unit.alias()) {
-                            <div class="unit-model">{{ node.unit.getUnit().model }}</div>
-                            <div class="unit-chassis">{{ node.unit.getUnit().chassis }}</div>
+                            <div class="unit-model">{{ node.unit.getC3Presentation().model }}</div>
+                            <div class="unit-chassis">{{ c3Chassis(node.unit) }}</div>
                             }
                             @if (unitDisplayName() === 'alias' || unitDisplayName() === 'both') {
                             <div class="unit-alias">{{ node.unit.alias() }}</div>
@@ -325,7 +325,7 @@
         [class.hidden]="layoutService.isMobile() && !sidebarOpen()" [class.animate]="sidebarAnimated()">
         <div class="sidebar-header">
             <h3>Networks</h3>
-            @if (isClassicGame()) {
+            @if (isCBTGame()) {
             <button class="bt-button bv-toggle square-small" type="button" (click)="showBvDetails.set(!showBvDetails())"
                 [class.active]="showBvDetails()" [attr.aria-pressed]="showBvDetails()"
                 aria-label="Toggle BV details" title="Toggle BV details">
@@ -432,9 +432,9 @@
                             <span class="internal-connection-badge" title="Internal connection">internal link</span>
                         } @else if (member.node) {
                             <span class="name">
-                                {{ member.node.unit.getUnit().chassis }}
-                                @if (member.node.unit.getUnit().model) {
-                                    - {{ member.node.unit.getUnit().model }}
+                                {{ c3Chassis(member.node.unit) }}
+                                @if (member.node.unit.getC3Presentation().model) {
+                                    - {{ member.node.unit.getC3Presentation().model }}
                                 }
                             </span>
                         } @else {
@@ -470,9 +470,9 @@
                             <span class="internal-connection-badge" title="Internal connection">internal link</span>
                         } @else if (member.node) {
                             <span class="name">
-                                {{ member.node.unit.getUnit().chassis }}
-                                @if (member.node.unit.getUnit().model) {
-                                    - {{ member.node.unit.getUnit().model }}
+                                {{ c3Chassis(member.node.unit) }}
+                                @if (member.node.unit.getC3Presentation().model) {
+                                    - {{ member.node.unit.getC3Presentation().model }}
                                 }
                             </span>
                         } @else {

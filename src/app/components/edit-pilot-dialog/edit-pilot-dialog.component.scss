@@ -1,120 +1,313 @@
 .commander-layout {
-    align-items: flex-start;
+  align-items: flex-start;
 }
 
 @container (max-width: 400px) {
-    .commander-layout {
-        align-items: stretch;
-    }
+  .commander-layout {
+    align-items: stretch;
+  }
 }
 
 .commander-name-row {
-    display: flex;
-    align-items: flex-start;
-    gap: 16px;
+  display: flex;
+  align-items: flex-start;
+  gap: 16px;
+  flex: 1 1 0;
+  min-width: 0;
+
+  > .crew-list {
     flex: 1 1 0;
     min-width: 0;
-
-    > .crew-list {
-        flex: 1 1 0;
-        min-width: 0;
-    }
+  }
 }
 
 .crew-list {
-    display: flex;
-    flex-direction: column;
-    min-width: 0;
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
 }
 
 .crew-member-editor {
-    display: flex;
-    flex-direction: column;
-    gap: 12px;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  gap: 12px;
 
-    & + & {
-        border-top: 1px solid var(--border-color, rgba(255, 255, 255, 0.18));
-        margin-top: 16px;
-        padding-top: 16px;
-    }
+  & + & {
+    border-top: 1px solid var(--border-color, rgba(255, 255, 255, 0.18));
+    margin-top: 16px;
+    padding-top: 16px;
+  }
 }
 
 .crew-skills {
-    margin: 0;
+  position: relative;
+  min-width: 0;
+  margin: 0;
+  padding: 0;
+  border: 0;
+  gap: 8px;
+}
+
+.grouped-skills > .crew-skills {
+  padding: 8px 12px 12px;
+  border: 1px solid var(--border-color);
+  background: #0002;
+}
+
+.crew-skills:disabled > :not(.skill-group-overlay) {
+  opacity: 0.5;
+}
+
+.skill-group-overlay {
+  position: absolute;
+  // Fieldset positioning starts below the legend; extend to its center at the border.
+  inset: -0.5lh 0 0;
+  pointer-events: none;
+}
+
+.skill-group-overlay,
+.skill-group-title {
+  font-size: 0.8em;
+}
+
+.skill-group-title {
+  z-index: 1;
+  padding: 0 6px;
+  color: var(--text-color);
+  font-weight: 600;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.crew-wounds {
+  grid-column: 1 / -1;
+}
+
+.wounds-bar {
+  display: flex;
+  gap: 4px;
+}
+
+.wounds-segment {
+  flex: 1;
+  min-width: 0;
+  height: 24px;
+  border: 1px solid var(--border-color);
+  background: #0003;
+  cursor: pointer;
+
+  &.filled {
+    background: var(--damage-color);
+  }
+  &:hover {
+    filter: brightness(1.25);
+  }
+  &:focus-visible {
+    outline: 2px solid var(--text-color);
+    outline-offset: 2px;
+  }
+}
+
+.skill-matrix-toggle {
+  align-self: flex-end;
+  width: 34px;
+  min-width: 34px;
+  height: 34px;
+}
+
+.crew-member-editor.with-portrait {
+  grid-template-columns: auto minmax(0, 1fr);
+  // The first row takes any height the portrait column adds, so the name sits on the skills.
+  grid-template-rows: 1fr;
+
+  > .portrait-column {
+    grid-column: 1;
+    grid-row: 1 / span 2;
+    justify-self: start;
+    align-self: start;
+  }
+  > .name-field,
+  > .crew-skills {
+    grid-column: 2;
+  }
+  > .name-field {
+    align-self: end;
+  }
+  > .crew-skills {
+    align-self: end;
+  }
+  > .crew-skill-note,
+  > pilot-notes-field {
+    grid-column: 1 / -1;
+  }
+
+  &.dual-skills > .portrait-column {
+    grid-row: 1 / span 3;
+  }
+}
+
+@container (max-width: 420px) {
+  .crew-member-editor.with-portrait {
+    > .portrait-column,
+    &.dual-skills > .portrait-column {
+      grid-row: 1;
+    }
+    > .crew-skills {
+      grid-column: 1 / -1;
+    }
+  }
+}
+
+:host(.phone-layout) {
+  .commander-name-row {
+    display: block;
+  }
+
+  .crew-member-editor {
+    > .name-field {
+      grid-column: 1 / -1;
+      grid-row: 1;
+    }
+    > .crew-skills {
+      grid-column: 1 / -1;
+      grid-row: 2;
+    }
+    > .secondary-skills {
+      grid-row: auto;
+    }
+    > .pilot-actions {
+      grid-column: 1 / -1;
+      grid-row: 3;
+      align-self: center;
+    }
+
+    &.with-portrait {
+      grid-template-columns: minmax(0, 1fr) auto minmax(0, 1fr);
+
+      > .portrait-column,
+      &.dual-skills > .portrait-column {
+        grid-column: 2;
+        grid-row: 1;
+        justify-self: center;
+      }
+      > .name-field {
+        grid-row: 2;
+      }
+      > .crew-skills:not(.secondary-skills) {
+        grid-row: 3;
+      }
+      > .pilot-actions {
+        display: contents;
+      }
+      .group-commander-toggle {
+        grid-column: 1;
+        grid-row: 1;
+        justify-self: end;
+        align-self: start;
+      }
+      .personnel-actions {
+        grid-column: 3;
+        grid-row: 1;
+        justify-self: start;
+        align-self: start;
+      }
+    }
+  }
+
+  .pilot-actions {
+    flex-direction: row;
+    justify-content: center;
+    align-items: center;
+  }
+}
+
+.portrait-column {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.crew-skill-note {
+  margin: 0;
+  color: var(--text-color-secondary);
+  font-size: 0.8em;
 }
 
 .name-field {
-    flex: 1 1 0 !important;
-    min-width: 0;
+  flex: 1 1 0 !important;
+  min-width: 0;
 }
 
 .name-input-wrapper {
-    position: relative;
-    flex: 1 1 auto;
-    min-width: 0;
+  position: relative;
+  flex: 1 1 auto;
+  min-width: 0;
 
-    .field-input {
-        padding-right: 32px;
-    }
+  .field-input {
+    padding-right: 32px;
+  }
 }
 
 .clear-btn {
-    position: absolute;
-    right: 4px;
-    top: 0;
-    bottom: 0;
-    margin: auto 0;
-    background: transparent;
-    border: none;
-    color: #999;
-    font-size: 1em;
-    font-weight: 700;
-    cursor: pointer;
-    padding: 0 6px;
-    height: 32px;
-    width: 32px;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    transition: color 0.2s;
-    line-height: 1;
-    z-index: 1;
+  position: absolute;
+  right: 4px;
+  top: 0;
+  bottom: 0;
+  margin: auto 0;
+  background: transparent;
+  border: none;
+  color: #999;
+  font-size: 1em;
+  font-weight: 700;
+  cursor: pointer;
+  padding: 0 6px;
+  height: 32px;
+  width: 32px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: color 0.2s;
+  line-height: 1;
+  z-index: 1;
 
-    &:hover {
-        color: #ff4444;
-    }
+  &:hover {
+    color: #ff4444;
+  }
 }
 
-.group-commander-toggle {
-    align-self: flex-start;
-    flex: 0 0 auto;
+.pilot-actions,
+.personnel-actions {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  flex: 0 0 auto;
+
+  .bt-button {
     line-height: 0;
     width: 55px;
     height: 55px;
+  }
 }
 
-.group-commander-icon {
-    width: 21px;
-    height: 26px;
-    transform: rotate(180deg);
-    flex-shrink: 0;
+.delete-icon {
+  width: 24px;
+  height: 24px;
+  background-color: currentColor;
+  mask: url('/images/delete.svg') center / contain no-repeat;
 }
 
-.group-commander-status {
-    padding: 0;
-    color: var(--bt-yellow);
-    font-size: 0.8em;
-    font-weight: 600;
-    text-align: center;
+
+.field-label.commander {
+  color: var(--bt-yellow);
 }
 
 .skill-selector {
-    width: 100%;
-    text-align: center;
-    font-size: 1em;
-    padding: 8px 20px 8px 8px;
+  width: 100%;
+  text-align: center;
+  font-size: 1em;
+  padding: 8px 20px 8px 8px;
 }
 
 .skill-selector-value {
-    font-weight: 700;
+  font-weight: 700;
 }

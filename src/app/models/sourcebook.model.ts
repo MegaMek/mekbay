@@ -23,6 +23,6 @@ export interface UnknownSourcebookReference {
 export type SourcebookReference = Sourcebook | UnknownSourcebookReference;
 
 export interface Sourcebooks {
-    etag: string;
+    assetHash: string;
     sourcebooks: Sourcebook[];
 }

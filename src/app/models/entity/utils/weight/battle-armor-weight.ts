@@ -5,6 +5,7 @@
 import { AmmoEquipment, MiscEquipment, WeaponEquipment } from '../../../equipment.model';
 import type { BattleArmorEntity } from '../../entities/infantry/battle-armor-entity';
 import type { EntityMountedEquipment } from '../../types/equipment';
+import { isConstructionSystemEquipment } from '../../../construction-equipment.model';
 
 const WEIGHT_CLASS_INDEX = {
   'Ultra Light': 0, Light: 1, Medium: 2, Heavy: 3, Assault: 4,
@@ -15,17 +16,6 @@ const GROUND_MP = [0.025, 0.03, 0.04, 0.08, 0.16] as const;
 const JUMP_MP = [0.025, 0.025, 0.05, 0.125, 0.25] as const;
 const UMU_MP = [0.045, 0.045, 0.085, 0.16, 0.25] as const;
 const VTOL_MP = [0.03, 0.04, 0.06, 0, 0] as const;
-
-const SYSTEM_MISC_FLAGS = [
-  'F_ENDO_STEEL', 'F_ENDO_COMPOSITE', 'F_ENDO_STEEL_PROTO', 'F_COMPOSITE',
-  'F_INDUSTRIAL_STRUCTURE', 'F_REINFORCED', 'F_FERRO_FIBROUS',
-  'F_FERRO_FIBROUS_PROTO', 'F_FERRO_LAMELLOR', 'F_LIGHT_FERRO',
-  'F_HEAVY_FERRO', 'F_REACTIVE', 'F_REFLECTIVE', 'F_HARDENED_ARMOR',
-  'F_PRIMITIVE_ARMOR', 'F_COMMERCIAL_ARMOR', 'F_INDUSTRIAL_ARMOR',
-  'F_HEAVY_INDUSTRIAL_ARMOR', 'F_ANTI_PENETRATIVE_ABLATIVE',
-  'F_HEAT_DISSIPATING', 'F_IMPACT_RESISTANT', 'F_BALLISTIC_REINFORCED',
-  'F_HEAT_SINK', 'F_DOUBLE_HEAT_SINK', 'F_IS_DOUBLE_HEAT_SINK_PROTOTYPE',
-] as const;
 
 export interface BattleArmorSuitWeight {
   readonly trooper: number;
@@ -54,11 +44,12 @@ export function calculateBattleArmorWeightBreakdown(entity: BattleArmorEntity): 
     * (entity.uniformArmor()?.armor.weightPerPoint ?? 0);
   const turret = calculateTurretWeight(entity.turretConfig());
   const suits = Array.from({ length: entity.trooperCount() }, (_, trooper) => {
-    const mounts = entity.equipment().filter(mount => appliesToSuit(mount, trooper));
+    const mounts = entity.getConstructionEquipmentForTrooper(trooper + 1);
     const miscellaneous = mounts.reduce((sum, mount) => {
       if (!(mount.equipment instanceof MiscEquipment)
-        || mount.equipment.hasAnyFlag([...SYSTEM_MISC_FLAGS])) return sum;
-      return sum + requireTonnage(entity, mount);
+        || isConstructionSystemEquipment(mount.equipment)) return sum;
+      const weight = requireTonnage(entity, mount);
+      return sum + (mount.isSSWM ? ceilKg(weight * (entity.techBase() === 'Clan' ? 0.4 : 0.5)) : weight);
     }, 0);
     const weapons = roundKg(mounts.reduce((sum, mount) => {
       if (!(mount.equipment instanceof WeaponEquipment) || mount.isAPM) return sum;
@@ -86,7 +77,7 @@ export function calculateBattleArmorStructureWeight(entity: BattleArmorEntity): 
   const index = WEIGHT_CLASS_INDEX[weightClass as keyof typeof WEIGHT_CLASS_INDEX];
   const chassisTable = entity.techBase() === 'Clan' && !entity.clanExoWithoutHarJel()
     ? CLAN_CHASSIS : IS_CHASSIS;
-  const freeGroundMp = entity.chassisType().toLowerCase() === 'quad' ? 2 : 1;
+  const freeGroundMp = entity.chassisType() === 'Quad' ? 2 : 1;
   const ground = Math.max(0, entity.originalWalkMP() - freeGroundMp) * GROUND_MP[index];
   const motiveTable = entity.motiveType() === 'VTOL' ? VTOL_MP
     : entity.motiveType() === 'UMU' ? UMU_MP : JUMP_MP;
@@ -99,12 +90,6 @@ export function calculateTurretWeight(config: string): number {
   const capacity = Number(match[2]);
   if (capacity <= 0) return 0;
   return capacity * 0.01 + 0.03 + (/^(Modular|Configurable)$/i.test(match[1]) ? 0.02 : 0);
-}
-
-function appliesToSuit(mount: EntityMountedEquipment, trooper: number): boolean {
-  if (mount.location === 'Squad') return true;
-  if (trooper === 0 || mount.location !== `Trooper ${trooper}`) return false;
-  return mount.baMountLocation !== undefined;
 }
 
 function requireTonnage(entity: BattleArmorEntity, mount: EntityMountedEquipment): number {

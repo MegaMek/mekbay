@@ -3,32 +3,58 @@
 // Author: Drake
 
 import { GameSystem } from "./common.model";
-import type { PrintAllOptions } from "./print-options.model";
-
+import type { CBTRuleset } from './cbt-ruleset.model';
+import type { PrintAllOptions } from './print-options.model';
+import type { BoundOptionalRules } from './runtime/bound-optional-rules';
+import { INITIATIVE_ORDER_MODES, type InitiativeOrderMode } from './rules/initiative-rules';
 
 export const OPTION_VALUES = {
     colorScheme: ['default', 'night'],
     pickerStyle: ['default', 'radial', 'linear'],
+    linearPickerLayout: ['diagonal', 'vertical'],
     canvasInput: ['all', 'touch', 'pen'],
+    mouseWheelAction: ['scroll', 'zoom'],
     swipeToNextSheet: ['vertical', 'horizontal', 'disabled'],
     unitDisplayName: ['chassisModel', 'alias', 'both'],
-    gameSystem: [GameSystem.CLASSIC, GameSystem.ALPHA_STRIKE],
+    displayUnitNameFormat: ['innerSphereClan', 'clanInnerSphere', 'innerSphereOnly', 'clanOnly'],
+    gameSystem: [GameSystem.CBT, GameSystem.AS],
     availabilitySource: ['mul', 'megamek'],
-    forceViewerBVPVDisplay: ['adjusted', 'base', 'both'],
+    forceViewerBVPVDisplay: ['adjustedPostSkill', 'adjustedPreSkill', 'both'],
+    forceViewerBVPVDisplayDamage: ['damaged', 'pristine'],
     recordSheetDoubleTapZoomReset: ['disabled', 'fit-to-screen', 'full-width', 'contextual'],
-    CBTRules: ['tw', 'core2026'],
+    recordSheetPipLayout: ['classic', 'distributed', 'rail'],
+    recordSheetGroupWeapons: ['disabled', 'previews', 'enabled'],
     unitSearchExpandedViewLayout: ['panel-list-filters', 'filters-list-panel'],
     unitSearchViewMode: ['list', 'card', 'chassis', 'table'],
-    forceOverviewViewMode: ['expanded', 'compact', 'table'],
+    factionAvailabilityViewMode: ['list', 'grid'],
+    forceOverviewViewMode: ['expanded', 'table'],
+    cbtUnitViewMode: ['sheet', 'tactical'],
     ASVehiclesCriticalHitTable: ['default', 'scouringSands'],
     automationMode: ['yes', 'ask', 'no'],
+    initiativeOrder: INITIATIVE_ORDER_MODES,
 } as const;
 
-export type AvailabilitySource = typeof OPTION_VALUES.availabilitySource[number];
-export type RecordSheetDoubleTapZoomResetMode = typeof OPTION_VALUES.recordSheetDoubleTapZoomReset[number];
-export type ColorScheme = typeof OPTION_VALUES.colorScheme[number];
-export type UnitSearchViewMode = typeof OPTION_VALUES.unitSearchViewMode[number];
-export type AutomationMode = typeof OPTION_VALUES.automationMode[number];
+/** The Unequal Numbers order choices, shared by the options and lobby dialogs. Only Total Warfare games use them. */
+export const INITIATIVE_ORDER_CHOICES: readonly { readonly value: InitiativeOrderMode; readonly label: string; readonly hint: string }[] = [
+    { value: 'rules', label: 'By the rules', hint: 'Total Warfare: extra units act last' },
+    { value: 'front-loaded', label: 'Front-loaded', hint: 'extra units act first' },
+    { value: 'back-loaded', label: 'Back-loaded', hint: 'extra units act last' },
+    { value: 'spread', label: 'Spread evenly', hint: 'extra units spread over the phase' },
+];
+
+type OptionValue<K extends keyof typeof OPTION_VALUES> = (typeof OPTION_VALUES)[K][number];
+
+export type MouseWheelAction = OptionValue<'mouseWheelAction'>;
+export type AvailabilitySource = OptionValue<'availabilitySource'>;
+export type RecordSheetDoubleTapZoomResetMode = OptionValue<'recordSheetDoubleTapZoomReset'>;
+export type RecordSheetPipLayout = OptionValue<'recordSheetPipLayout'>;
+export type RecordSheetGroupWeapons = OptionValue<'recordSheetGroupWeapons'>;
+export type ColorScheme = OptionValue<'colorScheme'>;
+export type LinearPickerLayout = OptionValue<'linearPickerLayout'>;
+export type UnitSearchViewMode = OptionValue<'unitSearchViewMode'>;
+export type AutomationMode = OptionValue<'automationMode'>;
+export type CBTUnitViewMode = OptionValue<'cbtUnitViewMode'>;
+export type DisplayUnitNameFormat = OptionValue<'displayUnitNameFormat'>;
 
 export const CBT_AUTOMATION_KEYS = [
     'pilotSkillCheck',
@@ -74,56 +100,110 @@ export interface ForceGeneratorOptions {
     useUnitTagsAsChassisTags: boolean;
 }
 
-export type ForceViewerBVPVDisplay = typeof OPTION_VALUES.forceViewerBVPVDisplay[number];
+export type ForceViewerBVPVDisplay = OptionValue<'forceViewerBVPVDisplay'>;
+export type ForceViewerBVPVDisplayDamage = OptionValue<'forceViewerBVPVDisplayDamage'>;
 
 export interface CBTOptionalRules {
+    quirks: boolean;
     floatingCriticals: boolean;
     forcedWithdrawal: boolean;
     extremeRange: boolean;
     sprinting: boolean;
+    hotLoadedAmmo: boolean;
     allowMixedTechBaseAmmo: boolean;
+    /** BattleMech Manual p. 99: flamers deal heat and damage instead of either (Core always does). */
+    enhancedFlamers: boolean;
 }
+
+/** The optional rules as the options and a lobby's host offer them; a rule with a ruleset is offered only under it. */
+export const CBT_OPTIONAL_RULE_CHOICES: ReadonlyArray<Readonly<{
+    key: keyof CBTOptionalRules;
+    label: string;
+    ruleset?: CBTRuleset;
+}>> = Object.freeze([
+    { key: 'quirks', label: 'Quirks' },
+    { key: 'floatingCriticals', label: 'Floating criticals' },
+    { key: 'sprinting', label: 'Sprinting (Meks only)' },
+    { key: 'extremeRange', label: '"Extreme" range' },
+    { key: 'hotLoadedAmmo', label: 'Hot-Loaded Ammo' },
+    { key: 'allowMixedTechBaseAmmo', label: 'Allow mixed IS/Clan ammunition' },
+    // Core flamers always deal heat and damage (Core p. 183).
+    { key: 'enhancedFlamers', label: 'Enhanced flamers', ruleset: 'total-warfare' },
+    { key: 'forcedWithdrawal', label: 'Forced withdrawal (Cripple)' },
+]);
+
+/** The rules of `rules` that differ from `current`; null when none does. Rules `rules` leaves out are not compared. */
+export function changedOptionalRules(
+    current: CBTOptionalRules,
+    rules: Partial<CBTOptionalRules> | undefined,
+): Partial<CBTOptionalRules> | null {
+    const changed = CBT_OPTIONAL_RULE_CHOICES.flatMap(({ key }) =>
+        typeof rules?.[key] === 'boolean' && rules[key] !== current[key] ? [[key, rules[key]] as const] : []);
+    return changed.length === 0 ? null : Object.fromEntries(changed);
+}
+
+/**
+ * The optional rules read where they are used, passed whole; a rule left out is off. The rules bound into units are
+ * left out: read those from the unit (`boundRules()`).
+ */
+export type OptionalRules = Readonly<Partial<Omit<CBTOptionalRules, keyof BoundOptionalRules>>>;
 
 export interface Options {
     colorScheme: ColorScheme;
-    pickerStyle: typeof OPTION_VALUES.pickerStyle[number];
-    canvasInput: typeof OPTION_VALUES.canvasInput[number];
-    swipeToNextSheet: typeof OPTION_VALUES.swipeToNextSheet[number];
+    pickerStyle: OptionValue<'pickerStyle'>;
+    /** How the linear picker lays out its list: straight down, or toward the farthest screen corner. */
+    linearPickerLayout: LinearPickerLayout;
+    canvasInput: OptionValue<'canvasInput'>;
+    mouseWheelAction: MouseWheelAction;
+    swipeToNextSheet: OptionValue<'swipeToNextSheet'>;
     syncZoomBetweenSheets: boolean;
-    unitDisplayName: typeof OPTION_VALUES.unitDisplayName[number];
+    unitDisplayName: OptionValue<'unitDisplayName'>;
+    displayUnitNameFormat: DisplayUnitNameFormat;
     gameSystem: GameSystem;
     availabilitySource: AvailabilitySource;
     megaMekAvailabilityFiltersUseAllScopedOptions: boolean;
     forceViewerBVPVDisplay: ForceViewerBVPVDisplay;
+    forceViewerBVPVDisplayDamage: ForceViewerBVPVDisplayDamage;
     printAllOptions: PrintAllOptions;
     recordSheetDoubleTapZoomReset: RecordSheetDoubleTapZoomResetMode;
+    recordSheetPipLayout: RecordSheetPipLayout;
+    /**
+     * Record sheets count identical weapons on one inventory row, which splits as their states diverge. `previews`
+     * groups only the unit details sheet preview.
+     */
+    recordSheetGroupWeapons: RecordSheetGroupWeapons;
     lastCanvasState?: {
         brushSize: number;
         eraserSize: number;
     },
     sidebarLipPosition?: string;
     trackPhaseAndTurn: boolean;
+    /** Units share a real turn/phase clock and advance step by step (requires trackPhaseAndTurn). */
+    realPhases: boolean;
+    /** Firing opens the attack resolution dialog, which can send the hits to the target's owner. */
+    attackResolution: boolean;
+    /** How a side with more units spreads them over a phase (Total Warfare only; Core fixes it). */
+    initiativeOrder: InitiativeOrderMode;
+    /** The optional Initiative Die (Core p.39): a losing side gains +1 per consecutive loss, up to +6. */
+    initiativeDie: boolean;
+    cbtUnitViewMode: CBTUnitViewMode;
     cbtAutomationOptions: CBTAutomationOptions;
     CBTOptionalRules: CBTOptionalRules;
-    CBTRules: typeof OPTION_VALUES.CBTRules[number];
+    CBTRules: CBTRuleset;
     ASUseHex: boolean;
     c3NetworkConnectionsAboveNodes: boolean;
     automaticallyConvertFiltersToSemantic: boolean;
     allowMultipleActiveSheets: boolean;
-    unitSearchExpandedViewLayout: typeof OPTION_VALUES.unitSearchExpandedViewLayout[number];
+    unitSearchExpandedViewLayout: OptionValue<'unitSearchExpandedViewLayout'>;
     showFilteredComponents: boolean;
     unitSearchViewMode: UnitSearchViewMode;
-    forceOverviewViewMode: typeof OPTION_VALUES.forceOverviewViewMode[number];
+    factionAvailabilityViewMode: OptionValue<'factionAvailabilityViewMode'>;
+    forceOverviewViewMode: OptionValue<'forceOverviewViewMode'>;
     ASUseAutomations: boolean;
-    ASVehiclesCriticalHitTable: typeof OPTION_VALUES.ASVehiclesCriticalHitTable[number];
+    ASVehiclesCriticalHitTable: OptionValue<'ASVehiclesCriticalHitTable'>;
     ASUnifiedDamagePicker: boolean;
     performanceMode: boolean;
     enableForceSyncConflictDialog: boolean;
-
-    // Additional user-supplied unit database servers (base URLs). db.mekbay.com is always
-    // the primary source; these servers may only contribute additional (new-named) units,
-    // their record-sheet SVGs, and their unit fluff art.
-    unitServers: string[];
 
     // Force Generator
     forceGenerator: ForceGeneratorOptions;

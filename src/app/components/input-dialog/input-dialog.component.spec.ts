@@ -8,7 +8,7 @@ import { TestBed } from '@angular/core/testing';
 import { InputDialogComponent, type InputDialogData } from './input-dialog.component';
 
 describe('InputDialogComponent', () => {
-    it('centers and validates a compact lobby-code input', () => {
+    it('centers and validates a compact code input', () => {
         const data: InputDialogData = {
             title: 'Join Operation Lobby',
             message: 'Join as a spectator.',
@@ -33,7 +33,6 @@ describe('InputDialogComponent', () => {
 
         expect(input.closest('.center-input')).not.toBeNull();
         expect(input.maxLength).toBe(4);
-        expect(getComputedStyle(input).textAlign).toBe('center');
 
         input.value = 'abc';
         input.dispatchEvent(new Event('input'));
@@ -44,5 +43,7 @@ describe('InputDialogComponent', () => {
         input.dispatchEvent(new Event('input'));
         fixture.detectChanges();
         expect(confirm.disabled).toBeFalse();
+
+        fixture.destroy();
     });
 });

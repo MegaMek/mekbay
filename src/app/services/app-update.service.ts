@@ -6,11 +6,7 @@ import { DestroyRef, Injectable, inject, signal } from '@angular/core';
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import { SwUpdate } from '@angular/service-worker';
 import { LoggerService } from './logger.service';
-import {
-    createServiceWorkerUpdateScreen,
-    getLatestServiceWorkerHash,
-    recordUpdateReloadHash,
-} from '../utils/service-worker-update-bootstrap.util';
+import { createServiceWorkerUpdateScreen } from '../utils/service-worker-update-bootstrap.util';
 
 export interface UpdateCheckOptions {
     force?: boolean;
@@ -28,7 +24,6 @@ export class AppUpdateService {
     private swUpdate = inject(SwUpdate);
     private logger = inject(LoggerService);
     private currentCheck: Promise<boolean> | null = null;
-    private pendingUpdateHash: string | null = null;
     private lastUpdateCheck = Date.now();
 
     constructor() {
@@ -46,7 +41,7 @@ export class AppUpdateService {
                         this.logger.info('Service worker update detected, downloading...');
                         break;
                     case 'VERSION_READY':
-                        this.handleReadyUpdate(event);
+                        this.handleReadyUpdate();
                         break;
                     case 'VERSION_INSTALLATION_FAILED':
                         this.logger.error('Service worker update installation failed: ' + event.error);
@@ -107,7 +102,6 @@ export class AppUpdateService {
         updateScreen?.show('Activating update...', 90);
 
         if (this.swUpdate.isEnabled) {
-            recordUpdateReloadHash(this.pendingUpdateHash);
             try {
                 const activated = await this.swUpdate.activateUpdate();
                 if (activated) {
@@ -124,9 +118,7 @@ export class AppUpdateService {
         window.location.reload();
     }
 
-    private handleReadyUpdate(event: { latestVersion?: { hash?: string } }): void {
-        const latestHash = getLatestServiceWorkerHash(event);
-        this.pendingUpdateHash = latestHash;
+    private handleReadyUpdate(): void {
         this.updatePending.set(true);
         this.logger.info('Service worker update is ready');
     }

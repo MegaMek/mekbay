@@ -78,8 +78,9 @@
 
             <!-- Groups layer (rendered below forces) -->
             @for (group of baseLayerGroups(); track group.id) {
+            @let metadata = groupMetadata().get(group.id);
             @let previewInfo = previewGroupInfo().get(group.id);
-            @let previewFactionId = previewInfo?.factionId ?? group.factionId();
+            @let previewFactionId = previewInfo?.factionId ?? metadata?.factionId;
             <g class="group-container" [class.parent-group]="isParentGroup(group)" [class.readonly]="readOnly()"
                 [class.drop-target]="dropTargetGroupId() === group.id"
                 [attr.transform]="'translate(' + group.x() + ',' + group.y() + ')'"
@@ -111,16 +112,16 @@
                             (pointerdown)="!readOnly() && onGroupTitlePointerDown($event, group)" [title]="readOnly() ? '' : 'Drag to move or click to rename'">
                             {{ customName }}
                         </div>
-                        @if (previewInfo?.orgName || group.orgName(); as orgName) {
+                        @if (previewInfo?.orgName || (metadata?.descendants?.length ? metadata?.org.name : ''); as orgName) {
                         <div class="group-org-name">{{ orgName }}</div>
                         }
-                        } @else if (previewInfo?.orgName || group.orgName(); as orgName) {
+                        } @else if (previewInfo?.orgName || (metadata?.descendants?.length ? metadata?.org.name : ''); as orgName) {
                         <div class="group-name" [class.editable]="!readOnly()"
                             (pointerdown)="!readOnly() && onGroupTitlePointerDown($event, group)" [title]="readOnly() ? '' : 'Drag to move or click to rename'">
                             {{ orgName }}
                         </div>
                         }
-                        @if (previewInfo?.totals || group.totals(); as totals) {
+                        @if (previewInfo?.totals || metadata?.totals; as totals) {
                         <div class="group-totals">{{ totals }}</div>
                         }
                     </div>
@@ -349,8 +350,9 @@
 
             <!-- Dragged group overlay (rendered above everything) -->
             @for (group of dragOverlayGroups(); track group.id) {
+            @let metadata = groupMetadata().get(group.id);
             @let previewInfo = previewGroupInfo().get(group.id);
-            @let previewFactionId = previewInfo?.factionId ?? group.factionId();
+            @let previewFactionId = previewInfo?.factionId ?? metadata?.factionId;
             <g class="group-container" [class.parent-group]="isParentGroup(group)" [class.readonly]="readOnly()"
                 [class.drop-target]="dropTargetGroupId() === group.id"
                 [attr.transform]="'translate(' + group.x() + ',' + group.y() + ')'"
@@ -374,15 +376,15 @@
                         <div class="group-name" [class.editable]="!readOnly()">
                             {{ customName }}
                         </div>
-                        @if (previewInfo?.orgName || group.orgName(); as orgName) {
+                        @if (previewInfo?.orgName || (metadata?.descendants?.length ? metadata?.org.name : ''); as orgName) {
                         <div class="group-org-name">{{ orgName }}</div>
                         }
-                        } @else if (previewInfo?.orgName || group.orgName(); as orgName) {
+                        } @else if (previewInfo?.orgName || (metadata?.descendants?.length ? metadata?.org.name : ''); as orgName) {
                         <div class="group-name" [class.editable]="!readOnly()">
                             {{ orgName }}
                         </div>
                         }
-                        @if (previewInfo?.totals || group.totals(); as totals) {
+                        @if (previewInfo?.totals || metadata?.totals; as totals) {
                         <div class="group-totals">{{ totals }}</div>
                         }
                     </div>
@@ -437,17 +439,17 @@
                 <button class="filter-btn" [class.active]="sidebarFilter() === sidebarAllFilter"
                     (click)="setSidebarFilter(sidebarAllFilter)">
                     <span class="filter-label">All</span>
-                    <span class="filter-count">{{ getSidebarFilterCount(sidebarAllFilter) }}</span>
+                    <span class="filter-count">{{ sidebarComplete() ? getSidebarFilterCount(sidebarAllFilter) : '…' }}</span>
                 </button>
-                <button class="filter-btn" [class.active]="sidebarFilter() === GameSystem.CLASSIC"
-                    (click)="toggleSidebarFilter(GameSystem.CLASSIC)">
+                <button class="filter-btn" [class.active]="sidebarFilter() === GameSystem.CBT"
+                    (click)="toggleSidebarFilter(GameSystem.CBT)">
                     <span class="filter-label">BattleTech</span>
-                    <span class="filter-count">{{ getSidebarFilterCount(GameSystem.CLASSIC) }}</span>
+                    <span class="filter-count">{{ sidebarComplete() ? getSidebarFilterCount(GameSystem.CBT) : '…' }}</span>
                 </button>
-                <button class="filter-btn" [class.active]="sidebarFilter() === GameSystem.ALPHA_STRIKE"
-                    (click)="toggleSidebarFilter(GameSystem.ALPHA_STRIKE)">
+                <button class="filter-btn" [class.active]="sidebarFilter() === GameSystem.AS"
+                    (click)="toggleSidebarFilter(GameSystem.AS)">
                     <span class="filter-label">Alpha Strike</span>
-                    <span class="filter-count">{{ getSidebarFilterCount(GameSystem.ALPHA_STRIKE) }}</span>
+                    <span class="filter-count">{{ sidebarComplete() ? getSidebarFilterCount(GameSystem.AS) : '…' }}</span>
                 </button>
             </div>
             <div class="sidebar-tag-bar">
@@ -456,7 +458,7 @@
                     [class.active]="sidebarFilter() === sidebarUntaggedFilter"
                     (click)="toggleSidebarFilter(sidebarUntaggedFilter)">
                     <span class="filter-label">Untagged</span>
-                    <span class="filter-count">{{ getSidebarTagCount(sidebarUntaggedFilter) }}</span>
+                    <span class="filter-count">{{ sidebarComplete() ? getSidebarTagCount(sidebarUntaggedFilter) : '…' }}</span>
                 </button>
                 }
                 @for (tag of sidebarTags(); track tag.id) {
@@ -465,18 +467,28 @@
                         [class.active]="sidebarFilter() === tag.id"
                         (click)="toggleSidebarFilter(tag.id)">
                         <span class="filter-label">{{ tag.label }}</span>
-                        <span class="filter-count">{{ tag.count }}</span>
+                        <span class="filter-count">{{ sidebarComplete() ? tag.count : '…' }}</span>
                     </button>
                     }
+                }
+                @if (!sidebarComplete()) {
+                <button class="filter-btn" type="button" [disabled]="sidebarLoading() || !!sidebarPending()"
+                    (click)="loadSidebarPage('all')">All tags…</button>
                 }
             </div>
         </div>
 
-        <div class="forces-list">
+        <div class="forces-list"
+            [forceListPaging]="sidebarVisible() && !sidebarLoading() && !sidebarPending() && !sidebarComplete() && !sidebarLoadError() && !sidebarRequiresComplete()"
+            (forceListLoadMore)="loadSidebarPage()">
             @if (sidebarLoading()) {
             <div class="sidebar-empty">Loading forces...</div>
+            } @else if (sidebarPending() === 'all') {
+            <div class="sidebar-empty" role="status">Loading all forces for account-wide results…</div>
+            } @else if (!sidebarComplete() && sidebarRequiresComplete()) {
+            <div class="sidebar-empty">Load the remaining forces to search, filter, or sort the entire account.</div>
             } @else if (sidebarForces().length === 0) {
-            <div class="sidebar-empty">{{ getSidebarEmptyStateMessage() }}</div>
+            <div class="sidebar-empty">{{ sidebarComplete() ? getSidebarEmptyStateMessage() : 'Loading more available forces…' }}</div>
             } @else {
             @for (force of sidebarForces(); track force.instanceId) {
             @let metadata = forcesData().get(force.instanceId);
@@ -507,6 +519,22 @@
             }
         </div>
 
+        @if (!sidebarLoading() && !sidebarComplete()) {
+        <div class="sidebar-paging" role="status">
+            @if (sidebarLoadError()) {
+            <span>Could not load all cloud forces. Available entries are shown.</span>
+            } @else if (sidebarPending()) {
+            <span>Loading forces…</span>
+            } @else {
+            <span>{{ sidebarForces().length }} available loaded</span>
+            }
+            <button class="bt-button" type="button" [disabled]="!!sidebarPending()"
+                (click)="loadSidebarPage(sidebarRequiresComplete() ? 'all' : 'next')">
+                {{ sidebarLoadError() ? 'RETRY' : 'LOAD MORE' }}
+            </button>
+        </div>
+        }
+
         <div class="sidebar-sort-footer">
             <div class="sidebar-footer-filter-controls">
                 <compact-filter-menu
@@ -517,6 +545,7 @@
                     fallbackLabel="F"
                     size="small"
                     panelAlign="left"
+                    (opened)="loadSidebarPage('all')"
                     (selectedIdChange)="setSidebarFactionFilter($event)">
                 </compact-filter-menu>
                 <compact-filter-menu
@@ -527,11 +556,12 @@
                     fallbackLabel="E"
                     size="small"
                     panelAlign="left"
+                    (opened)="loadSidebarPage('all')"
                     (selectedIdChange)="setSidebarEraFilter($event)">
                 </compact-filter-menu>
             </div>
             <div class="sort-controls">
-                <select class="bt-input sort-select"
+                <select class="bt-select sort-select"
                     (change)="setSidebarSort($any($event.target).value)">
                     @for (opt of SORT_OPTIONS; track opt.key) {
                         <option [value]="opt.key" [selected]="opt.key === sidebarSort()">{{ opt.label }}</option>

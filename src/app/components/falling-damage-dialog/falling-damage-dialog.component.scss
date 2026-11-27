@@ -1,15 +1,11 @@
-:host {
-    display: block;
-}
+:host { display: block; }
 
 .panel {
     width: min(660px, calc(100vw - 24px));
     max-height: min(780px, calc(100dvh - 24px));
 }
 
-.random-button {
-    background-size: 32px;
-}
+.random-button { background-size: 32px; }
 
 .fall-roll-all {
     display: flex;
@@ -171,10 +167,7 @@
     line-height: 1.35;
 }
 
-.damage-groups {
-    display: grid;
-    gap: 6px;
-}
+.damage-groups { display: grid; gap: 6px; }
 
 .damage-group {
     display: grid;
@@ -186,9 +179,7 @@
     background: var(--background-input);
 }
 
-.damage-group.resolved {
-    border-left-color: var(--danger);
-}
+.damage-group.resolved { border-left-color: var(--danger); }
 
 .damage-group-summary {
     display: flex;
@@ -198,31 +189,11 @@
     gap: 12px;
 }
 
-.damage-group-heading {
-    display: flex;
-    flex-direction: column;
-    gap: 2px;
-}
-
-.damage-group-heading span {
-    color: var(--danger);
-    font-weight: 700;
-}
-
-.location-roll {
-    min-width: 0;
-}
-
-.damage-location .through-armor-critical {
-    color: var(--danger);
-    font-weight: 700;
-}
-
-.tripod-roll-label {
-    color: var(--text-color-secondary);
-    font-size: 0.78em;
-    font-weight: 700;
-}
+.damage-group-heading { display: flex; flex-direction: column; gap: 2px; }
+.damage-group-heading span { color: var(--danger); font-weight: 700; }
+.location-roll { min-width: 0; }
+.damage-location .through-armor-critical { color: var(--danger); font-weight: 700; }
+.tripod-roll-label { color: var(--text-color-secondary); font-size: 0.78em; font-weight: 700; }
 
 .damage-location {
     display: flex;
@@ -242,33 +213,17 @@
     gap: 4px 8px;
 }
 
-.falling-actions {
-    gap: 8px;
-}
-
-.falling-actions .bt-button {
-    flex: 1 1 0;
-    width: auto;
-}
+.falling-actions { gap: 8px; }
+.falling-actions .bt-button { flex: 1 1 0; width: auto; }
 
 @media (max-width: 560px) {
     .orientation-result {
         align-items: stretch;
         grid-template-columns: 1fr;
 
-        > div {
-            padding-right: 0;
-            border-right: 0;
-        }
+        > div { padding-right: 0; border-right: 0; }
     }
 
-    .fall-totals {
-        align-self: end;
-        align-items: end;
-        text-align: right;
-    }
-
-    .two-d6-buttons {
-        grid-template-columns: repeat(6, minmax(0, 1fr));
-    }
+    .fall-totals { align-self: end; align-items: end; text-align: right; }
+    .two-d6-buttons { grid-template-columns: repeat(6, minmax(0, 1fr)); }
 }

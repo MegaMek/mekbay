@@ -9,177 +9,59 @@ import {
     DestroyRef,
     effect,
     type ElementRef,
-    HostListener,
     inject,
     signal,
+    untracked,
     viewChild,
     type WritableSignal,
 } from '@angular/core';
 import { DialogRef, DIALOG_DATA } from '@angular/cdk/dialog';
-import { LoadForceEntry } from '../../models/load-force-entry.model';
-import { sanitizeForceTags } from '../../models/force-serialization';
+import type { LoadForceEntry } from '../../models/load-force-entry.model';
+import { createForcePreviewEntryData } from '../../models/force-preview.model';
 import { DataService } from '../../services/data.service';
+import { ForcePersistenceService } from '../../services/force-persistence.service';
+import { OrganizationStorageService } from '../../services/organization-storage.service';
 import { DialogsService } from '../../services/dialogs.service';
-import { ForceBuilderService } from '../../services/force-builder.service';
+import { ForceWorkspaceStateService } from '../../services/force-workspace-state.service';
 import { LayoutService } from '../../services/layout.service';
 import { UrlService } from '../../services/url.service';
 import { FactionImgPipe } from '../../pipes/faction-img.pipe';
 import type { GroupSizeResult, OrgSizeResult } from '../../utils/org/org-types';
 import { GameSystem } from '../../models/common.model';
-import { getUnitsAverageTechBase, type TechBase } from '../../models/tech.model';
 import type { LoadedOrganization, SerializedOrganization, OrgPlacedForce, OrgGroupData } from '../../models/organization.model';
 import { ForceEntryPreviewDialogComponent } from '../force-entry-preview-dialog/force-entry-preview-dialog.component';
 import { ShareForceOrgDialogComponent } from '../share-force-org-dialog/share-force-org-dialog.component';
-import type { Era } from '../../models/eras.model';
-import { getOrgFromForce, getOrgFromForceCollection } from '../../utils/org/org-namer.util';
-import { Faction, FactionId, getFactionImg } from '../../models/factions.model';
-import { naturalCompare } from '../../utils/sort.util';
+import { getOrgFromForce } from '../../utils/org/org-analysis.util';
+import { FactionId, getFactionImg } from '../../models/factions.model';
 import { CompactFilterMenuComponent } from '../compact-filter-menu/compact-filter-menu.component';
+import { uuidv4 } from '../../utils/uuid.util';
+import type { ForceListSession } from '../../models/force-list-session';
+import { ForceListPagingDirective } from '../../directives/force-list-paging.directive';
+import {
+    CARD_HEIGHT, CARD_WIDTH, GRID_SNAP_SIZE, GROUP_HEADER_HEIGHT, GROUP_PADDING,
+    enclosingGroupBounds, getOverlapArea, rectContainsPoint, rectsOverlap, resolveCollisionPosition,
+    snapGroupXToGrid, snapGroupYToGrid, snapToGrid, snapUpToGrid, type Rect,
+} from './force-org-layout';
+
+import {
+    SIDEBAR_FILTER_ALL, SIDEBAR_FILTER_UNTAGGED, buildSidebarTags, countSidebarFilters,
+    sortForces, computeSearchText, matchesSidebarSearch, matchesSidebarFilter,
+    matchesSidebarFactionFilter, matchesSidebarEraFilter, buildSidebarFactionOptions, buildSidebarEraOptions,
+    type SidebarTagRecord,
+} from './force-org-sidebar';
+
+import { deriveCollectionMetadata, deriveOrganizationMetadata, type PreviewOrgExtras } from './force-org-metadata';
 
 const MIN_ZOOM = 0.2;
 const MAX_ZOOM = 2.0;
 
-const GRID_SNAP_SIZE = 20;
-const CARD_WIDTH = 220;
-const CARD_HEIGHT = 70;
-const GROUP_PADDING = 20;
-const GROUP_HEADER_HEIGHT = 60;
 const GROUP_EMBED_OVERLAP_THRESHOLD = 0.2;
-const COLLISION_EDGE_PADDING = 8;
 const COLLISION_RESOLVE_MAX_ITERATIONS = 50;
 const READONLY_PREVIEW_MOVE_THRESHOLD = 6;
-const GROUP_ORG_NAME_TIER_CUTOFF = 0;
 const AUTO_FIT_MAX_RETRIES = 24;
 const UNSAVED_ORGANIZATION_WARNING = 'This TO&E has uncommitted changes. If you leave now, those changes will be discarded.';
-const SIDEBAR_FILTER_ALL = 'all';
-const SIDEBAR_FILTER_UNTAGGED = 'untagged';
-const SIDEBAR_TAG_FILTER_PREFIX = 'tag:';
 
-function snapToGrid(value: number): number {
-    return Math.round(value / GRID_SNAP_SIZE) * GRID_SNAP_SIZE;
-}
-
-function snapDownToGrid(value: number): number {
-    return Math.floor(value / GRID_SNAP_SIZE) * GRID_SNAP_SIZE;
-}
-
-function snapUpToGrid(value: number): number {
-    return Math.ceil(value / GRID_SNAP_SIZE) * GRID_SNAP_SIZE;
-}
-
-function snapGroupXToGrid(value: number): number {
-    return snapToGrid(value + GROUP_PADDING) - GROUP_PADDING;
-}
-
-function snapGroupYToGrid(value: number): number {
-    return snapToGrid(value + GROUP_HEADER_HEIGHT + GROUP_PADDING) - GROUP_HEADER_HEIGHT - GROUP_PADDING;
-}
-
-function snapGroupXDownToGrid(value: number): number {
-    return snapDownToGrid(value + GROUP_PADDING) - GROUP_PADDING;
-}
-
-function snapGroupXUpToGrid(value: number): number {
-    return snapUpToGrid(value + GROUP_PADDING) - GROUP_PADDING;
-}
-
-function snapGroupYDownToGrid(value: number): number {
-    return snapDownToGrid(value + GROUP_HEADER_HEIGHT + GROUP_PADDING) - GROUP_HEADER_HEIGHT - GROUP_PADDING;
-}
-
-function snapGroupYUpToGrid(value: number): number {
-    return snapUpToGrid(value + GROUP_HEADER_HEIGHT + GROUP_PADDING) - GROUP_HEADER_HEIGHT - GROUP_PADDING;
-}
-
-/** Compute total BV and PV for a force, preferring saved values over unit-derived sums.
- *  Only sums BV for Classic forces and PV for Alpha Strike forces. */
-function computeForceUnitTotals(force: LoadForceEntry): { totalBv: number; totalPv: number } {
-    const isAS = force.type === GameSystem.ALPHA_STRIKE;
-    if (isAS && typeof force.pv === 'number') {
-        return { totalBv: 0, totalPv: force.pv };
-    }
-    if (!isAS && typeof force.bv === 'number') {
-        return { totalBv: force.bv, totalPv: 0 };
-    }
-
-    let totalBv = 0, totalPv = 0;
-    for (const g of force.groups ?? []) {
-        for (const ue of g.units ?? []) {
-            if (ue.unit) {
-                if (isAS) {
-                    totalPv += ue.unit.as.PV ?? 0;
-                } else {
-                    totalBv += ue.unit.bv ?? 0;
-                }
-            }
-        }
-    }
-    return { totalBv, totalPv };
-}
-
-/** Get the dominance value for a force by summing unit.bv (common scale across game systems). */
-function getForceValue(force: LoadForceEntry): number {
-    let total = 0;
-    for (const g of force.groups ?? []) {
-        for (const ue of g.units ?? []) {
-            if (ue.unit) total += ue.unit.bv ?? 0;
-        }
-    }
-    return total;
-}
-
-function getLoadForceFactionId(force: LoadForceEntry): FactionId | undefined {
-    return force.faction?.id;
-}
-
-/** Format BV/PV totals for a set of entries as a display string. */
-function formatTotals(entries: LoadForceEntry[]): string {
-    let totalBv = 0, totalPv = 0;
-    for (const e of entries) {
-        const t = computeForceUnitTotals(e);
-        totalBv += t.totalBv;
-        totalPv += t.totalPv;
-    }
-    const parts: string[] = [];
-    if (totalBv > 0) parts.push(`BV: ${totalBv.toLocaleString()}`);
-    if (totalPv > 0) parts.push(`PV: ${totalPv.toLocaleString()}`);
-    return parts.join(' · ');
-}
-
-/** Determine the dominant faction ID from a set of entries, using computed unit totals. */
-function getDominantFactionId(entries: LoadForceEntry[]): FactionId | undefined {
-    const withFaction = entries.filter(e => getLoadForceFactionId(e) !== undefined);
-    if (withFaction.length === 0) return undefined;
-    const valueSums = new Map<FactionId, number>();
-    const counts = new Map<FactionId, number>();
-    for (const e of withFaction) {
-        const fid = getLoadForceFactionId(e)!;
-        valueSums.set(fid, (valueSums.get(fid) ?? 0) + getForceValue(e));
-        counts.set(fid, (counts.get(fid) ?? 0) + 1);
-    }
-    let bestValue = -1, bestId: FactionId | undefined;
-    for (const [fid, total] of valueSums) {
-        if (total > bestValue) { bestValue = total; bestId = fid; }
-    }
-    if (bestValue > 0 && bestId !== undefined) return bestId;
-    let maxCount = 0, mostFreqId: FactionId | undefined;
-    for (const [fid, count] of counts) {
-        if (count > maxCount) { maxCount = count; mostFreqId = fid; }
-    }
-    return mostFreqId ?? getLoadForceFactionId(withFaction[0]);
-}
-
-interface Rect { x: number; y: number; width: number; height: number }
 interface GroupPreview extends Rect { orgName: string; totals: string; factionId: FactionId | undefined }
-interface SidebarTagRecord { id: string; label: string; count: number }
-interface SidebarFactionFilterOption { id: number; name: string; img?: string; count: number }
-interface SidebarEraFilterOption { id: number; name: string; img?: string; count: number; startYear: number }
-
-interface PreviewOrgExtras {
-    targetGroupId: string;
-    entries: LoadForceEntry[];
-    childGroupResults?: GroupSizeResult[];
-}
 
 type ForceDropAction =
     | { type: 'join-group'; groupId: string }
@@ -202,49 +84,28 @@ interface PlacedForce {
 }
 
 /** An organizational group containing forces or other groups */
-class OrgGroup {
-    readonly id: string;
-    readonly name: WritableSignal<string>;
-    readonly x: WritableSignal<number>;
-    readonly y: WritableSignal<number>;
-    readonly width: WritableSignal<number>;
-    readonly height: WritableSignal<number>;
-    readonly zIndex: WritableSignal<number>;
-    parentGroupId: string | null;
+type OrgGroup = ReturnType<typeof createOrgGroupState>;
 
-    /** Descendant forces — set externally, drives totals computation. */
-    readonly descendants = signal<LoadForceEntry[]>([]);
-    /** Computed org size name (not serialized). */
-    readonly orgName = signal('');
-    /** Computed dominant faction ID (not serialized). */
-    readonly factionId = signal<FactionId | undefined>(undefined);
-    /** Computed dominant faction (not serialized). */
-    readonly faction = signal<Faction | undefined>(undefined);
-    /** Computed BV/PV totals string (not serialized). */
-    readonly totals = computed(() => {
-        const desc = this.descendants();
-        return desc.length > 0 ? formatTotals(desc) : '';
-    });
-
-    constructor(params: {
-        id?: string;
-        name?: string;
-        x?: number;
-        y?: number;
-        width?: number;
-        height?: number;
-        zIndex: number;
-        parentGroupId?: string | null;
-    }) {
-        this.id = params.id ?? crypto.randomUUID();
-        this.name = signal(params.name ?? '');
-        this.x = signal(params.x ?? 0);
-        this.y = signal(params.y ?? 0);
-        this.width = signal(params.width ?? 0);
-        this.height = signal(params.height ?? 0);
-        this.zIndex = signal(params.zIndex);
-        this.parentGroupId = params.parentGroupId ?? null;
-    }
+function createOrgGroupState(params: {
+    id?: string;
+    name?: string;
+    x?: number;
+    y?: number;
+    width?: number;
+    height?: number;
+    zIndex: number;
+    parentGroupId?: string | null;
+}) {
+    return {
+        id: params.id ?? uuidv4(),
+        name: signal(params.name ?? ''),
+        x: signal(params.x ?? 0),
+        y: signal(params.y ?? 0),
+        width: signal(params.width ?? 0),
+        height: signal(params.height ?? 0),
+        zIndex: signal(params.zIndex),
+        parentGroupId: params.parentGroupId ?? null,
+    };
 }
 
 /** Dialog input data for loading a saved organization */
@@ -260,7 +121,7 @@ interface ForceMetadata {
 }
 
 function createMissingForceEntry(instanceId: string): LoadForceEntry {
-    return new LoadForceEntry({
+    return createForcePreviewEntryData({
         instanceId,
         name: 'Missing Force',
         missing: true,
@@ -271,18 +132,21 @@ function createMissingForceEntry(instanceId: string): LoadForceEntry {
 @Component({
     selector: 'force-org-dialog',
     changeDetection: ChangeDetectionStrategy.OnPush,
-    imports: [FactionImgPipe, CompactFilterMenuComponent],
+    imports: [FactionImgPipe, CompactFilterMenuComponent, ForceListPagingDirective],
     host: {
         class: 'fullscreen-dialog-host fullheight tv-fade',
+        '(window:beforeunload)': 'onBeforeUnload($event)',
     },
     templateUrl: './force-org-dialog.component.html',
-    styleUrls: ['./force-org-dialog.component.scss']
+    styleUrl: './force-org-dialog.component.scss'
 })
 export class ForceOrgDialogComponent {
     private dialogRef = inject(DialogRef<void>);
     private dataService = inject(DataService);
+    private readonly forcePersistence = inject(ForcePersistenceService);
+    private organizationStorage = inject(OrganizationStorageService);
     private dialogsService = inject(DialogsService);
-    private forceBuilderService = inject(ForceBuilderService);
+    private readonly forceWorkspace = inject(ForceWorkspaceStateService);
     private destroyRef = inject(DestroyRef);
     private urlService = inject(UrlService);
     protected layoutService = inject(LayoutService);
@@ -305,65 +169,23 @@ export class ForceOrgDialogComponent {
 
     getFactionImg = getFactionImg;
 
-    /** Instance ID of the currently selected force in ForceBuilderService. */
+    /** Instance ID of the currently selected workspace force. */
     protected selectedForceInstanceId = computed(() => {
-        const unit = this.forceBuilderService.selectedUnit();
+        const unit = this.forceWorkspace.selectedUnit();
         return unit?.force?.instanceId() ?? null;
     });
 
     /** Map of loaded force instanceId → alignment ('friendly' | 'enemy'). */
     protected loadedForceAlignments = computed<Map<string, 'friendly' | 'enemy'>>(() => {
         const map = new Map<string, 'friendly' | 'enemy'>();
-        for (const slot of this.forceBuilderService.loadedForces()) {
+        for (const slot of this.forceWorkspace.loadedForces()) {
             const id = slot.force.instanceId();
             if (id) map.set(id, slot.alignment);
         }
         return map;
     });
 
-    /** Dominant faction ID computed hierarchically from top-level groups + ungrouped forces. */
-    protected organizationFactionId = computed<FactionId | undefined>(() => {
-        const placed = this.placedForces();
-        const groups = this.groups();
-        const factionIds = this.groupFactionIds();
-        const descendantsMap = this.descendantForcesMap();
-        const valueSums = new Map<FactionId, number>();
-        const counts = new Map<FactionId, number>();
-
-        // Top-level groups as single entities
-        for (const group of groups) {
-            if (group.parentGroupId !== null) continue;
-            const fid = factionIds.get(group.id);
-            if (fid === undefined) continue;
-            let totalValue = 0;
-            for (const e of descendantsMap.get(group.id) ?? []) {
-                totalValue += getForceValue(e);
-            }
-            valueSums.set(fid, (valueSums.get(fid) ?? 0) + totalValue);
-            counts.set(fid, (counts.get(fid) ?? 0) + 1);
-        }
-
-        // Ungrouped forces
-        for (const pf of placed) {
-            if (pf.groupId !== null) continue;
-            const fid = getLoadForceFactionId(pf.force);
-            if (fid === undefined) continue;
-            valueSums.set(fid, (valueSums.get(fid) ?? 0) + getForceValue(pf.force));
-            counts.set(fid, (counts.get(fid) ?? 0) + 1);
-        }
-
-        if (valueSums.size === 0 && counts.size === 0) return undefined;
-        let bestValue = -1, bestId: FactionId | undefined;
-        for (const [fid, total] of valueSums) {
-            if (total > bestValue) { bestValue = total; bestId = fid; }
-        }
-        if (bestValue > 0 && bestId !== undefined) return bestId;
-        let maxCount = 0, mostFreqId: FactionId | undefined;
-        for (const [fid, count] of counts) {
-            if (count > maxCount) { maxCount = count; mostFreqId = fid; }
-        }
-        return mostFreqId;
-    });
+    protected organizationFactionId = computed(() => this.organizationMetadata().factionId);
 
     // Sidebar
     protected sidebarOpen = signal(false);
@@ -375,6 +197,15 @@ export class ForceOrgDialogComponent {
     protected sidebarEraFilter = signal<number | null>(null);
     protected sidebarAnimated = signal(false);
     protected sidebarLoading = signal(false);
+    protected sidebarComplete = signal(false);
+    protected sidebarPending = signal<'next' | 'all' | null>(null);
+    protected sidebarLoadError = signal('');
+    protected sidebarVisible = computed(() => !this.readOnly() && (!this.layoutService.isMobile() || this.sidebarOpen()));
+    private sidebarSession?: ForceListSession;
+    private sidebarLoadGeneration = 0;
+    protected sidebarRequiresComplete = computed(() => this.sidebarSearchText().trim().length > 0
+        || this.sidebarFilter() !== SIDEBAR_FILTER_ALL || this.sidebarFactionFilter() !== null
+        || this.sidebarEraFilter() !== null || this.sidebarSort() !== 'timestamp' || this.sidebarSortDirection() !== 'desc');
     protected loading = signal(false);
 
     // Sidebar sort
@@ -410,6 +241,9 @@ export class ForceOrgDialogComponent {
 
     // Groups
     protected groups = signal<OrgGroup[]>([]);
+    // Values are the authoritative group objects; parent walks also see in-progress reparenting.
+    private groupsById = computed(() => new Map(this.groups().map(group => [group.id, group])));
+    private parentGroupIds = computed(() => new Set(this.groups().map(group => group.parentGroupId)));
     private currentOrganizationSnapshot = computed(() => this.captureOrganizationSnapshot());
     private savedOrganizationSnapshot = signal(this.currentOrganizationSnapshot());
     protected dirty = computed(() => this.currentOrganizationSnapshot() !== this.savedOrganizationSnapshot());
@@ -471,118 +305,45 @@ export class ForceOrgDialogComponent {
     /** Forces available in sidebar before tag/text filtering. */
     protected sidebarBaseForces = computed(() => {
         const placedIds = new Set(this.placedForces().map(p => p.force.instanceId));
-        return this.allForces().filter(f => {
-            if (placedIds.has(f.instanceId)) return false;
-            return true;
-        });
+        return this.allForces().filter(f => !placedIds.has(f.instanceId));
     });
 
     /** Forces available in sidebar after text search, before tag/system filtering. */
     private sidebarCountSourceForces = computed(() => {
         const tokens = this.sidebarSearchText().trim().toLowerCase().split(/\s+/).filter(Boolean);
-        return this.sidebarBaseForces().filter(force => this.matchesSidebarSearch(force, tokens));
+        return this.sidebarBaseForces().filter(force => matchesSidebarSearch(force, tokens));
     });
 
     private sidebarFacetSourceForces = computed(() => {
         const filter = this.sidebarFilter();
-        return this.sidebarCountSourceForces().filter(force => this.matchesSidebarFilter(force, filter));
+        return this.sidebarCountSourceForces().filter(force => matchesSidebarFilter(force, filter));
     });
 
-    protected sidebarFactionOptions = computed<SidebarFactionFilterOption[]>(() =>
-        this.buildSidebarFactionOptions(
-            this.sidebarFacetSourceForces().filter(force => this.matchesSidebarEraFilter(force, this.sidebarEraFilter())),
+    protected sidebarFactionOptions = computed(() => !this.sidebarComplete() ? [] :
+        buildSidebarFactionOptions(
+            this.sidebarFacetSourceForces().filter(force => matchesSidebarEraFilter(force, this.sidebarEraFilter())),
         ),
     );
 
-    protected sidebarEraOptions = computed<SidebarEraFilterOption[]>(() =>
-        this.buildSidebarEraOptions(
-            this.sidebarFacetSourceForces().filter(force => this.matchesSidebarFactionFilter(force, this.sidebarFactionFilter())),
+    protected sidebarEraOptions = computed(() => !this.sidebarComplete() ? [] :
+        buildSidebarEraOptions(
+            this.sidebarFacetSourceForces().filter(force => matchesSidebarFactionFilter(force, this.sidebarFactionFilter())),
         ),
     );
 
-    private sidebarDisplayCounts = computed(() => {
-        const counts = new Map<string, number>([
-            [SIDEBAR_FILTER_ALL, 0],
-            [GameSystem.CLASSIC, 0],
-            [GameSystem.ALPHA_STRIKE, 0],
-            [SIDEBAR_FILTER_UNTAGGED, 0],
-        ]);
+    private sidebarDisplayCounts = computed(() => countSidebarFilters(this.sidebarCountSourceForces()).counts);
 
-        for (const force of this.sidebarCountSourceForces()) {
-            counts.set(SIDEBAR_FILTER_ALL, (counts.get(SIDEBAR_FILTER_ALL) ?? 0) + 1);
-
-            const forceType = force.type || GameSystem.CLASSIC;
-            counts.set(forceType, (counts.get(forceType) ?? 0) + 1);
-
-            const forceTags = this.getForceTags(force);
-            if (forceTags.length === 0) {
-                counts.set(SIDEBAR_FILTER_UNTAGGED, (counts.get(SIDEBAR_FILTER_UNTAGGED) ?? 0) + 1);
-                continue;
-            }
-
-            const seen = new Set<string>();
-            for (const tag of forceTags) {
-                const tagId = this.getSidebarTagFilterId(tag);
-                if (seen.has(tagId)) {
-                    continue;
-                }
-
-                seen.add(tagId);
-                counts.set(tagId, (counts.get(tagId) ?? 0) + 1);
-            }
-        }
-
-        return counts;
-    });
-
-    protected sidebarTagData = computed(() => {
-        const counts = new Map<string, number>([[SIDEBAR_FILTER_UNTAGGED, 0]]);
-        const labels = new Map<string, string>();
-
-        for (const force of this.sidebarBaseForces()) {
-            const forceTags = this.getForceTags(force);
-            if (forceTags.length === 0) {
-                counts.set(SIDEBAR_FILTER_UNTAGGED, (counts.get(SIDEBAR_FILTER_UNTAGGED) ?? 0) + 1);
-                continue;
-            }
-
-            const seen = new Set<string>();
-            for (const tag of forceTags) {
-                const tagId = this.getSidebarTagFilterId(tag);
-                if (seen.has(tagId)) {
-                    continue;
-                }
-
-                seen.add(tagId);
-                if (!labels.has(tagId)) {
-                    labels.set(tagId, tag);
-                }
-                counts.set(tagId, (counts.get(tagId) ?? 0) + 1);
-            }
-        }
-
-        return { counts, labels };
-    });
-
-    protected sidebarTags = computed<SidebarTagRecord[]>(() => {
-        const { labels } = this.sidebarTagData();
-        const counts = this.sidebarDisplayCounts();
-        return Array.from(labels.entries())
-            .map(([id, label]) => ({
-                id,
-                label,
-                count: counts.get(id) ?? 0,
-            }))
-            .sort((a, b) => naturalCompare(a.label, b.label));
-    });
+    // Keep tag labels stable during search, while counts reflect the searched list.
+    private sidebarTagData = computed(() => countSidebarFilters(this.sidebarBaseForces()));
+    protected sidebarTags = computed(() => buildSidebarTags(this.sidebarTagData().labels, this.sidebarDisplayCounts()));
 
     protected activeSidebarTagRecord = computed<SidebarTagRecord | null>(() => {
         const filter = this.sidebarFilter();
         if (
             filter === SIDEBAR_FILTER_ALL
             || filter === SIDEBAR_FILTER_UNTAGGED
-            || filter === GameSystem.CLASSIC
-            || filter === GameSystem.ALPHA_STRIKE
+            || filter === GameSystem.CBT
+            || filter === GameSystem.AS
         ) {
             return null;
         }
@@ -596,10 +357,10 @@ export class ForceOrgDialogComponent {
         const sortKey = this.sidebarSort();
         const sortDir = this.sidebarSortDirection();
         const filtered = this.sidebarFacetSourceForces().filter(f =>
-            this.matchesSidebarFactionFilter(f, factionFilter)
-            && this.matchesSidebarEraFilter(f, eraFilter),
+            matchesSidebarFactionFilter(f, factionFilter)
+            && matchesSidebarEraFilter(f, eraFilter),
         );
-        return this.sortForces(filtered, sortKey, sortDir);
+        return sortForces(filtered, sortKey, sortDir);
     });
 
     protected svgTransform = computed(() => {
@@ -644,7 +405,7 @@ export class ForceOrgDialogComponent {
                 if (visited.has(current.id)) break;
                 visited.add(current.id);
                 d++;
-                current = groups.find(p => p.id === current!.parentGroupId);
+                current = this.groupsById().get(current!.parentGroupId!);
             }
             return d;
         };
@@ -700,189 +461,47 @@ export class ForceOrgDialogComponent {
         return result;
     });
 
-    /** Descendant forces for each OrgGroup, keyed by group id. */
-    private descendantForcesMap = computed<Map<string, LoadForceEntry[]>>(() => {
-        const placed = this.placedForces();
-        const groups = this.groups();
-        const map = new Map<string, LoadForceEntry[]>();
-        for (const group of groups) {
-            map.set(group.id, this.collectDescendantForces(group.id, placed, groups));
-        }
-        return map;
-    });
+    private organizationMetadata = computed(() => deriveOrganizationMetadata(
+        this.groupsById(), this.placedForces(), this.dataService.getFactions(), this.dataService.getEras(),
+    ));
+    protected groupMetadata = computed(() => this.organizationMetadata().groups);
 
-    /** Faction IDs for all groups, computed as a signal. */
-    private groupFactionIds = computed<Map<string, FactionId | undefined>>(() =>
-        this.computeAllGroupFactionIds(this.placedForces(), this.groups(), this.descendantForcesMap()),
-    );
-
-    /** Preview descendants map: augments base with extra entries along the chain. */
-    private previewDescendantsMap = computed<Map<string, LoadForceEntry[]>>(() => {
+    /** Only the target and its ancestors display hypothetical drop metadata. */
+    protected previewGroupInfo = computed(() => {
         const extra = this.previewExtraForces();
-        if (!extra) return this.descendantForcesMap();
-        const groups = this.groups();
-        const result = new Map(this.descendantForcesMap());
-        const visited = new Set<string>();
-        let currentId: string | null = extra.targetGroupId;
-        while (currentId && !visited.has(currentId)) {
-            visited.add(currentId);
-            const existing = result.get(currentId) ?? [];
-            result.set(currentId, [...existing, ...extra.entries]);
-            const group = groups.find(g => g.id === currentId);
-            currentId = group?.parentGroupId ?? null;
-        }
-        return result;
-    });
-
-    /** Preview faction IDs: includes extra forces from drag preview. */
-    private previewFactionIds = computed<Map<string, FactionId | undefined>>(() => {
-        const extra = this.previewExtraForces();
-        if (!extra) return this.groupFactionIds();
-        return this.computeAllGroupFactionIds(
-            this.placedForces(), this.groups(), this.previewDescendantsMap(), extra,
+        if (!extra) return new Map<string, { orgName: string; totals: string; factionId: FactionId | undefined }>();
+        const groups = this.groupsById();
+        const preview = deriveOrganizationMetadata(
+            groups, this.placedForces(), this.dataService.getFactions(), this.dataService.getEras(), extra,
         );
-    });
-
-    /** Preview group info for the target group and its ancestor chain. */
-    protected previewGroupInfo = computed<Map<string, { orgName: string; totals: string; factionId: FactionId | undefined }>>(() => {
-        const extra = this.previewExtraForces();
-        if (!extra) return new Map();
-        const groups = this.groups();
-        const placed = this.placedForces();
-        const previewDescendants = this.previewDescendantsMap();
-        const previewFactions = this.previewFactionIds();
-        const previewChildGroups = new Map<string, PreviewOrgExtras>(extra.childGroupResults ? [[extra.targetGroupId, extra]] : []);
         const result = new Map<string, { orgName: string; totals: string; factionId: FactionId | undefined }>();
         const visited = new Set<string>();
         let currentId: string | null = extra.targetGroupId;
         while (currentId && !visited.has(currentId)) {
             visited.add(currentId);
-            const entries = previewDescendants.get(currentId) ?? [];
-            const group = groups.find(g => g.id === currentId);
-            if (entries.length > 0 && group) {
-                const factionId = previewFactions.get(currentId) ?? group.factionId();
-                const faction = this.getFactionById(factionId) ?? group.faction();
-                const orgResult = this.computeHierarchicalOrgResult(
-                    group,
-                    entries,
-                    groups,
-                    placed,
-                    previewDescendants,
-                    previewFactions,
-                    previewChildGroups,
-                );
-                result.set(currentId, {
-                    orgName: orgResult.name,
-                    totals: formatTotals(entries),
-                    factionId: previewFactions.get(currentId),
-                });
+            const metadata = preview.groups.get(currentId);
+            if (metadata?.descendants.length) {
+                result.set(currentId, { orgName: metadata.org.name, totals: metadata.totals, factionId: metadata.factionId });
             }
-            currentId = group?.parentGroupId ?? null;
+            currentId = groups.get(currentId)?.parentGroupId ?? null;
         }
         return result;
     });
-
-    /** Effect that syncs computed org metadata onto each OrgGroup's signals. */
-    private orgGroupDataEffect = effect(() => {
-        const placed = this.placedForces();
-        const groups = this.groups();
-        const descendantsMap = this.descendantForcesMap();
-        const factionIds = this.groupFactionIds();
-
-        // First pass: set descendants and factionIds on all groups
-        for (const group of groups) {
-            group.descendants.set(descendantsMap.get(group.id) ?? []);
-            const fid = factionIds.get(group.id);
-            group.factionId.set(fid);
-            group.faction.set(this.getFactionById(fid));
-        }
-
-        // Second pass: compute orgNames after faction objects have been synchronized.
-        for (const group of groups) {
-            const descendants = group.descendants();
-            const faction = group.faction();
-            group.orgName.set(descendants.length > 0
-                ? this.computeHierarchicalOrgResult(group, descendants, groups, placed).name
-                : '');
-        }
-    });
-
-    /** Collect all forces that are descendants of a group (direct + through child groups). */
-    private collectDescendantForces(groupId: string, placed: PlacedForce[], groups: OrgGroup[], visited = new Set<string>()): LoadForceEntry[] {
-        if (visited.has(groupId)) return [];
-        visited.add(groupId);
-        const result: LoadForceEntry[] = [];
-        for (const pf of placed) {
-            if (pf.groupId === groupId) result.push(pf.force);
-        }
-        for (const child of groups) {
-            if (child.parentGroupId === groupId) {
-                result.push(...this.collectDescendantForces(child.id, placed, groups, visited));
-            }
-        }
-        return result;
-    }
 
     protected isParentGroup(group: OrgGroup): boolean {
-        return this.groups().some(g => g.parentGroupId === group.id);
-    }
-
-    /** Recursively compute the org size result for a group using pre-computed faction IDs. */
-    private computeHierarchicalOrgResult(
-        group: OrgGroup,
-        allEntries: LoadForceEntry[],
-        groups: OrgGroup[],
-        placed: PlacedForce[],
-        descendantsOverride?: Map<string, LoadForceEntry[]>,
-        factionIdsOverride?: Map<string, FactionId | undefined>,
-        previewChildGroupsOverride?: Map<string, PreviewOrgExtras>,
-    ): OrgSizeResult {
-        const childGroups = groups.filter(g => g.parentGroupId === group.id);
-        const factionId = factionIdsOverride?.get(group.id) ?? group.factionId();
-        const faction = this.getFactionById(factionId) ?? group.faction();
-
-        const childGroupResults: GroupSizeResult[] = [];
-        const childEntryIds = new Set<string>();
-        for (const child of childGroups) {
-            const childEntries = descendantsOverride?.get(child.id)
-                ?? this.collectDescendantForces(child.id, placed, groups);
-            if (childEntries.length === 0) continue;
-            for (const entry of childEntries) {
-                childEntryIds.add(entry.instanceId);
-            }
-            const childOrgResult = this.computeHierarchicalOrgResult(
-                child,
-                childEntries,
-                groups,
-                placed,
-                descendantsOverride,
-                factionIdsOverride,
-                previewChildGroupsOverride,
-            );
-            childGroupResults.push(...childOrgResult.groups);
-        }
-
-        const previewChildGroup = previewChildGroupsOverride?.get(group.id);
-        if (previewChildGroup?.childGroupResults && previewChildGroup.childGroupResults.length > 0) {
-            for (const entry of previewChildGroup.entries) {
-                childEntryIds.add(entry.instanceId);
-            }
-            childGroupResults.push(...previewChildGroup.childGroupResults);
-        }
-
-        // Evaluate direct forces with the determined faction
-        const directEntries = allEntries.filter(entry => !childEntryIds.has(entry.instanceId));
-        for (const entry of directEntries) {
-            childGroupResults.push(...this.getForceOrgResults(entry));
-        }
-        const era = this.deriveCollectionEra(allEntries);
-        return this.computeOrgCollectionResult(allEntries, faction, era, childGroupResults);
+        return this.parentGroupIds().has(group.id);
     }
 
     private nextZIndex = 0;
     private nextGroupZIndex = 0;
 
     constructor() {
+        effect(() => {
+            if (this.sidebarVisible() && !this.loading() && !this.sidebarLoading() && !this.sidebarPending()
+                && !this.sidebarComplete() && !this.sidebarLoadError() && this.sidebarRequiresComplete()) {
+                untracked(() => { void this.loadSidebarPage('all', true); });
+            }
+        });
         effect(() => {
             this.ensureSidebarFilterIsValid();
         });
@@ -904,6 +523,7 @@ export class ForceOrgDialogComponent {
             void this.close();
         });
         this.destroyRef.onDestroy(() => {
+            this.sidebarSession?.dispose();
             this.cleanupGlobalPointerState();
             this.urlService.setQueryParams({ toe: null });
         });
@@ -921,20 +541,63 @@ export class ForceOrgDialogComponent {
     // ==================== Data Loading ====================
 
     private async loadForces(): Promise<void> {
+        const generation = ++this.sidebarLoadGeneration;
+        this.sidebarSession?.dispose();
+        this.sidebarSession = undefined;
         this.sidebarLoading.set(true);
+        this.sidebarComplete.set(false);
+        this.sidebarLoadError.set('');
+        this.sidebarPending.set(null);
         try {
-            const result = await this.dataService.listForces();
-            for (const f of result || []) {
-                f._searchText = this.computeSearchText(f);
-            }
-            this.allForces.set(result || []);
+            const session = await this.forcePersistence.openForceList();
+            if (this.destroyRef.destroyed || generation !== this.sidebarLoadGeneration) { session.dispose(); return; }
+            this.sidebarSession = session;
+            await session.loadNext();
+            if (this.destroyRef.destroyed || generation !== this.sidebarLoadGeneration) return;
+            this.publishSidebarForces();
             if (this.layoutService.isMobile() && this.placedForces().length === 0) {
                 this.sidebarOpen.set(true);
             }
-        } catch {
-            // Error loading forces; allForces remains empty
+        } catch (error) {
+            if (this.destroyRef.destroyed || generation !== this.sidebarLoadGeneration) return;
+            this.publishSidebarForces();
+            this.sidebarLoadError.set(String(error));
         } finally {
-            this.sidebarLoading.set(false);
+            if (!this.destroyRef.destroyed && generation === this.sidebarLoadGeneration) this.sidebarLoading.set(false);
+        }
+    }
+
+    private publishSidebarForces(): void {
+        const session = this.sidebarSession;
+        if (!session || this.destroyRef.destroyed) return;
+        const entries = session.getEntries();
+        this.primeForceSearchText(entries);
+        // Keep directly resolved organization entries beyond the cursor, including
+        // those the user has since moved from the canvas back into the sidebar.
+        this.applyAvailableForces(entries);
+        this.sidebarComplete.set(session.complete);
+    }
+
+    protected async loadSidebarPage(mode: 'next' | 'all' = 'next', automatic = false): Promise<void> {
+        if (this.sidebarLoading() || this.sidebarPending() || this.sidebarComplete() || this.readOnly()) return;
+        const session = this.sidebarSession;
+        if (!session) { await this.loadForces(); return; }
+        this.sidebarPending.set(mode);
+        this.sidebarLoadError.set('');
+        try {
+            if (mode === 'all') {
+                await session.loadAll(() => !automatic || (this.sidebarVisible() && this.sidebarRequiresComplete()));
+            } else {
+                await session.loadNext();
+            }
+            if (this.sidebarSession === session) this.publishSidebarForces();
+        } catch (error) {
+            if (!this.destroyRef.destroyed && this.sidebarSession === session) {
+                this.publishSidebarForces();
+                this.sidebarLoadError.set(String(error));
+            }
+        } finally {
+            if (!this.destroyRef.destroyed && this.sidebarSession === session) this.sidebarPending.set(null);
         }
     }
 
@@ -960,7 +623,7 @@ export class ForceOrgDialogComponent {
             for (const force of collection) {
                 if (!force.instanceId) continue;
                 const existing = forceMap.get(force.instanceId);
-                if (!existing || this.getLoadForceTimestamp(force) >= this.getLoadForceTimestamp(existing)) {
+                if (!existing || this.getLoadForceTimestamp(force) > this.getLoadForceTimestamp(existing)) {
                     forceMap.set(force.instanceId, force);
                 }
             }
@@ -971,7 +634,7 @@ export class ForceOrgDialogComponent {
 
     private primeForceSearchText(forces: readonly LoadForceEntry[]): void {
         for (const force of forces) {
-            force._searchText = this.computeSearchText(force);
+            force._searchText = computeSearchText(force);
         }
     }
 
@@ -987,7 +650,7 @@ export class ForceOrgDialogComponent {
     ): PlacedForce {
         const placementId = params.placementId?.trim();
         return {
-            placementId: placementId && placementId.length > 0 ? placementId : crypto.randomUUID(),
+            placementId: placementId && placementId.length > 0 ? placementId : uuidv4(),
             force,
             x: signal(snapToGrid(params.x)),
             y: signal(snapToGrid(params.y)),
@@ -1010,7 +673,7 @@ export class ForceOrgDialogComponent {
     }
 
     private buildGroups(groupData: readonly OrgGroupData[]): OrgGroup[] {
-        return groupData.map((group) => new OrgGroup({
+        return groupData.map((group) => createOrgGroupState({
             id: group.id,
             name: group.name,
             x: snapGroupXToGrid(group.x),
@@ -1120,22 +783,9 @@ export class ForceOrgDialogComponent {
     private async loadOrganizationForceEntries(instanceIds: readonly string[]): Promise<LoadForceEntry[]> {
         if (instanceIds.length === 0) return [];
 
-        const forces = await this.dataService.getLoadForceEntriesByIds(instanceIds);
+        const forces = await this.forcePersistence.getLoadForceEntriesByIds(instanceIds);
         this.primeForceSearchText(forces);
         return forces;
-    }
-
-    private async loadOrganizationSidebarForces(): Promise<LoadForceEntry[]> {
-        this.sidebarLoading.set(true);
-        try {
-            const forces = await this.dataService.listForces();
-            this.primeForceSearchText(forces);
-            return forces;
-        } catch {
-            return [];
-        } finally {
-            this.sidebarLoading.set(false);
-        }
     }
 
     // ==================== Sidebar ====================
@@ -1191,11 +841,11 @@ export class ForceOrgDialogComponent {
             return 'No untagged forces available.';
         }
 
-        if (this.sidebarFilter() === GameSystem.CLASSIC) {
+        if (this.sidebarFilter() === GameSystem.CBT) {
             return 'No BattleTech forces available.';
         }
 
-        if (this.sidebarFilter() === GameSystem.ALPHA_STRIKE) {
+        if (this.sidebarFilter() === GameSystem.AS) {
             return 'No Alpha Strike forces available.';
         }
 
@@ -1207,6 +857,7 @@ export class ForceOrgDialogComponent {
     }
 
     private ensureSidebarFilterIsValid(): void {
+        if (!this.sidebarComplete()) return;
         if (this.sidebarFilter() !== SIDEBAR_FILTER_UNTAGGED) {
             return;
         }
@@ -1216,6 +867,7 @@ export class ForceOrgDialogComponent {
     }
 
     private ensureSidebarFacetFiltersAreValid(): void {
+        if (!this.sidebarComplete()) return;
         if (this.sidebarLoading()) {
             return;
         }
@@ -1237,312 +889,6 @@ export class ForceOrgDialogComponent {
 
     protected setSidebarSortDirection(dir: 'asc' | 'desc'): void {
         this.sidebarSortDirection.set(dir);
-    }
-
-    private sortForces(items: LoadForceEntry[], sortKey: string, sortDir: 'asc' | 'desc'): LoadForceEntry[] {
-        const dir = sortDir === 'asc' ? 1 : -1;
-        const forceMetadata = this.forcesData();
-        return [...items].sort((a, b) => {
-            switch (sortKey) {
-                case 'name':
-                    return dir * naturalCompare(a.name || '', b.name || '');
-                case 'value': {
-                    const aVal = (a.type === GameSystem.ALPHA_STRIKE) ? (a.pv ?? 0) : (a.bv ?? 0);
-                    const bVal = (b.type === GameSystem.ALPHA_STRIKE) ? (b.pv ?? 0) : (b.bv ?? 0);
-                    return dir * (aVal - bVal);
-                }
-                case 'faction': {
-                    const aFaction = a.faction?.name ?? '';
-                    const bFaction = b.faction?.name ?? '';
-                    return dir * naturalCompare(aFaction, bFaction);
-                }
-                case 'size': {
-                    const aSize = a.groups ? a.groups.reduce((sum, g) => sum + (g.units?.length || 0), 0) : 0;
-                    const bSize = b.groups ? b.groups.reduce((sum, g) => sum + (g.units?.length || 0), 0) : 0;
-                    return dir * (aSize - bSize);
-                }
-                case 'timestamp':
-                default:
-                    return dir * ((a.timestamp || '').localeCompare(b.timestamp || ''));
-            }
-        });
-    }
-
-    private computeSearchText(force: LoadForceEntry): string {
-        let s = '';
-        const orgName = getOrgFromForce(force).name;
-
-        if (force.name) s += force.name + ' ';
-        if (force.note) s += force.note + ' ';
-        if (force.tags?.length) s += this.getForceTags(force).join(' ') + ' ';
-        if (force.faction?.name) s += force.faction.name + ' ';
-        if (force.era?.name) s += force.era.name + ' ';
-        if (orgName) s += orgName + ' ';
-        for (const g of (force.groups || [])) {
-            if (g.name) s += g.name + ' ';
-            for (const ue of (g.units || [])) {
-                if (ue.alias) s += ue.alias + ' ';
-                if (ue.unit) {
-                    if (ue.unit.model) s += ue.unit.model + ' ';
-                    if (ue.unit.chassis) s += ue.unit.chassis + ' ';
-                }
-            }
-        }
-        return s.trim().toLowerCase();
-    }
-
-    private matchesSidebarSearch(force: LoadForceEntry, tokens: readonly string[]): boolean {
-        if (tokens.length === 0) {
-            return true;
-        }
-
-        const hay = force._searchText || '';
-        return tokens.every(t => hay.indexOf(t) !== -1);
-    }
-
-    private matchesSidebarFilter(force: LoadForceEntry, filter: string): boolean {
-        const forceTags = this.getForceTags(force);
-
-        switch (filter) {
-            case SIDEBAR_FILTER_ALL:
-                return true;
-            case GameSystem.CLASSIC:
-                return (force.type || GameSystem.CLASSIC) === GameSystem.CLASSIC;
-            case GameSystem.ALPHA_STRIKE:
-                return (force.type || GameSystem.CLASSIC) === GameSystem.ALPHA_STRIKE;
-            case SIDEBAR_FILTER_UNTAGGED:
-                return forceTags.length === 0;
-            default:
-                return forceTags.some(tag => this.getSidebarTagFilterId(tag) === filter);
-        }
-    }
-
-    private matchesSidebarFactionFilter(force: LoadForceEntry, filter: number | null): boolean {
-        return filter == null || force.faction?.id === filter;
-    }
-
-    private matchesSidebarEraFilter(force: LoadForceEntry, filter: number | null): boolean {
-        return filter == null || force.era?.id === filter;
-    }
-
-    private buildSidebarFactionOptions(forces: readonly LoadForceEntry[]): SidebarFactionFilterOption[] {
-        const options = new Map<number, SidebarFactionFilterOption>();
-        for (const force of forces) {
-            const faction = force.faction;
-            if (!faction) continue;
-            const existing = options.get(faction.id);
-            if (existing) {
-                existing.count += 1;
-                continue;
-            }
-            options.set(faction.id, {
-                id: faction.id,
-                name: faction.name,
-                img: faction.img,
-                count: 1,
-            });
-        }
-        return Array.from(options.values())
-            .sort((a, b) => naturalCompare(a.name, b.name) || a.id - b.id);
-    }
-
-    private buildSidebarEraOptions(forces: readonly LoadForceEntry[]): SidebarEraFilterOption[] {
-        const options = new Map<number, SidebarEraFilterOption>();
-        for (const force of forces) {
-            const era = force.era;
-            if (!era) continue;
-            const existing = options.get(era.id);
-            if (existing) {
-                existing.count += 1;
-                continue;
-            }
-            options.set(era.id, {
-                id: era.id,
-                name: era.name,
-                img: era.img ?? era.icon,
-                count: 1,
-                startYear: era.years.from ?? Number.NEGATIVE_INFINITY,
-            });
-        }
-        return Array.from(options.values())
-            .sort((a, b) => a.startYear - b.startYear || naturalCompare(a.name, b.name) || a.id - b.id);
-    }
-
-    private getSidebarTagFilterId(tag: string): string {
-        return `${SIDEBAR_TAG_FILTER_PREFIX}${tag.toLocaleLowerCase()}`;
-    }
-
-    private getForceTags(force: LoadForceEntry): string[] {
-        return sanitizeForceTags(force.tags ?? []);
-    }
-
-    private getFactionById(factionId: FactionId | undefined): Faction | undefined {
-        return factionId !== undefined ? this.dataService.getFactionById(factionId) : undefined;
-    }
-
-    private computeEntriesTechBaseUncached(entries: LoadForceEntry[], factionName: string): TechBase {
-        if (factionName.includes('ComStar') || factionName.includes('Word of Blake')) {
-            return 'Inner Sphere';
-        }
-
-        const units = entries
-            .flatMap(entry => entry.groups)
-            .flatMap(group => group.units)
-            .map(entry => entry.unit)
-            .filter((unit): unit is NonNullable<typeof unit> => unit !== undefined);
-
-        return getUnitsAverageTechBase(units);
-    }
-
-    private getForceOrgResults(force: LoadForceEntry): GroupSizeResult[] {
-        const metadata = this.forcesData().get(force.instanceId);
-        return metadata?.org.groups
-            ? [...metadata.org.groups]
-            : [...getOrgFromForce(force).groups];
-    }
-
-    private computeOrgCollectionResult(
-        entries: LoadForceEntry[],
-        faction: Faction | undefined,
-        era: Era | null,
-        childGroupResults?: GroupSizeResult[],
-    ): OrgSizeResult {
-        return getOrgFromForceCollection(entries, faction, era, childGroupResults, {
-            displayTierCutoff: GROUP_ORG_NAME_TIER_CUTOFF,
-        });
-    }
-
-    private deriveCollectionEra(entries: readonly LoadForceEntry[]): Era | null {
-        const eras = this.dataService.getEras();
-        if (eras.length === 0) {
-            return null;
-        }
-
-        let referenceYear: number | null = null;
-        for (const entry of entries) {
-            const entryReferenceYear = entry.era?.years.from ?? this.getLatestEntryUnitYear(entry);
-            if (entryReferenceYear === null) {
-                continue;
-            }
-            referenceYear = referenceYear === null ? entryReferenceYear : Math.max(referenceYear, entryReferenceYear);
-        }
-
-        if (referenceYear === null) {
-            return null;
-        }
-
-        return eras.find((era) => {
-            const from = era.years.from ?? Number.NEGATIVE_INFINITY;
-            const to = era.years.to ?? Number.POSITIVE_INFINITY;
-            return from <= referenceYear && referenceYear <= to;
-        }) ?? eras[eras.length - 1] ?? null;
-    }
-
-    private getLatestEntryUnitYear(entry: LoadForceEntry): number | null {
-        let latestYear = Number.NEGATIVE_INFINITY;
-        for (const group of entry.groups) {
-            for (const unitEntry of group.units) {
-                const year = unitEntry.unit?.year;
-                if (year !== undefined) {
-                    latestYear = Math.max(latestYear, year);
-                }
-            }
-        }
-
-        return Number.isFinite(latestYear) ? latestYear : null;
-    }
-
-
-
-    /**
-     * Compute dominant faction IDs for all groups.
-     * Direct forces contribute their own factionId + BV/PV value.
-     * Child groups contribute as single entities with their recursively-computed factionId + total value.
-     */
-    private computeAllGroupFactionIds(
-        placed: PlacedForce[],
-        groups: OrgGroup[],
-        descendantsMap: Map<string, LoadForceEntry[]>,
-        extraForces?: { targetGroupId: string; entries: LoadForceEntry[] },
-    ): Map<string, FactionId | undefined> {
-        const result = new Map<string, FactionId | undefined>();
-
-        // Pre-build lookup maps to avoid repeated full-array scans
-        const childGroupsMap = new Map<string, OrgGroup[]>();
-        const directForcesMap = new Map<string, PlacedForce[]>();
-        for (const group of groups) {
-            childGroupsMap.set(group.id, []);
-            directForcesMap.set(group.id, []);
-        }
-        for (const group of groups) {
-            if (group.parentGroupId !== null) {
-                childGroupsMap.get(group.parentGroupId)?.push(group);
-            }
-        }
-        for (const pf of placed) {
-            if (pf.groupId !== null) {
-                directForcesMap.get(pf.groupId)?.push(pf);
-            }
-        }
-
-        const resolve = (groupId: string): FactionId | undefined => {
-            if (result.has(groupId)) return result.get(groupId);
-
-            const valueSums = new Map<FactionId, number>();
-            const counts = new Map<FactionId, number>();
-
-            // Direct forces in this group
-            for (const pf of directForcesMap.get(groupId) ?? []) {
-                const fid = getLoadForceFactionId(pf.force);
-                if (fid === undefined) continue;
-                valueSums.set(fid, (valueSums.get(fid) ?? 0) + getForceValue(pf.force));
-                counts.set(fid, (counts.get(fid) ?? 0) + 1);
-            }
-
-            // Extra forces (preview: only at the target group)
-            if (extraForces && groupId === extraForces.targetGroupId) {
-                for (const e of extraForces.entries) {
-                    const factionId = getLoadForceFactionId(e);
-                    if (factionId === undefined) continue;
-                    valueSums.set(factionId, (valueSums.get(factionId) ?? 0) + getForceValue(e));
-                    counts.set(factionId, (counts.get(factionId) ?? 0) + 1);
-                }
-            }
-
-            // Child groups as single entities
-            for (const child of childGroupsMap.get(groupId) ?? []) {
-                const childFactionId = resolve(child.id);
-                if (childFactionId === undefined) continue;
-                const childEntries = descendantsMap.get(child.id) ?? [];
-                let totalValue = 0;
-                for (const e of childEntries) {
-                    totalValue += getForceValue(e);
-                }
-                valueSums.set(childFactionId, (valueSums.get(childFactionId) ?? 0) + totalValue);
-                counts.set(childFactionId, (counts.get(childFactionId) ?? 0) + 1);
-            }
-
-            let bestValue = -1, bestId: FactionId | undefined;
-            for (const [fid, total] of valueSums) {
-                if (total > bestValue) { bestValue = total; bestId = fid; }
-            }
-            if (bestValue > 0 && bestId !== undefined) {
-                result.set(groupId, bestId);
-                return bestId;
-            }
-            let maxCount = 0, mostFreqId: FactionId | undefined;
-            for (const [fid, count] of counts) {
-                if (count > maxCount) { maxCount = count; mostFreqId = fid; }
-            }
-            const factionId = mostFreqId;
-            result.set(groupId, factionId);
-            return factionId;
-        };
-
-        for (const group of groups) {
-            resolve(group.id);
-        }
-        return result;
     }
 
     protected async previewForce(force: LoadForceEntry): Promise<void> {
@@ -1753,7 +1099,7 @@ export class ForceOrgDialogComponent {
         if (this.readOnly()) return;
         // Remove group membership
         if (pf.groupId) {
-            const group = this.groups().find(g => g.id === pf.groupId);
+            const group = this.groupsById().get(pf.groupId);
             pf.groupId = null;
             if (group) this.recalcGroupBounds(group);
         }
@@ -1801,7 +1147,7 @@ export class ForceOrgDialogComponent {
         this.placedForces.set([...this.placedForces()]);
         // Resize parent if exists
         if (group.parentGroupId) {
-            const parent = this.groups().find(g => g.id === group.parentGroupId);
+            const parent = this.groupsById().get(group.parentGroupId);
             if (parent) this.recalcGroupBounds(parent);
         }
     }
@@ -1818,7 +1164,7 @@ export class ForceOrgDialogComponent {
         if (this.getDirectChildCount(group) > 1) return;
 
         const parent = group.parentGroupId
-            ? this.groups().find(candidate => candidate.id === group.parentGroupId)
+            ? this.groupsById().get(group.parentGroupId)
             : null;
         this.dissolveGroup(group);
         if (parent) this.dissolveGroupIfUnderpopulated(parent);
@@ -1840,63 +1186,26 @@ export class ForceOrgDialogComponent {
     private recalcGroupBounds(group: OrgGroup): void {
         const members = this.placedForces().filter(pf => pf.groupId === group.id);
         const childGroups = this.groups().filter(g => g.parentGroupId === group.id);
-        if (members.length === 0 && childGroups.length === 0) return;
-
-        let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
-        for (const m of members) {
-            minX = Math.min(minX, m.x());
-            minY = Math.min(minY, m.y());
-            maxX = Math.max(maxX, m.x() + CARD_WIDTH);
-            maxY = Math.max(maxY, m.y() + CARD_HEIGHT);
-        }
-        for (const cg of childGroups) {
-            minX = Math.min(minX, cg.x());
-            minY = Math.min(minY, cg.y());
-            maxX = Math.max(maxX, cg.x() + cg.width());
-            maxY = Math.max(maxY, cg.y() + cg.height());
-        }
-
-        const groupX = minX - GROUP_PADDING;
-        const groupY = minY - GROUP_PADDING - GROUP_HEADER_HEIGHT;
-        const groupMaxX = maxX + GROUP_PADDING;
-        const groupMaxY = maxY + GROUP_PADDING;
-
-        group.x.set(groupX);
-        group.y.set(groupY);
-        group.width.set(groupMaxX - groupX);
-        group.height.set(groupMaxY - groupY);
+        const bounds = enclosingGroupBounds([
+            ...members.map(member => this.forceRect(member)),
+            ...childGroups.map(child => this.groupRect(child)),
+        ]);
+        if (!bounds) return;
+        group.x.set(bounds.x);
+        group.y.set(bounds.y);
+        group.width.set(bounds.width);
+        group.height.set(bounds.height);
 
         // Recurse up so ancestor bounds continue to wrap their children.
         if (group.parentGroupId) {
-            const parent = this.groups().find(g => g.id === group.parentGroupId);
+            const parent = this.groupsById().get(group.parentGroupId);
             if (parent) this.recalcGroupBounds(parent);
         }
     }
 
-    private rectsOverlap(a: Rect, b: Rect): boolean {
-        return !(a.x + a.width < b.x || b.x + b.width < a.x ||
-                 a.y + a.height < b.y || b.y + b.height < a.y);
-    }
-
-    private getOverlapArea(a: Rect, b: Rect): number {
-        const overlapWidth = Math.min(a.x + a.width, b.x + b.width) - Math.max(a.x, b.x);
-        const overlapHeight = Math.min(a.y + a.height, b.y + b.height) - Math.max(a.y, b.y);
-        if (overlapWidth <= 0 || overlapHeight <= 0) return 0;
-        return overlapWidth * overlapHeight;
-    }
-
-    private expandRect(rect: Rect, padding: number): Rect {
-        return {
-            x: rect.x - padding,
-            y: rect.y - padding,
-            width: rect.width + padding * 2,
-            height: rect.height + padding * 2,
-        };
-    }
-
     private getGroupById(groupId: string | null | undefined): OrgGroup | null {
         if (!groupId) return null;
-        return this.groups().find(group => group.id === groupId) ?? null;
+        return this.groupsById().get(groupId) ?? null;
     }
 
     private getParentGroup(group: OrgGroup | null | undefined): OrgGroup | null {
@@ -1923,66 +1232,6 @@ export class ForceOrgDialogComponent {
         return rects;
     }
 
-    private hasSiblingCollision(
-        rect: Rect,
-        containerGroupId: string | null,
-        excludedForce?: PlacedForce,
-        excludedGroup?: OrgGroup,
-    ): boolean {
-        return this.getSiblingCollisionRects(containerGroupId, excludedForce, excludedGroup)
-            .some(obstacle => this.rectsOverlap(rect, this.expandRect(obstacle, COLLISION_EDGE_PADDING)));
-    }
-
-    private getResolvedCollisionPosition(
-        rect: Rect,
-        containerGroupId: string | null,
-        excludedForce?: PlacedForce,
-        excludedGroup?: OrgGroup,
-    ): { x: number; y: number } | null {
-        const obstacles = this.getSiblingCollisionRects(containerGroupId, excludedForce, excludedGroup);
-        if (obstacles.length === 0) return null;
-
-        const xCandidates = new Set<number>([rect.x]);
-        const yCandidates = new Set<number>([rect.y]);
-
-        for (const obstacle of obstacles) {
-            if (excludedGroup) {
-                xCandidates.add(snapGroupXDownToGrid(obstacle.x - rect.width - COLLISION_EDGE_PADDING));
-                xCandidates.add(snapGroupXUpToGrid(obstacle.x + obstacle.width + COLLISION_EDGE_PADDING));
-                yCandidates.add(snapGroupYDownToGrid(obstacle.y - rect.height - COLLISION_EDGE_PADDING));
-                yCandidates.add(snapGroupYUpToGrid(obstacle.y + obstacle.height + COLLISION_EDGE_PADDING));
-            } else {
-                xCandidates.add(snapDownToGrid(obstacle.x - rect.width - COLLISION_EDGE_PADDING));
-                xCandidates.add(snapUpToGrid(obstacle.x + obstacle.width + COLLISION_EDGE_PADDING));
-                yCandidates.add(snapDownToGrid(obstacle.y - rect.height - COLLISION_EDGE_PADDING));
-                yCandidates.add(snapUpToGrid(obstacle.y + obstacle.height + COLLISION_EDGE_PADDING));
-            }
-        }
-
-        const candidates: Array<{ x: number; y: number }> = [];
-        for (const x of xCandidates) {
-            for (const y of yCandidates) {
-                candidates.push({ x, y });
-            }
-        }
-
-        candidates.sort((a, b) => {
-            const aDistance = Math.abs(a.x - rect.x) + Math.abs(a.y - rect.y);
-            const bDistance = Math.abs(b.x - rect.x) + Math.abs(b.y - rect.y);
-            return aDistance - bDistance;
-        });
-
-        for (const candidate of candidates) {
-            const candidateRect = { ...rect, x: candidate.x, y: candidate.y };
-            const collides = obstacles.some(obstacle => this.rectsOverlap(candidateRect, this.expandRect(obstacle, COLLISION_EDGE_PADDING)));
-            if (!collides) {
-                return candidate;
-            }
-        }
-
-        return null;
-    }
-
     private resolveSiblingCollisions(
         getRect: () => Rect,
         moveTo: (x: number, y: number) => void,
@@ -1990,11 +1239,15 @@ export class ForceOrgDialogComponent {
         excludedForce?: PlacedForce,
         excludedGroup?: OrgGroup,
     ): void {
+        // Group movement can snap a retained off-grid axis; check the actual
+        // resulting bounds again instead of assuming the requested move is exact.
         for (let iteration = 0; iteration < COLLISION_RESOLVE_MAX_ITERATIONS; iteration++) {
             const rect = getRect();
-            if (!this.hasSiblingCollision(rect, containerGroupId, excludedForce, excludedGroup)) break;
-
-            const nextPosition = this.getResolvedCollisionPosition(rect, containerGroupId, excludedForce, excludedGroup);
+            const nextPosition = resolveCollisionPosition(
+                rect,
+                this.getSiblingCollisionRects(containerGroupId, excludedForce, excludedGroup),
+                excludedGroup ? 'group' : 'force',
+            );
             if (!nextPosition) break;
             if (nextPosition.x === rect.x && nextPosition.y === rect.y) break;
 
@@ -2088,13 +1341,6 @@ export class ForceOrgDialogComponent {
         return { x: group.x(), y: group.y(), width: group.width(), height: group.height() };
     }
 
-    private rectContainsPoint(rect: Rect, point: { x: number; y: number }): boolean {
-        return point.x >= rect.x
-            && point.x <= rect.x + rect.width
-            && point.y >= rect.y
-            && point.y <= rect.y + rect.height;
-    }
-
     private getPreferredGroupTarget(
         rect: Rect,
         groups: readonly OrgGroup[],
@@ -2106,13 +1352,13 @@ export class ForceOrgDialogComponent {
         for (const group of groups) {
             if (group.id === excludedGroupId) continue;
 
-            const overlap = this.getOverlapArea(rect, this.groupRect(group));
+            const overlap = getOverlapArea(rect, this.groupRect(group));
             if (overlap <= 0) continue;
 
             candidates.push({
                 group,
                 overlap,
-                containsFocus: focusPoint ? this.rectContainsPoint(this.groupRect(group), focusPoint) : false,
+                containsFocus: focusPoint ? rectContainsPoint(this.groupRect(group), focusPoint) : false,
             });
         }
 
@@ -2171,33 +1417,9 @@ export class ForceOrgDialogComponent {
     /** Compute the preview rect + header info for a new group encompassing two rects. */
     /** Compute full preview including org metadata (used on first overlap). */
     private computeGroupPreview(a: Rect, b: Rect, entries: LoadForceEntry[], childGroupResults?: GroupSizeResult[]): GroupPreview {
-        const factionId = getDominantFactionId(entries);
-        const faction = this.getFactionById(factionId);
-        const era = this.deriveCollectionEra(entries);
-        const aggregateResult = this.computeOrgCollectionResult(
-            entries,
-            faction,
-            era,
-            childGroupResults,
-        );
-        const orgName = aggregateResult.name;
-        const totals = formatTotals(entries);
-        this.previewOrgCache = { orgName, totals, factionId };
-        return { ...this.computeGroupPreviewRect(a, b), orgName, totals, factionId };
-    }
-
-    /** Compute only the rect geometry for the preview (used on subsequent frames with same target). */
-    private computeGroupPreviewRect(a: Rect, b: Rect): Rect {
-        const minX = Math.min(a.x, b.x);
-        const minY = Math.min(a.y, b.y);
-        const maxX = Math.max(a.x + a.width, b.x + b.width);
-        const maxY = Math.max(a.y + a.height, b.y + b.height);
-        return {
-            x: minX - GROUP_PADDING,
-            y: minY - GROUP_PADDING - GROUP_HEADER_HEIGHT,
-            width: (maxX - minX) + GROUP_PADDING + GROUP_PADDING,
-            height: (maxY - minY) + GROUP_PADDING + GROUP_PADDING + GROUP_HEADER_HEIGHT,
-        };
+        const metadata = deriveCollectionMetadata(entries, this.dataService.getFactions(), this.dataService.getEras(), childGroupResults);
+        this.previewOrgCache = metadata;
+        return { ...enclosingGroupBounds([a, b])!, ...metadata };
     }
 
     /** Detect what would happen if the dragged force were dropped now. */
@@ -2218,7 +1440,7 @@ export class ForceOrgDialogComponent {
         // Check overlap with other ungrouped forces
         for (const other of this.placedForces()) {
             if (other === pf || other.groupId) continue;
-            const overlap = this.getOverlapArea(pfRect, this.forceRect(other));
+            const overlap = getOverlapArea(pfRect, this.forceRect(other));
             if (overlap > bestOverlap) {
                 bestOverlap = overlap;
                 bestAction = { type: 'new-group', other };
@@ -2235,9 +1457,9 @@ export class ForceOrgDialogComponent {
 
         // A child group remains in its parent while it has the largest overlap.
         if (grp.parentGroupId) {
-            const parent = this.groups().find(g => g.id === grp.parentGroupId);
+            const parent = this.groupsById().get(grp.parentGroupId);
             if (parent) {
-                bestOverlap = this.getOverlapArea(grpRect, this.groupRect(parent));
+                bestOverlap = getOverlapArea(grpRect, this.groupRect(parent));
             }
         }
 
@@ -2291,7 +1513,7 @@ export class ForceOrgDialogComponent {
         let bestForceOverlap = 0;
         for (const pf of this.placedForces()) {
             if (pf.groupId) continue;
-            const overlap = this.getOverlapArea(rect, this.forceRect(pf));
+            const overlap = getOverlapArea(rect, this.forceRect(pf));
             if (overlap > bestForceOverlap) {
                 bestForceOverlap = overlap;
                 bestForce = pf;
@@ -2310,7 +1532,7 @@ export class ForceOrgDialogComponent {
             if (this.dropTargetGroupId() !== null) this.dropTargetGroupId.set(null);
             if (this.previewExtraForces() !== null) this.previewExtraForces.set(null);
             if (this.previewOtherId === bestForce.placementId && this.previewOrgCache) {
-                this.dropPreviewRect.set({ ...this.computeGroupPreviewRect(rect, this.forceRect(bestForce)), ...this.previewOrgCache });
+                this.dropPreviewRect.set({ ...enclosingGroupBounds([rect, this.forceRect(bestForce)])!, ...this.previewOrgCache });
             } else {
                 this.previewOtherId = bestForce.placementId;
                 this.dropPreviewRect.set(this.computeGroupPreview(rect, this.forceRect(bestForce), [sidebarForce, bestForce.force]));
@@ -2358,7 +1580,7 @@ export class ForceOrgDialogComponent {
                 if (this.previewExtraForces() !== null) this.previewExtraForces.set(null);
                 if (this.previewOtherId === otherId && this.previewOrgCache) {
                     // Same target — only update geometry
-                    this.dropPreviewRect.set({ ...this.computeGroupPreviewRect(draggedRect, otherRect!), ...this.previewOrgCache });
+                    this.dropPreviewRect.set({ ...enclosingGroupBounds([draggedRect, otherRect!])!, ...this.previewOrgCache });
                 } else {
                     this.previewOtherId = otherId;
                     this.dropPreviewRect.set(this.computeGroupPreview(draggedRect, otherRect!, entries ?? [], childGroupResults));
@@ -2393,7 +1615,7 @@ export class ForceOrgDialogComponent {
             }
             case 'new-group': {
                 const oldGroup = this.getGroupById(draggedPf.groupId);
-                const group = new OrgGroup({
+                const group = createOrgGroupState({
                     zIndex: this.nextGroupZIndex++,
                 });
                 draggedPf.groupId = group.id;
@@ -2468,7 +1690,7 @@ export class ForceOrgDialogComponent {
             if (current.parentGroupId === ancestorId) return true;
             if (visited.has(current.id)) break;
             visited.add(current.id);
-            current = this.groups().find(g => g.id === current!.parentGroupId);
+            current = this.groupsById().get(current!.parentGroupId!);
         }
         return false;
     }
@@ -2481,7 +1703,7 @@ export class ForceOrgDialogComponent {
         while (current?.parentGroupId) {
             if (visited.has(current.id)) break;
             visited.add(current.id);
-            current = this.groups().find(candidate => candidate.id === current!.parentGroupId);
+            current = this.groupsById().get(current!.parentGroupId!);
             if (current) depth++;
         }
 
@@ -2498,7 +1720,7 @@ export class ForceOrgDialogComponent {
     }
 
     private isGroupDescendantOfId(groupId: string, ancestorId: string): boolean {
-        const group = this.groups().find(candidate => candidate.id === groupId);
+        const group = this.groupsById().get(groupId);
         return group ? this.isDescendantOf(group, ancestorId) : false;
     }
 
@@ -2531,7 +1753,7 @@ export class ForceOrgDialogComponent {
             case 'create-parent': {
                 const oldParent = this.getParentGroup(draggedGrp);
                 const targetParent = this.getParentGroup(action.other);
-                const parentGroup = new OrgGroup({
+                const parentGroup = createOrgGroupState({
                     zIndex: this.nextGroupZIndex++,
                     parentGroupId: action.other.parentGroupId,
                 });
@@ -2747,8 +1969,8 @@ export class ForceOrgDialogComponent {
             // Update drop preview
             const forceAction = this.detectForceDrop(dragged, worldPos);
             if (!forceAction && dragged.groupId) {
-                const ownGroup = this.groups().find(group => group.id === dragged.groupId);
-                if (ownGroup && this.getOverlapArea(this.forceRect(dragged), this.groupRect(ownGroup)) > 0) {
+                const ownGroup = this.groupsById().get(dragged.groupId);
+                if (ownGroup && getOverlapArea(this.forceRect(dragged), this.groupRect(ownGroup)) > 0) {
                     this.setExistingGroupDropPreview(ownGroup.id);
                     return;
                 }
@@ -2790,8 +2012,8 @@ export class ForceOrgDialogComponent {
             // Update drop preview
             const grpAction = this.detectGroupDrop(draggedGrp, worldPos);
             if (!grpAction && draggedGrp.parentGroupId) {
-                const parent = this.groups().find(group => group.id === draggedGrp.parentGroupId);
-                if (parent && this.getOverlapArea(this.groupRect(draggedGrp), this.groupRect(parent)) > 0) {
+                const parent = this.groupsById().get(draggedGrp.parentGroupId);
+                if (parent && getOverlapArea(this.groupRect(draggedGrp), this.groupRect(parent)) > 0) {
                     this.setExistingGroupDropPreview(parent.id);
                     return;
                 }
@@ -2805,34 +2027,18 @@ export class ForceOrgDialogComponent {
             let grpChildGroupResults: GroupSizeResult[] | undefined;
             const needsOrgRecompute = grpOtherId !== this.previewOtherId || !this.previewOrgCache;
             if (needsOrgRecompute) {
-                const currentPlaced = this.placedForces();
-                const currentGroups = this.groups();
-                grpEntries = grpAction?.type === 'create-parent'
-                    ? [...this.collectDescendantForces(draggedGrp.id, currentPlaced, currentGroups), ...this.collectDescendantForces(grpAction.other.id, currentPlaced, currentGroups)]
-                    : (grpAction?.type === 'join-parent'
-                        ? this.collectDescendantForces(draggedGrp.id, currentPlaced, currentGroups)
-                        : undefined);
+                const metadata = this.groupMetadata();
+                const dragged = metadata.get(draggedGrp.id)!;
                 if (grpAction?.type === 'create-parent') {
-                    const draggedEntries = this.collectDescendantForces(draggedGrp.id, currentPlaced, currentGroups);
-                    const otherEntries = this.collectDescendantForces(grpAction.other.id, currentPlaced, currentGroups);
-                    grpChildGroupResults = [];
-                    if (draggedEntries.length > 0) {
-                        grpChildGroupResults.push(
-                            ...this.computeHierarchicalOrgResult(draggedGrp, draggedEntries, currentGroups, currentPlaced).groups,
-                        );
-                    }
-                    if (otherEntries.length > 0) {
-                        grpChildGroupResults.push(
-                            ...this.computeHierarchicalOrgResult(grpAction.other, otherEntries, currentGroups, currentPlaced).groups,
-                        );
-                    }
-                } else if (grpAction?.type === 'join-parent' && grpEntries && grpEntries.length > 0) {
-                    grpChildGroupResults = [...this.computeHierarchicalOrgResult(
-                        draggedGrp,
-                        grpEntries,
-                        currentGroups,
-                        currentPlaced,
-                    ).groups];
+                    const other = metadata.get(grpAction.other.id)!;
+                    grpEntries = [...dragged.descendants, ...other.descendants];
+                    grpChildGroupResults = [
+                        ...(dragged.descendants.length ? dragged.org.groups : []),
+                        ...(other.descendants.length ? other.org.groups : []),
+                    ];
+                } else if (grpAction?.type === 'join-parent') {
+                    grpEntries = dragged.descendants;
+                    if (grpEntries.length) grpChildGroupResults = [...dragged.org.groups];
                 }
             }
             this.updateDropPreview(grpAction, this.groupRect(draggedGrp), grpOtherRect, grpEntries, grpChildGroupResults);
@@ -2941,8 +2147,8 @@ export class ForceOrgDialogComponent {
             if (this.groupDragged) {
                 // Check if dragged out of parent
                 if (dragEndGroup.parentGroupId) {
-                    const parent = this.groups().find(g => g.id === dragEndGroup.parentGroupId);
-                    const overlapsParent = parent && this.rectsOverlap(this.groupRect(dragEndGroup), this.groupRect(parent));
+                    const parent = this.groupsById().get(dragEndGroup.parentGroupId);
+                    const overlapsParent = parent && rectsOverlap(this.groupRect(dragEndGroup), this.groupRect(parent));
                     if (parent && !overlapsParent) {
                         dragEndGroup.parentGroupId = null;
                         this.groups.set([...this.groups()]);
@@ -2958,7 +2164,7 @@ export class ForceOrgDialogComponent {
                 }
                 // Re-layout parent if it still has one
                 if (dragEndGroup.parentGroupId) {
-                    const parent = this.groups().find(g => g.id === dragEndGroup.parentGroupId);
+                    const parent = this.groupsById().get(dragEndGroup.parentGroupId);
                     if (parent) this.recalcGroupBounds(parent);
                 }
             } else if (this.titleDragGroupId === dragEndGroup.id) {
@@ -3019,7 +2225,7 @@ export class ForceOrgDialogComponent {
         if (this.readOnly() || this.saving()) return;
         this.saving.set(true);
         try {
-            const orgId = this.organizationId() ?? crypto.randomUUID();
+            const orgId = this.organizationId() ?? uuidv4();
             this.organizationId.set(orgId);
 
             const serialized: SerializedOrganization = {
@@ -3047,7 +2253,7 @@ export class ForceOrgDialogComponent {
                 } as OrgGroupData)),
             };
 
-            await this.dataService.saveOrganization(serialized);
+            await this.organizationStorage.saveOrganization(serialized);
             this.resetDirtyTracking();
         } finally {
             this.saving.set(false);
@@ -3055,10 +2261,13 @@ export class ForceOrgDialogComponent {
     }
 
     private async loadOrganization(organizationId: string): Promise<void> {
+        ++this.sidebarLoadGeneration;
+        this.sidebarSession?.dispose();
+        this.sidebarSession = undefined;
         this.loading.set(true);
         this.sidebarLoading.set(false);
         try {
-            const org = await this.dataService.getOrganization(organizationId);
+            const org = await this.organizationStorage.getOrganization(organizationId);
             if (!org) {
                 this.organizationId.set(null);
                 this.organizationOwned.set(true);
@@ -3075,8 +2284,8 @@ export class ForceOrgDialogComponent {
             this.restoreOrganizationShell(org);
 
             const sidebarForcesPromise = org.owned === false
-                ? Promise.resolve<LoadForceEntry[]>([])
-                : this.loadOrganizationSidebarForces();
+                ? Promise.resolve()
+                : this.loadForces();
 
             try {
                 const orgForces = await this.loadOrganizationForceEntries(orgForceIds);
@@ -3088,8 +2297,7 @@ export class ForceOrgDialogComponent {
             }
 
             if (org.owned !== false) {
-                const sidebarForces = await sidebarForcesPromise;
-                this.applyAvailableForces(sidebarForces);
+                await sidebarForcesPromise;
             }
         } catch {
             this.organizationId.set(null);
@@ -3131,7 +2339,6 @@ export class ForceOrgDialogComponent {
         }
     }
 
-    @HostListener('window:beforeunload', ['$event'])
     protected onBeforeUnload(event: BeforeUnloadEvent): string | void {
         if (!this.hasPendingUnsavedChanges()) return undefined;
 

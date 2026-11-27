@@ -3,20 +3,26 @@
 // Author: Drake
 
 import { Signal, computed, signal } from '@angular/core';
-import { BaseEntity } from '../../base-entity';
+import type { BombCapacity } from '../../../aerospace-bomb.model';
+import { BaseEntity, type HeatDissipationBoost } from '../../base-entity';
 import { AERO_COCKPIT_TECH } from '../../components';
+import { modularArmorMovementPenalty } from '../../../modular-armor.model';
+import { isRadicalHeatSinkEquipment } from '../../../escalating-equipment.model';
 import {
   type UnitType,
   type UnitSubtype,
   type MovementCalculationOptions,
   type TechRatingSource,
   type EntityFeature,
+  type EntityDamageLocation,
   AeroCockpitType,
   ASF_WEIGHT_LIMITS,
   EntityType,
   EntityValidationMessage,
   HeatSinkType,
+  heatSinkTypeDissipation,
   MotiveType,
+  locationArmor,
   resolveWeightClass,
   WeightClass,
 } from '../../types';
@@ -32,6 +38,20 @@ import {
 export abstract class AeroEntity extends BaseEntity {
   override readonly entityType: EntityType = 'Aero';
 
+  /** MegaMek AeroSpaceFighter: one external hardpoint per five tons, Java-rounded. */
+  protected fighterBombCapacity(): BombCapacity {
+    return { external: Math.floor(this.tonnage() / 5 + 0.5), internal: this.internalBombBayPoints() };
+  }
+
+  /** MegaMek Aero: only the Internal Bomb Bay quirk turns cargo bay space into bomb hardpoints. */
+  protected internalBombBayPoints(): number {
+    if (!this.applicableQuirks().some(({ quirk }) => quirk.key === 'internal_bomb')) return 0;
+    return this.transporters().reduce((total, transporter) =>
+      total + (transporter.kind === 'bay' && transporter.configuration.type === 'cargo'
+        ? Math.floor(transporter.capacity)
+        : 0), 0);
+  }
+
   override componentLocationOrder(): readonly string[] {
     return ['Nose', 'Left Wing', 'Right Wing', 'Aft', 'Wings', 'Fuselage'];
   }
@@ -44,6 +64,18 @@ export abstract class AeroEntity extends BaseEntity {
 
   override unitType(): UnitType {
     return 'Aero';
+  }
+
+  override damageLocations(): readonly EntityDamageLocation[] {
+    return [
+      ...super.damageLocations().map(location => ({ ...location, internalPoints: 0 })),
+      {
+        code: 'SI',
+        sheetCode: 'SI',
+        internalPoints: this.structuralIntegrity(),
+        armor: locationArmor(0),
+      },
+    ];
   }
 
   abstract override unitSubtype(): UnitSubtype;
@@ -65,7 +97,7 @@ export abstract class AeroEntity extends BaseEntity {
     return this.techBase() === 'IS' ? super.omniTechAdvancement() : null;
   }
 
-  protected override usesLargeEngineTechnology(): boolean {
+  override usesLargeEngineTechnology(): boolean {
     return false;
   }
 
@@ -94,11 +126,13 @@ export abstract class AeroEntity extends BaseEntity {
   // ═══════════════════════════════════════════════════════════════════════════
 
   override computeWalkMP(options: MovementCalculationOptions): number {
-    const modularArmorPenalty = !options.ignoreModularArmor
-      && this.equipment().some(
-        mount => mount.equipment?.hasFlag('F_MODULAR_ARMOR'),
-      ) ? 1 : 0;
-    return Math.max(0, this.originalWalkMP() - modularArmorPenalty);
+    const modularArmorPenalty = modularArmorMovementPenalty(
+      this.equipment(),
+      options.ignoreModularArmor,
+    );
+    // MegaMek AeroSpaceFighter.reduceMPByBombLoad: one safe thrust per five external bomb points.
+    const bombPenalty = options.ignoreCargo ? 0 : Math.ceil((options.externalBombPoints ?? 0) / 5);
+    return Math.max(0, this.originalWalkMP() - modularArmorPenalty - bombPenalty);
   }
 
   protected override computeMaximumArmorPoints(): number {
@@ -117,28 +151,26 @@ export abstract class AeroEntity extends BaseEntity {
     ));
   }
 
+  /** Construction armor threshold shown on the record sheet. */
+  armorDamageThreshold(location: string): number {
+    return Math.ceil(this.getArmorValue(location) / 10);
+  }
+
   override tracksHeat(): boolean {
     return this.entityType === 'Aero' || this.entityType === 'SmallCraft';
   }
 
   protected override computeHeatDissipation(includeRadical: boolean): number {
     const sinks = this.heatSinkCount();
-    let capacity = sinks * (this.heatSinkType() === 'Double' ? 2 : 1);
-    if (includeRadical && this.hasEquipmentFlag('F_RADICAL_HEATSINK')) {
+    let capacity = sinks * heatSinkTypeDissipation(this.heatSinkType());
+    if (includeRadical && this.equipment().some(mount => isRadicalHeatSinkEquipment(mount.equipment))) {
       capacity += Math.ceil(sinks * 0.4);
     }
     return capacity;
   }
 
-  protected override computeMaximumHeatDissipation(normal: number): number {
-    const sinks = this.heatSinkCount();
-    let maximum = normal;
-    if (this.hasEquipmentFlag('F_RADICAL_HEATSINK')) maximum += sinks;
-    if (this.hasCoolantPod()) maximum += sinks;
-    maximum += this.equipment().filter(
-      mount => mount.equipment?.hasFlag('F_EMERGENCY_COOLANT_SYSTEM'),
-    ).length * 6;
-    return maximum;
+  protected override computeHeatDissipationBoosts(): readonly HeatDissipationBoost[] {
+    return this.heatDissipationBoostsForSinks(this.heatSinkCount());
   }
 
   override readonly engineHeatSinks = computed(() =>
@@ -196,14 +228,8 @@ export abstract class AeroEntity extends BaseEntity {
   protected override computeMaxArmor(
     _structureValues: Map<string, number>,
   ): Map<string, number> {
-    // Rough max: tonnage determines total max armor points
-    // Per-location maximums are fairly permissive for aero
-    const maxPerLoc = this.tonnage() * 2;
-    const maxArmor = new Map<string, number>();
-    for (const loc of this.locationOrder) {
-      maxArmor.set(loc, maxPerLoc);
-    }
-    return maxArmor;
+    // Fighters and small craft have a total armor budget, not per-facing tonnage caps.
+    return new Map(this.armorLocations.map(loc => [loc, this.maximumArmorPoints()]));
   }
 
   // ── Validation ────────────────────────────────────────────────────────

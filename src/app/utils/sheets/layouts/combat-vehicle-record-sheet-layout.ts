@@ -1,0 +1,546 @@
+// Copyright (C) 2026 The MegaMek Team
+// SPDX-License-Identifier: GPL-3.0-or-later
+
+import { formatProtectionCounter } from '../record-sheet-protection-counter';
+import { RANDOM_HIT_BUTTON_SIZE } from '../paperdoll-generator';
+
+import type { BaseEntity } from '../../../models/entity/base-entity';
+import { isVehicleEntity } from '../../../models/entity/utils/entity-type-guards';
+import { clusterTableForEntity, recordSheetClusterNotes } from '../../record-sheet-reference-table';
+import type { RecordSheetPageProfile } from '../record-sheet-layout';
+import {
+    type Box,
+    addFrame,
+    appendTspan,
+    drawClusterHitsReference,
+    drawCounterBox,
+    drawElevationTracker,
+    drawGeneratedFooter,
+    formatNumber,
+    scaleCompactBox,
+    setAttributes,
+    svgElement,
+} from '../record-sheet-svg-rendering';
+import { CompactRecordSheetLayout, type RecordSheetLayoutRequest } from './record-sheet-layout';
+import {
+    appendVehicleDamageTrackBindings,
+    compactVehicleSheetTitle,
+    drawCompactVehicleChrome,
+    drawCompactVehicleCrewPanel,
+    drawCompactVehicleCriticalPanel,
+    drawCompactVehicleDataPanel,
+    drawCompactVehicleDiagram,
+    usesSixSideVehicleHull,
+    vehicleArmorReader,
+} from './vehicle-record-sheet-components';
+import { drawVehicleReferenceTables } from './vehicle-record-sheet-reference-tables';
+import { drawVtolReferenceTables } from './vtol-record-sheet-reference-tables';
+import { isNavalRecordSheetEntity } from './naval-record-sheet-layout';
+import {
+    combatVehiclePaperdollAsset,
+    combatVehiclePaperdollFamily,
+    type CombatVehiclePaperdollFamily,
+} from './vehicle-paperdoll-asset';
+
+
+/** The top of a single-turret superheavy's turret armor label in the diagram's lower-left corner. */
+const SUPERHEAVY_TURRET_LABEL_TOP = 340;
+/**
+ * A dual-turret superheavy's two-line turret label and its hull's rear corner fill the lower left, so its random hit
+ * button takes the strip under the rear armor label, between the turret label and the logo.
+ */
+const SUPERHEAVY_DUAL_TURRET_RANDOM_HIT = Object.freeze({ x: 84, y: 342 });
+
+/** Tank, VTOL, and WiGE composition; motive type selects the paperdoll. */
+export class CombatVehicleRecordSheetLayout extends CompactRecordSheetLayout {
+    public constructor() {
+        super(
+            'combat-vehicle',
+            'vehicle',
+            'COMBAT VEHICLE RECORD SHEET',
+            page => page.format === 'a4'
+                ? { height: 400, stride: 403 }
+                : { height: 375, stride: 378 },
+        );
+    }
+
+    public matches(entity: BaseEntity): boolean {
+        return isVehicleEntity(entity) && !isNavalRecordSheetEntity(entity);
+    }
+
+    protected override drawPrintablePageChrome(): void {
+        // Vehicle compact blocks contain the MegaMekLab-style page masthead.
+    }
+
+    protected override printablePageContentY(profile: RecordSheetPageProfile): number {
+        return profile.margin;
+    }
+
+    public override drawCompactPageSupplement(
+        page: SVGSVGElement,
+        profile: RecordSheetPageProfile,
+        blocks: readonly SVGSVGElement[],
+    ): void {
+        if (blocks.length === 1) {
+            const family = blocks[0].getAttribute('data-mekbay-vehicle-family');
+            if (family === 'vtol') drawVtolReferenceTables(page, profile);
+            else drawVehicleReferenceTables(page, profile);
+        }
+        drawGeneratedFooter(page, profile);
+    }
+
+    protected async drawCompact(svg: SVGSVGElement, entity: BaseEntity, request: RecordSheetLayoutRequest): Promise<void> {
+        if (!this.matches(entity)) throw new Error('Combat-vehicle layout received an unsupported entity');
+        const at = (box: Box): Box => scaleCompactBox(svg, box, 375);
+        const family = combatVehiclePaperdollFamily(entity);
+        const airborne = family === 'vtol';
+        svg.setAttribute('data-mekbay-vehicle-family', family);
+        drawCompactVehicleChrome(svg, compactVehicleSheetTitle(entity));
+        const dataBox = at({ x: 0.966, y: 69.857, width: 220.4, height: 283 });
+        drawCompactVehicleDataPanel(
+            svg,
+            entity,
+            dataBox,
+            { includePhysicalAttacks: !airborne, lastDetailBaseline: 251.58,
+                showQuirks: request.showQuirks, groupWeapons: request.groupWeapons, ruleset: request.ruleset },
+        );
+        drawCompactVehicleCrewPanel(
+            svg,
+            at({ x: 230.4, y: 69.857, width: 145.6, height: 91 }),
+            { airborne },
+        );
+        drawCompactVehicleCriticalPanel(
+            svg,
+            entity,
+            at({ x: 230.4, y: 164.905, width: 145.6, height: 91 }),
+            airborne,
+        );
+        const cluster = clusterTableForEntity(entity);
+        if (cluster.clusterSizes.length > 0) {
+            drawClusterHitsReference(
+                svg,
+                at({ x: 230.4, y: 259.952, width: 154.6, height: 96.048 }),
+                cluster.clusterSizes,
+                'auto',
+                recordSheetClusterNotes(cluster.equipment),
+            );
+        } else {
+            addFrame(svg, 'NOTES', at({ x: 230.4, y: 260, width: 145.6, height: 93 }));
+        }
+        const diagramBox = { x: Number(svg.getAttribute('width')) - 189, y: 3, width: 189, height: 350 };
+        const diagram = await drawCompactVehicleDiagram(
+            svg,
+            entity,
+            diagramBox,
+            {
+                pipLayout: request.pipLayout,
+                assetUrl: combatVehiclePaperdollAsset(entity),
+                motiveArtId: this.motiveArtId(entity, family),
+                ...this.randomHitAt(entity, family),
+            },
+        );
+        this.drawDiagramLabels(diagram, entity, family);
+        // A flying vehicle's Elevation tracker sits in the diagram's free upper-left corner, beside the nose; the random
+        // hit button takes the lower-left one.
+        const tracker = svgElement('g');
+        drawElevationTracker(tracker, entity, 22, 80);
+        diagram.appendChild(tracker);
+        // Damage tracks still without a control on the sheet get hidden ones, once every control is drawn.
+        appendVehicleDamageTrackBindings(svg, entity);
+    }
+
+    /** A superheavy turret's armor label takes the logo's row at the lower left, so the random hit button moves off it. */
+    private randomHitAt(entity: BaseEntity, family: CombatVehiclePaperdollFamily): { randomHitAt?: { x: number; y: number } } {
+        if (family !== 'vehicle' || !isVehicleEntity(entity) || !usesSixSideVehicleHull(entity)) return {};
+        if (entity.hasDualTurret()) return { randomHitAt: SUPERHEAVY_DUAL_TURRET_RANDOM_HIT };
+        return entity.hasTurret() ? { randomHitAt: { x: 0, y: SUPERHEAVY_TURRET_LABEL_TOP - RANDOM_HIT_BUTTON_SIZE } } : {};
+    }
+
+    private motiveArtId(
+        entity: BaseEntity,
+        family: CombatVehiclePaperdollFamily,
+    ): 'tracks' | 'wheels' | 'hovercraft' | undefined {
+        if (family !== 'vehicle') return undefined;
+        const motive = (entity.getMotiveTypeAsString() ?? '').toLowerCase();
+        if (motive.includes('tracked')) return 'tracks';
+        if (motive.includes('wheeled')) return 'wheels';
+        if (motive.includes('hover')) return 'hovercraft';
+        return undefined;
+    }
+
+    private drawDiagramLabels(
+        group: SVGGElement,
+        entity: BaseEntity,
+        family: CombatVehiclePaperdollFamily,
+    ): void {
+        if (family === 'vtol') {
+            this.drawVtolDiagramLabels(group, entity);
+            return;
+        }
+        if (family === 'wige') {
+            this.drawWigeDiagramLabels(group, entity);
+            return;
+        }
+        this.drawGroundVehicleDiagramLabels(group, entity);
+    }
+
+    /** Exact MML ground-vehicle label transforms on the canonical 189×350 diagram. */
+    private drawGroundVehicleDiagramLabels(
+        group: SVGGElement,
+        entity: BaseEntity,
+    ): void {
+        const labels = svgElement('g');
+        labels.setAttribute('class', 'combat-vehicle-diagram-labels ground-vehicle-diagram-labels');
+        const armor = vehicleArmorReader(entity);
+        const superheavy = usesSixSideVehicleHull(entity);
+        const dualTurret = isVehicleEntity(entity) && entity.hasDualTurret();
+        const hasTurret = isVehicleEntity(entity) && entity.hasTurret();
+        const turret = armor('TU', 'T1', 'T');
+        const noTurret = !hasTurret && !dualTurret;
+
+        const frontRear = svgElement('text');
+        setAttributes(frontRear, {
+            transform: superheavy
+                ? 'matrix(1.038 0 0 1.038 4.955 11.25) translate(-400.802 -35.489748) translate(485.9 61)'
+                : dualTurret
+                    ? 'matrix(.96 0 0 .96 14.791 32.25) matrix(1 0 0 -1 -406.254 751.728) matrix(1 0 0 -1489.135 744.945)'
+                    : `matrix(1.129 0 0 1.129 90.697086 ${noTurret ? 24.010548 : 25.067548})`,
+            'font-family': 'Roboto',
+            'font-size': superheavy || dualTurret ? 8.0431 : 7.74,
+            'font-weight': superheavy || dualTurret ? 700 : 600,
+            'text-anchor': 'middle',
+        });
+        const frontY = superheavy || dualTurret ? 0 : noTurret ? 13 : 12;
+        const rearY = superheavy ? dualTurret ? 280.91 : 282.91 : dualTurret ? 301.512 : noTurret ? 273.91 : 269.91;
+        const valueGap = superheavy || dualTurret ? 9.636 : 9.275;
+        appendTspan(frontRear, 'Front Armor', 0, frontY);
+        appendTspan(frontRear, formatProtectionCounter(armor('FR', 'F')), 0, frontY + valueGap).id = 'textArmor_FR';
+        appendTspan(frontRear, 'Rear Armor', 0, rearY);
+        appendTspan(frontRear, formatProtectionCounter(armor('RR', 'R')), 0, rearY + valueGap).id = 'textArmor_RR';
+        labels.appendChild(frontRear);
+
+        if (superheavy) {
+            this.appendSuperheavySideArmorLabels(labels, armor);
+        } else {
+            this.appendVerticalArmorLabel(
+                labels,
+                'Left Side Armor',
+                'LS',
+                armor('LS', 'L'),
+                dualTurret
+                    ? 'matrix(.96 0 0 .96 14.791 32.25) matrix(1 0 0 -1 -406.254 751.728) matrix(0 1 1 0412.894 529.791)'
+                    : `matrix(0 -1.129 1.129 0 6.926415 ${noTurret ? 234.648078 : 235.705078})`,
+                dualTurret ? 65.6 : 63.083,
+                dualTurret ? 62.801 : 60.388,
+                dualTurret ? 8.0431 : 7.74,
+            );
+            this.appendVerticalArmorLabel(
+                labels,
+                'Right Side Armor',
+                'RS',
+                armor('RS', 'R'),
+                dualTurret
+                    ? 'matrix(.96 0 0 .96 14.791 32.25) matrix(1 0 0 -1 -406.254 751.728) matrix(0 -1 -1 0575.029 619.724)'
+                    : `matrix(0 1.129 -1.129 0 183.127187 ${noTurret ? 136.911677 : 137.968677})`,
+                dualTurret ? 68.214 : 68.285,
+                dualTurret ? 68.214 : 65.591,
+                dualTurret ? 8.0431 : 7.74,
+            );
+        }
+
+        if (!dualTurret && hasTurret) {
+            const turretText = svgElement('text');
+            setAttributes(turretText, {
+                transform: superheavy
+                    ? 'matrix(1.038 0 0 1.038 4.955 11.25) translate(-400.802 -35.489748) translate(404.3 351.437)'
+                    : 'matrix(1.129 0 0 1.129 68.751584 158.858564)',
+                'font-family': 'Roboto',
+                'font-size': superheavy ? 8.0431 : 6.77,
+                'font-weight': superheavy ? 700 : 600,
+            });
+            appendTspan(turretText, 'Turret Armor', 0, superheavy ? 8.431 : 0);
+            appendTspan(turretText, formatProtectionCounter(turret), superheavy ? 50.58 : 0,
+                superheavy ? 8.431 : 8.116).id = 'textArmor_TU';
+            labels.appendChild(turretText);
+        }
+        if (dualTurret) this.appendDualTurretArmorLabels(labels, armor('FT'), armor('RT'), superheavy);
+        bakeLabelScales(labels);
+        group.appendChild(labels);
+    }
+
+    /** The six-location hull has separate fore and aft side counters. */
+    private appendSuperheavySideArmorLabels(
+        parent: SVGElement,
+        armor: (...codes: readonly string[]) => number,
+    ): void {
+        const sides = [
+            { transform: 'rotate(-90 353.48801 -52.72973)', parts: [
+                ['Rear Left Side Armor', 'RRLS', 0, 77.2],
+                ['Front Left Side Armor', 'FRLS', 116.3, 194.8],
+            ] },
+            { transform: 'rotate(90 237.58794 330.37009)', parts: [
+                ['Front Right Side Armor', 'FRRS', 0, 84.152],
+                ['Rear Right Side Armor', 'RRRS', 121.6, 203.5],
+            ] },
+        ] as const;
+        for (const side of sides) {
+            const text = svgElement('text');
+            setAttributes(text, {
+                transform: `matrix(1.038 0 0 1.038 4.955 11.25) translate(-400.802 -35.489748) ${side.transform}`,
+                'font-family': 'Roboto', 'font-size': 8.0431, 'font-weight': 700,
+            });
+            for (const [label, location, labelX, valueX] of side.parts) {
+                appendTspan(text, label, labelX, 0);
+                appendTspan(text, formatProtectionCounter(armor(location)), valueX, 0).id = `textArmor_${location}`;
+            }
+            parent.appendChild(text);
+        }
+    }
+
+    /** Standard turrets carry labels inside the hull; superheavy labels sit outside it. */
+    private appendDualTurretArmorLabels(
+        parent: SVGElement,
+        frontArmor: number,
+        rearArmor: number,
+        superheavy: boolean,
+    ): void {
+        const rear = svgElement('text');
+        setAttributes(rear, {
+            transform: superheavy
+                ? 'matrix(1.038 0 0 1.038 4.955 11.25) translate(-400.802 -35.489748) translate(404.3 351.437)'
+                : 'matrix(.96 0 0 .96 14.791 32.25) matrix(1 0 0 -1 -406.254 751.728) matrix(1 0 0 -1469.784 599.879)',
+            'font-family': 'Roboto',
+            'font-size': superheavy ? 8.0431 : 7.0377,
+            'font-weight': 700,
+        });
+        appendTspan(rear, superheavy ? 'Rear' : 'Rear Turret', 0, 0);
+        if (superheavy) appendTspan(rear, 'Turret Armor', 0, 8.431);
+        appendTspan(rear, formatProtectionCounter(rearArmor), superheavy ? 50.58 : 0, 8.431).id = 'textArmor_RT';
+        parent.appendChild(rear);
+
+        const front = svgElement('text');
+        setAttributes(front, {
+            transform: superheavy
+                ? 'matrix(1.038 0 0 1.038 4.955 11.25) translate(-400.802 -35.489748) translate(570.964 51.3)'
+                : 'matrix(.96 0 0 .96 14.791 32.25) matrix(1 0 0 -1 -406.254 751.728) matrix(1 0 0 -1454.732 695.167)',
+            'font-family': 'Roboto',
+            'font-size': superheavy ? 8.0431 : 7.0377,
+            'font-weight': 700,
+            'text-anchor': superheavy ? 'end' : 'start',
+        });
+        appendTspan(front, 'Front', 0, superheavy ? 2 : 0);
+        appendTspan(front, superheavy ? 'Turret Armor' : 'Turret', superheavy ? 0 : -1.422,
+            superheavy ? 10.431 : 8.431);
+        appendTspan(front, formatProtectionCounter(frontArmor), superheavy ? 0 : -1.738,
+            superheavy ? 18.862 : 16.862).id = 'textArmor_FT';
+        parent.appendChild(front);
+    }
+
+    private drawVtolDiagramLabels(group: SVGGElement, entity: BaseEntity): void {
+        const labels = svgElement('g');
+        labels.setAttribute('class', 'combat-vehicle-diagram-labels vtol-diagram-labels');
+        const armor = vehicleArmorReader(entity);
+        if (isVehicleEntity(entity) && entity.hasTurret()) {
+            const authored = svgElement('g');
+            authored.setAttribute('transform', 'matrix(1.006 0 0 1.006 3.363 11.25) translate(-398.478 -13.05)');
+            setAttributes(authored, { 'font-family': 'Roboto', 'font-size': 7.74, 'font-weight': 700 });
+            for (const [name, code, transform, counterX] of [
+                ['Left Side Armor', 'LS', 'rotate(-90 353.25 -71.55)', 57.383],
+                ['Right Side Armor', 'RS', 'rotate(90 166.494 380.753)', 62.585],
+            ] as const) {
+                const text = svgElement('text');
+                text.setAttribute('transform', transform);
+                appendTspan(text, name, 0, 0);
+                appendTspan(text, formatProtectionCounter(armor(code)), counterX, 0).id = `textArmor_${code}`;
+                authored.appendChild(text);
+            }
+            for (const [names, code, x, y, gap] of [
+                [['Front Armor'], 'FR', 551.878, 94.209, 9.275],
+                [['Rear Armor'], 'RR', 448.778, 341.214, 9.275],
+                [['Rotor', 'Armor'], 'RO', 559.589, 155.86, 8.116],
+                [['Turret', 'Armor'], 'TU', 440.689, 60.26, 8.116],
+            ] as const) {
+                const text = svgElement('text');
+                setAttributes(text, { transform: `translate(${x} ${y})`, 'text-anchor': 'middle' });
+                names.forEach((name, index) => appendTspan(text, name, 0, index * gap));
+                appendTspan(text, formatProtectionCounter(armor(code)), 0, names.length * gap).id = `textArmor_${code}`;
+                authored.appendChild(text);
+            }
+            labels.appendChild(authored);
+            // The authored rotor label sits at (559.589, 155.86) before the group's transform.
+            this.appendRotorHitsCounter(labels, (559.589 - 398.478) * 1.006 + 3.363, (155.86 - 13.05) * 1.006 + 11.25);
+            bakeLabelScales(labels);
+        group.appendChild(labels);
+            return;
+        }
+        const frontRear = svgElement('text');
+        setAttributes(frontRear, {
+            transform: 'matrix(1.063 0 0 1.063 96.571424 41.321677)',
+            'font-family': 'Roboto',
+            'font-size': 7.74,
+            'font-weight': 700,
+            'text-anchor': 'middle',
+        });
+        appendTspan(frontRear, 'Front Armor', 0, 0);
+        appendTspan(frontRear, formatProtectionCounter(armor('FR', 'F')), 0, 9.275).id = 'textArmor_FR';
+        appendTspan(frontRear, 'Rear Armor', 0, 280.185);
+        appendTspan(frontRear, formatProtectionCounter(armor('RR', 'R')), 0, 289.46).id = 'textArmor_RR';
+        labels.appendChild(frontRear);
+
+        this.appendVerticalArmorLabel(
+            labels,
+            'Left Side Armor',
+            'LS',
+            armor('LS', 'L'),
+            'matrix(0 -1.063 1.063 0 28.56281 257.95151)',
+            57.383,
+        );
+        this.appendVerticalArmorLabel(
+            labels,
+            'Right Side Armor',
+            'RS',
+            armor('RS', 'R'),
+            'matrix(0 1.063 -1.063 0 158.723971 186.155427)',
+            62.585,
+        );
+
+        const rotor = svgElement('text');
+        setAttributes(rotor, {
+            transform: 'matrix(1.063 0 0 1.063 163.55318 114.93549)',
+            'font-family': 'Roboto',
+            'font-size': 7.74,
+            'font-weight': 700,
+            'text-anchor': 'middle',
+        });
+        appendTspan(rotor, 'Rotor', 0, 0);
+        appendTspan(rotor, 'Armor', 0, 8.116);
+        appendTspan(rotor, formatProtectionCounter(armor('RO', 'Rotor')), 0, 16.232).id = 'textArmor_RO';
+        labels.appendChild(rotor);
+        this.appendRotorHitsCounter(labels, 163.55318, 114.93549);
+        bakeLabelScales(labels);
+        group.appendChild(labels);
+    }
+
+    /**
+     * The Rotor Hits counter above a VTOL's rotor armor label, centred on it: a screen control the binder fills from
+     * the rotor damage track and opens the hits picker from (TW p. 197).
+     */
+    private appendRotorHitsCounter(labels: SVGGElement, centerX: number, labelBaseline: number): void {
+        const { group, value } = drawCounterBox(labels, 'Rotor Hits', centerX, labelBaseline - 37, { width: 36 });
+        // The rotor damage track's own control: the sheet needs no hidden stand-in for it.
+        group.id = 'rotor';
+        group.setAttribute('class', 'screen-only critLoc counterGroup rotorHitsControl');
+        group.setAttribute('critId', 'rotor');
+        value.id = 'rotor_hits_counter';
+    }
+
+    private drawWigeDiagramLabels(group: SVGGElement, entity: BaseEntity): void {
+        const labels = svgElement('g');
+        labels.setAttribute('class', 'combat-vehicle-diagram-labels wige-diagram-labels');
+        const armor = vehicleArmorReader(entity);
+        const frontRear = svgElement('text');
+        setAttributes(frontRear, {
+            transform: 'matrix(1.036 0 0 1.036 93.221352 40.178744)',
+            'font-family': 'Roboto',
+            'font-size': 7.74,
+            'font-weight': 600,
+            'text-anchor': 'middle',
+        });
+        appendTspan(frontRear, 'Front Armor', 0, 0);
+        appendTspan(frontRear, formatProtectionCounter(armor('FR', 'F')), 0, 9.275).id = 'textArmor_FR';
+        appendTspan(frontRear, 'Rear Armor', 0, 267.81);
+        appendTspan(frontRear, formatProtectionCounter(armor('RR', 'R')), 0, 277.085).id = 'textArmor_RR';
+        labels.appendChild(frontRear);
+        this.appendVerticalArmorLabel(
+            labels,
+            'Left Side Armor',
+            'LS',
+            armor('LS', 'L'),
+            'matrix(0 -1.036 1.036 0 5.399632 238.054744)',
+            56.783,
+        );
+        this.appendVerticalArmorLabel(
+            labels,
+            'Right Side Armor',
+            'RS',
+            armor('RS', 'R'),
+            'matrix(0 1.036 -1.036 0 183.623748 161.437364)',
+            61.185,
+        );
+        const turret = armor('TU', 'T1', 'T');
+        if (turret > 0) {
+            const turretText = svgElement('text');
+            setAttributes(turretText, {
+                transform: 'matrix(1.036 0 0 1.036 157.338356 131.517684)',
+                'font-family': 'Roboto',
+                'font-size': 6.77,
+                'font-weight': 600,
+                'text-anchor': 'middle',
+            });
+            appendTspan(turretText, 'Turret Armor', 0, 0);
+            appendTspan(turretText, formatProtectionCounter(turret), 0, 8.116).id = 'textArmor_TU';
+            labels.appendChild(turretText);
+        }
+        bakeLabelScales(labels);
+        group.appendChild(labels);
+    }
+
+    private appendVerticalArmorLabel(
+        parent: SVGElement,
+        label: string,
+        code: string,
+        value: number,
+        transform: string,
+        valueX: number,
+        labelWidth?: number,
+        fontSize = 7.74,
+    ): void {
+        const text = svgElement('text');
+        setAttributes(text, {
+            transform,
+            'font-family': 'Roboto',
+            'font-size': fontSize,
+            'font-weight': fontSize === 7.74 ? 600 : 700,
+        });
+        const name = appendTspan(text, label, 0, 0);
+        if (labelWidth !== undefined) {
+            name.setAttribute('textLength', formatNumber(labelWidth));
+            name.setAttribute('lengthAdjust', 'spacingAndGlyphs');
+        }
+        appendTspan(text, formatProtectionCounter(value), valueX, 0).id = `textArmor_${code}`;
+        parent.appendChild(text);
+    }
+}
+
+/**
+ * MegaMekLab places these labels with transforms that also scale them, uniformly. Each label keeps its placement
+ * and rotation and takes the scale as font size and offsets, so no type is scaled. Transforms of groups holding
+ * only text are folded into their labels; any other group keeps its own.
+ */
+function bakeLabelScales(labels: SVGGElement): void {
+    const textOnly = (element: Element) => element.localName === 'g' && !element.querySelector(':not(text):not(tspan)');
+    const folded = new Set<SVGGElement>();
+    for (const text of Array.from(labels.querySelectorAll<SVGTextElement>('text'))) {
+        let matrix = DOMMatrix.fromMatrix(text.transform.baseVal.consolidate()?.matrix ?? new DOMMatrix());
+        let fontSize = Number(text.getAttribute('font-size'));
+        for (let parent: Element | null = text.parentElement; parent && parent !== labels && textOnly(parent);
+            parent = parent.parentElement) {
+            const group = parent as unknown as SVGGElement;
+            const own = group.transform.baseVal.consolidate()?.matrix;
+            if (own) matrix = DOMMatrix.fromMatrix(own).multiply(matrix);
+            fontSize ||= Number(group.getAttribute('font-size'));
+            folded.add(group);
+        }
+        const scale = Math.hypot(matrix.a, matrix.b);
+        text.setAttribute('transform', `matrix(${[matrix.a / scale, matrix.b / scale, matrix.c / scale, matrix.d / scale,
+            matrix.e, matrix.f].map(formatNumber).join(' ')})`);
+        if (fontSize) text.setAttribute('font-size', formatNumber(fontSize * scale));
+        for (const element of [text, ...Array.from(text.querySelectorAll('tspan'))]) {
+            for (const name of ['x', 'y', 'dx', 'dy', 'textLength']) {
+                const value = element.getAttribute(name);
+                if (value !== null && value.trim() !== '') element.setAttribute(name, formatNumber(Number(value) * scale));
+            }
+        }
+    }
+    folded.forEach(group => group.removeAttribute('transform'));
+}

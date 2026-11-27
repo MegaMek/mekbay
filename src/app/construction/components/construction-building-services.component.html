@@ -1,0 +1,268 @@
+<section class="framed-borders services">
+  <h2>Construction &amp; services</h2>
+  <p class="native-location">Hex {{ displayHex(position().hex) }} · Level {{ levelName(position().floor) }}</p>
+  <fieldset [disabled]="disabled()">
+    <details [open]="doorsOpen()" (toggle)="doorsOpen.set(sectionOpen($event))">
+      <summary>Doors</summary>
+      <div class="door-editor">
+        <construction-hex-sides
+          label="Door side"
+          [hexLabel]="displayHex(position().hex)"
+          [caption]="'Doors · ' + levelName(position().floor, true)"
+          [selectedMask]="doorMask()"
+          [blockedMask]="blockedDoorSides()"
+          [disabled]="doorsDisabled()"
+          (sideSelected)="toggleDoor($event)"
+        />
+        @for (entry of localDoors(); track entry.door.facing) {
+          <label class="door-height" [attr.data-facing]="entry.door.facing">
+            Height
+            <input
+              class="bt-input"
+              [attr.aria-label]="sides[entry.door.facing] + ' door height'"
+              type="number"
+              min="1"
+              [max]="maxDoorHeight()"
+              [disabled]="doorsDisabled()"
+              [ngModel]="entry.door.height"
+              (ngModelChange)="changeDoorHeight(entry.index, $event)"
+            />
+          </label>
+        }
+        @for (link of doorLinks(); track $index) {
+          <button type="button" class="bt-button door-link" [class.linked]="link.linked"
+            [style.left.%]="link.left" [style.top.%]="link.top" [disabled]="disabled()"
+            [attr.aria-label]="(link.linked ? 'Unlink ' : 'Link ') + sides[link.source.facing] + ' door with ' + link.target"
+            [title]="(link.linked ? 'Unlink ' : 'Link ') + sides[link.source.facing] + ' door with ' + link.target"
+            (click)="toggleDoorLink(link.source, link.other)">
+            {{ link.linked ? 'Unlink' : 'Link' }}@if (!link.sameHex) {<small>{{ link.target }}</small>}
+          </button>
+        }
+      </div>
+      <p class="hint">
+        Click a hex edge to add or remove a door on this level. Set its height beside that direction. Dimmed edges are
+        unavailable, including sides with a door on another level. Link touching doors of the same height to make one
+        continuous opening. Linked heights change together; Unlink separates this segment.
+      </p>
+    </details>
+    <details [open]="elevatorsOpen()" (toggle)="elevatorsOpen.set(sectionOpen($event))">
+      <summary>Elevators</summary>
+      @for (entry of localLifts(); track entry.index) {
+        <div class="lift">
+          <div class="row">
+            <label
+              >Capacity (t)<input
+                class="bt-input"
+                aria-label="Elevator capacity"
+                type="number"
+                min="1"
+                [ngModel]="entry.lift.capacity"
+                (ngModelChange)="changeLift(entry.index, { capacity: $event })"
+            /></label>
+            <label
+              >From<select
+                class="bt-select"
+                aria-label="Elevator lowest level"
+                [ngModel]="liftRange(entry.lift)[0]"
+                (ngModelChange)="setLiftRange(entry.index, $event, liftRange(entry.lift)[1])"
+              >
+                @for (level of levels(); track level) {
+                  <option [ngValue]="level">{{ levelName(level, true) }}</option>
+                }
+              </select></label
+            >
+            <label
+              >To<select
+                class="bt-select"
+                aria-label="Elevator highest level"
+                [ngModel]="liftRange(entry.lift)[1]"
+                (ngModelChange)="setLiftRange(entry.index, liftRange(entry.lift)[0], $event)"
+              >
+                @for (level of levels(); track level) {
+                  <option [ngValue]="level">{{ levelName(level, true) }}</option>
+                }
+              </select></label
+            >
+          </div>
+          @for (level of liftStops(entry.lift); track level) {
+            <div class="access">
+              <span>Level {{ levelName(level) }} access</span>
+              <construction-hex-sides
+                [label]="'Elevator ' + (entry.index + 1) + ' level ' + levelName(level, true) + ' access'"
+                [hexLabel]="displayHex(entry.lift.hex)"
+                caption="Elevator access"
+                [selectedMask]="entry.lift.exits.get(level) ?? 0"
+                [blockedMask]="63 - internalSides(entry.lift.hex, level)"
+                [disabled]="disabled()"
+                (sideSelected)="setLiftSide(entry.index, level, $event, !liftSide(entry.lift, level, $event))"
+              />
+            </div>
+          }
+          <p class="hint">Click edges to add or remove access to neighboring building hexes at each level.</p>
+          <p class="hint">{{ liftWeight(entry.lift) }} t mechanism · Shaft must remain clear.</p>
+          <button class="bt-button" (click)="removeLift(entry.index)">Remove elevator</button>
+        </div>
+      }
+      <button
+        class="bt-button"
+        [disabled]="entity().hasNoInterior() || entity().buildingOptions().openSpace"
+        (click)="addLift()"
+      >
+        Add elevator
+      </button>
+    </details>
+    <details [open]="equipmentOpen()" (toggle)="equipmentOpen.set(sectionOpen($event))">
+      <summary>Equipment placement &amp; automation</summary>
+      <select
+        class="bt-select wide"
+        aria-label="Equipment placement"
+        [ngModel]="mountId()"
+        (ngModelChange)="mountId.set($event)"
+      >
+        @for (item of entity().equipment(); track item.mountId) {
+          <option [value]="item.mountId">{{ item.displayName() }} · {{ displayLocation(item.location) }}</option>
+        }
+      </select>
+      @if (mount(); as item) {
+        <label class="row check"
+          ><input
+            type="checkbox"
+            aria-label="Automated weapon"
+            [disabled]="!canAutomate()"
+            [ngModel]="mountDesign().automated"
+            (ngModelChange)="changeMount({ automated: $event })"
+          />Automated weapon (Gunnery 5)</label
+        >
+        @if (item.equipmentId === 'EXTERNAL_PCMT PowerGenerator') {
+          <label
+            >Transmitting PCMT mass (t)<input
+              class="bt-input"
+              aria-label="PCMT source tonnage"
+              type="number"
+              min="0"
+              [ngModel]="mountDesign().pcmtSource"
+              (ngModelChange)="changeMount({ pcmtSource: $event })"
+          /></label>
+        }
+        @if (canSpread()) {
+          <p class="hint">
+            One item; its mass is divided equally among selected hexes. Power and weapon count stay unchanged.
+          </p>
+          <div class="allocations">
+            @for (hex of entity().coordinates(); track hex.q + ',' + hex.r) {
+              <div class="row">
+                <label class="check"
+                  ><input
+                    type="checkbox"
+                    [attr.aria-label]="'Allocate equipment to ' + displayHex(hex)"
+                    [disabled]="anchor(hex)"
+                    [ngModel]="allocated(hex) !== undefined"
+                    (ngModelChange)="allocateHex(hex, $event ? position().floor : undefined)"
+                  />{{ displayHex(hex) }}</label
+                >
+                @if (allocated(hex) !== undefined) {
+                  <select
+                    class="bt-select"
+                    [attr.aria-label]="'Equipment level at ' + displayHex(hex)"
+                    [disabled]="anchor(hex)"
+                    [ngModel]="allocated(hex)"
+                    (ngModelChange)="allocateHex(hex, $event)"
+                  >
+                    @for (level of internalLevels(hex); track level) {
+                      <option [ngValue]="level">{{ entity().levelLabel(level, true) }}</option>
+                    }
+                  </select>
+                  <span>{{ entity().equipmentWeightInHex(item, hex).toFixed(2) }} t</span>
+                }
+              </div>
+            }
+          </div>
+        }
+      } @else {
+        <p class="hint">Install equipment to configure its placement.</p>
+      }
+    </details>
+    <details [open]="transportOpen()" (toggle)="transportOpen.set(sectionOpen($event))">
+      <summary>Bay &amp; quarters space</summary>
+      <select class="bt-select wide" aria-label="Bay placement" [ngModel]="bayId()" (ngModelChange)="bayId.set($event)">
+        @for (item of bays(); track item.id) {
+          <option [value]="item.id">{{ bayName(item.configuration) }} · {{ bayWeight(item) }} t</option>
+        }
+      </select>
+      @if (bay(); as item) {
+        <p class="hint">Assign {{ bayWeight(item) }} t of installed space.</p>
+        <div class="row">
+          <button class="bt-button" (click)="assignBayHere()">Assign all here</button
+          ><button class="bt-button" (click)="automaticBay()">Distribute evenly</button>
+        </div>
+        <div class="allocations">
+          @for (space of spaces(); track $index; let i = $index) {
+            <div class="row">
+              <select
+                class="bt-select"
+                aria-label="Bay space location"
+                [ngModel]="spaceLocation(space)"
+                (ngModelChange)="changeSpace(i, $event, space.tons)"
+              >
+                @for (location of entity().locationOrder; track location) {
+                  <option [value]="location">{{ displayLocation(location) }}</option>
+                }
+              </select>
+              <input
+                class="bt-input"
+                aria-label="Bay space tons"
+                type="number"
+                min="0"
+                step="0.1"
+                [ngModel]="space.tons"
+                (ngModelChange)="changeSpace(i, spaceLocation(space), $event)"
+              />t
+              <button class="bt-button" (click)="removeSpace(i)">Remove</button>
+            </div>
+          }
+        </div>
+        <button class="bt-button" (click)="addSpace()">Add space allocation</button>
+        @if (item.doors > 0) {
+          <p class="hint">
+            Bay doors: {{ bayDoors().length }} of {{ item.doors }} assigned. Doors in joined module hexes cannot be
+            used.
+          </p>
+          @for (entry of bayDoors(); track entry.index) {
+            <div class="door">
+              <construction-hex-sides
+                [label]="'Bay door ' + (entry.index + 1) + ' side'"
+                [hexLabel]="displayHex(entry.door.position.hex)"
+                [caption]="'Bay door · ' + entity().levelLabel(entry.door.position.floor, true)"
+                [selectedMask]="2 ** entry.door.facing"
+                [blockedMask]="internalSides(entry.door.position.hex)"
+                [disabled]="disabled()"
+                (sideSelected)="changeBayDoor(entry.index, { facing: $event })"
+              />
+              <div class="row">
+                <label
+                  >Location<select
+                    class="bt-select"
+                    aria-label="Bay door location"
+                    [ngModel]="bayDoorLocation(entry.door)"
+                    (ngModelChange)="moveBayDoor(entry.index, $event)"
+                  >
+                    @for (location of entity().locationOrder; track location) {
+                      <option [value]="location">{{ displayLocation(location) }}</option>
+                    }
+                  </select></label
+                >
+                <button class="bt-button" (click)="removeBayDoor(entry.index)">Remove bay door</button>
+              </div>
+            </div>
+          }
+          <p class="hint">Click a hex edge to move its bay door. The triangle marks the door.</p>
+          <button class="bt-button" [disabled]="bayDoors().length >= item.doors" (click)="addBayDoor()">
+            Place bay door here
+          </button>
+        }
+      } @else {
+        <p class="hint">Add bays or quarters in Transport &amp; Quarters first.</p>
+      }
+    </details>
+  </fieldset>
+</section>

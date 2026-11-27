@@ -28,7 +28,6 @@ interface MultilineDropdownPointerHoverEvent {
 
 @Component({
     selector: 'multiline-dropdown-panel',
-    standalone: true,
     changeDetection: ChangeDetectionStrategy.OnPush,
     host: {
         '[style.font-size]': 'fontSize() || null',
@@ -84,6 +83,8 @@ interface MultilineDropdownPointerHoverEvent {
             width: max-content;
             min-width: 100%;
             max-width: calc(100dvw - 8px);
+            /* max-content ignores an auto scrollbar, which would then cover the labels. */
+            scrollbar-gutter: stable;
         }
 
         .multiline-dropdown-options {
@@ -202,8 +203,8 @@ class MultilineDropdownPanelComponent {
 
 @Component({
     selector: 'multiline-dropdown',
-    standalone: true,
     changeDetection: ChangeDetectionStrategy.OnPush,
+    host: { '[class.inline]': `appearance() === 'inline'` },
     template: `
         <div class="multiline-dropdown">
             <button
@@ -235,7 +236,7 @@ class MultilineDropdownPanelComponent {
                         <span class="multiline-dropdown-measure-option">{{ option.label }}</span>
                     }
                 </span>
-                <span class="multiline-dropdown-arrow" aria-hidden="true">\u25be</span>
+                <span class="chevron chevron-dropdown multiline-dropdown-arrow" [class.collapsed]="!open()" aria-hidden="true"></span>
             </button>
         </div>
     `,
@@ -280,6 +281,22 @@ class MultilineDropdownPanelComponent {
 
         .multiline-dropdown-trigger.destroyed {
             color: var(--damage-color);
+        }
+
+        /* Inline: a value inside running text, showing only the label and its chevron. */
+        :host(.inline) .multiline-dropdown-trigger {
+            padding: 0;
+            font: inherit;
+            line-height: inherit;
+            transition: color 0.2s;
+        }
+
+        :host(.inline) .multiline-dropdown-trigger:is(:hover, :focus-visible):not(:disabled) {
+            color: var(--bt-yellow);
+        }
+
+        :host(.inline) .multiline-dropdown-arrow {
+            --chevron-size: 9px;
         }
 
         .multiline-dropdown-label {
@@ -329,13 +346,7 @@ class MultilineDropdownPanelComponent {
         .multiline-dropdown-arrow {
             grid-column: 3;
             grid-row: 1;
-            display: inline-flex;
-            align-items: center;
-            justify-content: center;
             align-self: center;
-            color: inherit;
-            font-size: 1.1em;
-            line-height: 1;
         }
 
         .modifier-badge {
@@ -377,6 +388,8 @@ export class MultilineDropdownComponent implements OnDestroy {
     readonly controlId = input(this.instanceId);
     readonly disabled = input(false);
     readonly expandPanelToContent = input(false);
+    /** `inline` drops the field styling so the value reads as part of the surrounding text. */
+    readonly appearance = input<'field' | 'inline'>('field');
 
     readonly valueChange = output<string>();
     readonly optionSelected = output<MultilineDropdownOption>();

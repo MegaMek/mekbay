@@ -40,7 +40,6 @@ export const DC_FLIGHT: OrgComposedCountRule = {
     commandRank: 'Captain',
     tier: 2,
     childRoles: [{ matches: ['Aero Lance'] }],
-    childBucketBy: 'promotionBasic',
 };
 
 export const DC_AIR_LANCE: OrgComposedCountRule = {
@@ -59,7 +58,6 @@ export const DC_AIR_LANCE: OrgComposedCountRule = {
         { matches: ['Aero Lance'], min: 1 },
         { matches: ['Lance'], min: 1, onlyUnitTypes: ['BM'] },
     ],
-    childBucketBy: 'promotionWithUnitKinds',
 };
 
 export const DC_COMPANY: OrgComposedCountRule = {
@@ -69,7 +67,6 @@ export const DC_COMPANY: OrgComposedCountRule = {
     commandRank: 'Captain',
     tier: 2.5,
     childRoles: [{ matches: ['Flight'] }],
-    childBucketBy: 'promotionBasic',
 };
 
 export const DC_WING: OrgComposedCountRule = {
@@ -79,7 +76,6 @@ export const DC_WING: OrgComposedCountRule = {
     commandRank: 'Major',
     tier: 3.5,
     childRoles: [{ matches: ['Company'], onlyUnitTypes: ['AF'] }],    
-    childBucketBy: 'promotionBasic',
 };
 
 export const DC_CORE_ORG: OrgDefinition = {
@@ -100,8 +96,4 @@ export const DC_CORE_ORG: OrgDefinition = {
         IS_BRIGADE,    
     ],
     registry: DEFAULT_ORG_RULE_REGISTRY,
-    distanceFactor: 0.2,
-    minDistance: 2,
-    groupDistanceFactor: 0.25,
-    groupMinDistance: 1,
 };

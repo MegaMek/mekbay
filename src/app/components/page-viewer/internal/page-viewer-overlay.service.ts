@@ -2,13 +2,44 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 // Author: Drake
 
-import { ApplicationRef, Injectable, Injector, createComponent, type ComponentRef } from '@angular/core';
+import { ApplicationRef, Injectable, inject, Injector, createComponent, signal, type ComponentRef } from '@angular/core';
 
 import type { CBTForce } from '../../../models/cbt-force.model';
-import type { CBTForceUnit } from '../../../models/cbt-force-unit.model';
-import { PAGE_HEIGHT, PAGE_WIDTH } from '../page-viewer-zoom-pan.service';
+import type { PageViewerMember } from './types';
+import { PageViewerZoomPanService } from '../page-viewer-zoom-pan.service';
 import { PageCanvasOverlayComponent } from '../canvas';
 import { PageInteractionOverlayComponent } from '../overlay';
+import { ComponentPortal } from '@angular/cdk/portal';
+import { outputToObservable } from '@angular/core/rxjs-interop';
+import { firstValueFrom, takeUntil } from 'rxjs';
+import type { ComponentId, CrewPositionId } from '../../../models/entity/entity-identifiers';
+import type { CBTForceMember } from '../../../models/force-member.model';
+import { gameRulesFor } from '../../../models/rules/game-rules';
+import { sameAttackerSelection, type AttackerSelection } from '../../../models/runtime/attacker-targeting-state';
+import type { EncounterTargetId } from '../../../models/runtime/encounter-runtime';
+import type { EquipmentPanelComponent, EquipmentPanelSnapshot } from '../../../models/runtime/equipment-panel';
+import { AttackResolutionService } from '../../../services/attack-resolution.service';
+import { SwarmService } from '../../../services/swarm.service';
+import { ForceWorkspaceCommandsService } from '../../../services/force-workspace-commands.service';
+import type { RecordSheetLivePlay } from '../record-sheet-inventory';
+import { projectTargetingTarget, projectWeaponTargetPresentation } from '../../../models/runtime/equipment-panel';
+import type { CBTUnitCommand } from '../../../models/runtime/unit-command';
+import { isUnitEditContextCurrent, type UnitEditContext } from '../../../models/runtime/unit-edit-context';
+import { isUnitConditionKey, type UnitConditionKey } from '../../../models/unit-condition.model';
+import { DialogsService } from '../../../services/dialogs.service';
+import { ForcePilotEditorService } from '../../../services/force-pilot-editor.service';
+import { OptionsService } from '../../../services/options.service';
+import { OverlayManagerService } from '../../../services/overlay-manager.service';
+import { PickerFactoryService } from '../../../services/picker-factory.service';
+import { ToastService } from '../../../services/toast.service';
+import { ClusterTableDialogComponent } from '../../cluster-table-dialog/cluster-table-dialog.component';
+import { WeaponTargetChoiceMenuComponent } from '../../equipment-dialog/weapon-target-choice-menu.component';
+import { InputDialogComponent } from '../../input-dialog/input-dialog.component';
+import { isChoicePickerInstance, type PickerChoice, type PickerInstance, type PickerTargetType } from '../../picker/picker.interface';
+import { recordSheetEventPosition } from '../mek-record-sheet-interaction.util';
+import type { RecordSheetInteraction } from '../record-sheet-interaction';
+import { RecordSheetRandomHitResult } from '../record-sheet-random-hit-result';
+import { UnitStateDropdownComponent } from '../unit-state-dropdown.component';
 
 function applyAbsoluteFillLayout(element: HTMLElement): void {
     element.style.position = 'absolute';
@@ -18,25 +49,103 @@ function applyAbsoluteFillLayout(element: HTMLElement): void {
     element.style.height = '100%';
 }
 
+/** A unit's heat scale being dragged to a value, shown as a difference marker beside the scale. */
+export interface RecordSheetHeatPreview {
+    readonly element: SVGElement;
+    readonly heat: number;
+    readonly baselineHeat: number;
+}
+
+/** Sheet menus; each is open at most once, for the unit that opened it. */
+export type RecordSheetMenu = 'unit-condition' | 'location-condition' | 'crew-state' | 'weapon-target';
+
+/** Where a rolled random hit landed, for the paperdoll badge. */
+export interface RecordSheetRandomHit {
+    readonly locationCode: string;
+    readonly rear: boolean;
+    readonly throughArmorCritical: boolean;
+    readonly transferredFrom?: string;
+}
+
+export type CrewSkillField = 'gunnery' | 'piloting' | 'aeroGunnery' | 'aeroPiloting';
+
+type InventorySelection = Extract<RecordSheetInteraction, { readonly kind: 'inventory-selection' }>;
+type InventoryAim = Extract<RecordSheetInteraction, { readonly kind: 'inventory-aim' }>;
+
+const REJECTED_EDIT = 'This edit is no longer current, or the force is read-only.';
+const CREW_SKILL_TITLES: Readonly<Record<CrewSkillField, string>> = Object.freeze({
+    gunnery: 'Gunnery',
+    piloting: 'Piloting',
+    aeroGunnery: 'Aerospace Gunnery',
+    aeroPiloting: 'Aerospace Piloting',
+});
+
+interface OpenPicker {
+    readonly unitId: string;
+    readonly instance: PickerInstance;
+    readonly target: Element | null;
+}
+
+/**
+ * Everything floating over the record sheets: page canvas and interaction overlays, and the sheet controls every unit
+ * family shares — one open picker, the sheet menus, prompts, the random-hit badge, the heat drag preview, and the edit
+ * flows whose rules do not depend on the family.
+ */
 @Injectable()
 export class PageViewerOverlayService {
+    private readonly zoomPan = inject(PageViewerZoomPanService);
+    private readonly dialogs = inject(DialogsService);
+    private readonly injector = inject(Injector);
+    private readonly options = inject(OptionsService);
+    private readonly overlayManager = inject(OverlayManagerService);
+    private readonly pickerFactory = inject(PickerFactoryService);
+    private readonly pilotEditor = inject(ForcePilotEditorService);
+    private readonly toast = inject(ToastService);
+    private picker: OpenPicker | null = null;
+    private readonly menuOwners = new Map<RecordSheetMenu, string>();
+    private readonly randomHitResult = new RecordSheetRandomHitResult();
+    private readonly heatPreviews = signal<ReadonlyMap<string, RecordSheetHeatPreview>>(new Map());
+
     private canvasOverlayRefs = new Map<string, ComponentRef<PageCanvasOverlayComponent>>();
     private canvasOverlaySubscriptions = new Map<string, { unsubscribe: () => void }>();
     private interactionOverlayRefs = new Map<string, ComponentRef<PageInteractionOverlayComponent>>();
     private interactionOverlayModes = new Map<string, 'fixed' | 'page'>();
 
+    heatPreview(unitId: string): RecordSheetHeatPreview | null {
+        return this.heatPreviews().get(unitId) ?? null;
+    }
+
+    setHeatPreview(unitId: string, preview: RecordSheetHeatPreview): void {
+        const { element, heat, baselineHeat } = preview;
+        this.heatPreviews.update(current => new Map(current).set(unitId, Object.freeze({ element, heat, baselineHeat })));
+    }
+
+    /** Clears one unit's heat preview, or every preview without a unit. */
+    clearHeatPreview(unitId?: string): void {
+        if (unitId === undefined ? this.heatPreviews().size === 0 : !this.heatPreviews().has(unitId)) return;
+        this.heatPreviews.update(current => {
+            if (unitId === undefined) return new Map();
+            const next = new Map(current);
+            next.delete(unitId);
+            return next;
+        });
+    }
+
     getOrCreateCanvasOverlay(options: {
         appRef: ApplicationRef;
         injector: Injector;
         pageWrapper: HTMLDivElement;
-        unit: CBTForceUnit;
-        onDrawingStarted: (unit: CBTForceUnit) => void;
+        unit: PageViewerMember;
+        onDrawingStarted: (unit: PageViewerMember) => void;
     }): ComponentRef<PageCanvasOverlayComponent> {
         const { appRef, injector, pageWrapper, unit, onDrawingStarted } = options;
         const existingRef = this.canvasOverlayRefs.get(unit.id);
         if (existingRef) {
+            existingRef.setInput('unit', unit);
+            existingRef.setInput('width', this.zoomPan.pageWidth());
+            existingRef.setInput('height', this.zoomPan.pageHeight());
             const canvasElement = existingRef.location.nativeElement as HTMLElement;
-            pageWrapper.appendChild(canvasElement);
+            if (canvasElement.parentElement !== pageWrapper) pageWrapper.appendChild(canvasElement);
             return existingRef;
         }
 
@@ -46,11 +155,11 @@ export class PageViewerOverlayService {
         });
 
         componentRef.setInput('unit', unit);
-        componentRef.setInput('width', PAGE_WIDTH);
-        componentRef.setInput('height', PAGE_HEIGHT);
+        componentRef.setInput('width', this.zoomPan.pageWidth());
+        componentRef.setInput('height', this.zoomPan.pageHeight());
 
         const subscription = componentRef.instance.drawingStarted.subscribe((drawnUnit) => {
-            onDrawingStarted(drawnUnit as CBTForceUnit);
+            onDrawingStarted(drawnUnit as PageViewerMember);
         });
 
         this.canvasOverlaySubscriptions.set(unit.id, subscription);
@@ -99,24 +208,27 @@ export class PageViewerOverlayService {
         injector: Injector;
         pageWrapper: HTMLDivElement;
         fixedOverlayContainer: HTMLDivElement;
-        unit: CBTForceUnit;
+        unit: PageViewerMember;
         force: CBTForce | null;
         mode: 'fixed' | 'page';
+        showTopRightControls: boolean;
     }): ComponentRef<PageInteractionOverlayComponent> {
-        const { appRef, injector, pageWrapper, fixedOverlayContainer, unit, force, mode } = options;
+        const { appRef, injector, pageWrapper, fixedOverlayContainer, unit, force, mode, showTopRightControls } = options;
         const targetContainer = mode === 'fixed' ? fixedOverlayContainer : pageWrapper;
         const existingRef = this.interactionOverlayRefs.get(unit.id);
         const existingMode = this.interactionOverlayModes.get(unit.id);
 
         if (existingRef) {
+            existingRef.setInput('member', unit);
+            existingRef.setInput('force', force);
+            existingRef.setInput('showTopRightControls', showTopRightControls);
             if (existingMode !== mode) {
                 existingRef.setInput('mode', mode);
                 this.interactionOverlayModes.set(unit.id, mode);
             }
 
             const overlayElement = existingRef.location.nativeElement as HTMLElement;
-            applyAbsoluteFillLayout(overlayElement);
-            targetContainer.appendChild(overlayElement);
+            if (overlayElement.parentElement !== targetContainer) targetContainer.appendChild(overlayElement);
             return existingRef;
         }
 
@@ -125,9 +237,10 @@ export class PageViewerOverlayService {
             elementInjector: injector
         });
 
-        componentRef.setInput('unit', unit);
+        componentRef.setInput('member', unit);
         componentRef.setInput('force', force);
         componentRef.setInput('mode', mode);
+        componentRef.setInput('showTopRightControls', showTopRightControls);
 
         appRef.attachView(componentRef.hostView);
 
@@ -172,9 +285,691 @@ export class PageViewerOverlayService {
         });
     }
 
+    openEquipment(unitId: string, event: Event, tab: 'weapons' | 'ammo'): void {
+        this.interactionOverlayRefs.get(unitId)?.instance.openWeaponEquipmentDialog(event, tab);
+    }
+
     getCanvasOverlayElements(unitIds: readonly string[]): HTMLElement[] {
         return unitIds
             .map((unitId) => this.canvasOverlayRefs.get(unitId)?.location.nativeElement as HTMLElement | undefined)
             .filter((element): element is HTMLElement => !!element && element.isConnected);
     }
+
+    /** Releases everything one unit holds open over its sheets. */
+    clearUnitControls(unitId: string): void {
+        if (this.picker?.unitId === unitId) this.closePicker();
+        if (this.randomHitResult.unitId === unitId) this.randomHitResult.clear();
+        this.clearHeatPreview(unitId);
+        for (const [menu, owner] of this.menuOwners) {
+            if (owner === unitId) this.closeMenu(menu);
+        }
+    }
+
+    /** Releases every picker, menu, badge and preview over the sheets. */
+    clearSheetControls(): void {
+        this.closePicker();
+        this.randomHitResult.clear();
+        this.clearHeatPreview();
+        for (const menu of [...this.menuOwners.keys()]) this.closeMenu(menu);
+    }
+
+    closePicker(): void {
+        this.picker?.target?.classList.remove('picker-active');
+        this.picker?.instance.destroy();
+        this.picker = null;
+    }
+
+    /** Opens a choice picker beside the control that was used, or `atPointer` for a control as wide as an inventory row. */
+    openChoicePicker(
+        unitId: string,
+        event: Event,
+        options: Readonly<{
+            values: PickerChoice[];
+            selected: string | number | null;
+            title: string;
+            style?: 'linear' | 'radial' | 'auto';
+            suggestedStyle?: 'linear' | 'radial' | 'auto';
+            targetType?: PickerTargetType;
+            atPointer?: boolean;
+            onPick: (choice: PickerChoice) => void;
+        }>,
+    ): void {
+        const target = event.currentTarget instanceof Element ? event.currentTarget : null;
+        const rect = target?.getBoundingClientRect();
+        const inventory = options.targetType === 'inventory';
+        const critical = options.targetType === 'crit';
+        const position = rect && !options.atPointer
+            ? inventory ? { x: rect.right + 4, y: rect.top + rect.height / 2 }
+                : critical ? { x: rect.left, y: rect.top }
+                    : { x: rect.left + rect.width / 2, y: rect.top + rect.height / 2 }
+            : recordSheetEventPosition(event);
+        this.openPicker(unitId, target, () => this.pickerFactory.createChoicePicker({
+            values: options.values,
+            selected: options.selected,
+            position,
+            title: options.title,
+            lightTheme: this.lightTheme(),
+            style: options.style,
+            suggestedStyle: options.suggestedStyle,
+            targetType: options.targetType,
+            horizontal: inventory || critical,
+            align: critical ? 'topleft' : inventory ? 'left' : 'center',
+            initialEvent: event instanceof PointerEvent ? event : undefined,
+            onPick: options.onPick,
+            onCancel: () => this.closePicker(),
+        }));
+    }
+
+    /**
+     * Picks a number in the user's picker style: the dial, or a list of `choices` (every value by default) when linear.
+     * `linear` always picks from the list. The picker closes before `pick` runs.
+     */
+    openNumberPicker(
+        unitId: string,
+        event: Event,
+        options: Readonly<{
+            min: number;
+            max: number;
+            selected: number;
+            title: string;
+            threshold?: number;
+            targetType?: PickerTargetType;
+            choices?: readonly PickerChoice[];
+            linear?: boolean;
+        }>,
+        pick: (value: number) => void,
+    ): void {
+        const apply = (value: number): void => {
+            this.closePicker();
+            pick(value);
+        };
+        if (options.linear || this.options.options().pickerStyle === 'linear') {
+            this.openChoicePicker(unitId, event, {
+                values: options.choices
+                    ? [...options.choices]
+                    : Array.from({ length: options.max - options.min + 1 }, (_, offset) => ({
+                        label: String(options.min + offset),
+                        value: options.min + offset,
+                    })),
+                selected: options.selected,
+                title: options.title,
+                style: 'linear',
+                targetType: options.targetType,
+                onPick: choice => apply(Number(choice.value)),
+            });
+            return;
+        }
+        const target = event.currentTarget instanceof Element ? event.currentTarget : null;
+        this.openPicker(unitId, target, () => this.pickerFactory.createNumericPicker({
+            min: options.min,
+            max: options.max,
+            threshold: options.threshold,
+            selected: options.selected,
+            position: recordSheetEventPosition(event),
+            title: options.title,
+            lightTheme: this.lightTheme(),
+            initialEvent: event instanceof PointerEvent ? event : undefined,
+            onPick: result => apply(result.value),
+            onCancel: () => this.closePicker(),
+        }));
+    }
+
+    /** Picks how many heat sinks are active; `apply` receives how many are then switched off. */
+    openActiveHeatSinksPicker(
+        unitId: string,
+        event: Event,
+        count: number,
+        heatsinksOff: number,
+        apply: (heatsinksOff: number) => void,
+        title = 'Active Heatsinks',
+    ): void {
+        this.openNumberPicker(unitId, event, {
+            min: 0,
+            max: count,
+            selected: Math.max(0, count - heatsinksOff),
+            title,
+            targetType: 'heatsinks',
+        }, active => apply(count - active));
+    }
+
+    /** Reports a damage or repair on one location's armor or internal structure. */
+    showDamageToast(
+        unitId: string,
+        delta: number,
+        hits: Readonly<{
+            part: 'armor' | 'rear armor' | 'internal';
+            locationCode: string;
+            remaining: number;
+            maximum: number;
+            key: string;
+        }>,
+    ): void {
+        this.toast.showToast(
+            `${delta > 0 ? `+${delta}` : delta} ${hits.part} hits in ${hits.locationCode} (${hits.remaining}/${hits.maximum})`,
+            delta > 0 ? 'error' : 'success',
+            `${unitId}-${hits.key}`,
+        );
+    }
+
+    /** Replaces the open choice picker's values after a keep-open choice changed them. */
+    refreshChoicePicker(unitId: string, values: PickerChoice[]): void {
+        if (this.picker?.unitId === unitId && isChoicePickerInstance(this.picker.instance)) {
+            this.picker.instance.component.values.set(values);
+        }
+    }
+
+    /**
+     * Asks for the attack direction on the compass, whatever the picker style, then shows where `roll` lands the hit
+     * on the button's sheet. `arcs` run clockwise from the front.
+     */
+    openRandomHitPicker(
+        unitId: string,
+        button: SVGElement,
+        event: Event,
+        arcs: readonly string[],
+        roll: (arc: string) => RecordSheetRandomHit | null,
+    ): void {
+        this.randomHitResult.clear();
+        const rect = button.getBoundingClientRect();
+        this.openPicker(unitId, button, () => this.pickerFactory.createDirectionalPicker({
+            values: arcs.map(arc => ({
+                label: arc.split('-').map(word => word[0].toUpperCase() + word.slice(1)).join(' '),
+                value: arc,
+            })),
+            position: { x: rect.left + rect.width / 2, y: rect.top + rect.height / 2 },
+            lightTheme: this.lightTheme(),
+            initialEvent: event instanceof PointerEvent ? event : undefined,
+            onPick: (choice: PickerChoice): void => {
+                this.closePicker();
+                const svg = button.ownerSVGElement;
+                const hit = svg ? roll(String(choice.value)) : null;
+                if (svg && hit) {
+                    this.randomHitResult.show(unitId, svg, button, hit.locationCode, hit.rear,
+                        hit.throughArmorCritical, hit.transferredFrom);
+                }
+            },
+            onCancel: () => this.closePicker(),
+        }));
+    }
+
+    /** Opens a sheet state menu on its control, closing any other picker or menu; a cancel closes it. */
+    openStateMenu(unitId: string, menu: RecordSheetMenu, anchor: Element, event: Event, closeOnSelect = true) {
+        this.closePicker();
+        this.overlayManager.closeAllManagedOverlays();
+        const portal = new ComponentPortal(UnitStateDropdownComponent, null, this.injector);
+        const result = this.overlayManager.createManagedOverlay(menuOverlayKey(menu), anchor, portal, {
+            hasBackdrop: false,
+            panelClass: 'unit-state-dropdown-overlay-panel',
+            closeOnOutsideClick: true,
+        });
+        this.menuOwners.set(menu, unitId);
+        result.componentRef.setInput('closeOnSelect', closeOnSelect);
+        result.componentRef.setInput('initialEvent', event instanceof PointerEvent ? event : null);
+        outputToObservable(result.componentRef.instance.cancelled).pipe(takeUntil(result.closed))
+            .subscribe(() => this.closeMenu(menu));
+        return result;
+    }
+
+    closeMenu(menu: RecordSheetMenu): void {
+        this.overlayManager.closeManagedOverlay(menuOverlayKey(menu));
+        this.menuOwners.delete(menu);
+    }
+
+    /** Toggles one of the unit's menu conditions. */
+    openConditionMenu(
+        member: CBTForceMember,
+        event: Event,
+        controls: readonly Readonly<{ key: UnitConditionKey; label: string; color: string }>[],
+        active: (condition: UnitConditionKey) => boolean,
+        context: UnitEditContext,
+        action?: Readonly<{ label: string; run: () => void }>,
+        handleCondition?: (key: UnitConditionKey) => boolean,
+    ): void {
+        const anchor = event.currentTarget;
+        if (!(anchor instanceof Element) || controls.length === 0) return;
+        const { componentRef, closed } = this.openStateMenu(member.id, 'unit-condition', anchor, event);
+        componentRef.setInput('choices', [...(action ? [{ key: 'bay-loads', label: action.label, color: '#456789', active: false }] : []), ...controls.map(control => ({
+            key: control.key,
+            label: control.label,
+            color: control.color,
+            active: active(control.key),
+        }))]);
+        outputToObservable(componentRef.instance.selected).pipe(takeUntil(closed)).subscribe(condition => {
+            if (condition === 'bay-loads' && action) {
+                this.closeMenu('unit-condition');
+                action.run();
+                return;
+            }
+            if (!isUnitConditionKey(condition)) return;
+            if (handleCondition?.(condition)) { this.closeMenu('unit-condition'); return; }
+            void this.dispatch(member, { type: 'set-condition', condition, active: !active(condition) }, context);
+            this.closeMenu('unit-condition');
+        });
+    }
+
+    /** Asks for a whole number from 0 up to `maximum`; resolves to it, or null when cancelled. */
+    async promptWholeNumber(title: string, current: number, maximum?: number): Promise<number | null> {
+        const ref = this.dialogs.createDialog<number | null>(InputDialogComponent, {
+            data: {
+                title,
+                message: title,
+                inputType: 'number',
+                minimumValue: 0,
+                ...(maximum === undefined ? {} : { maximumValue: maximum }),
+                defaultValue: current,
+                placeholder: `${title} value`,
+                centerInput: true,
+            },
+        });
+        const value = await firstValueFrom(ref.closed);
+        if (value === null || value === undefined || !Number.isFinite(Number(value))) return null;
+        const whole = Math.max(0, Math.trunc(Number(value)));
+        return maximum === undefined ? whole : Math.min(maximum, whole);
+    }
+
+    /** Dispatches one sheet edit, reporting a rejection; resolves to the next edit context, or null. */
+    async dispatch(member: CBTForceMember, command: CBTUnitCommand, context: UnitEditContext): Promise<UnitEditContext | null> {
+        const result = await member.force.dispatchUnitCommand(member.id, command, context);
+        if (!result.accepted) {
+            this.rejected();
+            return null;
+        }
+        return result.state ? { owner: context.owner, state: result.state } : null;
+    }
+
+    rejected(message = REJECTED_EDIT): void {
+        this.toast.showToast(message, 'error');
+    }
+
+    /** Edits the person in one crew seat, or lists the reserves for it when nobody is assigned. */
+    editCrewPosition(member: CBTForceMember, positionId: CrewPositionId): void {
+        void this.pilotEditor.editStation(member.force, member.id, positionId);
+    }
+
+    /** Picks one crew skill and saves it to the seat's crew profile. */
+    openCrewSkillPicker(
+        member: CBTForceMember,
+        event: Event,
+        positionId: CrewPositionId,
+        field: CrewSkillField,
+        context: UnitEditContext,
+    ): void {
+        const assigned = member.force.getUnitCrewProfile(member.id)?.positions
+            .find(position => position.positionId === positionId);
+        if (!assigned) return;
+        const gunnery = field === 'gunnery' || field === 'aeroGunnery';
+        this.openChoicePicker(member.id, event, {
+            values: [8, 7, 6, 5, 4, 3, 2, 1, 0].map(value => ({ label: String(value), value })),
+            selected: assigned[field] ?? (gunnery ? 4 : 5),
+            title: CREW_SKILL_TITLES[field],
+            suggestedStyle: 'radial',
+            targetType: 'skill',
+            onPick: choice => {
+                this.closePicker();
+                const profile = member.force.getUnitCrewProfile(member.id);
+                if (!profile || !this.isCurrent(member, context)) return;
+                const positions = profile.positions.map(position => position.positionId === positionId
+                    ? { ...position, [field]: Number(choice.value) }
+                    : position);
+                void member.force.replaceUnitCrewProfile(member.id, positions, context).then(saved => {
+                    if (!saved) this.rejected('The crew profile could not be saved.');
+                });
+            },
+        });
+    }
+
+    openReferenceTable(member: CBTForceMember): void {
+        const runtime = member.force.getUnitSnapshot(member.id);
+        if (!runtime) return;
+        this.dialogs.createDialog(ClusterTableDialogComponent, {
+            data: {
+                unit: member.entity,
+                gameRules: gameRulesFor(runtime.ruleset),
+                hasHotLoadedAmmo: [...runtime.state.ammo.keys()].some(id => runtime.query.ammoHotLoaded(id)),
+            },
+        });
+    }
+
+    /**
+     * Selects inventory weapons the same way for every unit: a mode button applies its mode and keeps the weapons
+     * selected, a range button selects that range, and several targets offer a target menu, whose choice applies the
+     * mode too. A divisible row, counting several weapons, also asks how many of them the selection takes: in the
+     * target menu, or in a list of counts when there is no target to choose. Rows without weapons go to `openEquipment`
+     * when the family has other equipment actions.
+     */
+    async selectInventory(
+        member: CBTForceMember,
+        interaction: InventorySelection,
+        event: Event,
+        openEquipment?: (context: UnitEditContext) => void,
+    ): Promise<void> {
+        const registryRevision = member.force.getAttackerTargeting(member.id)?.registryRevision;
+        const panel = member.force.getEquipmentPanelSnapshot(member.id);
+        if (registryRevision === undefined || !panel || !this.isCurrent(member, interaction.context)) return;
+        const selectable = equipmentPanelWeapons(panel, interaction.componentIds)
+            .filter(row => row.weapon.selectable)
+            .map(row => row.componentId);
+        const counted = interaction.divisible === true && selectable.length > 1;
+        if (panel.targets.length > 1 && selectable.length > 0) {
+            this.openWeaponTargetMenu(member, counted ? selectable : interaction.componentIds, panel, event,
+                interaction, counted, registryRevision);
+        } else if (counted) {
+            // A vertical list at the pointer, on the full count: a second click there takes every weapon.
+            this.openChoicePicker(member.id, event, {
+                values: selectable.map((_, index) => ({ label: String(index + 1), value: index + 1 })),
+                selected: selectable.length,
+                title: 'How many weapons?',
+                style: 'linear',
+                atPointer: true,
+                onPick: choice => {
+                    this.closePicker();
+                    void this.selectWeapons(member, interaction, selectable.slice(0, Number(choice.value)), registryRevision);
+                },
+            });
+        } else {
+            await this.selectWeapons(member, interaction, interaction.componentIds, registryRevision, openEquipment);
+        }
+    }
+
+    /**
+     * What the unit's sheet shows of its play with others: whether it may declare aimed shots, and who swarms it.
+     * Resolved on use: attack resolution and the OPFOR depend on the force builder.
+     */
+    livePlay(member: CBTForceMember): RecordSheetLivePlay {
+        return Object.freeze({
+            aiming: () => this.injector.get(AttackResolutionService).declaresAimedShots(member),
+            swarmedBy: () => member.force.getUnitSnapshot(member.id)?.query.hasCondition('swarmed') === true
+                ? this.injector.get(SwarmService).swarmerName(member) : null,
+        });
+    }
+
+    /** Selects the infantry swarming the unit, which shows its sheet. */
+    showSwarmer(member: CBTForceMember): void {
+        const swarmer = this.injector.get(SwarmService).swarmer(member);
+        if (swarmer) this.injector.get(ForceWorkspaceCommandsService).selectUnit(swarmer);
+        else this.toast.showToast('The swarming infantry\'s force is not open here', 'info');
+    }
+
+    /** Shows the paperdoll of the target a sheet's weapon fires at, and aims the weapon where the player picks. */
+    async aimInventory(member: CBTForceMember, interaction: InventoryAim): Promise<void> {
+        const targeted = (): Readonly<{
+            panel: EquipmentPanelSnapshot;
+            row: EquipmentPanelComponent;
+            targetId: EncounterTargetId;
+        }> | null => {
+            const panel = member.force.getEquipmentPanelSnapshot(member.id);
+            const row = panel ? equipmentPanelComponentById(panel, interaction.componentId) : undefined;
+            const selection = row?.weapon?.selection;
+            return panel && row && selection?.kind === 'target' ? { panel, row, targetId: selection.targetId } : null;
+        };
+        const before = targeted();
+        const target = before?.panel.targets.find(candidate => candidate.targetId === before.targetId);
+        const attack = member.force.getWeaponAttackContext(member.id);
+        if (!before || !target || attack === null || !this.isCurrent(member, interaction.context)) return;
+        const aim = await this.injector.get(AttackResolutionService).pickAim(
+            before.row, projectTargetingTarget(target, before.panel.ruleset), attack, before.panel.ruleset);
+        // The unit may have changed while the paperdoll was open: aim only the weapon still firing at that target.
+        const context = member.force.getUnitSnapshot(member.id)?.editContext;
+        const registryRevision = member.force.getAttackerTargeting(member.id)?.registryRevision;
+        if (aim === undefined || context === undefined || registryRevision === undefined
+            || targeted()?.targetId !== before.targetId) return;
+        await this.setComponentSelections(member, [interaction.componentId], {
+            kind: 'target',
+            targetId: before.targetId,
+            ...(aim === null ? {} : { aim }),
+        }, context, registryRevision);
+    }
+
+    /** Applies an inventory selection to these weapons when there is no target to choose: their mode, then the selection. */
+    private async selectWeapons(
+        member: CBTForceMember,
+        interaction: InventorySelection,
+        componentIds: readonly ComponentId[],
+        registryRevision: number,
+        openEquipment?: (context: UnitEditContext) => void,
+    ): Promise<void> {
+        const before = member.force.getEquipmentPanelSnapshot(member.id);
+        if (!before || !this.isCurrent(member, interaction.context)) return;
+        const mode = interaction.mode;
+        const changesMode = mode !== undefined && componentIds
+            .some(componentId => equipmentPanelComponentById(before, componentId)?.mode !== mode);
+        const context = await this.setComponentModes(member, componentIds, mode, interaction.context);
+        const panel = member.force.getEquipmentPanelSnapshot(member.id);
+        if (!context || !panel) return;
+        if (member.force.getAttackerTargeting(member.id)?.registryRevision !== registryRevision) return;
+        const weapons = equipmentPanelWeapons(panel, componentIds);
+        if (weapons.length === 0) {
+            openEquipment?.(context);
+            return;
+        }
+        if (weapons.every(row => !row.weapon.selectable) || panel.targets.length > 1) return;
+        const desired: AttackerSelection = panel.targets.length === 1
+            ? { kind: 'target', targetId: panel.targets[0].targetId }
+            : interaction.range !== undefined
+                ? { kind: 'manual-range', range: interaction.range }
+                : { kind: 'selected' };
+        const allSelected = weapons.every(row => sameAttackerSelection(row.weapon.selection, desired));
+        const selection = !changesMode && allSelected ? null : desired;
+        await this.setComponentSelections(
+            member,
+            equipmentPanelSelectionComponentIds(panel, componentIds, selection),
+            selection,
+            context,
+            registryRevision,
+        );
+    }
+
+    /** Switches the components that offer `mode` to it; resolves to the next edit context, or null when rejected. */
+    private async setComponentModes(
+        member: CBTForceMember,
+        componentIds: readonly ComponentId[],
+        mode: string | undefined,
+        context: UnitEditContext,
+    ): Promise<UnitEditContext | null> {
+        if (mode === undefined) return context;
+        for (const componentId of componentIds) {
+            const panel = member.force.getEquipmentPanelSnapshot(member.id);
+            const row = panel ? equipmentPanelComponentById(panel, componentId) : undefined;
+            if (!row?.modes.includes(mode) || row.mode === mode) continue;
+            const next = await this.dispatch(member, { type: 'set-component-mode', componentId, mode }, context);
+            if (!next) return null;
+            context = next;
+        }
+        return context;
+    }
+
+    /**
+     * Offers the force's targets, each with the selected weapons' target number. Above one, `quantityMax` also asks how
+     * many of that many weapons take the target, all of them unless changed.
+     */
+    openTargetMenu(
+        member: CBTForceMember,
+        panel: EquipmentPanelSnapshot,
+        event: Event,
+        selectedTargetId: EncounterTargetId | null,
+        targetNumberTexts: Readonly<Record<string, string>>,
+        select: (targetId: EncounterTargetId | null, quantity: number) => void,
+        quantityMax = 0,
+    ): void {
+        const anchor = event.currentTarget;
+        if (!(anchor instanceof Element)) return;
+        this.closePicker();
+        const portal = new ComponentPortal(WeaponTargetChoiceMenuComponent, null, this.injector);
+        const { componentRef, closed } = this.overlayManager.createManagedOverlay(
+            menuOverlayKey('weapon-target'),
+            anchor,
+            portal,
+            {
+                hasBackdrop: false,
+                panelClass: 'weapon-target-choice-overlay-panel',
+                closeOnOutsideClick: true,
+                positions: [
+                    { originX: 'end', originY: 'center', overlayX: 'start', overlayY: 'center', offsetX: 4 },
+                    { originX: 'start', originY: 'center', overlayX: 'end', overlayY: 'center', offsetX: -4 },
+                ],
+            },
+        );
+        this.menuOwners.set('weapon-target', member.id);
+        componentRef.setInput('targets', panel.targets.map(row => ({
+            id: row.targetId,
+            letter: row.letter,
+            name: row.name,
+            color: row.color,
+        })));
+        componentRef.setInput('selectedTargetId', selectedTargetId);
+        componentRef.setInput('targetNumberTexts', targetNumberTexts);
+        componentRef.setInput('quantityMax', quantityMax);
+        componentRef.setInput('quantity', quantityMax);
+        componentRef.changeDetectorRef.detectChanges();
+        outputToObservable(componentRef.instance.selected).pipe(takeUntil(closed)).subscribe(targetId => {
+            select(targetId === null
+                ? null
+                : panel.targets.find(row => row.targetId === targetId)?.targetId ?? null,
+                componentRef.instance.quantity());
+            this.closeMenu('weapon-target');
+        });
+    }
+
+    /**
+     * Offers the targets for these weapons; the chosen target also applies the interaction's mode. For a `counted` row
+     * the menu asks how many of the weapons take the target.
+     */
+    private openWeaponTargetMenu(
+        member: CBTForceMember,
+        componentIds: readonly ComponentId[],
+        panel: EquipmentPanelSnapshot,
+        event: Event,
+        interaction: InventorySelection,
+        counted: boolean,
+        registryRevision: number,
+    ): void {
+        const selectedIds = componentIds
+            .map(componentId => equipmentPanelComponentById(panel, componentId)?.weapon?.selection)
+            .filter((selection): selection is { readonly kind: 'target'; readonly targetId: EncounterTargetId } =>
+                selection?.kind === 'target')
+            .map(selection => selection.targetId);
+        const selectedTargetId = selectedIds.length === componentIds.length
+            && selectedIds.every(targetId => targetId === selectedIds[0])
+            ? selectedIds[0]
+            : null;
+        const weapon = componentIds
+            .map(componentId => equipmentPanelComponentById(panel, componentId))
+            .find(row => row?.weapon !== undefined);
+        const attack = member.force.getWeaponAttackContext(member.id);
+        const targetNumberTexts = weapon === undefined || attack === null
+            ? {}
+            : Object.fromEntries(panel.targets.map(target => [
+                target.targetId,
+                projectWeaponTargetPresentation(
+                    weapon,
+                    projectTargetingTarget(target, panel.ruleset),
+                    attack,
+                    panel.ruleset,
+                ).targetNumberText,
+            ]));
+        this.openTargetMenu(member, panel, event, selectedTargetId, targetNumberTexts, (targetId, quantity) =>
+            void this.targetWeapons(member, counted ? componentIds.slice(0, quantity) : componentIds, targetId,
+                interaction, registryRevision), counted ? componentIds.length : 0);
+    }
+
+    /** Switches these weapons to the interaction's mode and gives them the target, or none. */
+    private async targetWeapons(
+        member: CBTForceMember,
+        componentIds: readonly ComponentId[],
+        targetId: EncounterTargetId | null,
+        interaction: InventorySelection,
+        registryRevision: number,
+    ): Promise<void> {
+        const context = await this.setComponentModes(member, componentIds, interaction.mode, interaction.context);
+        const panel = member.force.getEquipmentPanelSnapshot(member.id);
+        if (!context || !panel) return;
+        const selection = targetId === null ? null : { kind: 'target' as const, targetId };
+        await this.setComponentSelections(
+            member,
+            equipmentPanelSelectionComponentIds(panel, componentIds, selection),
+            selection,
+            context,
+            registryRevision,
+        );
+    }
+
+    private async setComponentSelections(
+        member: CBTForceMember,
+        componentIds: readonly ComponentId[],
+        selection: AttackerSelection | null,
+        context: UnitEditContext,
+        registryRevision: number,
+    ): Promise<void> {
+        const uniqueIds = [...new Set(componentIds)];
+        if (uniqueIds.length === 0 || !this.isCurrent(member, context)) return;
+        const result = await member.force.dispatchAttackerTargeting(member.id, {
+            type: 'edit-attacker-targeting',
+            edit: uniqueIds.length === 1
+                ? { kind: 'set-component-selection', componentId: uniqueIds[0], selection }
+                : { kind: 'set-component-selections', componentIds: uniqueIds, selection },
+        }, context, registryRevision);
+        if (!result.accepted) this.rejected();
+    }
+
+    private isCurrent(member: CBTForceMember, context: UnitEditContext): boolean {
+        const current = member.force.getUnitSnapshot(member.id)?.editContext;
+        return current !== undefined && isUnitEditContextCurrent(context, current);
+    }
+
+    private openPicker(unitId: string, target: Element | null, create: () => PickerInstance): void {
+        this.closePicker();
+        this.zoomPan.cancelGesture();
+        target?.classList.add('picker-active');
+        this.picker = { unitId, instance: create(), target };
+    }
+
+    private lightTheme(): boolean {
+        return this.options.options().colorScheme === 'night';
+    }
+}
+
+function menuOverlayKey(menu: RecordSheetMenu): string {
+    return `record-sheet-${menu}`;
+}
+
+/** The panel row for a component, including a member of a grouped attack. */
+export function equipmentPanelComponentById(
+    panel: EquipmentPanelSnapshot,
+    componentId: ComponentId,
+): EquipmentPanelComponent | undefined {
+    return panel.components.find(row => row.componentId === componentId
+        || row.attack?.members.some(member => member.componentId === componentId) === true);
+}
+
+/** The distinct panel rows with a weapon among these components. */
+function equipmentPanelWeapons(
+    panel: EquipmentPanelSnapshot,
+    componentIds: readonly ComponentId[],
+): readonly (EquipmentPanelComponent & { readonly weapon: NonNullable<EquipmentPanelComponent['weapon']> })[] {
+    return [...new Set(componentIds.map(componentId => equipmentPanelComponentById(panel, componentId)))]
+        .filter((row): row is EquipmentPanelComponent & {
+            readonly weapon: NonNullable<EquipmentPanelComponent['weapon']>;
+        } => row?.weapon !== undefined);
+}
+
+/** The components a selection applies to: every selectable member of a grouped attack, or the row itself. */
+function equipmentPanelSelectionComponentIds(
+    panel: EquipmentPanelSnapshot,
+    componentIds: readonly ComponentId[],
+    selection: AttackerSelection | null,
+): readonly ComponentId[] {
+    const rows = [...new Set(componentIds.flatMap(componentId => {
+        const row = equipmentPanelComponentById(panel, componentId);
+        return row ? [row] : [];
+    }))];
+    return Object.freeze([...new Set(rows.flatMap(row => {
+        if (row.attack === undefined) {
+            return row.weapon?.selectable === true || selection === null
+                ? [row.componentId]
+                : [];
+        }
+        return row.attack.members
+            .filter(member => selection === null || member.selectable)
+            .map(member => member.componentId);
+    }))]);
 }

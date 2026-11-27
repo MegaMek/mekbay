@@ -21,11 +21,11 @@ import { parseCsvRows } from './lib/csv';
 const {
     loadOptionalEnvFile,
     resolveMmDataRoot,
-} = require('./lib/script-paths.js') as typeof import('./lib/script-paths.js');
+} = require('./lib/script-paths');
 
 const {
-    writeFileWithContentTimestamp,
-} = require('./lib/deterministic-output.js') as typeof import('./lib/deterministic-output');
+    writeDeterministicFile,
+} = require('./lib/deterministic-output');
 
 interface WordListSource {
     key: string;
@@ -41,8 +41,8 @@ const RANDOM_COMPANY_NAME_GENERATOR_PATH = path.join(
     'backgrounds',
     'randomCompanyNameGenerator'
 );
-const OUTPUT_PATH = path.join(APP_ROOT, 'public', 'assets', 'force-name-words.json');
-const PILOT_NAMES_OUTPUT_PATH = path.join(APP_ROOT, 'public', 'assets', 'pilot-names.json');
+const OUTPUT_PATH = path.join(APP_ROOT, 'public', 'online-assets', 'generated', 'force-name-words.json');
+const PILOT_NAMES_OUTPUT_PATH = path.join(APP_ROOT, 'public', 'online-assets', 'generated', 'pilot-names.json');
 const NAMES_PATH = path.join('data', 'names');
 const BLOODNAME_CLANS_PATH = path.join(NAMES_PATH, 'bloodnames', 'clans.xml');
 const BLOODNAMES_PATH = path.join('data', 'universe', 'bloodnames');
@@ -615,9 +615,9 @@ function main(): void {
         bloodnames: bloodnameData.bloodnames,
     };
 
-    writeFileWithContentTimestamp(OUTPUT_PATH, `${JSON.stringify(wordsByKey)}\n`);
+    writeDeterministicFile(OUTPUT_PATH, `${JSON.stringify(wordsByKey)}\n`);
     console.log(`[Force Name Words] Generated ${OUTPUT_PATH}`);
-    writeFileWithContentTimestamp(PILOT_NAMES_OUTPUT_PATH, `${JSON.stringify(compactPilotNameCatalog(pilotNames, ethnicityCount))}\n`);
+    writeDeterministicFile(PILOT_NAMES_OUTPUT_PATH, `${JSON.stringify(compactPilotNameCatalog(pilotNames, ethnicityCount))}\n`);
     console.log(`[Force Name Words] Generated ${PILOT_NAMES_OUTPUT_PATH}`);
 }
 
@@ -629,3 +629,4 @@ if (require.main === module) {
         process.exit(1);
     }
 }
+

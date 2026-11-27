@@ -13,6 +13,14 @@ import {
   type AlphaStrikeRangeIndex,
 } from './weapon-damage-profile';
 import { alphaStrikeTroopFactor } from './troop-factor';
+import {
+  entityHasTargetingComputer,
+  targetingComputerDamageMultiplier,
+} from '../../targeting-computer';
+import {
+  isAntiPersonnelMountEquipment,
+  isArmoredGloveEquipment,
+} from '../../../../battle-armor-equipment.model';
 
 export interface BattleArmorDamageOptions {
   readonly shootingStrength?: number;
@@ -48,9 +56,9 @@ export function calculateBattleArmorStandardDamage(
     !mount.isAPM && !mount.isSSWM && isRepresentativeLocation(mount.location));
   const squadSupport = sumBattleArmorWeaponDamage(entity, mount => !!mount.isSSWM);
   const equipment = entity.equipment();
-  const apOrGloveBonus = equipment.some(mount => mount.equipment?.hasFlag('F_ARMORED_GLOVE'))
+  const apOrGloveBonus = equipment.some(mount => isArmoredGloveEquipment(mount.equipment))
     ? 0.1
-    : equipment.some(mount => mount.equipment?.hasFlag('F_AP_MOUNT')) ? 0.05 : 0;
+    : equipment.some(mount => isAntiPersonnelMountEquipment(mount.equipment)) ? 0.05 : 0;
   const isOperational = options.isOperational ?? (() => true);
   const vibroclawBonus = equipment.filter(mount =>
     mount.equipment?.hasFlag('F_VIBROCLAW') && isOperational(mount)).length * 0.1;
@@ -80,15 +88,14 @@ function sumBattleArmorWeaponDamage(
 ): RawDamageVector {
   const weapons = entity.rangedWeapons();
   const ammo = entity.equipment().filter(mount => mount.equipment instanceof AmmoEquipment);
-  const targetingComputer = entity.equipment().some(mount =>
-    mount.equipment?.hasFlag('F_TARGETING_COMPUTER'));
+  const targetingComputer = entityHasTargetingComputer(entity);
   return weapons.reduce<RawDamageVector>((total, mount) => {
     const weapon = mount.equipment;
     if (!include(mount) || weapon.damage === 'artillery'
       || hasAlphaStrikeBattleForceClass(weapon, 'TORPEDO')) return total;
     let modifier = battleArmorAmmoModifier(weapon, weapons, ammo);
     if (weapon.oneShotCount === 1) modifier *= 0.1;
-    if (targetingComputer && weapon.hasFlag('F_DIRECT_FIRE')) modifier *= 1.1;
+    modifier *= targetingComputerDamageMultiplier(targetingComputer, weapon);
     for (let range = 0; range < 3; range++) {
       total[range] += battleForceDamageForMount(
         entity,

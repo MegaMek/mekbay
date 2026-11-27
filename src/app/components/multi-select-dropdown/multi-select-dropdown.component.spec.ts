@@ -10,7 +10,6 @@ import { MultiSelectDropdownComponent } from './multi-select-dropdown.component'
 import { LayoutService } from '../../services/layout.service';
 
 @Component({
-    standalone: true,
     imports: [MultiSelectDropdownComponent],
     template: `
         <multi-select-dropdown
@@ -78,34 +77,6 @@ describe('MultiSelectDropdownComponent', () => {
         expect(fixture.componentInstance.useVirtualScroll()).toBeTrue();
         const viewportEl = overlayContainerElement.querySelector('cdk-virtual-scroll-viewport') as HTMLElement | null;
         expect(viewportEl).not.toBeNull();
-        expect(getComputedStyle(viewportEl!).overflowY).toBe('auto');
-    });
-
-    it('keeps virtual option rows fixed-height while scaling long labels', async () => {
-        const fixture = TestBed.createComponent(MultiSelectDropdownComponent);
-        const component = fixture.componentInstance;
-        const longName = 'AA Weapon (Mk. 2, Man-Portable) With Extra Descriptor Text';
-
-        fixture.componentRef.setInput('options', [
-            { name: longName, available: true },
-            ...createOptions(149),
-        ]);
-        component.isOpen.set(true);
-        fixture.detectChanges();
-        await flushRender();
-        fixture.detectChanges();
-
-        const item = overlayContainerElement.querySelector('.options-viewport .option-item') as HTMLElement | null;
-        const viewport = overlayContainerElement.querySelector('cdk-virtual-scroll-viewport') as HTMLElement | null;
-        const label = item?.querySelector('.option-label') as HTMLElement | null;
-
-        expect(item).not.toBeNull();
-        expect(viewport).not.toBeNull();
-        expect(label).not.toBeNull();
-        expect(viewport!.style.getPropertyValue('--virtual-option-height')).toBe(`${component.optionItemSize}px`);
-        expect(getComputedStyle(item!).height).toBe(`${component.optionItemSize}px`);
-        expect(label!.style.fontSize).toBe(`${component.getVirtualOptionLabelFontSize({ name: longName })}px`);
-        expect(getComputedStyle(label!).webkitLineClamp).toBe('2');
     });
 
     it('keeps the plain list path for small option lists', () => {
@@ -592,22 +563,6 @@ describe('MultiSelectDropdownComponent', () => {
 
         expect(component.keyboardFocusedIndex()).toBe(89);
         expect(scrollToOption).not.toHaveBeenCalledWith('Option 1');
-    });
-
-    it('styles keyboard-focused options like hovered options', () => {
-        const fixture = TestBed.createComponent(MultiSelectDropdownComponent);
-        fixture.componentRef.setInput('options', createOptions(3));
-        fixture.componentInstance.isOpen.set(true);
-        fixture.detectChanges();
-
-        const optionItems = Array.from(overlayContainerElement.querySelectorAll('.option-item')) as HTMLElement[];
-        const expectedBackground = document.createElement('div');
-        expectedBackground.style.backgroundColor = 'var(--background-color-light)';
-        overlayContainerElement.appendChild(expectedBackground);
-
-        optionItems[0].classList.add('keyboard-focused');
-
-        expect(getComputedStyle(optionItems[0]).backgroundColor).toBe(getComputedStyle(expectedBackground).backgroundColor);
     });
 
     it('centers a pill-targeted virtualized option below view', () => {

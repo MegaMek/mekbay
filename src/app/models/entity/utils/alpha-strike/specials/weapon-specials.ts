@@ -4,7 +4,7 @@
 
 import { AmmoEquipment, type AlphaStrikeBattleForceClass, type WeaponEquipment } from '../../../../equipment.model';
 import type { BaseEntity } from '../../../base-entity';
-import { AeroEntity, BattleArmorEntity, InfantryEntity } from '../../../entities';
+import { AeroEntity, BattleArmorEntity } from '../../../entities';
 import type { EntityMountedWeapon } from '../../../types';
 import {
   alphaStrikeDamageLocationMultiplier,
@@ -18,8 +18,15 @@ import { alphaStrikeHeatCapacityForEntity } from '../damage/heat-capacity';
 import { AlphaStrikeSpecialAbilityCollector } from './special-ability-collector';
 import { alphaStrikeArtilleryAbility } from './artillery-special';
 import { alphaStrikeAmmoDamageMultiplier } from '../damage/weapon-modifiers';
+import { SIGNATURE_SYSTEM_HEAT, hasStealthFlag } from '../../../../stealth-equipment.model';
 import { battleArmorTroopFactor } from '../damage/battle-armor-damage';
 import { alphaStrikeWeaponDamageModifier } from '../damage/weapon-damage-aggregation';
+import {
+  entityHasTargetingComputer,
+  targetingComputerDamageMultiplier,
+} from '../../targeting-computer';
+import { isArtemisEquipment } from '../../../../artemis-equipment.model';
+import { c3MasterWeaponAlphaStrikeFacts } from '../../../../c3-network.model';
 
 type WeaponSpecialDamageKind = 'LRM' | 'SRM' | 'AC' | 'FLK' | 'IATM' | 'TOR' | 'REL';
 type RawDamage = [number, number, number, number];
@@ -58,10 +65,10 @@ export function collectAlphaStrikeWeaponSpecials(
   const specials = new AlphaStrikeSpecialAbilityCollector();
   const weapons = entity.rangedWeapons();
   const ammo = entity.equipment().filter(mount => mount.equipment instanceof AmmoEquipment);
-  const targetingComputer = entity.equipment().some(mount => mount.equipment?.hasFlag('F_TARGETING_COMPUTER'));
+  const targetingComputer = entityHasTargetingComputer(entity);
 
   const countsForDiscreteSpecial = (mount: EntityMountedWeapon) => entity instanceof BattleArmorEntity
-    ? scope === 'standard' && !mount.isSSWM && ['Squad', 'Trooper 1'].includes(mount.location)
+    ? scope === 'standard' && ['Squad', 'Trooper 1'].includes(mount.location)
     : alphaStrikeSpecialLocationMultiplier(entity, scope, mount) > 0;
   const countsForDamageSpecial = (mount: EntityMountedWeapon) => entity instanceof BattleArmorEntity
     ? scope === 'standard' && !mount.isSSWM && ['Squad', 'Trooper 1'].includes(mount.location)
@@ -74,11 +81,6 @@ export function collectAlphaStrikeWeaponSpecials(
         entity instanceof BattleArmorEntity,
         entity instanceof AeroEntity,
       );
-    }
-  }
-  if (entity instanceof InfantryEntity) {
-    for (const weapon of [entity.primaryWeapon(), entity.secondaryWeapon()]) {
-      if (weapon?.hasFlag('F_TAG')) specials.add(weapon.ranges[0] < 5 ? 'LTAG' : 'TAG');
     }
   }
   addArtillerySpecials(entity, weapons.filter(countsForDiscreteSpecial), specials);
@@ -100,15 +102,15 @@ function addDiscreteWeaponSpecials(
   const weapon = mount.equipment;
   if (weapon.hasFlag('F_TAG')) {
     specials.add(weapon.ranges[0] < 5 ? 'LTAG' : 'TAG');
-    if (weapon.hasFlag('F_C3MBS')) {
-      specials.addOptionalCount('C3BSM');
-      addNumericSpecial(specials, 'MHQ', 6);
-    } else if (weapon.hasFlag('F_C3M')) {
-      specials.addOptionalCount('C3M');
-      addNumericSpecial(specials, 'MHQ', 5);
+    const c3Master = c3MasterWeaponAlphaStrikeFacts(weapon);
+    if (c3Master.ability !== undefined) {
+      specials.addOptionalCount(c3Master.ability);
+    }
+    if (c3Master.mobileHeadquarters !== undefined) {
+      addNumericSpecial(specials, 'MHQ', c3Master.mobileHeadquarters);
     }
   }
-  if (weapon.hasAnyFlag(['F_TSEMP', 'F_CWS'])) {
+  if (weapon.hasFlag('F_TSEMP') || weapon.hasFlag('F_CWS')) {
     addNumericSpecial(specials, weapon.oneShotCount ? 'TSEMP-O' : 'TSEMP', 1);
   }
   if (weapon.weapon.atClass === 'TELE_MISSILE') specials.add('TELE');
@@ -117,8 +119,7 @@ function addDiscreteWeaponSpecials(
     if (battleArmorElement) specials.add('CNARC');
     else specials.addOptionalCount('SNARC');
   }
-  if (weapon.ammoType === 'TASER'
-    && (!battleArmorElement || !mount.isSSWM && ['Squad', 'Trooper 1'].includes(mount.location))) {
+  if (weapon.ammoType === 'TASER') {
     addNumericSpecial(specials, battleArmorElement ? 'BTAS' : 'MTAS', 1);
   }
   if (weapon.id === 'ISAPDS' || weapon.id === 'ISBAAPDS' || weapon.ammoType === 'APDS') specials.add('RAMS');
@@ -200,7 +201,7 @@ function sumPointDefenseDamage(
     if (!countsForScope(mount) || weapon.alphaStrike?.pointDefense !== true) continue;
     let multiplier = alphaStrikeAmmoDamageMultiplier(weapon, weapons, ammo);
     if (weapon.oneShotCount === 1) multiplier *= 0.1;
-    if (targetingComputer && weapon.hasFlag('F_DIRECT_FIRE')) multiplier *= 1.1;
+    multiplier *= targetingComputerDamageMultiplier(targetingComputer, weapon);
     for (let range = 0; range < 4; range++) {
       const damage = weapon.hasFlag('F_AMS')
         ? range === 0 ? 0.3 : 0
@@ -243,7 +244,8 @@ function sumSpecialDamage(
   const result: RawDamage = [0, 0, 0, 0];
   for (const mount of weapons) {
     const weapon = mount.equipment;
-    if (!include(weapon, mount) || weapon.damage === 'artillery' || weapon.hasFlag('F_ARTILLERY')) continue;
+    if (!include(weapon, mount) || weapon.damage === 'artillery'
+      || weapon.hasFlag('F_ARTILLERY')) continue;
     const multiplier = alphaStrikeWeaponDamageModifier(
       entity,
       mount,
@@ -254,7 +256,7 @@ function sumSpecialDamage(
     );
     for (let range = 0; range < 4; range++) {
       const mmlMultiplier = mmlDamageMultiplier(weapon, range as AlphaStrikeRangeIndex, kind);
-      const linked = kind === 'TOR' ? entity.getLinkingMount(mount)?.equipment : undefined;
+      const linked = kind === 'TOR' ? entity.getLinkingMounts(mount).find(source => isArtemisEquipment(source.equipment))?.equipment : undefined;
       const damage = baseBattleForceDamageForWeapon(weapon, range as AlphaStrikeRangeIndex, linked);
       result[range] += damage * multiplier * mmlMultiplier;
     }
@@ -263,8 +265,8 @@ function sumSpecialDamage(
 }
 
 function hasArtemis(entity: BaseEntity, mount: EntityMountedWeapon): boolean {
-  const linked = entity.getLinkingMount(mount)?.equipment;
-  return !!linked?.hasAnyFlag(['F_ARTEMIS', 'F_ARTEMIS_PROTO', 'F_ARTEMIS_V']);
+  const linked = entity.getLinkingMounts(mount).find(source => isArtemisEquipment(source.equipment))?.equipment;
+  return isArtemisEquipment(linked);
 }
 
 function mmlDamageMultiplier(
@@ -319,7 +321,9 @@ function aerospacePointDefenseHeatFactor(
   const weaponHeat = weapons.reduce((total, mount) => countsForScope(mount)
     ? total + alphaStrikeWeaponHeatForConversion(mount.equipment)
     : total, 0);
-  const signatureHeat = entity.equipment().some(mount => mount.equipment?.hasFlag('F_STEALTH')) ? 10 : 0;
+  const signatureHeat = entity.equipment().some(mount => hasStealthFlag(mount.equipment))
+    ? SIGNATURE_SYSTEM_HEAT
+    : 0;
   const capacity = alphaStrikeHeatCapacityForEntity(entity, entity.heatCapacity(false));
   const adjustedHeat = weaponHeat + signatureHeat - 4;
   return adjustedHeat > capacity ? capacity / adjustedHeat : 1;

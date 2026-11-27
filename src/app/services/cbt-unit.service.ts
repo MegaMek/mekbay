@@ -1,0 +1,213 @@
+// Copyright (C) 2026 The MegaMek Team
+// SPDX-License-Identifier: GPL-3.0-or-later
+
+import { Injectable,Injector,inject } from '@angular/core';
+import { createMekUnit,restoreMekUnit } from '../models/runtime/cbt-mek-unit';
+import { createNonMekUnit,restoreNonMekUnit } from '../models/runtime/cbt-non-mek-unit';
+import { UnitNameService } from './unit-name.service';
+
+import { MekEntity } from '../models/entity/entities/mek/mek-entity';
+import type { CBTUnit } from '../models/runtime/cbt-unit';
+import type { SerializedNonMekUnit } from '../models/runtime/non-mek-unit-persistence';
+import { isSerializedNonMekUnit } from '../models/runtime/non-mek-unit-persistence';
+
+import type { SerializedCBTUnitV2 } from '../models/runtime/persistence-v2';
+import { rekeyMekHeatSourceId } from '../models/runtime/mek-heat-state-v2';
+import {
+deserializeMekMovementPsrStateV2,
+serializeMekMovementPsrStateV2,
+withoutMekMovementPsrEquipmentV2,
+type SerializedMekMovementPsrStateV2,
+} from '../models/runtime/mek-movement-psr-v2';
+import type { V2StateRestoreWarningCode } from '../models/runtime/runtime-state-codec-v2';
+import {
+DEFAULT_MEK_INITIAL_STATE_PROFILE_ID,
+DEFAULT_NON_MEK_INITIAL_STATE_PROFILE_ID,
+type DeploymentConfiguration,
+type ScenarioRules,
+} from '../models/runtime/unit-state-initializer';
+import { sourceHashCanaryChanged } from '../models/source-hash-canary';
+import {
+NativeEntityService,
+nativeSourceHandleForLoadedEntity,
+} from './native-entity.service';
+import type { UnitUuid } from './unit-catalog/unit-catalog.types';
+import type { PinnedCustomUnitSource } from '../models/pinned-custom-unit-source';
+import { SpriteStorageService } from './sprite-storage.service';
+
+export interface CreateCBTUnitRequest {
+    readonly uuid: UnitUuid;
+    readonly instanceId: string;
+    readonly deployment: DeploymentConfiguration;
+    readonly scenario: ScenarioRules;
+    readonly initialStateProfileId?: string;
+    readonly crewSkills?: Readonly<{ readonly gunnery: number; readonly piloting: number }>;
+    /** A saved custom instance also retains its exact source when unreadable runtime state is reset. */
+    readonly customSource?: PinnedCustomUnitSource;
+}
+
+export type CBTUnitRestoreWarningCode =
+    | 'SOURCE_REVISION_CHANGED'
+    | V2StateRestoreWarningCode;
+
+/** One transient restore diagnostic, independent of the source unit's file format. */
+export interface CBTUnitRestoreWarning {
+    readonly unitName: string;
+    readonly code: CBTUnitRestoreWarningCode;
+    readonly message: string;
+}
+
+export interface CBTUnitRestoreResult {
+    readonly unit: CBTUnit;
+    readonly warnings: readonly CBTUnitRestoreWarning[];
+}
+
+/** Loads one native entity once, then creates or restores its CBT runtime aggregate. */
+@Injectable({ providedIn: 'root' })
+export class CBTUnitService {
+    private readonly unitNames = inject(UnitNameService);
+    private readonly entities = inject(NativeEntityService);
+    private readonly injector = inject(Injector);
+
+    public async create(request: CreateCBTUnitRequest): Promise<CBTUnit> {
+        const loaded = request.customSource === undefined
+            ? await this.entities.load(request.uuid)
+            : await this.entities.loadPinnedCustom(request.uuid, request.customSource);
+        const uuid = loaded.source.uuid;
+        const nativeSource = await nativeSourceHandleForLoadedEntity(loaded,
+            entity => this.injector.get(SpriteStorageService).resolveIconPath(entity), request.customSource?.preview?.[3]);
+        if (loaded.entity instanceof MekEntity) {
+            return createMekUnit({
+                uuid: request.uuid,
+                instanceId: request.instanceId,
+                ...(request.crewSkills ? { crewSkills: request.crewSkills } : {}),
+            }, loaded.entity, uuid, {
+                    profileId: request.initialStateProfileId ?? DEFAULT_MEK_INITIAL_STATE_PROFILE_ID,
+                    deployment: request.deployment,
+                    scenario: request.scenario,
+            }, nativeSource);
+        }
+        if (loaded.source.format !== 'blk') {
+            throw new Error(`${loaded.entity.entityType} requires a BLK source`);
+        }
+        return createNonMekUnit(loaded.entity, {
+            instanceId: request.instanceId,
+            uuid,
+            deployment: request.deployment,
+            scenario: request.scenario,
+            initialStateProfileId: request.initialStateProfileId
+                ?? DEFAULT_NON_MEK_INITIAL_STATE_PROFILE_ID,
+            ...(request.crewSkills ? { crewSkills: request.crewSkills } : {}),
+        }, nativeSource);
+    }
+
+    public async restore(
+        saved: SerializedCBTUnitV2 | SerializedNonMekUnit,
+        scenario: ScenarioRules,
+    ): Promise<CBTUnitRestoreResult> {
+        const loaded = saved.customSource === undefined
+            ? await this.entities.load(saved.entity)
+            : await this.entities.loadPinnedCustom(saved.entity, saved.customSource);
+        const uuid = loaded.source.uuid;
+        const nativeSource = await nativeSourceHandleForLoadedEntity(loaded,
+            entity => this.injector.get(SpriteStorageService).resolveIconPath(entity), saved.customSource?.preview?.[3]);
+        const unitName = this.unitNames.name(loaded.entity);
+        const warnings: CBTUnitRestoreWarning[] = [];
+        const warn = (code: CBTUnitRestoreWarningCode, message: string): void => {
+            warnings.push(Object.freeze({ unitName, code, message }));
+        };
+        if (sourceHashCanaryChanged(saved.sourceHashCanary, nativeSource?.sourceHashCanary)) {
+            saved = withoutEquipmentState(saved);
+            warn('SOURCE_REVISION_CHANGED',
+                'The source file has changed since this unit state was saved, so its equipment state was reset.');
+        }
+        let unit: CBTUnit;
+        if (isSerializedNonMekUnit(saved)) {
+            if (loaded.entity instanceof MekEntity) {
+                throw new Error('A persisted non-Mek runtime resolved to a Mek entity');
+            }
+            unit = restoreNonMekUnit(saved, loaded.entity, uuid, scenario, nativeSource, {
+                onWarning: warning => warn(warning.code, warning.message),
+            });
+        } else {
+            if (!(loaded.entity instanceof MekEntity)) {
+                throw new Error('A persisted Mek runtime resolved to a non-Mek entity');
+            }
+            unit = await restoreMekUnit(saved, loaded.entity, uuid, {
+                profileId: saved.baselineRefAtSave.initialStateProfile.profileId,
+                deployment: saved.deployment.values,
+                scenario,
+            }, nativeSource, {
+                onWarning: warning => warn(warning.code, warning.message),
+            });
+        }
+        return Object.freeze({ unit, warnings: Object.freeze(warnings) });
+    }
+}
+
+/**
+ * Saved state names equipment by mount ID (m1, m2, ... in the source file's row order) or by critical-slot coordinate.
+ * Once the source has changed, one added or removed mount renumbers every later one, so any such key may now name other
+ * equipment. Every fact keyed by a mount, component or critical slot is therefore dropped, for 'Meks and other units
+ * alike: so are a pilot check whose witness names one (a sprint check names its boosters) and the dice a pending
+ * critical hit rolled, which pick a slot. Facts keyed by location, crew position, system or the unit itself stay:
+ * location damage and conditions, system damage tracks, bombs, crew, heat totals, destroyed, conditions, pilot checks
+ * naming only locations, the critical hits still owed to a location, and the rule checks, whose trigger is always a
+ * location.
+ */
+function withoutEquipmentState<T extends SerializedCBTUnitV2 | SerializedNonMekUnit>(saved: T): T {
+    if (isSerializedNonMekUnit(saved)) {
+        const { componentState: _components, ammoState: _ammo, equipmentRowOrder: _order,
+            pendingCombat, turn, ...rest } = saved;
+        const { componentStatus: _status, autocannonHits: _autocannonHits, ...locationPending } = pendingCombat ?? {};
+        return {
+            ...rest,
+            ...(Object.keys(locationPending).length === 0 ? {} : { pendingCombat: locationPending }),
+            ...(turn === undefined ? {} : { turn: withoutEquipmentTurn({
+                ...turn,
+                ...(turn.movement === undefined ? {} : { movement: { ...turn.movement, boosterComponentIds: [] } }),
+            }) }),
+        } as T;
+    }
+    const mek = saved as SerializedCBTUnitV2;
+    const { slotState: _slots, componentState: _components, ammoState: _ammo, equipmentRowOrder: _order,
+        pendingCombat, turn, movementPsr, ...rest } = mek;
+    const { slotHits: _slotHits, componentStatus: _status, shieldDamage: _shield, modularArmorDamage: _modular,
+        ...locationPending } = pendingCombat ?? {};
+    const { pendingCriticalEvents, ...turnRest } = withoutEquipmentTurn(turn);
+    return {
+        ...rest,
+        ...(Object.keys(locationPending).length === 0 ? {} : { pendingCombat: locationPending }),
+        turn: {
+            ...turnRest,
+            ...(pendingCriticalEvents === undefined ? {} : {
+                pendingCriticalEvents: pendingCriticalEvents.map(event => {
+                    if (event.type !== 'critical-hit') return event;
+                    const { roll: _roll, ...owed } = event;
+                    return owed;
+                }),
+            }),
+        },
+        movementPsr: withoutEquipmentMovementPsr(movementPsr),
+    } satisfies SerializedCBTUnitV2 as T;
+}
+
+/** Invalid movement/PSR state is left for the codec to recover. */
+function withoutEquipmentMovementPsr(movementPsr: SerializedMekMovementPsrStateV2): SerializedMekMovementPsrStateV2 {
+    try {
+        return serializeMekMovementPsrStateV2(withoutMekMovementPsrEquipmentV2(
+            deserializeMekMovementPsrStateV2(movementPsr)));
+    } catch {
+        return movementPsr;
+    }
+}
+
+/** The turn without the weapons it fired and the heat it settled for named components (`rekeyMekHeatSourceId`). */
+function withoutEquipmentTurn<Turn extends Readonly<{
+    firedWeapons?: readonly string[];
+    settledHeat?: readonly Readonly<{ sourceId: string; heat: number }>[];
+}>>(turn: Turn): Turn {
+    const { firedWeapons: _fired, settledHeat, ...rest } = turn;
+    const kept = settledHeat?.filter(entry => rekeyMekHeatSourceId(entry.sourceId, () => '') === entry.sourceId);
+    return { ...rest, ...(kept?.length ? { settledHeat: kept } : {}) } as unknown as Turn;
+}

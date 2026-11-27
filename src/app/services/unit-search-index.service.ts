@@ -4,453 +4,822 @@
 
 import { Injectable } from '@angular/core';
 import { MulAvailabilityIndex } from '../utils/mul-availability-index';
-import type { UnitSummary, UnitComponent } from '../models/unit-summary.model';
+import type { UnitSummary, UnitComponent, UnitType } from '../models/unit-summary.model';
 import { type Faction } from '../models/factions.model';
 import type { Era } from '../models/eras.model';
-import type { BucketStatSummary, MinMaxStatsRange } from './data.service';
 import { removeAccents } from '../utils/string.util';
-import { naturalCompare } from '../utils/sort.util';
+import { compareUnitsByName, naturalCompare } from '../utils/sort.util';
 import { getMergedTags, getUnitSourceFilterValues } from '../utils/unit-search-shared.util';
 import { calculateWeightedMaxRange, getMaxRangeFromComponents } from '../utils/unit-range.util';
-import { getUnitStatBucketKey, getUnitStatValues } from '../utils/unit-stat-values.util';
+import {
+  EMPTY_UNIT_BUCKET_STATS,
+  UNIT_STAT_KEYS,
+  UNIT_STAT_READERS,
+  getUnitStatBucketKey,
+  type BucketStatSummary,
+  type UnitBucketStats,
+  type UnitStatKey,
+} from '../models/unit-statistics';
 import { parseASDamageValue } from '../utils/as-damage.util';
-import { AS_MOVEMENT_MODE_DISPLAY_NAMES, BOOLEAN_FILTERS, getBooleanFilterUnitValue } from './unit-search-filters.model';
-import type { UnitSearchWorkerFactionEraSnapshot, UnitSearchWorkerIndexSnapshot } from '../utils/unit-search-worker-protocol.util';
+import {
+  AS_MOVEMENT_MODE_DISPLAY_NAMES,
+  BOOLEAN_FILTERS,
+  getBooleanFilterUnitValue,
+} from './unit-search-filters.model';
 import { WeaponEquipment } from '../models/equipment.model';
 import { WEAPON_TYPES, type WeaponType } from '../models/weapon-types.model';
+import type { EquipmentRegistry } from '../models/equipment-lookup';
 import {
-    buildASSpecialsByUnitIndex,
-    getASSpecialMinimumFieldLabels,
-    type ParsedASSpecials,
+  buildASSpecialsByUnitIndex,
+  getASSpecialFilterValues,
+  getASSpecialMinimumFieldLabels,
+  type ParsedASSpecials,
 } from '../utils/as-special-filter.util';
+import type { UnitUuid } from './unit-catalog/unit-catalog.types';
 
 export interface UnitSearchDropdownOption {
-    name: string;
-    img?: string;
-    minimumFieldLabels?: readonly string[];
+  name: string;
+  img?: string;
+  minimumFieldLabels?: readonly string[];
 }
 
-type StatSamples = Partial<Record<keyof MinMaxStatsRange, number[]>>;
+export interface UnitOrdinalLookup {
+  readonly unitUuids: readonly UnitUuid[];
+  readonly ordinalsByUnitUuid: ReadonlyMap<UnitUuid, number>;
+}
+
+class IndexedUnitUuidSet implements ReadonlySet<UnitUuid> {
+  public readonly [Symbol.toStringTag] = 'Set';
+
+  public constructor(
+    private readonly ordinals: Uint32Array,
+    private readonly lookup: UnitOrdinalLookup,
+  ) {}
+
+  public get size(): number {
+    return this.ordinals.length;
+  }
+
+  public has(unitUuid: UnitUuid): boolean {
+    const ordinal = this.lookup.ordinalsByUnitUuid.get(unitUuid);
+    return ordinal !== undefined && hasSortedOrdinal(this.ordinals, ordinal);
+  }
+
+  public *values(): SetIterator<UnitUuid> {
+    for (const ordinal of this.ordinals) yield this.lookup.unitUuids[ordinal];
+  }
+
+  public keys(): SetIterator<UnitUuid> {
+    return this.values();
+  }
+
+  public *entries(): SetIterator<[UnitUuid, UnitUuid]> {
+    for (const unitUuid of this.values()) yield [unitUuid, unitUuid];
+  }
+
+  public forEach(
+    callbackfn: (value: UnitUuid, value2: UnitUuid, set: ReadonlySet<UnitUuid>) => void,
+    thisArg?: unknown,
+  ): void {
+    for (const unitUuid of this.values()) callbackfn.call(thisArg, unitUuid, unitUuid, this);
+  }
+
+  public [Symbol.iterator](): SetIterator<UnitUuid> {
+    return this.values();
+  }
+}
+
+function findSortedOrdinal(ordinals: Uint32Array, target: number): number {
+  let low = 0;
+  let high = ordinals.length - 1;
+  while (low <= high) {
+    const middle = (low + high) >>> 1;
+    const value = ordinals[middle];
+    if (value === target) return middle;
+    if (value < target) low = middle + 1;
+    else high = middle - 1;
+  }
+  return -1;
+}
+
+function hasSortedOrdinal(ordinals: Uint32Array, target: number): boolean {
+  return findSortedOrdinal(ordinals, target) !== -1;
+}
+
+function toSortedUniqueOrdinals(values: number[]): Uint32Array {
+  values.sort((left, right) => left - right);
+  let uniqueCount = 0;
+  for (const value of values) {
+    if (uniqueCount === 0 || values[uniqueCount - 1] !== value) {
+      values[uniqueCount++] = value;
+    }
+  }
+  const result = new Uint32Array(uniqueCount);
+  for (let index = 0; index < uniqueCount; index++) result[index] = values[index];
+  return result;
+}
+
+/**
+ * Fully built search state for one exact Units/dependency activation.
+ *
+ * All maps and statistics are allocated while the activation is still
+ * invisible. The final catalog switch only assigns these references, so a
+ * failed or superseded build cannot expose a partially rebuilt index.
+ */
+export interface PreparedUnitSearchIndexes {
+  readonly unitStats: Readonly<Record<string, UnitBucketStats>>;
+  readonly searchFilterIndex: Map<string, Map<string, ReadonlySet<UnitUuid>>>;
+  readonly unitOrdinalLookup: UnitOrdinalLookup;
+  readonly searchFilterValues: Map<string, string[]>;
+  readonly dropdownOptionUniverse: Map<string, UnitSearchDropdownOption[]>;
+  readonly asSpecialFieldCounts: Map<string, number>;
+  readonly asSpecialsByUnit: readonly ParsedASSpecials[];
+  readonly factionEraSnapshot: MulAvailabilityIndex;
+  readonly preparationTimings: {
+    readonly unitDerivativesMs: number;
+    readonly filterIndexesMs: number;
+    readonly identityMapMs: number;
+    readonly unitFiltersMs: number;
+    readonly componentIndexesMs: number;
+    readonly eraMembershipsMs: number;
+    readonly factionMembershipsMs: number;
+    readonly finalizationMs: number;
+  };
+  readonly indexStats: {
+    readonly filterKeys: number;
+    readonly filterValues: number;
+    readonly memberships: number;
+  };
+}
+
+type StatSamples = Partial<Record<UnitStatKey, number[]>>;
+
+const SEARCH_DERIVED_FIELDS = [
+  '_searchKey',
+  '_searchKeyAlphanumeric',
+  '_searchChassisLength',
+  '_searchChassisAlphanumericLength',
+  '_displayType',
+  '_mdSumNoPhysical',
+  '_mdSumNoPhysicalNoOneshots',
+  '_maxRange',
+  '_weightedMaxRange',
+  '_dissipationEfficiency',
+  '_weaponTypes',
+  '_weaponTypeCounts',
+] as const satisfies readonly (keyof UnitSummary)[];
 
 function summarizeStat(values: number[] = []): BucketStatSummary {
-    if (values.length === 0) return { min: 0, max: 0, average: 0, p95: 0, count: 0 };
-    values.sort((left, right) => left - right);
-    return {
-        min: values[0],
-        max: values[values.length - 1],
-        average: values.reduce((sum, value) => sum + value, 0) / values.length,
-        p95: values[Math.ceil(values.length * 0.95) - 1],
-        count: values.length,
-    };
+  if (values.length === 0) return { min: 0, max: 0, average: 0, p95: 0, count: 0 };
+  values.sort((left, right) => left - right);
+  return {
+    min: values[0],
+    max: values[values.length - 1],
+    average: values.reduce((sum, value) => sum + value, 0) / values.length,
+    p95: values[Math.ceil(values.length * 0.95) - 1],
+    count: values.length,
+  };
 }
 
 @Injectable({
-    providedIn: 'root'
+  providedIn: 'root',
 })
 export class UnitSearchIndexService {
-    private unitStats: Record<string, MinMaxStatsRange> = {};
-    private searchFilterIndex = new Map<string, Map<string, Set<string>>>();
-    private componentCountIndex = new Map<string, Map<string, number>>();
-    private searchFilterValues = new Map<string, string[]>();
-    private dropdownOptionUniverse = new Map<string, UnitSearchDropdownOption[]>();
-    private asSpecialFieldCounts = new Map<string, number>();
-    private asSpecialsByUnit = new Map<string, ParsedASSpecials>();
-    private factionEraSnapshot: UnitSearchWorkerFactionEraSnapshot = {};
-    private mulAvailabilityIndex = new MulAvailabilityIndex([], [], []);
+  private unitStats: Readonly<Record<string, UnitBucketStats>> = {};
+  private searchFilterIndex = new Map<string, Map<string, ReadonlySet<UnitUuid>>>();
+  private unitOrdinalLookup: UnitOrdinalLookup = {
+    unitUuids: [],
+    ordinalsByUnitUuid: new Map(),
+  };
+  private searchFilterIndexBuilder: Map<string, Map<string, number[]>> | null = null;
+  private searchFilterValues = new Map<string, string[]>();
+  private dropdownOptionUniverse = new Map<string, UnitSearchDropdownOption[]>();
+  private asSpecialFieldCounts = new Map<string, number>();
+  private asSpecialsByUnit: readonly ParsedASSpecials[] = [];
+  private indexStats: PreparedUnitSearchIndexes['indexStats'] = Object.freeze({
+    filterKeys: 0,
+    filterValues: 0,
+    memberships: 0,
+  });
+  private filterIndexTimings: Pick<
+    PreparedUnitSearchIndexes['preparationTimings'],
+    | 'identityMapMs'
+    | 'unitFiltersMs'
+    | 'componentIndexesMs'
+    | 'eraMembershipsMs'
+    | 'factionMembershipsMs'
+    | 'finalizationMs'
+  > = Object.freeze({
+    identityMapMs: 0,
+    unitFiltersMs: 0,
+    componentIndexesMs: 0,
+    eraMembershipsMs: 0,
+    factionMembershipsMs: 0,
+    finalizationMs: 0,
+  });
+  private factionEraSnapshot = new MulAvailabilityIndex([], [], []);
+  /**
+   * Pure-build every search/index derivative without touching live state.
+   * A detached service instance is safe here because this builder has no
+   * injected collaborators; its only inputs are the exact candidate arrays.
+   * Supply previousUnits only for the active index's catalog with unchanged
+   * dependencies, so custom changes can reuse its unaffected calculations.
+   */
+  public prepareCatalogIndexes(
+    units: UnitSummary[],
+    eras: Era[],
+    factions: Faction[],
+    equipmentRegistry?: EquipmentRegistry,
+    previousUnits?: readonly UnitSummary[],
+  ): PreparedUnitSearchIndexes {
+    if (previousUnits && this.unitOrdinalLookup.unitUuids.length) {
+      const incremental = this.prepareCustomChanges(
+        units,
+        previousUnits,
+        eras,
+        factions,
+        equipmentRegistry,
+      );
+      if (incremental) return incremental;
+    }
+    const builder = new UnitSearchIndexService();
+    const unitDerivativesStartedAt = Date.now();
+    builder.prepareUnits(units);
+    const unitDerivativesMs = Math.max(0, Date.now() - unitDerivativesStartedAt);
+    const filterIndexesStartedAt = Date.now();
+    builder.rebuildIndexes(units, eras, factions, equipmentRegistry);
+    const filterIndexesMs = Math.max(0, Date.now() - filterIndexesStartedAt);
+    const prepared = builder.capturePreparedIndexes({
+      unitDerivativesMs,
+      filterIndexesMs,
+      ...builder.filterIndexTimings,
+    });
+    return prepared;
+  }
 
-    public prepareUnits(units: UnitSummary[]): void {
-        this.unitStats = {};
-        const samplesByBucket: Record<string, StatSamples> = {};
+  /** Copy only affected postings; core statistics and unchanged unit calculations remain reusable. */
+  private prepareCustomChanges(
+    units: UnitSummary[],
+    previousUnits: readonly UnitSummary[],
+    eras: Era[],
+    factions: Faction[],
+    equipmentRegistry?: EquipmentRegistry,
+  ): PreparedUnitSearchIndexes | undefined {
+    const startedAt = Date.now();
+    const previous = new Map(previousUnits.map((unit) => [unit.uuid, unit]));
+    const currentIds = new Set(units.map((unit) => unit.uuid));
+    const changed = units.filter((unit) => {
+      const old = previous.get(unit.uuid);
+      return (
+        !old ||
+        old.hash !== unit.hash ||
+        old.summaryVersion !== unit.summaryVersion ||
+        old.mul1id !== unit.mul1id ||
+        old.originalUnitUuid !== unit.originalUnitUuid ||
+        old.isCustom !== unit.isCustom
+      );
+    });
+    const removed = previousUnits.filter((unit) => !currentIds.has(unit.uuid));
+    // Broad changes use the full builder; this path targets ordinary custom edits and small sync batches.
+    if (changed.length + removed.length > 128 || [...changed, ...removed].some((unit) => !unit.isCustom))
+      return undefined;
+    const affected = new Set([...changed, ...removed].map((unit) => unit.uuid));
+    const affectedIds = [...affected];
+    const additions = this.prepareCatalogIndexes(changed, eras, factions, equipmentRegistry);
+    for (const unit of units) {
+      if (affected.has(unit.uuid)) continue;
+      const old = previous.get(unit.uuid)!;
+      for (const key of SEARCH_DERIVED_FIELDS) Reflect.set(unit, key, old[key]);
+      unit.as.dmg = { ...old.as.dmg };
+      unit.as.MVm = { ...old.as.MVm };
+    }
+    this.prepareSearchOrder(units);
+    const unitDerivativesMs = Math.max(0, Date.now() - startedAt - additions.preparationTimings.filterIndexesMs);
+    const mergeStartedAt = Date.now();
+    const builder = new UnitSearchIndexService();
+    builder.unitStats = this.unitStats;
+    builder.unitOrdinalLookup = {
+      unitUuids: units.map((unit) => unit.uuid),
+      ordinalsByUnitUuid: new Map(units.map((unit, ordinal) => [unit.uuid, ordinal])),
+    };
+    builder.asSpecialsByUnit = units.map((unit) => {
+      const freshOrdinal = additions.unitOrdinalLookup.ordinalsByUnitUuid.get(unit.uuid);
+      return freshOrdinal === undefined
+        ? this.getIndexedASSpecials(unit.uuid)!
+        : additions.asSpecialsByUnit[freshOrdinal];
+    });
+    for (const parsed of builder.asSpecialsByUnit) {
+      for (const occurrence of parsed.occurrences) {
+        const previousCount = builder.asSpecialFieldCounts.get(occurrence.token) ?? 0;
+        if (occurrence.values.length > previousCount)
+          builder.asSpecialFieldCounts.set(occurrence.token, occurrence.values.length);
+      }
+    }
+    builder.searchFilterIndex = new Map(this.searchFilterIndex);
+    builder.searchFilterValues = new Map(this.searchFilterValues);
+    for (const key of new Set([...this.searchFilterIndex.keys(), ...additions.searchFilterIndex.keys()])) {
+      if (key === '_tags') continue; // Tags can also change while an asynchronous activation is being prepared.
+      const existingValues = this.searchFilterIndex.get(key) ?? new Map<string, ReadonlySet<UnitUuid>>();
+      const addedValues = additions.searchFilterIndex.get(key) ?? new Map<string, ReadonlySet<UnitUuid>>();
+      let replacement: Map<string, ReadonlySet<UnitUuid>> | undefined;
+      for (const value of new Set([...existingValues.keys(), ...addedValues.keys()])) {
+        const existing = existingValues.get(value);
+        const added = addedValues.get(value);
+        if (affectedIds.every((uuid) => !!existing?.has(uuid) === !!added?.has(uuid))) continue;
+        replacement ??= new Map(existingValues);
+        const members = new Set(existing);
+        for (const uuid of affected) members.delete(uuid);
+        for (const uuid of added ?? []) members.add(uuid);
+        if (members.size) {
+          // Store UUIDs directly so updated buckets do not retain obsolete whole-catalog ordinal maps.
+          replacement.set(
+            value,
+            new Set(
+              [...members].sort(
+                (left, right) =>
+                  builder.unitOrdinalLookup.ordinalsByUnitUuid.get(left)! -
+                  builder.unitOrdinalLookup.ordinalsByUnitUuid.get(right)!,
+              ),
+            ),
+          );
+        } else replacement.delete(value);
+      }
+      if (!replacement) continue;
+      if (replacement.size) {
+        builder.searchFilterIndex.set(key, replacement);
+        builder.searchFilterValues.set(key, [...replacement.keys()].sort(naturalCompare));
+      } else {
+        builder.searchFilterIndex.delete(key);
+        builder.searchFilterValues.delete(key);
+      }
+    }
+    builder.rebuildTagSearchIndex(units);
+    builder.rebuildDropdownOptionUniverse(eras, factions);
+    builder.factionEraSnapshot = new MulAvailabilityIndex(units, eras, factions);
+    let filterValues = 0,
+      memberships = 0;
+    for (const values of builder.searchFilterIndex.values()) {
+      filterValues += values.size;
+      for (const posting of values.values()) memberships += posting.size;
+    }
+    builder.indexStats = { filterKeys: builder.searchFilterIndex.size, filterValues, memberships };
+    const mergeMs = Math.max(0, Date.now() - mergeStartedAt);
+    return builder.capturePreparedIndexes({
+      ...additions.preparationTimings,
+      unitDerivativesMs,
+      filterIndexesMs: additions.preparationTimings.filterIndexesMs + mergeMs,
+      finalizationMs: additions.preparationTimings.finalizationMs + mergeMs,
+    });
+  }
 
-        for (const unit of units) {
-            const chassis = removeAccents(unit.chassis?.toLowerCase() || '');
-            const model = removeAccents(unit.model?.toLowerCase() || '');
-            unit._searchKey = `${chassis} ${model}`;
-            unit._displayType = this.formatUnitType(unit.type);
-            unit._mdSumNoPhysical = unit.comp ? this.sumWeaponDamageNoPhysical(unit, unit.comp) : 0;
-            unit._mdSumNoPhysicalNoOneshots = unit.comp ? this.sumWeaponDamageNoPhysical(unit, unit.comp, true) : 0;
-            unit._maxRange = unit.comp ? getMaxRangeFromComponents(unit.comp) : 0;
-            unit._weightedMaxRange = unit.comp ? calculateWeightedMaxRange(unit) : 0;
-            unit._dissipationEfficiency = unit.heat === null || unit.dissipation === null
-                ? null : unit.dissipation - unit.heat;
+  /** Final no-build switch. Angular observers cannot interleave the assignments. */
+  public commitPreparedCatalogIndexes(candidate: PreparedUnitSearchIndexes): void {
+    this.unitStats = candidate.unitStats;
+    this.searchFilterIndex = candidate.searchFilterIndex;
+    this.unitOrdinalLookup = candidate.unitOrdinalLookup;
+    this.searchFilterValues = candidate.searchFilterValues;
+    this.dropdownOptionUniverse = candidate.dropdownOptionUniverse;
+    this.asSpecialFieldCounts = candidate.asSpecialFieldCounts;
+    this.asSpecialsByUnit = candidate.asSpecialsByUnit;
+    this.factionEraSnapshot = candidate.factionEraSnapshot;
+    this.indexStats = candidate.indexStats;
+  }
 
-            if (unit.as) {
-                if (unit.as.dmg) {
-                    unit.as.dmg._dmgS = parseASDamageValue(unit.as.dmg.dmgS) ?? 0;
-                    unit.as.dmg._dmgM = parseASDamageValue(unit.as.dmg.dmgM) ?? 0;
-                    unit.as.dmg._dmgL = parseASDamageValue(unit.as.dmg.dmgL) ?? 0;
-                    unit.as.dmg._dmgE = parseASDamageValue(unit.as.dmg.dmgE) ?? 0;
-                }
+  private capturePreparedIndexes(
+    preparationTimings: PreparedUnitSearchIndexes['preparationTimings'],
+  ): PreparedUnitSearchIndexes {
+    return Object.freeze({
+      unitStats: this.unitStats,
+      searchFilterIndex: this.searchFilterIndex,
+      unitOrdinalLookup: this.unitOrdinalLookup,
+      searchFilterValues: this.searchFilterValues,
+      dropdownOptionUniverse: this.dropdownOptionUniverse,
+      asSpecialFieldCounts: this.asSpecialFieldCounts,
+      asSpecialsByUnit: this.asSpecialsByUnit,
+      factionEraSnapshot: this.factionEraSnapshot,
+      preparationTimings: Object.freeze(preparationTimings),
+      indexStats: this.indexStats,
+    });
+  }
 
-                if (unit.as.MVm && unit.as.MVm['j'] !== undefined && unit.as.MVm[''] === undefined) {
-                    const mvmKeys = Object.keys(unit.as.MVm);
-                    if (unit.as.TP === 'BM' || (mvmKeys.length === 1 && mvmKeys[0] === 'j')) {
-                        unit.as.MVm = { '': unit.as.MVm['j'], ...unit.as.MVm };
-                    }
-                }
-            }
+  private prepareUnits(units: UnitSummary[]): void {
+    const unitStats: Record<string, UnitBucketStats> = {};
+    const samplesByBucket: Record<string, StatSamples> = {};
 
-            if (unit.comp) {
-                if (unit.armorType) {
-                    let armorName = unit.armorType;
-                    if (!armorName.endsWith(' Armor')) {
-                        armorName += ' Armor';
-                    }
-                    this.ensureSyntheticComponent(unit.comp, armorName, 'Armor');
-                }
-                if (unit.structureType) {
-                    let structureName = unit.structureType;
-                    if (!structureName.endsWith(' Structure')) {
-                        structureName += ' Structure';
-                    }
-                    this.ensureSyntheticComponent(unit.comp, structureName, 'Structure');
-                }
-                if (unit.engine) {
-                    let engineName = unit.engine;
-                    if (!engineName.endsWith(' Engine')) {
-                        engineName += ' Engine';
-                    }
-                    this.ensureSyntheticComponent(unit.comp, engineName, 'Engine');
-                }
-            }
+    for (let unitOrdinal = 0; unitOrdinal < units.length; unitOrdinal++) {
+      const unit = units[unitOrdinal];
+      const chassis = removeAccents(unit.chassis?.toLowerCase() || '');
+      const model = removeAccents(unit.model?.toLowerCase() || '');
+      const chassisAlphanumeric = chassis.replace(/[^a-z0-9]/g, '');
+      const modelAlphanumeric = model.replace(/[^a-z0-9]/g, '');
+      unit._searchOrdinal = unitOrdinal;
+      unit._searchKey = `${chassis} ${model}`;
+      unit._searchKeyAlphanumeric = chassisAlphanumeric + modelAlphanumeric;
+      unit._searchChassisLength = chassis.length;
+      unit._searchChassisAlphanumericLength = chassisAlphanumeric.length;
+      unit._displayType = this.formatUnitType(unit.type);
+      unit._mdSumNoPhysical = unit.comp ? this.sumWeaponDamageNoPhysical(unit, unit.comp) : 0;
+      unit._mdSumNoPhysicalNoOneshots = unit.comp ? this.sumWeaponDamageNoPhysical(unit, unit.comp, true) : 0;
+      unit._maxRange = unit.comp ? getMaxRangeFromComponents(unit.comp) : 0;
+      unit._weightedMaxRange = unit.comp ? calculateWeightedMaxRange(unit) : 0;
+      unit._dissipationEfficiency = UNIT_STAT_READERS.dissipationEfficiency(unit) ?? undefined;
 
-            const key = getUnitStatBucketKey(unit);
-            const samples = samplesByBucket[key] ??= {};
-            for (const [statKey, value] of Object.entries(getUnitStatValues(unit))) {
-                if (value !== null) (samples[statKey as keyof MinMaxStatsRange] ??= []).push(value);
-                else samples[statKey as keyof MinMaxStatsRange] ??= [];
-            }
+      if (unit.as) {
+        unit.as.dmg._dmgS = parseASDamageValue(unit.as.dmg.dmgS) ?? undefined;
+        unit.as.dmg._dmgM = parseASDamageValue(unit.as.dmg.dmgM) ?? undefined;
+        unit.as.dmg._dmgL = parseASDamageValue(unit.as.dmg.dmgL) ?? undefined;
+        unit.as.dmg._dmgE = parseASDamageValue(unit.as.dmg.dmgE) ?? undefined;
+        if (unit.as.MVm['j'] !== undefined && unit.as.MVm[''] === undefined) {
+          const mvmKeys = Object.keys(unit.as.MVm);
+          if (unit.as.TP === 'BM' || (mvmKeys.length === 1 && mvmKeys[0] === 'j')) {
+            unit.as.MVm = { '': unit.as.MVm['j'], ...unit.as.MVm };
+          }
         }
+      }
 
-        for (const [key, samples] of Object.entries(samplesByBucket)) {
-            this.unitStats[key] = Object.fromEntries(
-                Object.entries(samples).map(([statKey, values]) => [statKey, summarizeStat(values)]),
-            ) as unknown as MinMaxStatsRange;
-        }
+      // Custom designs participate in search, but never influence reference
+      // distributions used by radar charts and stat-bar-specs.
+      if (unit.origin !== 'megamek' || unit.isCustom) continue;
+      const key = getUnitStatBucketKey(unit);
+      const samples = (samplesByBucket[key] ??= {});
+      for (const statKey of UNIT_STAT_KEYS) {
+        const value = UNIT_STAT_READERS[statKey](unit);
+        if (value !== null) (samples[statKey] ??= []).push(value);
+      }
     }
 
-    public rebuildIndexes(units: UnitSummary[], eras: Era[], factions: Faction[]): void {
-        this.searchFilterIndex = new Map<string, Map<string, Set<string>>>();
-        this.componentCountIndex = new Map<string, Map<string, number>>();
-        this.searchFilterValues = new Map<string, string[]>();
-        this.asSpecialFieldCounts = new Map<string, number>();
-        this.asSpecialsByUnit = buildASSpecialsByUnitIndex(
-            units,
-            unit => unit.uuid,
-            unit => unit.as?.specials,
+    for (const [key, samples] of Object.entries(samplesByBucket)) {
+      unitStats[key] = Object.fromEntries(
+        UNIT_STAT_KEYS.map((statKey) => [statKey, summarizeStat(samples[statKey])]),
+      ) as UnitBucketStats;
+    }
+    this.unitStats = unitStats;
+
+    this.prepareSearchOrder(units);
+  }
+
+  private prepareSearchOrder(units: UnitSummary[]): void {
+    for (let ordinal = 0; ordinal < units.length; ordinal++) units[ordinal]._searchOrdinal = ordinal;
+    const unitsByName = [...units].sort(compareUnitsByName);
+    for (let rank = 0; rank < unitsByName.length; rank++) {
+      unitsByName[rank]._searchNameRank = rank;
+    }
+  }
+
+  public rebuildIndexes(
+    units: UnitSummary[],
+    eras: Era[],
+    factions: Faction[],
+    equipmentRegistry?: EquipmentRegistry,
+  ): void {
+    const unitUuids = units.map((unit) => unit.uuid);
+    this.unitOrdinalLookup = {
+      unitUuids,
+      ordinalsByUnitUuid: new Map(unitUuids.map((unitUuid, ordinal) => [unitUuid, ordinal])),
+    };
+    this.searchFilterIndexBuilder = new Map<string, Map<string, number[]>>();
+    this.searchFilterIndex = new Map<string, Map<string, ReadonlySet<UnitUuid>>>();
+    this.searchFilterValues = new Map<string, string[]>();
+    this.asSpecialFieldCounts = new Map<string, number>();
+    const parsedSpecialsByUnitUuid = buildASSpecialsByUnitIndex(
+      units,
+      (unit) => unit.uuid,
+      (unit) => getASSpecialFilterValues(unit.as),
+    );
+    this.asSpecialsByUnit = units.map((unit) => parsedSpecialsByUnitUuid.get(unit.uuid)!);
+    const identityMapStartedAt = Date.now();
+    this.factionEraSnapshot = new MulAvailabilityIndex(units, eras, factions);
+    const identityMapMs = Math.max(0, Date.now() - identityMapStartedAt);
+
+    const unitFiltersStartedAt = Date.now();
+    for (const unit of units) {
+      this.addSearchIndexValue('type', unit.type, unit.uuid);
+      this.addSearchIndexValue('subtype', unit.subtype, unit.uuid);
+      this.addSearchIndexValue('_techBaseDisplay', unit._techBaseDisplay, unit.uuid);
+      this.addSearchIndexValue('role', unit.role, unit.uuid);
+      this.addSearchIndexValue('weightClass', unit.weightClass, unit.uuid);
+      this.addSearchIndexValue('level', String(unit.level), unit.uuid);
+      this.addSearchIndexValue('c3', unit.c3, unit.uuid);
+      this.addSearchIndexValue('moveType', unit.moveType, unit.uuid);
+      this.addSearchIndexValue('as.TP', unit.as?.TP, unit.uuid);
+      this.addASSpecialIndexValues(this.getIndexedASSpecials(unit.uuid), unit.uuid);
+      this.addSearchIndexValues('as._motive', this.getASMotiveDisplayNames(unit), unit.uuid);
+      this.addSearchIndexValues('source', getUnitSourceFilterValues(unit), unit.uuid);
+      this.addSearchIndexValues('rulesRefs', unit.rulesRefs?.flat() ?? [], unit.uuid);
+      this.addSearchIndexValues('features', unit.features ?? [], unit.uuid);
+      this.addSearchIndexValues('quirks', unit.quirks ?? [], unit.uuid);
+      this.addSearchIndexValues('_tags', getMergedTags(unit), unit.uuid);
+      for (const filter of BOOLEAN_FILTERS) {
+        this.addSearchIndexValue(
+          filter.key,
+          getBooleanFilterUnitValue(filter, unit[filter.key as keyof UnitSummary]) ? 'yes' : 'no',
+          unit.uuid,
         );
+      }
+    }
+    const unitFiltersMs = Math.max(0, Date.now() - unitFiltersStartedAt);
 
-        this.mulAvailabilityIndex = new MulAvailabilityIndex(units, eras, factions);
+    const componentIndexesStartedAt = Date.now();
+    for (const unit of units) {
+      this.prepareUnitComponentIndexes(unit, unit.uuid, equipmentRegistry);
+    }
+    const componentIndexesMs = Math.max(0, Date.now() - componentIndexesStartedAt);
 
-        for (const unit of units) {
-            this.addSearchIndexValue('type', unit.type, unit.uuid);
-            this.addSearchIndexValue('subtype', unit.subtype, unit.uuid);
-            this.addSearchIndexValue('_techBaseDisplay', unit._techBaseDisplay, unit.uuid);
-            this.addSearchIndexValue('role', unit.role, unit.uuid);
-            this.addSearchIndexValue('weightClass', unit.weightClass, unit.uuid);
-            this.addSearchIndexValue('level', String(unit.level), unit.uuid);
-            this.addSearchIndexValue('c3', unit.c3, unit.uuid);
-            this.addSearchIndexValue('moveType', unit.moveType, unit.uuid);
-            this.addSearchIndexValue('as.TP', unit.as?.TP, unit.uuid);
-            this.addASSpecialIndexValues(this.asSpecialsByUnit.get(unit.uuid), unit.uuid);
-            this.addSearchIndexValues('as._motive', this.getASMotiveDisplayNames(unit), unit.uuid);
-            this.addSearchIndexValues('source', getUnitSourceFilterValues(unit), unit.uuid);
-            this.addSearchIndexValues('rulesRefs', unit.rulesRefs?.flat() ?? [], unit.uuid);
-            this.addSearchIndexValues('componentName', unit.comp.map(component => component.n), unit.uuid);
-            this.addComponentCountValues(unit);
-            this.prepareUnitWeaponTypes(unit);
-            this.addSearchIndexValues('weaponType', unit._weaponTypes ?? [], unit.uuid);
-            this.addSearchIndexValues('features', unit.features ?? [], unit.uuid);
-            this.addSearchIndexValues('quirks', unit.quirks ?? [], unit.uuid);
-            this.addSearchIndexValues('_tags', getMergedTags(unit), unit.uuid);
-            for (const filter of BOOLEAN_FILTERS) {
-                this.addSearchIndexValue(filter.key, getBooleanFilterUnitValue(filter, unit[filter.key as keyof UnitSummary]) ? 'yes' : 'no', unit.uuid);
-            }
+    const eraMembershipsStartedAt = Date.now();
+    for (const era of eras) {
+      for (const uuid of this.factionEraSnapshot.getEraUnitUuids(era.id)) {
+        this.addSearchIndexValue('era', era.name, uuid);
+      }
+    }
+    const eraMembershipsMs = Math.max(0, Date.now() - eraMembershipsStartedAt);
+
+    const factionMembershipsStartedAt = Date.now();
+    for (const faction of factions) {
+      for (const uuid of this.factionEraSnapshot.getFactionUnitUuids(faction.id)) {
+        this.addSearchIndexValue('faction', faction.name, uuid);
+      }
+    }
+    const factionMembershipsMs = Math.max(0, Date.now() - factionMembershipsStartedAt);
+
+    const finalizationStartedAt = Date.now();
+    let filterValues = 0;
+    let memberships = 0;
+    for (const [filterKey, valueBuilders] of this.searchFilterIndexBuilder.entries()) {
+      const values = new Map<string, ReadonlySet<UnitUuid>>();
+      for (const [value, ordinals] of valueBuilders) {
+        const posting = new IndexedUnitUuidSet(toSortedUniqueOrdinals(ordinals), this.unitOrdinalLookup);
+        values.set(value, posting);
+        memberships += posting.size;
+      }
+      filterValues += values.size;
+      this.searchFilterIndex.set(filterKey, values);
+      this.searchFilterValues.set(
+        filterKey,
+        Array.from(values.keys()).sort((left, right) => naturalCompare(left, right)),
+      );
+    }
+    this.searchFilterIndexBuilder = null;
+    this.indexStats = Object.freeze({
+      filterKeys: this.searchFilterIndex.size,
+      filterValues,
+      memberships,
+    });
+
+    this.rebuildDropdownOptionUniverse(eras, factions);
+    const finalizationMs = Math.max(0, Date.now() - finalizationStartedAt);
+    this.filterIndexTimings = Object.freeze({
+      identityMapMs,
+      unitFiltersMs,
+      componentIndexesMs,
+      eraMembershipsMs,
+      factionMembershipsMs,
+      finalizationMs,
+    });
+  }
+
+  public rebuildTagSearchIndex(units: UnitSummary[]): void {
+    if (this.searchFilterIndex.size === 0 && this.searchFilterValues.size === 0) {
+      return;
+    }
+
+    const tagOrdinals = new Map<string, number[]>();
+    for (const unit of units) {
+      const ordinal = this.unitOrdinalLookup.ordinalsByUnitUuid.get(unit.uuid);
+      if (ordinal === undefined) continue;
+      for (const tag of getMergedTags(unit)) {
+        const ordinals = tagOrdinals.get(tag);
+        if (ordinals) ordinals.push(ordinal);
+        else tagOrdinals.set(tag, [ordinal]);
+      }
+    }
+
+    if (tagOrdinals.size > 0) {
+      const tagIndex = new Map<string, ReadonlySet<UnitUuid>>();
+      for (const [tag, ordinals] of tagOrdinals) {
+        tagIndex.set(tag, new IndexedUnitUuidSet(toSortedUniqueOrdinals(ordinals), this.unitOrdinalLookup));
+      }
+      this.searchFilterIndex.set('_tags', tagIndex);
+      const values = Array.from(tagIndex.keys()).sort((left, right) => naturalCompare(left, right));
+      this.searchFilterValues.set('_tags', values);
+      this.dropdownOptionUniverse.set(
+        '_tags',
+        values.map((name) => ({ name })),
+      );
+      return;
+    }
+
+    this.searchFilterIndex.delete('_tags');
+    this.searchFilterValues.delete('_tags');
+    this.dropdownOptionUniverse.delete('_tags');
+  }
+
+  public getIndexedUnitIds(filterKey: string, value: string): ReadonlySet<UnitUuid> | undefined {
+    return this.searchFilterIndex.get(filterKey)?.get(value);
+  }
+
+  public getIndexedFilterValues(filterKey: string): string[] {
+    return this.searchFilterValues.get(filterKey) ?? [];
+  }
+
+  public getIndexedASSpecials(unitUuid: UnitUuid): ParsedASSpecials | undefined {
+    const ordinal = this.unitOrdinalLookup.ordinalsByUnitUuid.get(unitUuid);
+    return ordinal === undefined ? undefined : this.asSpecialsByUnit[ordinal];
+  }
+
+  public getMulAvailabilityIndex(): MulAvailabilityIndex {
+    return this.factionEraSnapshot;
+  }
+
+  public getFactionEraUnitUuids(eraNames: readonly string[], factionNames: readonly string[]): ReadonlySet<UnitUuid> {
+    return this.factionEraSnapshot.getNamedFactionEraUnitUuids(eraNames, factionNames);
+  }
+
+  public getDropdownOptionUniverse(filterKey: string): UnitSearchDropdownOption[] {
+    return this.dropdownOptionUniverse.get(filterKey)?.map((option) => ({ ...option })) ?? [];
+  }
+
+  public getUnitStats(unit: UnitSummary): UnitBucketStats {
+    return this.unitStats[getUnitStatBucketKey(unit)] ?? EMPTY_UNIT_BUCKET_STATS;
+  }
+
+  private rebuildDropdownOptionUniverse(eras: Era[], factions: Faction[]): void {
+    this.dropdownOptionUniverse = new Map<string, UnitSearchDropdownOption[]>();
+    for (const filterKey of [
+      'type',
+      'subtype',
+      'as.TP',
+      'as.specials',
+      '_techBaseDisplay',
+      'role',
+      'weightClass',
+      'level',
+      'c3',
+      'moveType',
+      'as._motive',
+      'source',
+      'rulesRefs',
+      'componentName',
+      'weaponType',
+      'features',
+      'quirks',
+      '_tags',
+    ]) {
+      this.dropdownOptionUniverse.set(
+        filterKey,
+        this.getIndexedFilterValues(filterKey).map((name) => ({
+          name,
+          ...(filterKey === 'as.specials' && (this.asSpecialFieldCounts.get(name) ?? 0) > 0
+            ? {
+                minimumFieldLabels: getASSpecialMinimumFieldLabels(name, this.asSpecialFieldCounts.get(name) ?? 0),
+              }
+            : {}),
+        })),
+      );
+    }
+
+    this.dropdownOptionUniverse.set(
+      'era',
+      eras.map((era) => ({ name: era.name, img: era.img })),
+    );
+    this.dropdownOptionUniverse.set(
+      'faction',
+      factions.map((faction) => ({ name: faction.name, img: faction.img })),
+    );
+  }
+
+  private addASSpecialIndexValues(parsedSpecials: ParsedASSpecials | undefined, unitUuid: UnitUuid): void {
+    for (const occurrence of parsedSpecials?.occurrences ?? []) {
+      if (!occurrence.token) continue;
+      this.addSearchIndexValue('as.specials', occurrence.token, unitUuid);
+      const currentFieldCount = this.asSpecialFieldCounts.get(occurrence.token) ?? 0;
+      if (occurrence.values.length > currentFieldCount) {
+        this.asSpecialFieldCounts.set(occurrence.token, occurrence.values.length);
+      }
+    }
+  }
+
+  private addSearchIndexValue(filterKey: string, value: string | undefined, unitUuid: UnitUuid): void {
+    if (!value) {
+      return;
+    }
+
+    const ordinal = this.unitOrdinalLookup.ordinalsByUnitUuid.get(unitUuid);
+    if (ordinal === undefined || !this.searchFilterIndexBuilder) return;
+
+    const normalizedValue = String(value);
+    let filterIndex = this.searchFilterIndexBuilder.get(filterKey);
+    if (!filterIndex) {
+      filterIndex = new Map<string, number[]>();
+      this.searchFilterIndexBuilder.set(filterKey, filterIndex);
+    }
+
+    const ordinals = filterIndex.get(normalizedValue);
+    if (ordinals) ordinals.push(ordinal);
+    else filterIndex.set(normalizedValue, [ordinal]);
+  }
+
+  private addSearchIndexValues(filterKey: string, values: Iterable<string>, unitUuid: UnitUuid): void {
+    for (const value of values) {
+      this.addSearchIndexValue(filterKey, value, unitUuid);
+    }
+  }
+
+  private prepareUnitComponentIndexes(
+    unit: UnitSummary,
+    unitUuid: UnitUuid,
+    equipmentRegistry?: EquipmentRegistry,
+  ): void {
+    const counts: Partial<Record<WeaponType, number>> = {};
+
+    const addWeaponTypes = (components: readonly UnitComponent[]): void => {
+      for (const component of components) {
+        if (component.bay?.length) {
+          addWeaponTypes(component.bay);
+          continue;
         }
 
-        for (const era of eras) {
-            for (const uuid of this.mulAvailabilityIndex.getEraUnitUuids(era.id)) {
-                this.addSearchIndexValue('era', era.name, uuid);
-            }
-        }
-        for (const faction of factions) {
-            for (const uuid of this.mulAvailabilityIndex.getFactionUnitUuids(faction.id)) {
-                this.addSearchIndexValue('faction', faction.name, uuid);
-            }
+        const equipment = component.eq ?? equipmentRegistry?.findEquipment(component.id) ?? undefined;
+        if (!(equipment instanceof WeaponEquipment) || !Number.isFinite(component.q) || component.q <= 0) {
+          continue;
         }
 
-        for (const [filterKey, values] of this.searchFilterIndex.entries()) {
-            this.searchFilterValues.set(filterKey, Array.from(values.keys()).sort((left, right) => naturalCompare(left, right)));
+        for (const weaponType of equipment.getWeaponTypes()) {
+          counts[weaponType] = (counts[weaponType] ?? 0) + component.q;
         }
+      }
+    };
 
-        this.rebuildDropdownOptionUniverse(eras, factions);
-        this.factionEraSnapshot = this.createFactionEraSnapshot(eras, factions);
+    for (const component of unit.comp) {
+      this.addSearchIndexValue('componentName', component.n, unitUuid);
+    }
+    for (const name of this.getSyntheticComponentNames(unit)) {
+      this.addSearchIndexValue('componentName', name, unitUuid);
     }
 
-    public rebuildTagSearchIndex(units: UnitSummary[]): void {
-        if (this.searchFilterIndex.size === 0 && this.searchFilterValues.size === 0) {
-            return;
+    addWeaponTypes(unit.comp);
+    unit._weaponTypeCounts = counts;
+    unit._weaponTypes = WEAPON_TYPES.filter((weaponType) => (counts[weaponType] ?? 0) > 0);
+    this.addSearchIndexValues('weaponType', unit._weaponTypes, unitUuid);
+  }
+
+  private getASMotiveDisplayNames(unit: UnitSummary): string[] {
+    const movementModes = unit.as?.MVm;
+    if (!movementModes) {
+      return [];
+    }
+
+    const result: string[] = [];
+    for (const mode of Object.keys(AS_MOVEMENT_MODE_DISPLAY_NAMES)) {
+      if (mode in movementModes) {
+        result.push(AS_MOVEMENT_MODE_DISPLAY_NAMES[mode]);
+      }
+    }
+
+    for (const mode of Object.keys(movementModes)) {
+      if (!(mode in AS_MOVEMENT_MODE_DISPLAY_NAMES)) {
+        result.push(mode);
+      }
+    }
+
+    return result;
+  }
+
+  private formatUnitType(type: UnitType): string {
+    if (type === 'Handheld Weapon') {
+      return 'Weapon';
+    }
+
+    return type;
+  }
+
+  private getSyntheticComponentNames(unit: UnitSummary): string[] {
+    const names: string[] = [];
+    if (unit.armorType) names.push(unit.armorType.endsWith(' Armor') ? unit.armorType : `${unit.armorType} Armor`);
+    if (unit.structureType) {
+      names.push(unit.structureType.endsWith(' Structure') ? unit.structureType : `${unit.structureType} Structure`);
+    }
+    if (unit.engine) names.push(unit.engine.endsWith(' Engine') ? unit.engine : `${unit.engine} Engine`);
+    return names;
+  }
+
+  private sumWeaponDamageNoPhysical(unit: UnitSummary, components: UnitComponent[], ignoreOneshots = false): number {
+    let sum = 0;
+    for (const weapon of components) {
+      if (ignoreOneshots && weapon.os && weapon.os > 0) {
+        continue;
+      }
+      if (weapon.md && weapon.t !== 'P') {
+        let maxDamage = parseFloat(weapon.md) || 0;
+        if (unit.subtype === 'Battle Armor' && weapon.l !== 'SSW' && weapon.p < 1) {
+          maxDamage *= unit.internal;
         }
-
-        const tagIndex = new Map<string, Set<string>>();
-        for (const unit of units) {
-            for (const tag of getMergedTags(unit)) {
-                let unitIds = tagIndex.get(tag);
-                if (!unitIds) {
-                    unitIds = new Set<string>();
-                    tagIndex.set(tag, unitIds);
-                }
-                unitIds.add(unit.uuid);
-            }
-        }
-
-        if (tagIndex.size > 0) {
-            this.searchFilterIndex.set('_tags', tagIndex);
-            const values = Array.from(tagIndex.keys()).sort((left, right) => naturalCompare(left, right));
-            this.searchFilterValues.set('_tags', values);
-            this.dropdownOptionUniverse.set('_tags', values.map(name => ({ name })));
-            return;
-        }
-
-        this.searchFilterIndex.delete('_tags');
-        this.searchFilterValues.delete('_tags');
-        this.dropdownOptionUniverse.delete('_tags');
+        sum += maxDamage * (weapon.q || 1);
+      }
+      if (weapon.bay && Array.isArray(weapon.bay)) {
+        sum += this.sumWeaponDamageNoPhysical(unit, weapon.bay, ignoreOneshots);
+      }
     }
 
-    public getIndexedUnitIds(filterKey: string, value: string): ReadonlySet<string> | undefined {
-        return this.searchFilterIndex.get(filterKey)?.get(value);
-    }
-
-    public getIndexedFilterValues(filterKey: string): string[] {
-        return this.searchFilterValues.get(filterKey) ?? [];
-    }
-
-    public getIndexedASSpecials(unitUuid: string): ParsedASSpecials | undefined {
-        return this.asSpecialsByUnit.get(unitUuid);
-    }
-
-    public getSearchWorkerIndexSnapshot(): UnitSearchWorkerIndexSnapshot {
-        const snapshot: UnitSearchWorkerIndexSnapshot = {};
-
-        for (const [filterKey, valueMap] of this.searchFilterIndex.entries()) {
-            snapshot[filterKey] = {};
-            for (const [value, unitUuids] of valueMap.entries()) {
-                snapshot[filterKey][value] = Array.from(unitUuids);
-            }
-        }
-
-        return snapshot;
-    }
-
-    public getSearchWorkerFactionEraSnapshot(): UnitSearchWorkerFactionEraSnapshot {
-        return Object.fromEntries(
-            Object.entries(this.factionEraSnapshot).map(([eraName, factionMap]) => [eraName, { ...factionMap }])
-        );
-    }
-
-    public getMulAvailabilityIndex(): MulAvailabilityIndex {
-        return this.mulAvailabilityIndex;
-    }
-
-    public getFactionEraUnitUuids(eraNames: readonly string[], factionNames: readonly string[]): ReadonlySet<string> {
-        return this.mulAvailabilityIndex.getNamedFactionEraUnitUuids(eraNames, factionNames);
-    }
-
-    public getDropdownOptionUniverse(filterKey: string): UnitSearchDropdownOption[] {
-        return this.dropdownOptionUniverse.get(filterKey)?.map(option => ({ ...option })) ?? [];
-    }
-
-    public getIndexedComponentUnitCounts(name: string): ReadonlyMap<string, number> | undefined {
-        return this.componentCountIndex.get(name.toLowerCase());
-    }
-
-    public getUnitStats(unit: UnitSummary): MinMaxStatsRange {
-        return this.unitStats[getUnitStatBucketKey(unit)] ?? Object.fromEntries(
-            Object.keys(getUnitStatValues(unit)).map(key => [key, summarizeStat()]),
-        ) as unknown as MinMaxStatsRange;
-    }
-
-    private rebuildDropdownOptionUniverse(eras: Era[], factions: Faction[]): void {
-        this.dropdownOptionUniverse = new Map<string, UnitSearchDropdownOption[]>();
-        for (const filterKey of [
-            'type',
-            'subtype',
-            'as.TP',
-            'as.specials',
-            '_techBaseDisplay',
-            'role',
-            'weightClass',
-            'level',
-            'c3',
-            'moveType',
-            'as._motive',
-            'source',
-            'rulesRefs',
-            'componentName',
-            'weaponType',
-            'features',
-            'quirks',
-            '_tags',
-        ]) {
-            this.dropdownOptionUniverse.set(filterKey, this.getIndexedFilterValues(filterKey).map(name => ({
-                name,
-                ...(filterKey === 'as.specials' && (this.asSpecialFieldCounts.get(name) ?? 0) > 0
-                    ? {
-                        minimumFieldLabels: getASSpecialMinimumFieldLabels(
-                            name,
-                            this.asSpecialFieldCounts.get(name) ?? 0,
-                        ),
-                    }
-                    : {}),
-            })));
-        }
-
-        this.dropdownOptionUniverse.set('era', eras.map(era => ({ name: era.name, img: era.img })));
-        this.dropdownOptionUniverse.set('faction', factions.map(faction => ({ name: faction.name, img: faction.img })));
-    }
-
-    private addASSpecialIndexValues(parsedSpecials: ParsedASSpecials | undefined, unitUuid: string): void {
-        for (const occurrence of parsedSpecials?.occurrences ?? []) {
-            if (!occurrence.token) {
-                continue;
-            }
-
-            this.addSearchIndexValue('as.specials', occurrence.token, unitUuid);
-            const currentFieldCount = this.asSpecialFieldCounts.get(occurrence.token) ?? 0;
-            if (occurrence.values.length > currentFieldCount) {
-                this.asSpecialFieldCounts.set(occurrence.token, occurrence.values.length);
-            }
-        }
-    }
-
-    private createFactionEraSnapshot(eras: Era[], factions: Faction[]): UnitSearchWorkerFactionEraSnapshot {
-        return Object.fromEntries(eras.map(era => [era.name, Object.fromEntries(
-            factions.map(faction => [faction.name, Array.from(this.mulAvailabilityIndex.getFactionEraUnitUuids(faction.id, era.id))]),
-        )]));
-    }
-
-    private addSearchIndexValue(filterKey: string, value: string | undefined, unitUuid: string): void {
-        if (!value) {
-            return;
-        }
-
-        const normalizedValue = String(value);
-        let filterIndex = this.searchFilterIndex.get(filterKey);
-        if (!filterIndex) {
-            filterIndex = new Map<string, Set<string>>();
-            this.searchFilterIndex.set(filterKey, filterIndex);
-        }
-
-        let unitIds = filterIndex.get(normalizedValue);
-        if (!unitIds) {
-            unitIds = new Set<string>();
-            filterIndex.set(normalizedValue, unitIds);
-        }
-
-        unitIds.add(unitUuid);
-    }
-
-    private addSearchIndexValues(filterKey: string, values: Iterable<string>, unitUuid: string): void {
-        for (const value of values) {
-            this.addSearchIndexValue(filterKey, value, unitUuid);
-        }
-    }
-
-    private addComponentCountValues(unit: UnitSummary): void {
-        for (const component of unit.comp) {
-            const normalizedName = component.n.toLowerCase();
-            let unitCounts = this.componentCountIndex.get(normalizedName);
-            if (!unitCounts) {
-                unitCounts = new Map<string, number>();
-                this.componentCountIndex.set(normalizedName, unitCounts);
-            }
-
-            unitCounts.set(unit.uuid, (unitCounts.get(unit.uuid) || 0) + component.q);
-        }
-    }
-
-    private prepareUnitWeaponTypes(unit: UnitSummary): void {
-        const counts: Partial<Record<WeaponType, number>> = {};
-
-        const addComponents = (components: readonly UnitComponent[]): void => {
-            for (const component of components) {
-                if (component.bay?.length) {
-                    addComponents(component.bay);
-                    continue;
-                }
-
-                if (!(component.eq instanceof WeaponEquipment) || !Number.isFinite(component.q) || component.q <= 0) {
-                    continue;
-                }
-
-                for (const weaponType of component.eq.getWeaponTypes()) {
-                    counts[weaponType] = (counts[weaponType] ?? 0) + component.q;
-                }
-            }
-        };
-
-        addComponents(unit.comp);
-        unit._weaponTypeCounts = counts;
-        unit._weaponTypes = WEAPON_TYPES.filter(weaponType => (counts[weaponType] ?? 0) > 0);
-    }
-
-    private getASMotiveDisplayNames(unit: UnitSummary): string[] {
-        const movementModes = unit.as?.MVm;
-        if (!movementModes) {
-            return [];
-        }
-
-        const result: string[] = [];
-        for (const mode of Object.keys(AS_MOVEMENT_MODE_DISPLAY_NAMES)) {
-            if (mode in movementModes) {
-                result.push(AS_MOVEMENT_MODE_DISPLAY_NAMES[mode]);
-            }
-        }
-
-        for (const mode of Object.keys(movementModes)) {
-            if (!(mode in AS_MOVEMENT_MODE_DISPLAY_NAMES)) {
-                result.push(mode);
-            }
-        }
-
-        return result;
-    }
-
-    private formatUnitType(type: string): string {
-        if (type === 'Handheld Weapon') {
-            return 'Weapon';
-        }
-
-        return type;
-    }
-
-    private ensureSyntheticComponent(components: UnitComponent[], id: string, location: string): void {
-        if (components.some(component => component.id === id && component.t === 'HIDDEN' && component.l === location && component.p === -1)) {
-            return;
-        }
-
-        components.push({ q: 1, n: id, id, l: location, t: 'HIDDEN', p: -1 });
-    }
-
-    private sumWeaponDamageNoPhysical(unit: UnitSummary, components: UnitComponent[], ignoreOneshots = false): number {
-        let sum = 0;
-        for (const weapon of components) {
-            if (ignoreOneshots && weapon.os && weapon.os > 0) {
-                continue;
-            }
-            if (weapon.md && weapon.t !== 'P') {
-                let maxDamage = parseFloat(weapon.md) || 0;
-                if (unit.subtype === 'Battle Armor' && weapon.l !== 'SSW' && weapon.p < 1) {
-                    maxDamage *= unit.internal;
-                }
-                sum += maxDamage * (weapon.q || 1);
-            }
-            if (weapon.bay && Array.isArray(weapon.bay)) {
-                sum += this.sumWeaponDamageNoPhysical(unit, weapon.bay, ignoreOneshots);
-            }
-        }
-
-        return Math.round(sum);
-    }
-
+    return Math.round(sum);
+  }
 }

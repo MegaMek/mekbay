@@ -19,6 +19,7 @@ import {
   VehicleEntity,
   WarShipEntity,
 } from '../../../entities';
+import { isStolOrVstolEquipment } from '../../../../chassis-equipment.model';
 
 export const AEROSPACE_EXPORT_TYPES: ReadonlySet<ASUnitTypeCode> = new Set([
   'AF', 'CF', 'SC', 'DS', 'DA', 'SS', 'JS', 'WS',
@@ -89,7 +90,7 @@ export function hasAlphaStrikeVstolCapability(entity: BaseEntity, type: ASUnitTy
   if (entity instanceof ConvFighterEntity) return entity.vstol();
   if (entity instanceof FixedWingSupportEntity) {
     return entity.equipment().some(mount =>
-      mount.equipment?.hasAnyFlag(['F_VSTOL_CHASSIS', 'F_STOL_CHASSIS']));
+      isStolOrVstolEquipment(mount.equipment));
   }
   return type === 'AF' || type === 'SC' || type === 'DS' || type === 'DA';
 }

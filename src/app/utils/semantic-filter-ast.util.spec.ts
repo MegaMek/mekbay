@@ -2,18 +2,103 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 // Author: Drake
 
+import type { AvailabilityFilterScope } from '../models/megamek/availability.model';
+
 import { GameSystem } from '../models/common.model';
-import { filterUnitsWithAST, getMatchingTextForUnit, parseSemanticQueryAST, tokenizeForHighlight, type ParseResult } from './semantic-filter-ast.util';
-import { filterStateToSemanticText, tokensToFilterState } from './semantic-filter.util';
+import { asUnitUuid, type UnitUuid } from '../services/unit-catalog/unit-catalog.types';
+import { prepareASTSearch, parseSemanticQueryAST, tokenizeForHighlight, type EvaluatorContext, type GroupASTNode, type ParseResult } from './semantic-filter-ast.util';
+import { buildSemanticKeyMap, filterStateToSemanticText, tokensToFilterState } from './semantic-filter.util';
 import { matchesSearch, parseSearchQuery } from './search.util';
 
-function getUnitId(unit: { id?: string | number; name?: string }): string {
-    if (unit.id !== undefined) {
-        return String(unit.id);
+function filterUnitsWithAST<TUnit extends object>(
+    units: TUnit[], ast: GroupASTNode, context: EvaluatorContext<TUnit>, scope?: AvailabilityFilterScope,
+): TUnit[] {
+    return prepareASTSearch(ast, context, scope).filter(units);
+}
+
+function testUnitUuid(value: string | number): UnitUuid {
+    const text = String(value);
+    let hash = 0;
+    for (const character of text) {
+        hash = ((hash * 31) ^ character.charCodeAt(0)) >>> 0;
+    }
+    const suffix = `${hash.toString(16).padStart(8, '0')}${text.length.toString(16).padStart(4, '0')}`;
+    return asUnitUuid(`01900000-0000-7000-8000-${suffix}`);
+}
+
+function getUnitId(unit: unknown): UnitUuid {
+    if (!unit || typeof unit !== 'object') return testUnitUuid('missing');
+    const value = unit as { id?: string | number; name?: string };
+    if (value.id !== undefined) {
+        return testUnitUuid(value.id);
     }
 
-    return unit.name ?? '';
+    return testUnitUuid(value.name ?? 'missing');
 }
+
+function unitIds(...values: readonly (string | number)[]): Set<UnitUuid> {
+    return new Set(values.map(testUnitUuid));
+}
+
+describe('unit identity semantic fields', () => {
+    it('removes the internal-name field while retaining chassis and model filters', () => {
+        for (const gameSystem of [GameSystem.CBT, GameSystem.AS]) {
+            const keys = buildSemanticKeyMap(gameSystem);
+            expect(keys.has('name')).toBeFalse();
+            expect(keys.has('chassis')).toBeTrue();
+            expect(keys.has('model')).toBeTrue();
+            expect(parseSemanticQueryAST('chassis:Atlas model:AS7', gameSystem).errors).toEqual([]);
+        }
+    });
+});
+
+describe('prepared semantic search', () => {
+    const context = {
+        gameSystem: GameSystem.CBT,
+        getUnitId,
+        getProperty: (unit: { name: string; bv: number }, key: string) => key === 'bv' ? unit.bv : unit.name,
+        matchesText: (unit: { name: string; bv: number }, text: string) => unit.name.includes(text),
+    };
+
+    it('reads current unit facts without retaining previous matches', () => {
+        const unit = { name: 'Atlas', bv: 1200 };
+        const search = prepareASTSearch(parseSemanticQueryAST('Atlas bv>1000', GameSystem.CBT).ast, context);
+        expect(search.filter([unit])).toEqual([unit]);
+        unit.bv = 900;
+        expect(search.filter([unit])).toEqual([]);
+    });
+
+    it('uses the first matching OR branch for relevance even when several branches match', () => {
+        const unit = { name: 'Atlas AS7', bv: 1200 };
+        const search = prepareASTSearch(parseSemanticQueryAST('(Atlas bv>1000) OR AS7', GameSystem.CBT).ast, context);
+        expect(search.filter([unit])).toEqual([unit]);
+        expect(search.matchingText(unit)).toEqual(['Atlas']);
+        unit.bv = 900;
+        expect(search.matchingText(unit)).toEqual(['AS7']);
+    });
+
+    it('unescapes literal search text consistently for filtering and relevance', () => {
+        const unit = { name: 'Puma (Adder)', bv: 1200 };
+        const search = prepareASTSearch(parseSemanticQueryAST('Puma \\(Adder\\)', GameSystem.CBT).ast, context);
+        expect(search.filter([unit])).toEqual([unit]);
+        expect(search.matchingText(unit)).toEqual(['Puma', '(Adder)']);
+    });
+
+    it('keeps query scopes independent when one parsed query is used in different searches', () => {
+        const unit = { name: 'Atlas', bv: 1200 };
+        const ast = parseSemanticQueryAST('faction="Federated Suns"', GameSystem.CBT).ast;
+        const scopedContext = {
+            ...context,
+            unitBelongsToFaction: (_unit: typeof unit, _faction: string, eras?: readonly string[]) =>
+                eras?.includes('Jihad') ?? false,
+            getAllFactionNames: () => ['Federated Suns'],
+        };
+        const jihad = prepareASTSearch(ast, scopedContext, { eraNames: ['Jihad'] });
+        const invasion = prepareASTSearch(ast, scopedContext, { eraNames: ['Clan Invasion'] });
+        expect(invasion.filter([unit])).toEqual([]);
+        expect(jihad.filter([unit])).toEqual([unit]);
+    });
+});
 
 describe('semantic boolean filters', () => {
     const units = [
@@ -24,9 +109,9 @@ describe('semantic boolean filters', () => {
     ];
 
     function filterUnitNames(query: string): string[] {
-        const result = parseSemanticQueryAST(query, GameSystem.CLASSIC);
+        const result = parseSemanticQueryAST(query, GameSystem.CBT);
         const filtered = filterUnitsWithAST(units, result.ast, {
-            gameSystem: GameSystem.CLASSIC,
+            gameSystem: GameSystem.CBT,
             getUnitId,
             getProperty: (unit: typeof units[number], key: string) => unit[key as keyof typeof unit],
         });
@@ -35,7 +120,7 @@ describe('semantic boolean filters', () => {
     }
 
     it('parses key:yes/no boolean syntax as semantic filters', () => {
-        const result = parseSemanticQueryAST('canon:yes canon:no published:yes published:no', GameSystem.CLASSIC);
+        const result = parseSemanticQueryAST('canon:yes canon:no published:yes published:no', GameSystem.CBT);
 
         expect(result.textSearch).toBe('');
         expect(result.tokens).toEqual([
@@ -69,18 +154,18 @@ describe('semantic boolean filters', () => {
     });
 
     it('leaves bare boolean words as text search', () => {
-        const result = parseSemanticQueryAST('canon published', GameSystem.CLASSIC);
+        const result = parseSemanticQueryAST('canon published', GameSystem.CBT);
 
         expect(result.textSearch).toBe('canon published');
         expect(result.tokens).toEqual([]);
     });
 
     it('uses indexed boolean candidates when available', () => {
-        const result = parseSemanticQueryAST('canon:yes', GameSystem.CLASSIC);
+        const result = parseSemanticQueryAST('canon:yes', GameSystem.CBT);
         let propertyChecks = 0;
 
         const filtered = filterUnitsWithAST(units, result.ast, {
-            gameSystem: GameSystem.CLASSIC,
+            gameSystem: GameSystem.CBT,
             getUnitId,
             getProperty: (unit: typeof units[number], key: string) => {
                 propertyChecks++;
@@ -92,13 +177,46 @@ describe('semantic boolean filters', () => {
                     return undefined;
                 }
                 return value === 'yes'
-                    ? new Set(['1', '2'])
-                    : new Set(['3', '4']);
+                    ? unitIds(1, 2)
+                    : unitIds(3, 4);
             },
         });
 
         expect(filtered).toEqual([units[0], units[1]]);
         expect(propertyChecks).toBe(2);
+    });
+});
+
+describe('semantic countable filters', () => {
+    it('uses the equipment posting as a safe prefilter before checking quantity', () => {
+        const units = [
+            { id: 1, componentName: ['LRM 5'], counts: new Map([['lrm 5', 4]]) },
+            { id: 2, componentName: ['LRM 5'], counts: new Map([['lrm 5', 1]]) },
+            { id: 3, componentName: ['Medium Laser'], counts: new Map([['medium laser', 2]]) },
+        ];
+        const result = parseSemanticQueryAST('equipment="LRM 5:>=2"', GameSystem.CBT);
+        const exactCheckedUnitIds = new Set<number>();
+
+        const filtered = filterUnitsWithAST(units, result.ast, {
+            gameSystem: GameSystem.CBT,
+            getUnitId,
+            getProperty: (unit, key) => unit[key as keyof typeof unit],
+            getCountableValues: unit => {
+                exactCheckedUnitIds.add(unit.id);
+                return unit.counts;
+            },
+            getIndexedFilterValues: filterKey => filterKey === 'componentName'
+                ? ['LRM 5', 'Medium Laser']
+                : [],
+            getIndexedUnitIds: (filterKey, value) => {
+                if (filterKey !== 'componentName') return undefined;
+                return value === 'LRM 5' ? unitIds(1, 2) : unitIds(3);
+            },
+        });
+
+        expect(result.errors).toEqual([]);
+        expect(filtered).toEqual([units[0]]);
+        expect(exactCheckedUnitIds).toEqual(new Set([1, 2]));
     });
 });
 
@@ -115,9 +233,9 @@ describe('semantic Alpha Strike damage filters', () => {
     }
 
     function filterASDamageUnitNames(query: string): string[] {
-        const result = parseSemanticQueryAST(query, GameSystem.ALPHA_STRIKE);
+        const result = parseSemanticQueryAST(query, GameSystem.AS);
         const filtered = filterUnitsWithAST(units, result.ast, {
-            gameSystem: GameSystem.ALPHA_STRIKE,
+            gameSystem: GameSystem.AS,
             getUnitId,
             getProperty: getNestedProperty,
         });
@@ -134,8 +252,8 @@ describe('semantic Alpha Strike damage filters', () => {
     });
 
     it('round-trips zero-star damage through semantic filter state', () => {
-        const parsed = parseSemanticQueryAST('dmgs=0* dmgm>0 dmgl<1', GameSystem.ALPHA_STRIKE);
-        const state = tokensToFilterState(parsed.tokens, GameSystem.ALPHA_STRIKE, {
+        const parsed = parseSemanticQueryAST('dmgs=0* dmgm>0 dmgl<1', GameSystem.AS);
+        const state = tokensToFilterState(parsed.tokens, GameSystem.AS, {
             'as.dmg._dmgS': [0, 6],
             'as.dmg._dmgM': [0, 6],
             'as.dmg._dmgL': [0, 6],
@@ -149,14 +267,14 @@ describe('semantic Alpha Strike damage filters', () => {
                 value: [0.5, 0.5],
                 interactedWith: true,
             },
-        }, '', GameSystem.ALPHA_STRIKE, {
+        }, '', GameSystem.AS, {
             'as.dmg._dmgS': [0, 6],
         })).toBe('dmgs=0*');
     });
 
     it('formats zero-star damage exclusion ranges without nonexistent half steps', () => {
-        const parsed = parseSemanticQueryAST('dmgs!=1', GameSystem.ALPHA_STRIKE);
-        const state = tokensToFilterState(parsed.tokens, GameSystem.ALPHA_STRIKE, {
+        const parsed = parseSemanticQueryAST('dmgs!=1', GameSystem.AS);
+        const state = tokensToFilterState(parsed.tokens, GameSystem.AS, {
             'as.dmg._dmgS': [0, 6],
         });
 
@@ -169,7 +287,7 @@ describe('semantic Alpha Strike damage filters', () => {
 
 describe('semantic filter exclusivity', () => {
     it('parses == as an operator for dropdown-like filters', () => {
-        const result = parseSemanticQueryAST('faction=="Draconis Combine"', GameSystem.CLASSIC);
+        const result = parseSemanticQueryAST('faction=="Draconis Combine"', GameSystem.CBT);
 
         expect(result.errors).toEqual([]);
         expect(result.tokens).toEqual([
@@ -188,10 +306,10 @@ describe('semantic filter exclusivity', () => {
             { id: 2, faction: ['Draconis Combine', 'Federated Suns'] },
             { id: 3, faction: ['Federated Suns'] }
         ];
-        const result = parseSemanticQueryAST('faction==draco*', GameSystem.CLASSIC);
+        const result = parseSemanticQueryAST('faction==draco*', GameSystem.CBT);
 
         const filtered = filterUnitsWithAST(units, result.ast, {
-            gameSystem: GameSystem.CLASSIC,
+            gameSystem: GameSystem.CBT,
             getUnitId,
             getProperty: (unit: { faction?: string[] }, key: string) => unit[key as keyof typeof unit],
             unitBelongsToFaction: (unit: { faction?: string[] }, factionName: string) =>
@@ -208,10 +326,10 @@ describe('semantic filter exclusivity', () => {
             { id: 2, role: ['Scout', 'Striker'] },
             { id: 3, role: ['Striker'] }
         ];
-        const result = parseSemanticQueryAST('role==sc*', GameSystem.CLASSIC);
+        const result = parseSemanticQueryAST('role==sc*', GameSystem.CBT);
 
         const filtered = filterUnitsWithAST(units, result.ast, {
-            gameSystem: GameSystem.CLASSIC,
+            gameSystem: GameSystem.CBT,
             getUnitId,
             getProperty: (unit: { role?: string[] }, key: string) => unit[key as keyof typeof unit]
         });
@@ -224,20 +342,20 @@ describe('semantic filter exclusivity', () => {
             name: `Unit ${index + 1}`,
             faction: index < 2 ? ['Draconis Combine'] : ['Federated Suns']
         }));
-        const result = parseSemanticQueryAST('faction=draco*', GameSystem.CLASSIC);
+        const result = parseSemanticQueryAST('faction=draco*', GameSystem.CBT);
         let membershipChecks = 0;
 
         const filtered = filterUnitsWithAST(units, result.ast, {
-            gameSystem: GameSystem.CLASSIC,
+            gameSystem: GameSystem.CBT,
             getProperty: (unit: { faction?: string[] }, key: string) => unit[key as keyof typeof unit],
             getUnitId,
             getIndexedFilterValues: (filterKey: string) => filterKey === 'faction' ? ['Draconis Combine', 'Federated Suns'] : [],
             getIndexedUnitIds: (filterKey: string, value: string) => {
                 if (filterKey === 'faction' && value === 'Draconis Combine') {
-                    return new Set(['Unit 1', 'Unit 2']);
+                    return unitIds('Unit 1', 'Unit 2');
                 }
                 if (filterKey === 'faction' && value === 'Federated Suns') {
-                    return new Set(['Unit 3', 'Unit 4', 'Unit 5', 'Unit 6']);
+                    return unitIds('Unit 3', 'Unit 4', 'Unit 5', 'Unit 6');
                 }
                 return undefined;
             },
@@ -264,11 +382,11 @@ describe('semantic filter exclusivity', () => {
             'Federated Suns',
             ...Array.from({ length: 80 }, (_, index) => `Unused Faction ${index + 1}`),
         ];
-        const result = parseSemanticQueryAST('faction=="Capellan *"', GameSystem.CLASSIC);
+        const result = parseSemanticQueryAST('faction=="Capellan *"', GameSystem.CBT);
         let membershipChecks = 0;
 
         const filtered = filterUnitsWithAST(units, result.ast, {
-            gameSystem: GameSystem.CLASSIC,
+            gameSystem: GameSystem.CBT,
             getProperty: (unit: { faction?: string[] }, key: string) => unit[key as keyof typeof unit],
             getUnitId,
             getIndexedFilterValues: (filterKey: string) => filterKey === 'faction' ? allFactionNames : [],
@@ -278,16 +396,16 @@ describe('semantic filter exclusivity', () => {
                 }
 
                 if (value === 'Capellan Confederation') {
-                    return new Set(['Unit 1', 'Unit 2']);
+                    return unitIds('Unit 1', 'Unit 2');
                 }
                 if (value === 'Capellan March') {
-                    return new Set<string>();
+                    return new Set<UnitUuid>();
                 }
                 if (value === 'Federated Suns') {
-                    return new Set(['Unit 2', 'Unit 3']);
+                    return unitIds('Unit 2', 'Unit 3');
                 }
 
-                return new Set<string>();
+                return new Set<UnitUuid>();
             },
             unitBelongsToFaction: (unit: { faction?: string[] }, factionName: string) => {
                 membershipChecks++;
@@ -302,9 +420,9 @@ describe('semantic filter exclusivity', () => {
 
     it('keeps an explicit empty era scope distinct from global exclusivity', () => {
         const units = [{ id: 1 }, { id: 2 }];
-        const result = parseSemanticQueryAST('faction=="Clan Coyote"', GameSystem.CLASSIC);
+        const result = parseSemanticQueryAST('faction=="Clan Coyote"', GameSystem.CBT);
         const context = {
-            gameSystem: GameSystem.CLASSIC,
+            gameSystem: GameSystem.CBT,
             getProperty: () => undefined,
             getUnitId,
             getIndexedFilterValues: (filterKey: string) => filterKey === 'faction'
@@ -315,9 +433,9 @@ describe('semantic filter exclusivity', () => {
                     return undefined;
                 }
                 if (scope?.eraNames !== undefined) {
-                    return new Set<string>();
+                    return new Set<UnitUuid>();
                 }
-                return value === 'Clan Coyote' ? new Set(['1']) : new Set(['2']);
+                return value === 'Clan Coyote' ? unitIds(1) : unitIds(2);
             },
             getAllFactionNames: () => ['Clan Coyote', 'Federated Suns'],
         };
@@ -326,7 +444,7 @@ describe('semantic filter exclusivity', () => {
         expect(filterUnitsWithAST(units, result.ast, context, { eraNames: [] })).toEqual([]);
 
         const fallbackContext = {
-            gameSystem: GameSystem.CLASSIC,
+            gameSystem: GameSystem.CBT,
             getProperty: () => undefined,
             getUnitId,
             unitBelongsToFaction: (
@@ -355,7 +473,7 @@ describe('semantic filter exclusivity', () => {
 
         const scopedResult = parseSemanticQueryAST(
             'era="Clan Invasion" faction=="Clan Coyote"',
-            GameSystem.CLASSIC,
+            GameSystem.CBT,
         );
         expect(filterUnitsWithAST(units, scopedResult.ast, fallbackContext)).toEqual([units[0]]);
         expect(filterUnitsWithAST(units, scopedResult.ast, fallbackContext, { eraNames: [] })).toEqual([]);
@@ -371,10 +489,10 @@ describe('semantic filter exclusivity', () => {
         };
         const result = parseSemanticQueryAST(
             '(faction=="Clan Coyote" Atlas) OR (faction=="Federated Suns" Zzz)',
-            GameSystem.CLASSIC,
+            GameSystem.CBT,
         );
         const context = {
-            gameSystem: GameSystem.CLASSIC,
+            gameSystem: GameSystem.CBT,
             getProperty: () => undefined,
             getUnitId,
             matchesText: (_unit: typeof unit, text: string) => text === 'Atlas',
@@ -394,7 +512,7 @@ describe('semantic filter exclusivity', () => {
 
         expect(result.errors).toEqual([]);
         expect(filterUnitsWithAST([unit], result.ast, context, scope)).toEqual([unit]);
-        expect(getMatchingTextForUnit(result.ast, unit, context, scope)).toEqual(['Atlas']);
+        expect(prepareASTSearch(result.ast, context, scope).matchingText(unit)).toEqual(['Atlas']);
     });
 
     it('uses indexed results for wildcard external include filters without per-unit membership scans', () => {
@@ -408,11 +526,11 @@ describe('semantic filter exclusivity', () => {
             'Capellan March',
             'Federated Suns',
         ];
-        const result = parseSemanticQueryAST('faction="Capellan *"', GameSystem.CLASSIC);
+        const result = parseSemanticQueryAST('faction="Capellan *"', GameSystem.CBT);
         let membershipChecks = 0;
 
         const filtered = filterUnitsWithAST(units, result.ast, {
-            gameSystem: GameSystem.CLASSIC,
+            gameSystem: GameSystem.CBT,
             getProperty: (unit: { faction?: string[] }, key: string) => unit[key as keyof typeof unit],
             getUnitId,
             getIndexedFilterValues: (filterKey: string) => filterKey === 'faction' ? allFactionNames : [],
@@ -422,16 +540,16 @@ describe('semantic filter exclusivity', () => {
                 }
 
                 if (value === 'Capellan Confederation') {
-                    return new Set(['Unit 1']);
+                    return unitIds('Unit 1');
                 }
                 if (value === 'Capellan March') {
-                    return new Set(['Unit 2']);
+                    return unitIds('Unit 2');
                 }
                 if (value === 'Federated Suns') {
-                    return new Set(['Unit 3']);
+                    return unitIds('Unit 3');
                 }
 
-                return new Set<string>();
+                return new Set<UnitUuid>();
             },
             unitBelongsToFaction: (unit: { faction?: string[] }, factionName: string) => {
                 membershipChecks++;
@@ -449,11 +567,11 @@ describe('semantic filter exclusivity', () => {
             { id: 1, packMemberships: ['Essentials Box Set'] },
             { id: 2, packMemberships: [] },
         ];
-        const result = parseSemanticQueryAST('pack="Essentials Box Set"', GameSystem.CLASSIC);
+        const result = parseSemanticQueryAST('pack="Essentials Box Set"', GameSystem.CBT);
         let membershipChecks = 0;
 
         const filtered = filterUnitsWithAST(units, result.ast, {
-            gameSystem: GameSystem.CLASSIC,
+            gameSystem: GameSystem.CBT,
             getUnitId,
             getProperty: () => undefined,
             getIndexedFilterValues: () => [],
@@ -474,19 +592,19 @@ describe('semantic filter exclusivity', () => {
             { id: 1, faction: ["Wolf's Dragoons"] },
             { id: 2, faction: ['Clan Wolf'] }
         ];
-        const result = parseSemanticQueryAST('faction="Wolfs Dragoons"', GameSystem.CLASSIC);
+        const result = parseSemanticQueryAST('faction="Wolfs Dragoons"', GameSystem.CBT);
 
         const filtered = filterUnitsWithAST(units, result.ast, {
-            gameSystem: GameSystem.CLASSIC,
+            gameSystem: GameSystem.CBT,
             getUnitId,
             getProperty: (unit: { faction?: string[] }, key: string) => unit[key as keyof typeof unit],
             getIndexedFilterValues: (filterKey: string) => filterKey === 'faction' ? ["Wolf's Dragoons", 'Clan Wolf'] : [],
             getIndexedUnitIds: (filterKey: string, value: string) => {
                 if (filterKey === 'faction' && value === "Wolf's Dragoons") {
-                    return new Set(['1']);
+                    return unitIds(1);
                 }
                 if (filterKey === 'faction' && value === 'Clan Wolf') {
-                    return new Set(['2']);
+                    return unitIds(2);
                 }
                 return undefined;
             },
@@ -522,20 +640,20 @@ describe('semantic filter exclusivity', () => {
                 },
             },
         ];
-        const result = parseSemanticQueryAST('era="Clan Invasion" faction="Clan Coyote"', GameSystem.CLASSIC);
+        const result = parseSemanticQueryAST('era="Clan Invasion" faction="Clan Coyote"', GameSystem.CBT);
 
         const filtered = filterUnitsWithAST(units, result.ast, {
-            gameSystem: GameSystem.CLASSIC,
+            gameSystem: GameSystem.CBT,
             getUnitId,
-            getProperty: (unit: { era?: string[] }, key: string) => unit[key as keyof typeof unit],
-            unitBelongsToEra: (unit: { era?: string[] }, eraName: string) =>
+            getProperty: (unit: typeof units[number], key: string) => unit[key as keyof typeof unit],
+            unitBelongsToEra: (unit: typeof units[number], eraName: string) =>
                 (unit.era ?? []).includes(eraName),
             unitBelongsToFaction: (
-                unit: { factionEras?: Record<string, string[]> },
+                unit: typeof units[number],
                 factionName: string,
                 eraNames?: readonly string[],
             ) => {
-                const membershipEraNames = unit.factionEras?.[factionName] ?? [];
+                const membershipEraNames = (unit.factionEras as Record<string, string[]> | undefined)?.[factionName] ?? [];
                 if (eraNames !== undefined) {
                     return eraNames.some(eraName => membershipEraNames.includes(eraName));
                 }
@@ -566,10 +684,10 @@ describe('semantic filter exclusivity', () => {
                 },
             },
         ];
-        const result = parseSemanticQueryAST('from=Requisition rarity=Rare', GameSystem.CLASSIC);
+        const result = parseSemanticQueryAST('from=Requisition rarity=Rare', GameSystem.CBT);
 
         const filtered = filterUnitsWithAST(units, result.ast, {
-            gameSystem: GameSystem.CLASSIC,
+            gameSystem: GameSystem.CBT,
             getUnitId,
             getProperty: () => undefined,
             unitMatchesAvailabilityFrom: (unit: { bySource: Record<string, string> }, availabilityFromName: string) => {
@@ -613,33 +731,35 @@ describe('semantic filter exclusivity', () => {
                 },
             },
         ];
-        const result = parseSemanticQueryAST('era="Clan Invasion" faction="Federated Suns" rarity=Rare', GameSystem.CLASSIC);
+        const result = parseSemanticQueryAST('era="Clan Invasion" faction="Federated Suns" rarity=Rare', GameSystem.CBT);
 
         const filtered = filterUnitsWithAST(units, result.ast, {
-            gameSystem: GameSystem.CLASSIC,
+            gameSystem: GameSystem.CBT,
             getUnitId,
             getProperty: () => undefined,
-            unitBelongsToEra: (unit: { eras?: string[] }, eraName: string) => (unit.eras ?? []).includes(eraName),
+            unitBelongsToEra: (unit: typeof units[number], eraName: string) => (unit.eras ?? []).includes(eraName),
             unitBelongsToFaction: (
-                unit: { factionEras?: Record<string, string[]> },
+                unit: typeof units[number],
                 factionName: string,
                 eraNames?: readonly string[],
             ) => {
-                const membershipEraNames = unit.factionEras?.[factionName] ?? [];
+                const membershipEraNames = (unit.factionEras as Record<string, string[]> | undefined)?.[factionName] ?? [];
                 if (eraNames !== undefined) {
                     return eraNames.some((eraName) => membershipEraNames.includes(eraName));
                 }
                 return membershipEraNames.length > 0;
             },
             unitMatchesAvailabilityRarity: (
-                unit: { rarityByContext: Record<string, string> },
+                unit: typeof units[number],
                 rarityName: string,
                 scope,
             ) => {
                 const eraNames = scope?.eraNames ?? [];
                 const factionNames = scope?.factionNames ?? [];
                 return eraNames.some((eraName) => (
-                    factionNames.some((factionName) => unit.rarityByContext[`${eraName}|${factionName}`] === rarityName)
+                    factionNames.some((factionName) => (
+                        unit.rarityByContext as Record<string, string>
+                    )[`${eraName}|${factionName}`] === rarityName)
                 ));
             },
             getAllEraNames: () => ['Clan Invasion'],
@@ -672,10 +792,10 @@ describe('semantic filter exclusivity', () => {
             },
         ];
         const indexedScopes: Array<{ filterKey: string; value: string; factionNames?: readonly string[] }> = [];
-        const result = parseSemanticQueryAST('faction=Extinct era="Early Succession War"', GameSystem.CLASSIC);
+        const result = parseSemanticQueryAST('faction=Extinct era="Early Succession War"', GameSystem.CBT);
 
         const filtered = filterUnitsWithAST(units, result.ast, {
-            gameSystem: GameSystem.CLASSIC,
+            gameSystem: GameSystem.CBT,
             getUnitId,
             getProperty: () => undefined,
             unitBelongsToEra: (
@@ -764,10 +884,10 @@ describe('semantic filter exclusivity', () => {
             { id: 3, type: 'Aero', bv: 800 },
             { id: 4, type: 'Aero', bv: 1400 },
         ];
-        const result = parseSemanticQueryAST('(type=Mek bv>1000) OR (type=Aero bv<1000)', GameSystem.CLASSIC);
+        const result = parseSemanticQueryAST('(type=Mek bv>1000) OR (type=Aero bv<1000)', GameSystem.CBT);
 
         const filtered = filterUnitsWithAST(units, result.ast, {
-            gameSystem: GameSystem.CLASSIC,
+            gameSystem: GameSystem.CBT,
             getUnitId,
             getProperty: (unit: { type?: string; bv?: number }, key: string) => unit[key as keyof typeof unit],
         });
@@ -779,7 +899,7 @@ describe('semantic filter exclusivity', () => {
     it('returns structural lexer tokens for grouped boolean expressions', () => {
         const result = parseSemanticQueryAST(
             '(type=Mek bv>1000) OR (type=Aero bv<1000)',
-            GameSystem.CLASSIC,
+            GameSystem.CBT,
             true,
         );
 
@@ -800,8 +920,8 @@ describe('semantic filter exclusivity', () => {
 
     it('keeps apostrophes inside plain text words while parsing following semantic filters', () => {
         const input = "Ti Ts'ang type=Mek";
-        const result = parseSemanticQueryAST(input, GameSystem.CLASSIC, true);
-        const highlightTokens = tokenizeForHighlight(input, GameSystem.CLASSIC);
+        const result = parseSemanticQueryAST(input, GameSystem.CBT, true);
+        const highlightTokens = tokenizeForHighlight(input, GameSystem.CBT);
 
         expect(result.errors).toEqual([]);
         expect(result.textSearch).toBe("Ti Ts'ang");
@@ -831,10 +951,10 @@ describe('semantic filter exclusivity', () => {
             { id: 2, text: 'IF1' },
             { id: 3, text: 'TAG' },
         ];
-        const result = parseSemanticQueryAST('"TUR(4/4/2,IF1,TAG)"', GameSystem.ALPHA_STRIKE);
+        const result = parseSemanticQueryAST('"TUR(4/4/2,IF1,TAG)"', GameSystem.AS);
 
         const filtered = filterUnitsWithAST(units, result.ast, {
-            gameSystem: GameSystem.ALPHA_STRIKE,
+            gameSystem: GameSystem.AS,
             getUnitId,
             getProperty: () => undefined,
             matchesText: (unit: { text: string }, text: string) => matchesSearch(unit.text, parseSearchQuery(text), true),
@@ -846,7 +966,7 @@ describe('semantic filter exclusivity', () => {
     });
 
     it('tokenizes quoted plain-text specials as a single text node', () => {
-        const result = parseSemanticQueryAST('"TUR(2/3/3,IF2,LRM1/2/2)" OR tag', GameSystem.ALPHA_STRIKE, true);
+        const result = parseSemanticQueryAST('"TUR(2/3/3,IF2,LRM1/2/2)" OR tag', GameSystem.AS, true);
 
         expect(result.errors).toEqual([]);
         expect(result.lexTokens.map(token => ({ type: token.type, value: token.value }))).toEqual([
@@ -863,10 +983,10 @@ describe('semantic filter exclusivity', () => {
             { id: 2, specials: ['IF1', 'TAG'] },
             { id: 3, specials: ['TUR(4/4/2)'] },
         ];
-        const result = parseSemanticQueryAST('specials="TUR(4/4/2,IF1,TAG)"', GameSystem.ALPHA_STRIKE);
+        const result = parseSemanticQueryAST('specials="TUR(4/4/2,IF1,TAG)"', GameSystem.AS);
 
         const filtered = filterUnitsWithAST(units, result.ast, {
-            gameSystem: GameSystem.ALPHA_STRIKE,
+            gameSystem: GameSystem.AS,
             getUnitId,
             getProperty: (unit: { specials?: string[] }, key: string) => key === 'as.specials' ? unit.specials : undefined,
         });
@@ -884,7 +1004,7 @@ describe('semantic filter exclusivity', () => {
     });
 
     it('parses multiple quoted semantic dropdown values separated by commas', () => {
-        const result = parseSemanticQueryAST('specials="TUR(2/3/3,IF2,LRM1/2/2)","TAG"', GameSystem.ALPHA_STRIKE);
+        const result = parseSemanticQueryAST('specials="TUR(2/3/3,IF2,LRM1/2/2)","TAG"', GameSystem.AS);
 
         expect(result.errors).toEqual([]);
         expect(result.tokens).toEqual([
@@ -904,9 +1024,9 @@ describe('semantic filter exclusivity', () => {
     };
 
     function filterASSpecialUnitNames(units: ASSpecialTestUnit[], query: string): { result: ParseResult; names: string[] } {
-        const result = parseSemanticQueryAST(query, GameSystem.ALPHA_STRIKE);
+        const result = parseSemanticQueryAST(query, GameSystem.AS);
         const filtered = filterUnitsWithAST(units, result.ast, {
-            gameSystem: GameSystem.ALPHA_STRIKE,
+            gameSystem: GameSystem.AS,
             getUnitId,
             getProperty: (unit: ASSpecialTestUnit, key: string) => key === 'as.specials' ? unit.specials : undefined,
         });
@@ -920,23 +1040,23 @@ describe('semantic filter exclusivity', () => {
             { id: 2, name: 'turret-only', specials: ['CASE', 'TUR(0*/0*/0*,FLK1/1/1)'] },
             { id: 3, name: 'different-turret', specials: ['TUR(0*/0*/0*,FLK0/1/1)'] },
         ];
-        const result = parseSemanticQueryAST('specials=FLK1/1/1', GameSystem.ALPHA_STRIKE);
-        const wildcardResult = parseSemanticQueryAST('specials=flk*/*/*', GameSystem.ALPHA_STRIKE);
+        const result = parseSemanticQueryAST('specials=FLK1/1/1', GameSystem.AS);
+        const wildcardResult = parseSemanticQueryAST('specials=flk*/*/*', GameSystem.AS);
 
         const filtered = filterUnitsWithAST(units, result.ast, {
-            gameSystem: GameSystem.ALPHA_STRIKE,
+            gameSystem: GameSystem.AS,
             getUnitId,
             getProperty: (unit: { specials?: string[] }, key: string) => key === 'as.specials' ? unit.specials : undefined,
             getIndexedFilterValues: (filterKey: string) => filterKey === 'as.specials' ? ['FLK1/1/1'] : [],
             getIndexedUnitIds: (filterKey: string, value: string) => {
                 if (filterKey === 'as.specials' && value === 'FLK1/1/1') {
-                    return new Set(['1']);
+                    return unitIds(1);
                 }
                 return undefined;
             },
         });
         const wildcardFiltered = filterUnitsWithAST(units, wildcardResult.ast, {
-            gameSystem: GameSystem.ALPHA_STRIKE,
+            gameSystem: GameSystem.AS,
             getUnitId,
             getProperty: (unit: { specials?: string[] }, key: string) => key === 'as.specials' ? unit.specials : undefined,
         });
@@ -1014,15 +1134,15 @@ describe('semantic filter exclusivity', () => {
             { id: 6, name: 'mixed-comparison-flak', specials: ['FLK2/3/1'] },
         ];
         const context = {
-            gameSystem: GameSystem.ALPHA_STRIKE,
+            gameSystem: GameSystem.AS,
             getUnitId,
             getProperty: (unit: { specials?: string[] }, key: string) => key === 'as.specials' ? unit.specials : undefined,
         };
 
-        const firstSlotResult = parseSemanticQueryAST('specials=FLK>=2', GameSystem.ALPHA_STRIKE);
-        const secondSlotResult = parseSemanticQueryAST('specials=FLK*/<=2', GameSystem.ALPHA_STRIKE);
-        const exactSlotsResult = parseSemanticQueryAST('specials=FLK2/2/2', GameSystem.ALPHA_STRIKE);
-        const mixedSlotsResult = parseSemanticQueryAST('specials=FLK2/>2', GameSystem.ALPHA_STRIKE);
+        const firstSlotResult = parseSemanticQueryAST('specials=FLK>=2', GameSystem.AS);
+        const secondSlotResult = parseSemanticQueryAST('specials=FLK*/<=2', GameSystem.AS);
+        const exactSlotsResult = parseSemanticQueryAST('specials=FLK2/2/2', GameSystem.AS);
+        const mixedSlotsResult = parseSemanticQueryAST('specials=FLK2/>2', GameSystem.AS);
 
         expect(firstSlotResult.errors).toEqual([]);
         expect(secondSlotResult.errors).toEqual([]);
@@ -1041,11 +1161,11 @@ describe('semantic filter exclusivity', () => {
             { id: 3, name: 'turret-car-four', specials: ['TUR(1/1/1,CAR4)'] },
             { id: 4, name: 'car-five', specials: ['CAR5'] },
         ];
-        const setResult = parseSemanticQueryAST('specials=CAR[2,4]', GameSystem.ALPHA_STRIKE);
-        const greaterThanResult = parseSemanticQueryAST('specials=CAR>2', GameSystem.ALPHA_STRIKE);
+        const setResult = parseSemanticQueryAST('specials=CAR[2,4]', GameSystem.AS);
+        const greaterThanResult = parseSemanticQueryAST('specials=CAR>2', GameSystem.AS);
 
         const context = {
-            gameSystem: GameSystem.ALPHA_STRIKE,
+            gameSystem: GameSystem.AS,
             getUnitId,
             getProperty: (unit: { specials?: string[] }, key: string) => key === 'as.specials' ? unit.specials : undefined,
         };

@@ -33,8 +33,8 @@ describe('Conventional infantry damage', () => {
 
   it('does not derive HT from a single secondary heat weapon', () => {
     const entity = new TestInfantryEntity();
-    entity.primaryWeapon.set(infantryWeapon('rifle', 1));
-    entity.secondaryWeapon.set(infantryWeapon('flamer', 0, ['F_FLAMER']));
+    entity.setPlatoonWeapon('primary', infantryWeapon('rifle', 1));
+    entity.setPlatoonWeapon('secondary', infantryWeapon('flamer', 0, ['F_FLAMER']));
     entity.secondaryCount.set(1);
     entity.squadSize.set(5);
     entity.squadCount.set(5);
@@ -44,8 +44,8 @@ describe('Conventional infantry damage', () => {
 
   it('derives HT from the secondary when it is the combined mount range weapon', () => {
     const entity = new TestInfantryEntity();
-    entity.primaryWeapon.set(infantryWeapon('rifle', 0));
-    entity.secondaryWeapon.set(infantryWeapon('plasma', 2, ['F_PLASMA']));
+    entity.setPlatoonWeapon('primary', infantryWeapon('rifle', 0));
+    entity.setPlatoonWeapon('secondary', infantryWeapon('plasma', 2, ['F_PLASMA']));
     entity.secondaryCount.set(2);
     entity.squadSize.set(5);
     entity.squadCount.set(5);
@@ -55,8 +55,8 @@ describe('Conventional infantry damage', () => {
 
   it('derives HT from a heat-producing primary range weapon', () => {
     const entity = new TestInfantryEntity();
-    entity.primaryWeapon.set(infantryWeapon('primary-flamer', 0, ['F_FLAMER']));
-    entity.secondaryWeapon.set(infantryWeapon('secondary-rifle', 0));
+    entity.setPlatoonWeapon('primary', infantryWeapon('primary-flamer', 0, ['F_FLAMER']));
+    entity.setPlatoonWeapon('secondary', infantryWeapon('secondary-rifle', 0));
     entity.secondaryCount.set(1);
     entity.squadSize.set(5);
     entity.squadCount.set(5);
@@ -71,7 +71,7 @@ function infantryWeapon(
   flags: EquipmentFlag[] = [],
 ): InfantryWeaponEquipment {
   return new WeaponEquipment({
-    id, name: id, type: 'weapon', flags,
+    id, name: id, type: 'weapon', flags: ['F_INFANTRY', ...flags],
     weapon: { damage: 1, ranges: [1, 2, 3, 4], ammoType: 'NA' },
     infantry: { damage: 0.6, range },
   }) as InfantryWeaponEquipment;

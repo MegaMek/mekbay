@@ -2,29 +2,32 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 // Author: Drake
 
-import { DEFAULT_PILOTING_SKILL } from "../models/crew-member.model";
 import type { UnitSummary } from "../models/unit-summary.model";
+import {
+    adjustCBTBattleValueForSkills,
+    effectiveCBTPilotingSkill,
+    fixedCBTPilotingSkill,
+    type CBTSkillUnitFacts,
+} from '../models/entity/utils/battle-value/rules';
 
-const NO_ANTIMEK_SKILL = 8;
+/** Adjust a catalog unit's BV for crew skills, rounding only the final result. */
+export function calculateAdjustedBV(
+    unit: Pick<UnitSummary, 'type' | 'subtype' | 'canAntiMech'>,
+    baseBv: number,
+    gunnerySkill: number,
+    pilotingSkill: number,
+): number {
+    return adjustCBTBattleValueForSkills(baseBv, gunnerySkill, pilotingSkill, summarySkillFacts(unit));
+}
 
 /**
  * Returns the fixed Piloting value for units whose Piloting cannot be changed.
  * Returns `null` when the unit uses the requested Piloting value.
  */
-export function getFixedPilotingSkill(unit: UnitSummary): number | null {
-    if (unit.type === 'ProtoMek') {
-        return DEFAULT_PILOTING_SKILL;
-    }
-    if (unit.type !== 'Infantry' || unit.canAntiMech) {
-        return null;
-    }
-    if (unit.subtype.includes('Mechanized')) {
-        return DEFAULT_PILOTING_SKILL;
-    }
-    if (unit.subtype.includes('Conventional Infantry')) {
-        return NO_ANTIMEK_SKILL;
-    }
-    return DEFAULT_PILOTING_SKILL;
+export function getFixedPilotingSkill(
+    unit: Pick<UnitSummary, 'type' | 'subtype' | 'canAntiMech'>,
+): number | null {
+    return fixedCBTPilotingSkill(summarySkillFacts(unit));
 }
 
 /**
@@ -41,6 +44,23 @@ export function getFixedPilotingSkill(unit: UnitSummary): number | null {
  * @param pilotingSkill - The raw/requested piloting skill
  * @returns The effective piloting skill after applying CBT rules
  */
-export function getEffectivePilotingSkill(unit: UnitSummary, pilotingSkill: number): number {
-    return getFixedPilotingSkill(unit) ?? pilotingSkill;
+export function getEffectivePilotingSkill(
+    unit: Pick<UnitSummary, 'type' | 'subtype' | 'canAntiMech'>,
+    pilotingSkill: number,
+): number {
+    return effectiveCBTPilotingSkill(summarySkillFacts(unit), pilotingSkill);
+}
+
+export function summarySkillFacts(
+    unit: Pick<UnitSummary, 'type' | 'subtype' | 'canAntiMech'>,
+): CBTSkillUnitFacts {
+    return Object.freeze({
+        unitType: unit.type,
+        unitSubtype: unit.subtype,
+        // Catalog exports carry gear for conventional infantry and implicit Leg/Swarm attacks for BA.
+        // Loaded entities supply full construction restrictions through classicSkillFactsForEntity.
+        canMakeAntiMekAttacks: unit.type === 'Infantry' && (unit.subtype.endsWith('Conventional Infantry')
+            ? !unit.subtype.startsWith('Mechanized') : unit.canAntiMech),
+        hasAntiMekGear: unit.type === 'Infantry' && unit.subtype.endsWith('Conventional Infantry') && unit.canAntiMech,
+    });
 }

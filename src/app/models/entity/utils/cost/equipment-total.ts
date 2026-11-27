@@ -7,15 +7,20 @@ import type { BaseEntity } from '../../base-entity';
 import type { EntityMountedEquipment } from '../../types';
 import { amount } from './cost-report';
 import type { EntityCostEntry } from './cost-report';
+import { isRiscLaserPulseModule } from '../../../risc-laser-mode.model';
+import {
+  isPpcCapacitorEquipment,
+  isPpcEquipment,
+} from '../../../ppc-capacitor.model';
+import { isStandardCaseEquipment } from '../../../case-equipment.model';
+import {
+  isBattleArmorManipulatorEquipment,
+  isElectronicInterfaceEquipment,
+} from '../../../battle-armor-equipment.model';
 
 export interface MountedEquipmentCostBreakdown {
   readonly total: number;
   readonly entries: readonly EntityCostEntry[];
-}
-
-/** Mirrors CostCalculator.getWeaponsAndEquipmentCost's mounted-item rules. */
-export function calculateMountedEquipmentCost(entity: BaseEntity, ignoreAmmo = false): number {
-  return calculateMountedEquipmentCostBreakdown(entity, ignoreAmmo).total;
 }
 
 /** Mirrors CostCalculator.getWeaponsAndEquipmentCost's mounted-item rules with report entries. */
@@ -39,8 +44,8 @@ export function calculateMountedEquipmentCostBreakdown(
     const equipment = mount.equipment;
     if (!equipment || equipment instanceof ArmorEquipment) continue;
     if (ignoreAmmo && equipment instanceof AmmoEquipment && equipment.ammoType !== 'COOLANT_POD') continue;
-    if (equipment.hasFlag('F_BA_MANIPULATOR')) continue;
-    if (entity.entityType === 'ProtoMek' && equipment.hasFlag('F_EI_INTERFACE')) continue;
+    if (isBattleArmorManipulatorEquipment(equipment)) continue;
+    if (entity.entityType === 'ProtoMek' && isElectronicInterfaceEquipment(equipment)) continue;
 
     const cost = mount.getCost(entity);
     if (cost === undefined) throw new Error(`Unable to calculate variable cost for ${equipment.id}`);
@@ -53,14 +58,7 @@ export function calculateMountedEquipmentCostBreakdown(
     // support-vehicle infantry ammunition.
     addGrouped(equipment.name, Math.trunc(itemCost));
   }
-  if (entity.entityType === 'SmallCraft') {
-    for (const equipment of entity.implicitSystemEquipment().filter(item => item.hasFlag('F_ECM'))) {
-      if (!equipment.hasFixedCost()) {
-        throw new Error(`Unable to calculate variable cost for ${equipment.id}`);
-      }
-      addGrouped(equipment.name, Math.trunc(equipment.cost));
-    }
-  }
+  // SO:AA p. 99: implicit military craft ECM is part of the structure, not separately purchased equipment.
   const equipmentEntries = [...grouped.entries()].sort(([left], [right]) =>
     compareJavaHashMapKeys(left, right)).map(([name, value]) =>
     amount(`${value.count} ${name}`, value.cost));
@@ -99,55 +97,31 @@ function javaSpreadHash(value: string): number {
 
 function calculateImplicitClanCaseCost(entity: BaseEntity): number {
   const family = entity.entityType;
-  const isMek = family === 'Mek';
+  // Meks pay only for the protection actually generated at load time. Existing
+  // CASE/CASE II and location opt-outs are already handled by this shared set.
+  if (family === 'Mek') return entity.automaticClanCaseLocations().size * 50000;
   const isVehicle = family === 'Tank' || family === 'Naval' || family === 'VTOL'
     || family === 'SupportTank' || family === 'SupportNaval' || family === 'SupportVTOL'
     || family === 'LargeSupportTank';
-  if (!isMek && !isVehicle) return 0;
-  const hasClanCase = entity.equipment().some(mount =>
-    mount.equipment instanceof MiscEquipment
-    && mount.equipment.hasFlag('F_CASE')
-    && mount.equipment.techBase === 'Clan');
-  if (entity.techBase() !== 'Clan' && !(isMek && hasClanCase)) return 0;
-
+  if (!isVehicle) return 0;
   let sourceCaseCount = 0;
   const explosiveLocations = new Set<string>();
-  const optedOut = isMek ? entity.clanCaseOptOutLocations() : new Set<string>();
+  const optedOut = entity.clanCaseOptOutLocations();
   for (const mount of entity.equipment()) {
     const equipment = mount.equipment;
     if (!equipment) continue;
-    if (equipment instanceof MiscEquipment && equipment.hasFlag('F_CASE')) {
+    if (equipment instanceof MiscEquipment && isStandardCaseEquipment(equipment)) {
       sourceCaseCount++;
       continue;
     }
     if (!isExplosiveForConstructionCost(entity, mount)) continue;
     for (const location of mount.getOccupiedLocations()) {
-      if ((location !== 'Unallocated' || isVehicle) && !optedOut.has(location)) {
+      if (entity.supportsAutomaticClanCaseAt(location) && !optedOut.has(location)) {
         explosiveLocations.add(location);
       }
     }
   }
-  if (!isMek) return Math.max(0, explosiveLocations.size - sourceCaseCount) * 50000;
-
-  // MekFileParser materializes generated Clan CASE before the cost calculator
-  // runs. Reproduce that lifecycle without adding derived mounts to the entity.
-  const protectedLocations = new Set(entity.equipment()
-    .filter(mount => mount.equipment?.hasFlag('F_CASE') || mount.equipment?.hasFlag('F_CASE_II'))
-    .flatMap(mount => mount.getOccupiedLocations()));
-  const generatedLocations = new Set<string>();
-  for (const mount of entity.equipment()) {
-    if (!isExplosiveForGeneratedClanCase(entity, mount)) continue;
-    for (const location of mount.getOccupiedLocations()) {
-      if (location !== 'Unallocated' && !protectedLocations.has(location) && !optedOut.has(location)) {
-        generatedLocations.add(location);
-      }
-    }
-  }
-  const implicitCount = Math.max(
-    0,
-    explosiveLocations.size - sourceCaseCount - generatedLocations.size,
-  );
-  return (generatedLocations.size + implicitCount) * 50000;
+  return Math.max(0, explosiveLocations.size - sourceCaseCount) * 50000;
 }
 
 /** Mirrors EquipmentType.isExplosive(mount) for pristine construction state. */
@@ -158,50 +132,16 @@ function isExplosiveForConstructionCost(entity: BaseEntity, mount: EntityMounted
     if (['AC_ROTARY', 'AC', 'AC_IMP', 'AC_PRIMITIVE', 'PAC', 'LAC'].includes(equipment.ammoType)) {
       return false;
     }
-    if (equipment.hasFlag('F_PPC')) return false;
-    if (equipment.hasAnyFlag(['F_B_POD', 'F_M_POD'])) {
-      // Entity.addEquipment creates and loads an implicit one-shot ammo mount.
-      return true;
-    }
+    if (isPpcEquipment(equipment)) return false;
+    if (equipment.hasFlag('F_B_POD') || equipment.hasFlag('F_M_POD')) return false;
   }
   if (equipment instanceof MiscEquipment) {
-    if (equipment.hasFlag('F_PPC_CAPACITOR')) return false;
-    if (equipment.hasFlag('F_RISC_LASER_PULSE_MODULE')) {
+    if (isPpcCapacitorEquipment(equipment)) return false;
+    if (isRiscLaserPulseModule(equipment)) {
       return entity.getLinkedMount(mount) !== undefined;
     }
   }
   return true;
-}
-
-/** Mirrors EquipmentType.isExplosive(mount, true) during MekFileParser.addClanCase. */
-function isExplosiveForGeneratedClanCase(entity: BaseEntity, mount: EntityMountedEquipment): boolean {
-  const equipment = mount.equipment;
-  if (!equipment?.isExplosive()) return false;
-  if (equipment instanceof WeaponEquipment) {
-    if (['AC_ROTARY', 'AC', 'AC_IMP', 'AC_PRIMITIVE', 'PAC', 'LAC'].includes(equipment.ammoType)) {
-      return false;
-    }
-    if (equipment.hasAnyFlag(['F_B_POD', 'F_M_POD'])) {
-      // Entity.addEquipment creates and loads an implicit one-shot ammo mount.
-      return true;
-    }
-    if (equipment.hasFlag('F_PPC')) {
-      return entity.getLinkingMount(mount)?.equipment?.hasFlag('F_PPC_CAPACITOR') === true;
-    }
-  }
-  if (equipment instanceof MiscEquipment) {
-    if (equipment.hasFlag('F_PPC_CAPACITOR')) return entity.getLinkedMount(mount) !== undefined;
-    if (equipment.hasFlag('F_RISC_LASER_PULSE_MODULE')) {
-      return entity.getLinkedMount(mount) !== undefined;
-    }
-    if (equipment.hasFlag('F_BLUE_SHIELD')) return false;
-  }
-  return true;
-}
-
-/** Prices transporter systems. Large-craft family calculators invoke this directly. */
-export function calculateTransporterCost(entity: BaseEntity): number {
-  return calculateTransporterCostBreakdown(entity).reduce((sum, entry) => sum + (entry.amount ?? 0), 0);
 }
 
 function calculateTransporterCostBreakdown(entity: BaseEntity): EntityCostEntry[] {

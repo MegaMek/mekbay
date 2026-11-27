@@ -2,36 +2,60 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 // Author: Drake
 
-import { DestroyRef, computed, effect, inject, Injectable, signal } from '@angular/core';
+import { DestroyRef, computed, effect, inject, Injectable, signal, untracked } from '@angular/core';
 import { firstValueFrom } from 'rxjs';
+import { CBT_RULESET_LABELS, type CBTRuleset } from '../models/cbt-ruleset.model';
 import type { ForceAlignment } from '../models/force-slot.model';
 import type { Force } from '../models/force.model';
-import type { LobbyParticipant, LobbyState } from '../models/lobby.model';
-import { DataService } from './data.service';
+import type { LobbyGameSettings, LobbyParticipant, LobbyState } from '../models/lobby.model';
+import type { InitiativeRecord } from '../models/rules/initiative-rules';
+import { CBT_OPTIONAL_RULE_CHOICES, changedOptionalRules, type CBTOptionalRules } from '../models/options.model';
+import { ForcePersistenceService } from './force-persistence.service';
 import { DialogsService } from './dialogs.service';
 import { DisplayNameService } from './display-name.service';
 import { ForceBuilderService } from './force-builder.service';
+import { ForceWorkspaceStateService } from './force-workspace-state.service';
+import { OptionsService } from './options.service';
 import { ToastService } from './toast.service';
-import { WsService } from './ws.service';
-import { normalizeDisplayName } from '../utils/display-name.util';
+import { WsService, type WsMessage } from './ws.service';
 
 const LOBBY_CODE_PATTERN = /^[a-z0-9]{4}$/;
-const MAX_LOBBY_PARTICIPANTS = 32;
 const MAX_LOBBY_FORCES = 8;
 const MAX_REMOTE_LOAD_ATTEMPTS = 8;
+
+type LobbyWireState = WsMessage & LobbyState & { readonly action: 'lobbyState' };
+type LobbyCreatedResponse = WsMessage & { readonly action: 'lobbyCreated'; readonly state: LobbyWireState };
+type LobbyJoinedResponse = WsMessage & { readonly action: 'lobbyJoined'; readonly state: LobbyWireState };
+type LobbyStateResponse = WsMessage & {
+    readonly action: 'lobbyStateResult';
+    readonly state: LobbyWireState | null;
+};
+type LobbyErrorResponse = WsMessage & { readonly action: 'error'; readonly message?: string };
 
 @Injectable({ providedIn: 'root' })
 export class LobbyService {
     private readonly wsService = inject(WsService);
-    private readonly dataService = inject(DataService);
+    private readonly forcePersistence = inject(ForcePersistenceService);
     private readonly dialogsService = inject(DialogsService);
     private readonly displayNameService = inject(DisplayNameService);
     private readonly forceBuilderService = inject(ForceBuilderService);
+    private readonly forceWorkspace = inject(ForceWorkspaceStateService);
     private readonly toastService = inject(ToastService);
+    private readonly optionsService = inject(OptionsService);
 
     readonly state = signal<LobbyState | null>(null);
     readonly hasLobby = computed(() => this.state() !== null);
     readonly isHost = computed(() => this.state()?.isHost === true);
+    /** The lobby's game settings, which take precedence over the local options while in a lobby. */
+    readonly settings = computed(() => this.state()?.settings ?? null);
+    /** The current turn's Initiative, decided by the host. */
+    readonly initiative = computed(() => this.state()?.initiative ?? null);
+
+    /** The other lobby participant who publishes a force, if any. */
+    publisherOf(instanceId: string): LobbyParticipant | null {
+        return this.state()?.participants.find(participant =>
+            !participant.self && participant.instanceIds.includes(instanceId)) ?? null;
+    }
     readonly canCreateOrJoin = computed(() => (
         this.lobbyStateKnown()
         && !this.hasLobby()
@@ -47,11 +71,22 @@ export class LobbyService {
     private lastPublishedForceKey: string | null = null;
     private forceLimitWarningShown = false;
     private restoreVersion = 0;
+    /**
+     * The newest lobby state whose rules this player does not play yet. It waits, with nothing new
+     * of theirs sent to the lobby, until they play those rules or decline and leave.
+     */
+    private readonly heldState = signal<LobbyState | null>(null);
+    /** Joins waiting for the held state: true once it applies, false when the player did not join. */
+    private heldStateWaiters: ((applied: boolean) => void)[] = [];
+    private readonly adoptingRuleset = signal(false);
+    private readonly hostSwitchingRuleset = signal(false);
+    /** This player's forces are switching rules; the lobby settings wait until they play the new ones. */
+    readonly switchingRuleset = computed(() => this.adoptingRuleset() || this.hostSwitchingRuleset());
+    /** The lobby this player declined; its late broadcasts are ignored until they join or create again. */
+    private declinedCode: string | null = null;
 
     constructor() {
-        const unregisterState = this.wsService.registerMessageHandler('lobbyState', msg => {
-            const state = this.parseState(msg);
-            if (!state) return;
+        const unregisterState = this.wsService.registerMessageHandler<LobbyWireState>('lobbyState', state => {
             this.invalidateRestore();
             this.applyState(state);
             this.lobbyStateKnown.set(true);
@@ -59,7 +94,7 @@ export class LobbyService {
         const unregisterClosed = this.wsService.registerMessageHandler('lobbyClosed', msg => {
             this.invalidateRestore();
             this.lobbyStateKnown.set(true);
-            const message = msg.reason === 'inactivity'
+            const message = msg['reason'] === 'inactivity'
                 ? 'Operation lobby closed due to inactivity'
                 : 'The lobby was closed.';
             void this.clearLobby(message);
@@ -70,12 +105,18 @@ export class LobbyService {
             void this.clearLobby('You were removed from the lobby.');
         });
         const unregisterResume = this.wsService.registerMessageHandler('lobbyResumeResult', msg => {
-            if (msg.resumed !== true && this.state()) {
+            const failureMessage = typeof msg['message'] === 'string'
+                ? msg['message']
+                : 'The lobby is no longer available.';
+            if (msg['resumed'] !== true && this.state()) {
                 this.invalidateRestore();
                 this.lobbyStateKnown.set(true);
-                void this.clearLobby('The lobby is no longer available.');
-            } else if (msg.resumed !== true) {
+                void this.clearLobby(failureMessage);
+            } else if (msg['resumed'] !== true) {
                 this.lobbyStateKnown.set(true);
+                if (msg['code'] === 'lobby_force_revision_mismatch') {
+                    this.toastService.showToast(failureMessage, 'error');
+                }
             } else if (this.state()) {
                 this.lobbyStateKnown.set(true);
             }
@@ -89,10 +130,22 @@ export class LobbyService {
             void this.restoreLobbyState();
         });
 
+        // Everyone in a lobby plays its rules. Once the local options are known, a held state with
+        // other rules is adopted first; one with the same rules applies.
+        effect(() => {
+            const held = this.heldState();
+            if (!held || !this.optionsService.initialized() || this.adoptingRuleset()) return;
+            untracked(() => {
+                const rules = this.rulesToAdopt(held);
+                if (rules) void this.adoptRules(rules);
+                else this.applyState(held);
+            });
+        });
+
         effect(() => {
             const state = this.state();
             const connected = this.wsService.wsConnected();
-            const slots = this.forceBuilderService.loadedForces();
+            const slots = this.forceWorkspace.loadedForces();
             if (!state) return;
 
             this.queueReconcile();
@@ -107,8 +160,9 @@ export class LobbyService {
                     this.saveDraftForLobby(slot.force);
                 }
             }
+            // A lobby shares only the forces this player owns; one they merely opened stays theirs to view.
             const publishedInstanceIds = slots
-                .filter(slot => slot.alignment === 'friendly')
+                .filter(slot => slot.alignment === 'friendly' && slot.force.owned())
                 .map(slot => slot.force.instanceId())
                 .filter((instanceId): instanceId is string => !!instanceId && !remoteInstanceIds.has(instanceId));
             if (publishedInstanceIds.length > MAX_LOBBY_FORCES && !this.forceLimitWarningShown) {
@@ -154,14 +208,15 @@ export class LobbyService {
         await this.displayNameService.save(displayName);
         this.invalidateRestore();
         this.lobbyStateKnown.set(false);
+        this.declinedCode = null;
+        // The lobby starts with the host's own rules, optional rules and Initiative settings.
+        const { CBTRules, CBTOptionalRules, initiativeOrder, initiativeDie } = this.optionsService.options();
+        const settings: LobbyGameSettings = {
+            ruleset: CBTRules, initiativeOrder, initiativeDie, optionalRules: { ...CBTOptionalRules },
+        };
         try {
-            const response = await this.request({ action: 'createLobby' });
-            if (response.action !== 'lobbyCreated') {
-                throw new Error('The lobby could not be created.');
-            }
-            const state = this.parseState(response.state);
-            if (!state) throw new Error('The server returned an invalid lobby.');
-            this.applyState(state);
+            const response = await this.request<LobbyCreatedResponse>({ action: 'createLobby', settings });
+            this.applyState(response.state);
         } finally {
             this.lobbyStateKnown.set(true);
         }
@@ -176,14 +231,14 @@ export class LobbyService {
 
         this.invalidateRestore();
         this.lobbyStateKnown.set(false);
+        this.declinedCode = null;
         try {
-            const response = await this.request({ action: 'joinLobby', code });
-            if (response.action !== 'lobbyJoined') {
-                throw new Error('The lobby could not be joined.');
+            const response = await this.request<LobbyJoinedResponse>({ action: 'joinLobby', code });
+            if (!await this.admitState(response.state)) {
+                throw new Error(this.declinedCode === response.state.code
+                    ? 'You kept your rules, so you did not join the lobby.'
+                    : 'The lobby closed before you joined it.');
             }
-            const state = this.parseState(response.state);
-            if (!state) throw new Error('The server returned an invalid lobby.');
-            this.applyState(state);
         } finally {
             this.lobbyStateKnown.set(true);
         }
@@ -247,22 +302,93 @@ export class LobbyService {
         this.wsService.send({ action: 'setLobbyLock', locked });
     }
 
+    /** Host only: an away player's forces stop holding the shared turn until the host brings them back. */
+    setAway(publicId: string, away: boolean): void {
+        if (!this.isHost()) return;
+        this.wsService.send({ action: 'setLobbyAway', publicId, away });
+    }
+
+    /**
+     * Host only: the rules everyone plays by. New rules reach the lobby, and so every player, only
+     * once the host's own forces play them; when they cannot switch, the lobby keeps its rules and
+     * the other settings still apply.
+     */
+    async setSettings(settings: LobbyGameSettings): Promise<void> {
+        const current = this.settings();
+        if (!this.isHost() || !current) return;
+        if (settings.ruleset !== current.ruleset) {
+            this.hostSwitchingRuleset.set(true);
+            try {
+                if (!await this.forceBuilderService.switchCBTRules(settings.ruleset)) {
+                    settings = { ...settings, ruleset: current.ruleset };
+                }
+            } finally {
+                this.hostSwitchingRuleset.set(false);
+            }
+        }
+        // Optional rules reach the lobby the same way: once the host's own forces play them.
+        const optionalRules = changedOptionalRules(this.optionsService.options().CBTOptionalRules, settings.optionalRules);
+        if (optionalRules !== null) {
+            this.hostSwitchingRuleset.set(true);
+            try {
+                await this.forceBuilderService.setOptionalRules(optionalRules);
+            } finally {
+                this.hostSwitchingRuleset.set(false);
+            }
+        }
+        // The lobby carries what the host plays now: a rule its forces could not switch to stays as it was.
+        const played = this.optionsService.options().CBTOptionalRules;
+        settings = { ...settings, optionalRules: { ...played } };
+        if (settings.ruleset !== current.ruleset
+            || settings.initiativeOrder !== current.initiativeOrder
+            || settings.initiativeDie !== current.initiativeDie
+            || optionalRules !== null
+            || changedOptionalRules(played, current.optionalRules) !== null) {
+            this.wsService.send({ action: 'setLobbySettings', settings });
+        }
+    }
+
+    /** Host only: the current turn's Initiative (a hand-set order, a reset turn), or null to clear it. */
+    setInitiative(initiative: InitiativeRecord | null): void {
+        if (!this.isHost()) return;
+        this.wsService.send({ action: 'setLobbyInitiative', initiative });
+    }
+
+    /**
+     * Rolls (or rerolls a tie) for one of this player's own published forces; the server accepts it only while
+     * that force's roll is due. A new turn's first roll starts its record with the Initiative Die values carried in.
+     */
+    rollInitiative(roll: {
+        turn: number;
+        side: string;
+        dice: readonly [number, number];
+        modifier: number;
+        carriedDice?: Readonly<Record<string, number>>;
+    }): void {
+        if (!this.hasLobby()) return;
+        this.wsService.send({ action: 'rollLobbyInitiative', ...roll });
+    }
+
     kick(publicId: string): void {
         const participant = this.state()?.participants.find(entry => entry.publicId === publicId);
         if (!this.isHost() || !participant || participant.self) return;
         this.wsService.send({ action: 'kickLobbyParticipant', publicId });
     }
 
-    private async request(payload: object): Promise<any> {
+    private async request<TResponse extends WsMessage>(payload: object): Promise<TResponse> {
         if (!this.wsService.wsConnected()) {
             throw new Error('The server is not connected.');
         }
-        const response = await this.wsService.sendAndWaitForResponse(payload, {
+        const response = await this.wsService.sendAndWaitForResponse<TResponse | LobbyErrorResponse>(payload, {
             suppressGlobalError: true,
         });
-        if (!response) throw new Error('The server did not respond.');
-        if (response.action === 'error') throw new Error(response.message || 'Lobby request failed.');
-        return response;
+        if (!response) throw new Error('The server did not return a response.');
+        if (response['action'] === 'error') {
+            throw new Error(typeof response['message'] === 'string'
+                ? response['message']
+                : 'Lobby request failed.');
+        }
+        return response as TResponse;
     }
 
     private invalidateRestore(): void {
@@ -272,63 +398,108 @@ export class LobbyService {
     private async restoreLobbyState(): Promise<void> {
         const version = ++this.restoreVersion;
         this.lobbyStateKnown.set(false);
-        const response = await this.wsService.sendAndWaitForResponse({ action: 'getLobbyState' });
-        if (version !== this.restoreVersion || response?.action !== 'lobbyStateResult') return;
+        const response = await this.wsService.sendAndWaitForResponse<LobbyStateResponse>({ action: 'getLobbyState' });
+        if (version !== this.restoreVersion
+            || !response) return;
 
         if (response.state === null) {
             await this.clearLobby();
         } else {
-            const state = this.parseState(response.state);
-            if (!state) return;
-            this.applyState(state);
+            this.applyState(response.state);
         }
         if (version === this.restoreVersion) this.lobbyStateKnown.set(true);
     }
 
+    /** Applies a lobby state, or holds it while its rules are not this player's. */
     private applyState(state: LobbyState): void {
+        if (state.code === this.declinedCode) return;
+        if (this.rulesToAdopt(state)) {
+            this.heldState.set(state);
+            return;
+        }
+        this.heldState.set(null);
         this.state.set(state);
         this.queueReconcile();
+        this.settleHeldStateWaiters(true);
+    }
+
+    /** Applies a joined lobby's state; resolves false when the player did not join after all. */
+    private admitState(state: LobbyState): Promise<boolean> {
+        const applied = new Promise<boolean>(resolve => this.heldStateWaiters.push(resolve));
+        this.applyState(state);
+        return applied;
+    }
+
+    private settleHeldStateWaiters(applied: boolean): void {
+        const waiters = this.heldStateWaiters;
+        this.heldStateWaiters = [];
+        for (const resolve of waiters) resolve(applied);
+    }
+
+    /**
+     * The lobby's rules and optional rules that are not this player's; null when they play them all. Unknown until the
+     * local options load, so until then the lobby's rules wait to be compared.
+     */
+    private rulesToAdopt(state: LobbyState): LobbyRulesChange | null {
+        const settings = state.settings;
+        if (!settings?.ruleset) return null;
+        if (!this.optionsService.initialized()) return { ruleset: settings.ruleset };
+        const options = this.optionsService.options();
+        const optionalRules = changedOptionalRules(options.CBTOptionalRules, settings.optionalRules);
+        return settings.ruleset === options.CBTRules && optionalRules === null ? null : {
+            ...(settings.ruleset === options.CBTRules ? {} : { ruleset: settings.ruleset }),
+            ...(optionalRules === null ? {} : { optionalRules }),
+        };
+    }
+
+    /**
+     * Switches to the lobby's rules. Joining asks first, and declining does not join; in the lobby
+     * the player follows the host's change at once and is told.
+     */
+    private async adoptRules(rules: LobbyRulesChange): Promise<void> {
+        this.adoptingRuleset.set(true);
+        try {
+            const inLobby = this.state() !== null;
+            const switchRules = inLobby || await this.dialogsService.requestConfirmation(
+                lobbyRulesQuestion(rules, this.optionsService.options().CBTRules),
+                'Switch Rules?',
+                'warning',
+            );
+            // The lobby may have closed, or changed its rules again, while the player decided.
+            const held = this.heldState();
+            if (!held || JSON.stringify(this.rulesToAdopt(held)) !== JSON.stringify(rules)) return;
+            // A switch that fails keeps every force on the player's rules, which this lobby does not play.
+            const switched = switchRules
+                && (rules.ruleset === undefined || await this.forceBuilderService.switchCBTRules(rules.ruleset))
+                && (rules.optionalRules === undefined || await this.forceBuilderService.setOptionalRules(rules.optionalRules));
+            if (!switched) {
+                this.declineLobby();
+            } else if (inLobby && !held.isHost) {
+                this.toastService.showToast(rules.ruleset === undefined
+                    ? 'The host changed the lobby\'s optional rules.'
+                    : `The host switched the lobby to ${CBT_RULESET_LABELS[rules.ruleset]} rules.`, 'info');
+            }
+        } finally {
+            this.adoptingRuleset.set(false);
+        }
+    }
+
+    /** The player keeps their rules: leave the lobby they joined or were in, without sending anything of theirs. */
+    private declineLobby(): void {
+        const inLobby = this.state() !== null;
+        this.declinedCode = this.heldState()?.code ?? null;
+        this.invalidateRestore();
+        this.wsService.send({ action: 'leaveLobby' });
+        this.lobbyStateKnown.set(true);
+        void this.clearLobby(inLobby ? 'You left the lobby: your forces could not switch to its rules.' : undefined);
     }
 
     private saveDraftForLobby(force: Force): void {
         if (this.pendingDraftSaves.has(force)) return;
         this.pendingDraftSaves.add(force);
-        void this.dataService.saveForce(force)
+        void this.forcePersistence.saveForce(force)
             .catch(() => this.toastService.showToast('A force could not be added to the lobby.', 'error'))
             .finally(() => this.pendingDraftSaves.delete(force));
-    }
-
-    private parseState(value: any): LobbyState | null {
-        if (!value || !LOBBY_CODE_PATTERN.test(value.code) || typeof value.locked !== 'boolean'
-            || typeof value.isHost !== 'boolean' || !Array.isArray(value.participants)
-            || value.participants.length > MAX_LOBBY_PARTICIPANTS) {
-            return null;
-        }
-
-        const participants: LobbyParticipant[] = [];
-        for (const entry of value.participants) {
-            if (!entry || typeof entry.publicId !== 'string' || entry.publicId.length === 0 || entry.publicId.length > 128
-                || typeof entry.self !== 'boolean' || typeof entry.host !== 'boolean'
-                || typeof entry.connected !== 'boolean'
-                || (entry.alignment !== 'friendly' && entry.alignment !== 'enemy')
-                || !Array.isArray(entry.instanceIds) || entry.instanceIds.length > MAX_LOBBY_FORCES
-                || !entry.instanceIds.every((id: unknown) => typeof id === 'string' && id.length > 0 && id.length <= 128)) {
-                return null;
-            }
-            const displayName = normalizeDisplayName(entry.displayName) ?? `Player ${entry.publicId.slice(0, 8)}`;
-            participants.push({
-                publicId: entry.publicId,
-                displayName,
-                self: entry.self,
-                host: entry.host,
-                connected: entry.connected,
-                alignment: entry.alignment,
-                instanceIds: [...new Set<string>(entry.instanceIds)],
-            });
-        }
-        if (participants.filter(participant => participant.self).length !== 1) return null;
-
-        return { code: value.code, locked: value.locked, isHost: value.isHost, participants };
     }
 
     private queueReconcile(): void {
@@ -350,7 +521,7 @@ export class LobbyService {
         }
 
         let unloadedHostile = false;
-        for (const slot of [...this.forceBuilderService.loadedForces()]) {
+        for (const slot of [...this.forceWorkspace.loadedForces()]) {
             if (slot.alignment !== 'enemy') continue;
             const instanceId = slot.force.instanceId();
             const isLobbyForce = !slot.force.owned() && !!instanceId && remoteAlignments.has(instanceId);
@@ -358,7 +529,7 @@ export class LobbyService {
 
             try {
                 if (slot.force.owned() && slot.force.units().length > 0) {
-                    await this.dataService.saveForce(slot.force);
+                    await this.forcePersistence.saveForce(slot.force);
                 }
                 await this.forceBuilderService.removeLoadedForce(slot.force, { skipPrompt: true });
                 unloadedHostile = true;
@@ -372,7 +543,7 @@ export class LobbyService {
 
         for (const instanceId of [...this.managedRemoteIds]) {
             if (remoteAlignments.has(instanceId)) continue;
-            const slot = this.forceBuilderService.loadedForces()
+            const slot = this.forceWorkspace.loadedForces()
                 .find(entry => entry.force.instanceId() === instanceId && !entry.force.owned());
             if (slot) {
                 await this.forceBuilderService.removeLoadedForce(slot.force, { skipPrompt: true });
@@ -381,7 +552,7 @@ export class LobbyService {
             this.remoteLoadAttempts.delete(instanceId);
         }
 
-        this.forceBuilderService.loadedForces.update(slots => {
+        this.forceWorkspace.loadedForces.update(slots => {
             let changed = false;
             const aligned = slots.map(slot => {
                 const instanceId = slot.force.instanceId();
@@ -397,7 +568,7 @@ export class LobbyService {
 
         let shouldRetry = false;
         for (const [instanceId, alignment] of remoteAlignments) {
-            const existing = this.forceBuilderService.loadedForces()
+            const existing = this.forceWorkspace.loadedForces()
                 .find(entry => entry.force.instanceId() === instanceId);
             if (existing) {
                 if (!existing.force.owned()) this.managedRemoteIds.add(instanceId);
@@ -408,7 +579,7 @@ export class LobbyService {
             const attempts = this.remoteLoadAttempts.get(instanceId) ?? 0;
             if (attempts >= MAX_REMOTE_LOAD_ATTEMPTS) continue;
             this.remoteLoadAttempts.set(instanceId, attempts + 1);
-            const force = await this.dataService.getForce(instanceId, false, {
+            const force = await this.forcePersistence.getForce(instanceId, false, {
                 skipLocal: true,
                 showLoading: false,
             });
@@ -416,8 +587,7 @@ export class LobbyService {
                 shouldRetry = true;
                 continue;
             }
-            force.owned.set(false);
-            const activate = this.forceBuilderService.loadedForces().length === 0;
+            const activate = this.forceWorkspace.loadedForces().length === 0;
             this.forceBuilderService.addLoadedForce(force, alignment, { activate, persistInUrl: false });
             this.managedRemoteIds.add(instanceId);
             this.remoteLoadAttempts.delete(instanceId);
@@ -432,6 +602,8 @@ export class LobbyService {
     }
 
     private async clearLobby(message?: string): Promise<void> {
+        this.heldState.set(null);
+        this.settleHeldStateWaiters(false);
         if (!this.state() && this.managedRemoteIds.size === 0) return;
         this.state.set(null);
         this.lastPublishedForceKey = null;
@@ -443,11 +615,26 @@ export class LobbyService {
         }
 
         for (const instanceId of [...this.managedRemoteIds]) {
-            const slot = this.forceBuilderService.loadedForces()
+            const slot = this.forceWorkspace.loadedForces()
                 .find(entry => entry.force.instanceId() === instanceId && !entry.force.owned());
             if (slot) await this.forceBuilderService.removeLoadedForce(slot.force, { skipPrompt: true });
         }
         this.managedRemoteIds.clear();
         if (message) this.toastService.showToast(message, 'info');
     }
+}
+
+/** The rules of a lobby a player does not play yet: its rules system, its optional rules, or both. */
+type LobbyRulesChange = Readonly<{ ruleset?: CBTRuleset; optionalRules?: Partial<CBTOptionalRules> }>;
+
+/** The question asked before joining a lobby that plays rules the player does not. */
+function lobbyRulesQuestion(rules: LobbyRulesChange, current: CBTRuleset): string {
+    const ruleset = rules.ruleset === undefined ? null : CBT_RULESET_LABELS[rules.ruleset];
+    const optional = CBT_OPTIONAL_RULE_CHOICES.flatMap(({ key, label }) =>
+        rules.optionalRules?.[key] === undefined ? [] : [`${label} ${rules.optionalRules[key] ? 'on' : 'off'}`]);
+    return [
+        ...(ruleset === null ? [] : [`This lobby plays ${ruleset} rules; you're on ${CBT_RULESET_LABELS[current]}.`]),
+        ...(optional.length === 0 ? [] : [`This lobby plays other optional rules: ${optional.join(', ')}.`]),
+        optional.length === 0 ? `Switch to ${ruleset} and join?` : 'Switch and join?',
+    ].join(' ');
 }

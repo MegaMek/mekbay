@@ -1,0 +1,110 @@
+// Copyright (C) 2026 The MegaMek Team
+// SPDX-License-Identifier: GPL-3.0-or-later
+
+import { Injectable, inject } from '@angular/core';
+import { merge } from 'rxjs';
+
+import { MM_DATA_MEK_SHEET_BINDING_MANIFEST } from '../../../models/mek-sheet-binding';
+import type { CBTMekForceMember } from '../../../models/force-member.model';
+import type { MekRecordSheetSnapshot } from '../../../models/runtime/mek-record-sheet';
+import { LoggerService } from '../../../services/logger.service';
+import { UnitNameService } from '../../../services/unit-name.service';
+import {
+    bindMekRecordSheet,
+    type MekRecordSheetBinding,
+} from '../mek-record-sheet-binder';
+import { recordSheetInventorySource } from '../record-sheet-inventory';
+import { PageViewerMekInteractionService } from './page-viewer-mek-interaction.service';
+import { PageViewerOverlayService } from './page-viewer-overlay.service';
+
+interface BoundMekSheet {
+    readonly member: CBTMekForceMember;
+    readonly svg: SVGSVGElement;
+    readonly binding: MekRecordSheetBinding;
+    readonly subscription: { unsubscribe(): void };
+}
+
+/** Binds Entity + typed runtime state to the established page-viewer SVG. */
+@Injectable()
+export class PageViewerMekRuntimeService {
+    private readonly unitNames = inject(UnitNameService);
+    private readonly interactions = inject(PageViewerMekInteractionService);
+    private readonly overlays = inject(PageViewerOverlayService);
+    private readonly logger = inject(LoggerService);
+    private readonly bound = new Map<string, BoundMekSheet>();
+
+    bind(member: CBTMekForceMember, svg: SVGSVGElement): boolean {
+        const existing = this.bound.get(member.id);
+        if (existing?.svg === svg && existing.member === member) {
+            this.render(member);
+            return true;
+        }
+        this.destroyBinding(member.id);
+
+        const snapshot = this.requiredSnapshot(member);
+        const readOnly = member.force.readOnly();
+        svg.classList.toggle('read-only', readOnly);
+        const handleInteraction = (interaction: Parameters<PageViewerMekInteractionService['handle']>[1], event: Event): void => {
+            this.interactions.handle(member, interaction, event);
+        };
+        const binding = bindMekRecordSheet(
+            svg,
+            MM_DATA_MEK_SHEET_BINDING_MANIFEST,
+            snapshot,
+            readOnly ? undefined : handleInteraction,
+            handleInteraction,
+            recordSheetInventorySource(member, this.overlays.livePlay(member)),
+        );
+        this.reportLayoutIssues(snapshot, binding.initialIssues);
+        svg.classList.add('interactive-sheet');
+        const subscription = merge(member.force.changed, member.force.sessionChanged).subscribe(changedUnitIds => {
+            if (changedUnitIds?.includes(member.id) ?? true) this.render(member);
+        });
+        this.bound.set(member.id, { member, svg, binding, subscription });
+        this.unitNames.applyToRecordSheet(svg, member.entity);
+        return true;
+    }
+
+    cleanupUnused(keepUnitIds: ReadonlySet<string>): void {
+        for (const unitId of [...this.bound.keys()]) {
+            if (!keepUnitIds.has(unitId)) this.destroyBinding(unitId);
+        }
+    }
+
+    clear(): void {
+        for (const unitId of [...this.bound.keys()]) this.destroyBinding(unitId);
+        this.overlays.clearSheetControls();
+    }
+
+    private requiredSnapshot(member: CBTMekForceMember): MekRecordSheetSnapshot {
+        const snapshot = member.mekRecordSheetSnapshot();
+        if (!snapshot) throw new Error('The selected Mek is no longer admitted');
+        return snapshot;
+    }
+
+    private render(member: CBTMekForceMember): void {
+        const current = this.bound.get(member.id);
+        const snapshot = member.mekRecordSheetSnapshot();
+        if (!current || current.member !== member || !snapshot) return;
+        const issues = current.binding.render(snapshot,
+            recordSheetInventorySource(member, this.overlays.livePlay(member)));
+        this.unitNames.applyToRecordSheet(current.svg, member.entity);
+        this.reportLayoutIssues(snapshot, issues);
+    }
+
+    private reportLayoutIssues(snapshot: MekRecordSheetSnapshot, issues: readonly string[]): void {
+        if (issues.length > 0) {
+            this.logger.warn(`Record-sheet layout omissions for ${snapshot.identity.displayName}: ${issues.join('; ')}`);
+        }
+    }
+
+    private destroyBinding(unitId: string): void {
+        const current = this.bound.get(unitId);
+        if (!current) return;
+        current.subscription.unsubscribe();
+        current.binding.destroy();
+        current.svg.classList.remove('interactive-sheet');
+        this.bound.delete(unitId);
+        this.overlays.clearUnitControls(unitId);
+    }
+}

@@ -21,7 +21,8 @@ import { PageViewerCanvasService } from './page-viewer-canvas.service';
 import { OptionsService } from '../../../services/options.service';
 import { DbService } from '../../../services/db.service';
 import { LoggerService } from '../../../services/logger.service';
-import type { ForceUnit } from '../../../models/force-unit.model';
+import { isCBTForceMember } from '../../../models/force-member.model';
+import type { PageCanvasMember } from '../internal/types';
 import type { GameSystem } from '../../../models/common.model';
 
 /*
@@ -51,7 +52,7 @@ interface BrushLocation {
     template: `
         <div #canvasOverlay class="page-canvas-overlay" [class.active]="canvasService.isActive()">
             <div #canvasContainer class="drawing-canvas">
-                <canvas #canvas [width]="canvasWidth()" [height]="canvasHeight()"></canvas>
+                <canvas #canvas width="0" height="0"></canvas>
             </div>
         </div>
     `,
@@ -71,7 +72,7 @@ interface BrushLocation {
                 height: 100% !important;
                 width: 100% !important;
                 transform: none !important;
-                display: none !important;
+                display: block !important;
             }
         }
 
@@ -122,6 +123,9 @@ interface BrushLocation {
 
             .drawing-canvas canvas {
                 transform: none !important;
+                /* Match the SVG's aspect-preserving fit when the printer's
+                   paper size differs from the displayed record sheet. */
+                object-fit: contain;
             }
         }
     `]
@@ -145,16 +149,16 @@ export class PageCanvasOverlayComponent {
     canvasRef = viewChild.required<ElementRef<HTMLCanvasElement>>('canvas');
 
     // Inputs
-    unit = input<ForceUnit | null>(null);
+    unit = input<PageCanvasMember | null>(null);
     width = input(612); // PAGE_WIDTH
     height = input(792); // PAGE_HEIGHT
 
     // Outputs
-    drawingStarted = output<ForceUnit>();
+    drawingStarted = output<PageCanvasMember>();
 
     // Computed canvas dimensions (internal scale for higher resolution)
-    canvasHeight = computed(() => this.height() * this.INTERNAL_SCALE);
-    canvasWidth = computed(() => this.width() * this.INTERNAL_SCALE);
+    canvasHeight = computed(() => Math.floor(this.height() * this.INTERNAL_SCALE));
+    canvasWidth = computed(() => Math.floor(this.width() * this.INTERNAL_SCALE));
 
     // Pointer tracking
     private activePointers = new Map<number, BrushLocation>();
@@ -182,20 +186,27 @@ export class PageCanvasOverlayComponent {
 
     // Destroyed flag to prevent async callbacks from running after component is destroyed
     private destroyed = false;
+    private canvasRevision = 0;
+    private saveVersion = 0;
 
     constructor() {
         // Track pending afterNextRender to clean up on destroy or re-run
         let pendingAfterRenderRef: { destroy: () => void } | null = null;
         
-        // Load canvas data when unit changes
-        effect(() => {
+        // Resizing the canvas clears its bitmap, so reload it after a paper-format change too.
+        effect((onCleanup) => {
             const unit = this.unit();
+            this.width();
+            this.height();
+            let cancelled = false;
+            onCleanup(() => cancelled = true);
             // Cancel any previous pending render callback
             pendingAfterRenderRef?.destroy();
             pendingAfterRenderRef = afterNextRender(() => {
                 pendingAfterRenderRef = null;
                 this.clearCanvas();
                 if (!unit) return;
+                const revision = this.canvasRevision;
                 
                 // Set canvas ID based on unit
                 this.canvasId.set(`canvas-${this.unitCanvasId()}`);
@@ -208,7 +219,7 @@ export class PageCanvasOverlayComponent {
                 
                 // Load saved canvas data
                 this.dbService.getCanvasData(this.unitCanvasId()).then(data => {
-                    if (!data || this.destroyed) return;
+                    if (!data || this.destroyed || cancelled || revision !== this.canvasRevision) return;
                     this.importImageData(data);
                 });
             }, { injector: this.injector });
@@ -252,14 +263,23 @@ export class PageCanvasOverlayComponent {
     }
 
     private getCanvasContext(): CanvasRenderingContext2D | null {
-        return this.canvasRef()?.nativeElement.getContext('2d') ?? null;
+        const canvas = this.canvasRef()?.nativeElement;
+        if (!canvas) return null;
+        // Blank sheets need no pixel buffer. Allocate only for ink, retaining
+        // the same resolution and avoiding a later Angular binding clearing it.
+        if (canvas.width !== this.canvasWidth()) canvas.width = this.canvasWidth();
+        if (canvas.height !== this.canvasHeight()) canvas.height = this.canvasHeight();
+        return canvas.getContext('2d');
     }
 
     clearCanvas(): void {
-        this.activePointers.clear();
-        const ctx = this.getCanvasContext();
-        if (!ctx) return;
-        ctx.clearRect(0, 0, this.canvasWidth(), this.canvasHeight());
+        this.canvasRevision++;
+        for (const pointerId of this.activePointers.keys()) this.canvasService.unregisterPointer(pointerId);
+        this.abortDrawing();
+        const canvas = this.canvasRef()?.nativeElement;
+        if (!canvas) return;
+        if (canvas.width !== 0) canvas.width = 0;
+        if (canvas.height !== 0) canvas.height = 0;
     }
 
     /**
@@ -278,8 +298,8 @@ export class PageCanvasOverlayComponent {
         if (!el) return null;
         const rect = el.getBoundingClientRect();
         return {
-            x: (event.clientX - rect.left) * (el.width / rect.width),
-            y: (event.clientY - rect.top) * (el.height / rect.height)
+            x: (event.clientX - rect.left) * (this.canvasWidth() / rect.width),
+            y: (event.clientY - rect.top) * (this.canvasHeight() / rect.height)
         };
     }
 
@@ -360,8 +380,8 @@ export class PageCanvasOverlayComponent {
                         button: orig.button,
                         buttons: orig.buttons,
                         pressure: orig.pressure,
-                        tiltX: (orig as any).tiltX ?? 0,
-                        tiltY: (orig as any).tiltY ?? 0,
+                        tiltX: orig.tiltX,
+                        tiltY: orig.tiltY,
                         isPrimary: orig.isPrimary,
                         ctrlKey: orig.ctrlKey,
                         altKey: orig.altKey,
@@ -448,11 +468,14 @@ export class PageCanvasOverlayComponent {
         const unit = this.unit();
         if (!unit) return;
 
+        const canvasId = this.unitCanvasId();
+        const revision = this.canvasRevision;
+        const saveVersion = ++this.saveVersion;
         const blob = await this.exportImageData();
-        if (!blob) return;
+        if (!blob || revision !== this.canvasRevision || saveVersion !== this.saveVersion) return;
 
-        this.dbService.saveCanvasData(this.unitCanvasId(), blob);
-        if (!unit.modified) {
+        this.dbService.saveCanvasData(canvasId, blob);
+        if (!isCBTForceMember(unit) && !unit.modified) {
             unit.setModified();
         }
     }
@@ -477,9 +500,6 @@ export class PageCanvasOverlayComponent {
         const pos = this.getPointerPosition(event);
         if (!pos) return;
 
-        const ctx = this.getCanvasContext();
-        if (!ctx) return;
-
         const fromPos = this.activePointers.get(event.pointerId);
         if (!fromPos) return;
 
@@ -497,7 +517,8 @@ export class PageCanvasOverlayComponent {
         }
 
         if (fromPos.moved) {
-            this.draw(ctx, fromPos.mode, fromPos, pos);
+            const ctx = this.getCanvasContext();
+            if (ctx) this.draw(ctx, fromPos.mode, fromPos, pos);
         }
 
         const newPos = { ...fromPos, x: pos.x, y: pos.y };
@@ -506,7 +527,7 @@ export class PageCanvasOverlayComponent {
 
     async exportImageData(): Promise<Blob | null> {
         const canvas = this.canvasRef();
-        if (!canvas) return null;
+        if (!canvas || canvas.nativeElement.width === 0 || canvas.nativeElement.height === 0) return null;
         return new Promise<Blob | null>((resolve) => {
             canvas.nativeElement.toBlob((blob) => {
                 resolve(blob);
@@ -515,17 +536,18 @@ export class PageCanvasOverlayComponent {
     }
 
     importImageData(blob: Blob): void {
-        const ctx = this.getCanvasContext();
-        if (!ctx) return;
-
+        const revision = this.canvasRevision;
         const img = new window.Image();
         const objectUrl = URL.createObjectURL(blob);
         img.onload = () => {
+            URL.revokeObjectURL(objectUrl);
+            if (this.destroyed || revision !== this.canvasRevision) return;
+            const ctx = this.getCanvasContext();
+            if (!ctx) return;
             const canvasWidth = this.canvasWidth();
             const canvasHeight = this.canvasHeight();
             ctx.clearRect(0, 0, canvasWidth, canvasHeight);
             ctx.drawImage(img, 0, 0, canvasWidth, canvasHeight);
-            URL.revokeObjectURL(objectUrl);
         };
         img.onerror = (err) => {
             URL.revokeObjectURL(objectUrl);

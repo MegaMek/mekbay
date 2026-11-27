@@ -43,7 +43,9 @@
     inset-inline-end: calc(var(--hex-slider-track-overhang) * -1);
     block-size: var(--hex-slider-track-height);
     transform: translateY(-50%);
-    background: var(--background-input);
+    /* Translucent black darkens whatever panel hosts the slider, so the track always reads. */
+    background: rgb(0 0 0 / 38%);
+    box-shadow: inset 0 0 0 1px rgb(255 255 255 / 7%);
     box-sizing: border-box;
     overflow: hidden;
 }

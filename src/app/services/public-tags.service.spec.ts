@@ -43,7 +43,7 @@ describe('PublicTagsService', () => {
 
     it('matches units by UUID, and a V3 name only on the unit its tags migrate to', async () => {
         const byUuid = createEmptyUnit({ name: 'Atlas AS7-D', chassis: 'Atlas' });
-        const sameNameTwin = createEmptyUnit({ name: 'Locust LCT-1V', chassis: 'Locust' });
+        const sameNameTwin = createEmptyUnit({ name: 'Locust LCT-1V', chassis: 'Locust', isCustom: true });
         const untagged = createEmptyUnit({ name: 'Locust LCT-1E', chassis: 'Locust' });
         wsServiceMock.sendAndWaitForResponse.and.resolveTo({
             found: true,

@@ -1,0 +1,142 @@
+// Copyright (C) 2026 The MegaMek Team
+// SPDX-License-Identifier: GPL-3.0-or-later
+
+import type { CBTUnitCommand } from './unit-command';
+export function commandMayChangeOperationalC3(command: CBTUnitCommand): boolean {
+    switch (command.type) {
+        case 'damage-internal':
+        case 'repair-internal':
+        case 'hit-critical':
+        case 'repair-critical':
+        case 'apply-mek-blow-off':
+        case 'apply-mek-critical-roll':
+        case 'set-system-critical-level':
+        case 'set-component-status':
+        case 'set-component-statuses':
+        case 'hit-components':
+        case 'set-destroyed':
+        case 'set-internal-damage':
+        case 'damage-track':
+        case 'repair-damage-track':
+        case 'set-system-damage-level':
+        case 'set-component-mode':
+        case 'detonate-booby-trap':
+        case 'set-stealth-state':
+        case 'edit-escalating-failure':
+        case 'edit-c3-emergency-master':
+        case 'set-mek-shutdown-state':
+        case 'declare-mek-action':
+        case 'clear-mek-action':
+        case 'end-phase':
+        case 'end-turn':
+        case 'commit-pending':
+        case 'cancel-pending':
+            return true;
+        case 'set-location-condition':
+            return command.condition === 'blown-off' || command.condition === 'flooded';
+        case 'set-condition':
+            return command.condition === 'jammed' || command.condition === 'shutdown';
+        default:
+            return false;
+    }
+}
+
+/** Shared exhaustive classifier for runtime-BV dependency invalidation. */
+export function commandMayChangeBaseBattleValue(command: CBTUnitCommand): boolean {
+    switch (command.type) {
+        case 'damage-armor':
+        case 'repair-armor':
+        case 'damage-internal':
+        case 'repair-internal':
+        case 'hit-critical':
+        case 'repair-critical':
+        case 'apply-mek-blow-off':
+        case 'apply-mek-critical-roll':
+        case 'set-system-critical-level':
+        case 'set-component-status':
+        case 'set-component-statuses':
+        case 'hit-components':
+        case 'damage-track':
+        case 'repair-damage-track':
+        case 'set-system-damage-level':
+        case 'damage-shield':
+        case 'repair-shield':
+            return command.target === 'committed';
+        case 'set-location-condition':
+            return command.target === 'committed' && (command.condition === 'blown-off' || command.condition === 'flooded');
+        case 'configure-ammo-source':
+        case 'set-destroyed':
+        case 'set-internal-damage':
+        case 'set-armor-damage':
+        case 'reset-ammo-loadout':
+        // Carried bombs change external-stores and TAG battle value.
+        case 'configure-bombs':
+        case 'set-bombs-spent':
+        case 'engage-ams':
+        case 'spend-ammo':
+        case 'activate-coolant-pod':
+        case 'fire-weapons':
+        case 'detonate-booby-trap':
+        case 'edit-escalating-failure':
+        case 'end-phase':
+        case 'end-turn':
+        case 'commit-pending':
+            return true;
+        case 'set-component-mode':
+        case 'set-airborne':
+        case 'set-mek-conversion-mode':
+        case 'set-velocity-record':
+        case 'set-tractor':
+        case 'set-internal-bay-loads':
+        case 'destroy-bay-cargo':
+        case 'stun-vehicle-crew':
+        case 'set-swarming':
+        case 'set-elevation':
+        case 'set-movement':
+        case 'set-cover':
+        case 'set-spotting':
+        case 'set-control-recovery':
+        case 'set-stealth-state':
+        case 'toggle-gauss-power':
+        case 'set-component-jammed':
+        case 'repair-autocannon-hit':
+        case 'set-ppc-capacitor-charge':
+        case 'set-bombast-laser-charge':
+        case 'edit-c3-emergency-master':
+        case 'set-heat':
+        case 'set-pending-heat':
+        case 'set-heatsinks-off':
+        case 'apply-heat':
+        case 'add-outside-heat':
+        case 'add-inferno-missiles':
+        case 'set-condition':
+        case 'set-mek-shutdown-state':
+        case 'resolve-mek-rule-check':
+        case 'set-crew-state':
+        case 'declare-mek-movement':
+        case 'clear-mek-movement':
+        case 'declare-mek-action':
+        case 'clear-mek-action':
+        case 'prepare-mek-stand':
+        case 'resolve-mek-stand-attempt':
+        case 'adjust-mek-stand-attempts':
+        case 'resolve-mek-pilot-check':
+        case 'dismiss-mek-pilot-checks':
+        case 'dismiss-mek-automatic-falls':
+        case 'record-mek-physical-attack-checks':
+        case 'replace-turn-state':
+        case 'set-pending-fall-consequences':
+        case 'set-consciousness-rolls-due':
+        case 'reset-turn-state':
+        case 'mark-end-turn-heat-staged':
+        case 'complete-turn-step':
+        case 'join-turn':
+        case 'rewind-turn-step':
+        case 'cancel-pending':
+            return false;
+        default: {
+            const exhaustive: never = command;
+            throw new Error(`Unclassified CBT unit command: ${String(exhaustive)}`);
+        }
+    }
+}

@@ -2,98 +2,51 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 // Author: Drake
 
-import { CBTSummaryPrintUtil } from './cbt-summary-print.util';
-import type { CBTForceUnit } from '../models/cbt-force-unit.model';
+import { AmmoEquipment } from '../models/equipment.model';
+import type { BaseEntity } from '../models/entity/base-entity';
 import type { CBTForce } from '../models/cbt-force.model';
+import type { CBTForceMember } from '../models/force-member.model';
+import { TestBipedMekEntity } from '../models/entity/testing/test-entities';
+import { addTestEquipmentWithFlags } from '../models/entity/testing/test-mounted-equipment';
+import { CBTSummaryPrintUtil } from './cbt-summary-print.util';
 
 describe('CBTSummaryPrintUtil', () => {
-    it('prints the summary in landscape without rotating its content', () => {
-        const styles = getPrintStyles('none');
+    afterEach(() => window.dispatchEvent(new Event('afterprint')));
 
-        expect(styles).toContain('size: landscape');
-        expect(styles).not.toContain('rotate(');
-        expect(styles).not.toContain('transform:');
-    });
+    for (const paperSize of ['letter', 'a4'] as const) {
+        it(`keeps a page margin for ${paperSize} summaries`, async () => {
+            const force = createForce();
+            force.groups = () => [{ id: 'alpha', groupDisplayName: () => 'Alpha Lance' }];
+            force.getCBTMembers = () => [createMember(force as unknown as CBTForce, 'Atlas', 'alpha')];
 
-    it('allows roster tables to flow across pages with repeating headers', () => {
-        const styles = getPrintStyles('none');
+            await CBTSummaryPrintUtil.print(
+                force as unknown as CBTForce,
+                { paperSize, printPilotData: true },
+                false,
+            );
 
-        expect(styles).toContain('display: table-header-group');
-        expect(styles).toContain('.cbt-roster-unit-entry > td');
-        expect(styles).toContain('page-break-inside: avoid');
-        expect(styles).toContain('overflow: visible !important');
-        expect(styles).not.toContain('overflow: hidden');
-    });
+            const overlay = document.getElementById('cbt-summary-print-container')!;
+            const rules = [...overlay.querySelector('style')!.sheet!.cssRules]
+                .filter((rule): rule is CSSMediaRule => rule instanceof CSSMediaRule && rule.conditionText === 'print')
+                .flatMap(rule => [...rule.cssRules]);
+            const defaultPage = rules.find((rule): rule is CSSPageRule =>
+                rule instanceof CSSPageRule && rule.selectorText === '')!;
 
-    it('builds a summary-only print container', async () => {
-        const forceUnit = {
-        } as unknown as CBTForceUnit;
-        const force = {
-            units: () => [forceUnit],
-            groups: () => [],
-            faction: () => ({ name: 'Federated Suns', group: 'Inner Sphere' }),
-            era: () => ({ name: 'Succession Wars' }),
-            instanceId: () => 'cbt-summary-test',
-            name: 'First Davion Guards',
-            displayName: () => 'First Davion Guards',
-        } as unknown as CBTForce;
+            expect(defaultPage.style.getPropertyValue('size').toLowerCase()).toBe(`${paperSize} landscape`);
+            for (const side of ['top', 'right', 'bottom', 'left']) {
+                expect(defaultPage.style.getPropertyValue(`margin-${side}`)).toBe('0.25in');
+                expect(defaultPage.style.getPropertyPriority(`margin-${side}`)).toBe('important');
+            }
+        });
+    }
 
-        await CBTSummaryPrintUtil.print(force, {
-            printPilotData: true,
-            printMargin: 'none',
-        }, false);
-
-        const overlay = document.getElementById('cbt-summary-print-container')!;
-        const total = overlay.querySelector('.cbt-roster-footer')!;
-        expect(overlay.querySelectorAll('.cbt-roster-summary').length).toBe(1);
-        expect(overlay.querySelector('.print-roster-qr-inline svg')).not.toBeNull();
-        expect(total.nextElementSibling?.classList.contains('print-roster-qr-block')).toBeTrue();
-        expect(overlay.querySelector('.svg-container')).toBeNull();
-        expect(overlay.querySelector('.print-roster-context')?.textContent)
-            .toBe('Federated Suns · Inner Sphere · Succession Wars');
-        expect(overlay.querySelector('.print-roster-name')?.textContent).toBe('First Davion Guards');
-        expect(overlay.querySelector('.print-roster-logo img')).not.toBeNull();
-
-        window.dispatchEvent(new Event('click'));
-    });
-
-    it('renders every unit in a large group and includes the group name in the repeating table header', async () => {
-        const force = {
-            units: () => forceUnits,
-            groups: () => [group],
-            faction: () => undefined,
-            era: () => undefined,
-            instanceId: () => '',
-            name: 'First Davion Guards',
-            displayName: () => 'First Davion Guards',
-        };
-        let forceUnits: CBTForceUnit[] = [];
-        const group = {
-            id: 'alpha-lance',
-            groupDisplayName: () => 'Alpha Lance',
-            units: () => forceUnits,
-        };
-        forceUnits = Array.from({ length: 30 }, (_, index) => ({
-            force,
-            alias: () => `Pilot ${index + 1}`,
-            gunnerySkill: () => 4,
-            pilotingSkill: () => 5,
-            getBv: () => 1_000,
-            getBaseBv: () => 900,
-            getGroup: () => group,
-            getUnit: () => ({
-                chassis: `Unit ${index + 1}`,
-                model: 'Test Model',
-                type: 'Mek',
-                subtype: 'Mek',
-                role: 'Skirmisher',
-                bv: 900,
-                tons: 50,
-                level: 'Standard',
-                mixed: false,
-                comp: [],
-            }),
-        })) as unknown as CBTForceUnit[];
+    it('renders every admitted Entity member and repeats the group name in the table header', async () => {
+        const group = { id: 'alpha', groupDisplayName: () => 'Alpha Lance' };
+        const force = createForce();
+        const members = Array.from({ length: 30 }, (_, index) =>
+            createMember(force as unknown as CBTForce, `Unit ${index + 1}`, 'alpha'));
+        force.groups = () => [group];
+        force.getCBTMembers = () => members;
 
         const host = document.createElement('div');
         host.innerHTML = await createRosterSummary(force as unknown as CBTForce, true);
@@ -103,82 +56,143 @@ describe('CBTSummaryPrintUtil', () => {
         expect(host.querySelector('.cbt-roster-table tbody tr:last-child')?.textContent).toContain('Unit 30');
     });
 
-    it('omits both the pilot name and skills from a roster row when pilot data is disabled', () => {
-        const forceUnit = {
-            alias: () => 'Morgan & Co.',
-            gunnerySkill: () => 3,
-            pilotingSkill: () => 4,
-            getBv: () => 1234,
-            getBaseBv: () => 1000,
-            getUnit: () => ({
-                chassis: 'Atlas',
-                model: 'AS7-D',
-                type: 'Mek',
-                subtype: 'Mek',
-                role: 'Juggernaut',
-                bv: 1000,
-                tons: 100,
-                level: 'Standard',
-                comp: [],
-            }),
-        };
+    it('omits pilot identity and skills and uses unadjusted BV when pilot data is disabled', () => {
+        const force = createForce();
+        force.getUnitCrewAssignment = () => ({
+            positions: [{ name: 'Morgan & Co.', gunnery: 3, piloting: 4 }],
+        }) as never;
+        const member = createMember(force as unknown as CBTForce, 'Atlas', 'alpha');
 
-        const withoutPilotData = createRosterTableRow(forceUnit, false);
-        const withPilotData = createRosterTableRow(forceUnit, true);
+        const withoutPilot = createRosterTableRow(member, false);
+        const withPilot = createRosterTableRow(member, true);
 
-        expect(withoutPilotData).toContain('<div class="cbt-roster-unit-chassis">Atlas</div>');
-        expect(withoutPilotData).toContain('<td class="col-gp is-numeric"></td>');
-        expect(withoutPilotData).not.toContain('Morgan');
-        expect(withoutPilotData).not.toContain('3/4');
-        expect(withoutPilotData).toContain('<td class="col-bv is-numeric is-bold">1,000</td>');
-        expect(withoutPilotData).not.toContain('<td class="col-bv is-numeric is-bold">1,234</td>');
-        expect(withPilotData).toContain('Atlas (Morgan &amp; Co.)');
-        expect(withPilotData).toContain('<td class="col-gp is-numeric">3/4</td>');
-        expect(withPilotData).toContain('<td class="col-bv is-numeric is-bold">1,234</td>');
+        expect(withoutPilot).toContain('<div class="cbt-roster-unit-chassis">Atlas</div>');
+        expect(withoutPilot).toContain('<td class="col-gp is-numeric"></td>');
+        expect(withoutPilot).not.toContain('Morgan');
+        expect(withoutPilot).toContain('<td class="col-bv is-numeric is-bold">900</td>');
+        expect(withPilot).toContain('Atlas (Morgan &amp; Co.)');
+        expect(withPilot).toContain('<td class="col-gp is-numeric">3/4</td>');
+        expect(withPilot).toContain('<td class="col-bv is-numeric is-bold">1,100</td>');
+        expect(withPilot).toContain('<td class="col-rules">IS<br/>Standard</td>');
     });
 
-    it('does not merge CASE-protected and unprotected ammo bins', () => {
-        const caseEquipment = {
-            hasAnyFlag: (flags: string[]) => flags.includes('F_CASE'),
-        };
-        const unit = {
-            comp: [
-                { t: 'C', n: 'CASE', q: 1, l: 'lt/ct', eq: caseEquipment },
-                { t: 'X', n: 'LRM 10 Ammo', q: 1, q2: 12, l: 'LT' },
-                { t: 'X', n: 'LRM 10 Ammo', q: 1, q2: 12, l: 'CT' },
-                { t: 'X', n: 'LRM 10 Ammo', q: 1, q2: 12, l: 'RT' },
-            ],
-        };
+    it('prints shield-limited movement using the member ruleset', () => {
+        const force = createForce();
+        const entity = new TestBipedMekEntity();
+        entity.originalWalkMP.set(1);
+        addTestEquipmentWithFlags(entity, ['F_SHIELD', 'S_SHIELD_MEDIUM'], { location: 'RA' });
+        for (const ruleset of ['core-2026', 'total-warfare'] as const) {
+            const member = {
+                ...createMember(force as unknown as CBTForce, 'Shield Mek', 'alpha'),
+                entity,
+                ruleset: () => ruleset,
+            } as unknown as CBTForceMember;
+            const row = createRosterTableRow(member, false);
+            expect(row).withContext(ruleset)
+                .toContain(`<td class="col-move">${ruleset === 'core-2026' ? '1/2' : ''}</td>`);
+        }
+    });
 
-        const summary = formatEquipmentSummary(unit);
+    it('keeps CASE-protected and unprotected Entity ammo bins separate', () => {
+        const ammunition = new AmmoEquipment({
+            id: 'LRM 10 Ammo',
+            name: 'LRM 10 Ammo',
+            shortName: 'LRM 10 Ammo',
+            type: 'ammo',
+            ammo: { type: 'LRM', rackSize: 10, shots: 12 },
+        });
+        const mounts = [
+            { equipment: ammunition, equipmentId: ammunition.id, location: 'LT', shotsCount: 12 },
+            { equipment: ammunition, equipmentId: ammunition.id, location: 'CT', shotsCount: 12 },
+            { equipment: ammunition, equipmentId: ammunition.id, location: 'RT', shotsCount: 12 },
+        ];
+        const entity = {
+            equipment: () => mounts,
+            ammoCaseProtection: (location: string) => location !== 'RT' ? 'case' : null,
+        } as unknown as BaseEntity;
 
-        expect(summary).toContain('>[2×LRM 10 (24)]</span>');
-        expect(summary).toContain('>1×LRM 10 (12)</span>');
-        expect(summary).not.toContain('3×LRM 10');
-        expect(summary).not.toContain('>CASE<');
+        const summary = formatEquipmentSummary(entity);
+
+        expect(summary).toContain('>[2×LRM 10 Ammo (24)]</span>');
+        expect(summary).toContain('>1×LRM 10 Ammo (12)</span>');
+        expect(summary).not.toContain('3×LRM 10 Ammo');
     });
 });
 
-function getPrintStyles(printMargin: 'none' | 'browserDefined'): string {
-    return (CBTSummaryPrintUtil as unknown as {
-        getPrintStyles(printMargin: 'none' | 'browserDefined'): string;
-    }).getPrintStyles(printMargin);
+interface MutableForceFixture {
+    getCBTMembers: () => CBTForceMember[];
+    groups: () => Array<{ id: string; groupDisplayName(): string }>;
+    getUnitCrewAssignment: () => unknown;
+    faction: () => undefined;
+    era: () => undefined;
+    instanceId: () => string;
+    name: string;
+    displayName: () => string;
 }
 
-function createRosterTableRow(forceUnit: unknown, printPilotData: boolean): string {
-    return (CBTSummaryPrintUtil as unknown as {
-        createRosterTableRow(forceUnit: unknown, printPilotData: boolean): string;
-    }).createRosterTableRow(forceUnit, printPilotData);
+function createForce(): MutableForceFixture {
+    return {
+        getCBTMembers: () => [],
+        groups: () => [],
+        getUnitCrewAssignment: () => null,
+        faction: () => undefined,
+        era: () => undefined,
+        instanceId: () => '',
+        name: 'First Davion Guards',
+        displayName: () => 'First Davion Guards',
+    };
 }
 
-function formatEquipmentSummary(unit: unknown): string {
-    return (CBTSummaryPrintUtil as unknown as {
-        formatEquipmentSummary(unit: unknown): string;
-    }).formatEquipmentSummary(unit);
+function createMember(force: CBTForce, chassis: string, rosterGroupId: string): CBTForceMember {
+    const entity = {
+        chassis: () => chassis,
+        clanName: () => '',
+        model: () => 'TST-1',
+        unitType: () => 'Mek',
+        unitSubtype: () => 'BattleMek',
+        role: () => 'Skirmisher',
+        rangedWeapons: () => [],
+        resolveMountedWeaponDamage: () => ({ maximum: 0 }),
+        battleValue: () => 900,
+        tonnage: () => 50,
+        year: () => 3025,
+        techBase: () => 'IS',
+        mixedTech: () => false,
+        staticTechLevel: () => 'Standard',
+        computeWalkMP: () => 5,
+        computeRunMP: () => 8,
+        jumpMP: () => 0,
+        umuMP: () => 0,
+        totalArmorPoints: () => 160,
+        totalInternalPoints: () => 100,
+        equipment: () => [],
+    } as unknown as BaseEntity;
+    return {
+        id: `${rosterGroupId}-${chassis}`,
+        force,
+        entity,
+        rosterGroupId,
+        ruleset: () => 'total-warfare',
+        pristineBattleValue: () => 900,
+        currentBaseBattleValue: () => 900,
+        adjustedBattleValue: () => 1_100,
+    } as unknown as CBTForceMember;
 }
 
 function createRosterSummary(force: CBTForce, printPilotData: boolean): Promise<string> {
     return (CBTSummaryPrintUtil as unknown as {
         createRosterSummary(force: CBTForce, printPilotData: boolean): Promise<string>;
     }).createRosterSummary(force, printPilotData);
+}
+
+function createRosterTableRow(member: CBTForceMember, printPilotData: boolean): string {
+    return (CBTSummaryPrintUtil as unknown as {
+        createRosterTableRow(member: CBTForceMember, printPilotData: boolean): string;
+    }).createRosterTableRow(member, printPilotData);
+}
+
+function formatEquipmentSummary(entity: BaseEntity): string {
+    return (CBTSummaryPrintUtil as unknown as {
+        formatEquipmentSummary(entity: BaseEntity): string;
+    }).formatEquipmentSummary(entity);
 }

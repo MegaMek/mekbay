@@ -3,21 +3,17 @@
 // Author: Drake
 
 import type { Equipment } from '../equipment.model';
+import {
+    getVibrobladeProfileFromFlags,
+    type VibrobladeProfile,
+} from '../entity/utils/physical-weapon-kernel';
 
-export interface VibrobladeProfile {
-    readonly activeDamage: number;
-    readonly activeHeat: number;
-}
+export type { VibrobladeProfile } from '../entity/utils/physical-weapon-kernel';
 
-const VIBROBLADE_PROFILES = [
-    { flag: 'S_VIBRO_LARGE', profile: { activeDamage: 14, activeHeat: 7 } },
-    { flag: 'S_VIBRO_MEDIUM', profile: { activeDamage: 10, activeHeat: 5 } },
-    { flag: 'S_VIBRO_SMALL', profile: { activeDamage: 7, activeHeat: 3 } },
-] as const;
+export { getVibrobladeProfileFromFlags } from '../entity/utils/physical-weapon-kernel';
 
 export function getVibrobladeProfile(equipment: Equipment | null | undefined): VibrobladeProfile | null {
-    if (!equipment || !equipment.hasFlag('F_CLUB')) return null;
-    return VIBROBLADE_PROFILES.find(candidate => equipment.hasFlag(candidate.flag))?.profile ?? null;
+    return equipment ? getVibrobladeProfileFromFlags(equipment.flags) : null;
 }
 
 export function getVibrobladeHeat(equipment: Equipment | null | undefined): number {

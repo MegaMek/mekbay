@@ -12,7 +12,6 @@ import { normalizeTriStateBooleanFilterValue, type TriStateBooleanFilterValue } 
  */
 @Component({
     selector: 'tri-state-filter-checkbox',
-    standalone: true,
     templateUrl: './tri-state-filter-checkbox.component.html',
     styleUrl: './tri-state-filter-checkbox.component.css',
     changeDetection: ChangeDetectionStrategy.OnPush,

@@ -37,6 +37,15 @@ describe('Equipment.getNumCriticalSlots', () => {
         expect(equipment.getNumCriticalSlots(entity)).toBe(2);
     });
 
+    it('compresses tonnage-scaled physical weapons for a superheavy Mek', () => {
+        const entity = new BipedMekEntity();
+        const hatchet = variableEquipment('Hatchet', ['F_CLUB', 'S_HATCHET']);
+        entity.setTonnage(100);
+        expect(hatchet.getNumCriticalSlots(entity)).toBe(7);
+        entity.setTonnage(120);
+        expect(hatchet.getNumCriticalSlots(entity)).toBe(4);
+    });
+
     it('uses the equipment tech base for MASC and internal structure', () => {
         const entity = new BipedMekEntity();
         entity.setTonnage(100);
@@ -95,7 +104,7 @@ describe('Equipment.getNumCriticalSlots', () => {
         });
     }
 
-    it('halves the summed patchwork slots for a superheavy Mek', () => {
+    it('halves the patchwork slots of each location for a superheavy Mek (TO:AUE p. 189)', () => {
         const entity = new BipedMekEntity();
         entity.setTonnage(120);
         const armor = armorEquipment('Heavy Ferro-Fibrous', 'HEAVY_FERRO', 'IS');
@@ -104,7 +113,7 @@ describe('Equipment.getNumCriticalSlots', () => {
         entity.setArmorEquipmentAt('LT', armor);
 
         expect(variableEquipment('Heavy Ferro-Fibrous', ['F_HEAVY_FERRO'])
-            .getNumCriticalSlots(entity)).toBe(5);
+            .getNumCriticalSlots(entity)).toBe(6);
     });
 
     it('distinguishes QuadVee, biped, and tripod track layouts', () => {
@@ -115,6 +124,17 @@ describe('Equipment.getNumCriticalSlots', () => {
         expect(jumpBooster.getNumCriticalSlots(new QuadVeeEntity())).toBe(8);
         expect(tracks.getNumCriticalSlots(new BipedMekEntity())).toBe(2);
         expect(tracks.getNumCriticalSlots(new TripodMekEntity())).toBe(1);
+    });
+
+    it('gives talons and jump boosters two slots per leg, one per superheavy leg', () => {
+        const superheavy = new TripodMekEntity();
+        superheavy.setTonnage(150);
+        for (const equipment of [variableEquipment('Talons', ['F_TALON']), variableEquipment('Jump Booster', ['F_JUMP_BOOSTER'])]) {
+            expect(equipment.getNumCriticalSlots(new BipedMekEntity())).withContext(equipment.name).toBe(4);
+            expect(equipment.getNumCriticalSlots(new QuadVeeEntity())).withContext(equipment.name).toBe(8);
+            expect(equipment.getNumCriticalSlots(new TripodMekEntity())).withContext(equipment.name).toBe(6);
+            expect(equipment.getNumCriticalSlots(superheavy)).withContext(equipment.name).toBe(3);
+        }
     });
 
     it('uses Java weight-class codes for nonstandard AES weight classes', () => {

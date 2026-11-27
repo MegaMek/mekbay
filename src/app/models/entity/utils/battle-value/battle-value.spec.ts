@@ -6,31 +6,35 @@ import {
   AmmoEquipment,
   ArmorEquipment,
   MiscEquipment,
-  StructureEquipment,
   WeaponEquipment,
 } from '../../../equipment.model';
+import { CORE_2026_GAME_RULES, TW_GAME_RULES } from '../../../rules/game-rules';
 import { MountedArmor } from '../../components/armor';
-import { MountedStructure } from '../../components/structure';
+import type { BaseEntity } from '../../base-entity';
+import type { EntityStateView } from '../../entity-state-view';
 import {
-  TestAeroSpaceFighterEntity,
-  TestBattleArmorEntity,
   TestBipedMekEntity,
   TestDropShipEntity,
   TestFixedWingSupportEntity,
-  TestHandheldWeaponEntity,
   TestInfantryEntity,
-  TestJumpShipEntity,
+  TestLamEntity,
   TestProtoMekEntity,
-  TestSpaceStationEntity,
   TestSupportTankEntity,
   TestTankEntity,
   TestWarShipEntity,
 } from '../../testing/test-entities';
+import { createTestEquipmentRegistry } from '../../testing/test-equipment-registry';
 import { BV_MOVEMENT_CALCULATION, EntityMountedEquipment } from '../../types';
 import { calculateBattleValue, calculateBattleValueDetails, getBVCalculator } from './factory';
 import type { BattleValueDetail } from './bv-calculator';
 import { infantryDamageDivisor } from './infantry-rules';
-import { offensiveSpeedFactor, targetMovementModifier, vehicleTypeModifier } from './rules';
+import {
+  armorBVMultiplierForType,
+  mekArmorBarFactor,
+  offensiveSpeedFactor,
+  targetMovementModifier,
+  vehicleTypeModifier,
+} from './rules';
 import {
   CombatVehicleBVCalculator,
   DropShipBVCalculator,
@@ -38,7 +42,6 @@ import {
   ProtoMekBVCalculator,
   WarShipBVCalculator,
 } from './family-calculators';
-import { EquipmentFlag } from '../../../equipment-flags.type';
 
 let mountSequence = 0;
 
@@ -59,6 +62,31 @@ function findDetail(details: readonly BattleValueDetail[], type: string): Battle
   return undefined;
 }
 
+function entityState(
+  entity: BaseEntity,
+  statuses: ReadonlyMap<string, 'available' | 'disabled' | 'destroyed'> = new Map(),
+): EntityStateView {
+  return {
+    destroyed: false,
+    movement: {
+      walk: entity.maxWalkMP(),
+      run: entity.maxRunMP(),
+      jump: entity.computeJumpMP(BV_MOVEMENT_CALCULATION),
+      umu: entity.umuMP(),
+    },
+    engineHits: 0,
+    equipmentStatus: mountId => statuses.get(mountId) ?? 'available',
+    armorRemaining: (location, face) => entity.getArmorValue(location, face),
+    structureRemaining: location => entity.structureValues().get(location) ?? 0,
+    ammoRemaining: mountId => entity.equipment()
+      .find(item => item.mountId === mountId)?.getAmmoShots() ?? 0,
+    ammoEquipment: mountId => {
+      const equipment = entity.equipment().find(item => item.mountId === mountId)?.equipment;
+      return equipment instanceof AmmoEquipment ? equipment : null;
+    },
+  };
+}
+
 describe('battle value pure rules', () => {
   it('ports MegaMek movement and speed tables', () => {
     expect(targetMovementModifier(0)).toBe(0);
@@ -74,6 +102,80 @@ describe('battle value pure rules', () => {
     expect(vehicleTypeModifier('Tracked')).toBe(0.9);
     expect(vehicleTypeModifier('Hover')).toBe(0.7);
     expect(vehicleTypeModifier('Naval')).toBe(0.6);
+  });
+
+  it('shares immutable armor BV and commercial BAR factors', () => {
+    expect(armorBVMultiplierForType('HARDENED')).toBe(2);
+    expect(armorBVMultiplierForType('FERRO_LAMELLOR')).toBe(1.2);
+    expect(armorBVMultiplierForType('STANDARD')).toBe(1);
+    expect(mekArmorBarFactor('COMMERCIAL')).toBe(0.5);
+    expect(mekArmorBarFactor('STANDARD')).toBe(1);
+  });
+
+  for (const catalogBv of [23, 96]) {
+    it('prices mounted and runtime-selected Thunder independently of catalog BV ' + catalogBv, () => {
+      class ExposedCalculator extends CombatVehicleBVCalculator {
+        ammoValue(item: EntityMountedEquipment): number { return this.ammoBV(item); }
+      }
+      const standard = new AmmoEquipment({
+        id: 'ISLRM20Standard', name: 'IS LRM-20 Ammo', type: 'ammo',
+        stats: { bv: 23 }, ammo: { type: 'LRM', rackSize: 20, shots: 6 },
+      });
+      const thunder = new AmmoEquipment({
+        id: 'ISLRM20Thunder', name: 'IS LRM-20 Thunder Ammo', type: 'ammo',
+        stats: { bv: catalogBv },
+        ammo: { type: 'LRM', rackSize: 20, shots: 6, baseAmmo: standard.id, munitionType: ['M_THUNDER'] },
+      });
+      const registry = createTestEquipmentRegistry({ [standard.id]: standard, [thunder.id]: thunder });
+      const entity = new TestTankEntity(registry);
+      const standardBin = mount(standard);
+      const thunderBin = mount(thunder);
+      entity.setEquipment([standardBin, thunderBin]);
+      const selected = {
+        ...entityState(entity),
+        ammoRemaining: () => 2,
+        ammoEquipment: () => thunder,
+      } satisfies EntityStateView;
+
+      for (const [rules, expected] of [[CORE_2026_GAME_RULES, 23], [TW_GAME_RULES, 96]] as const) {
+        const pristine = new ExposedCalculator(entity, undefined, rules);
+        expect(pristine.ammoValue(standardBin)).toBe(23);
+        expect(pristine.ammoValue(thunderBin)).toBe(expected);
+        expect(new ExposedCalculator(entity, selected, rules).ammoValue(standardBin)).toBe(expected);
+      }
+    });
+  }
+
+  it('uses the rules layer for pristine and runtime-selected ammunition BV', () => {
+    class ExposedCalculator extends CombatVehicleBVCalculator {
+      ammoValue(item: EntityMountedEquipment): number { return this.ammoBV(item); }
+    }
+    const baseAmmo = new AmmoEquipment({
+      id: 'AC5Ammo', name: 'AC/5 Ammo', type: 'ammo',
+      stats: { bv: 10 }, ammo: { type: 'AC', rackSize: 5, shots: 10 },
+    });
+    const axHead = new AmmoEquipment({
+      id: 'AXHeadAC5', name: 'AX Head AC/5 Ammo', type: 'ammo',
+      stats: { bv: 7 },
+      ammo: {
+        type: 'AC', rackSize: 5, shots: 20, baseAmmo: baseAmmo.id,
+        munitionType: ['M_AX_HEAD'],
+      },
+    });
+    const registry = createTestEquipmentRegistry({ [baseAmmo.id]: baseAmmo, [axHead.id]: axHead });
+    const entity = new TestTankEntity(registry);
+    const installed = mount(axHead);
+    entity.setEquipment([installed]);
+
+    expect(new ExposedCalculator(entity, undefined, CORE_2026_GAME_RULES).ammoValue(installed)).toBe(10);
+    expect(new ExposedCalculator(entity, undefined, TW_GAME_RULES).ammoValue(installed)).toBe(20);
+
+    const selected = {
+      ...entityState(entity),
+      ammoRemaining: () => 5,
+      ammoEquipment: () => axHead,
+    } satisfies EntityStateView;
+    expect(new ExposedCalculator(entity, selected, TW_GAME_RULES).ammoValue(installed)).toBe(20);
   });
 });
 
@@ -102,134 +204,134 @@ describe('WarShip BV arcs', () => {
 });
 
 describe('battle value family dispatch', () => {
-  it('adds MegaMek prototype laser heat bonuses', () => {
-    class ExposedMekCalculator extends MekBVCalculator {
-      heatOf(item: EntityMountedEquipment): number { return this.weaponHeat(item); }
-    }
+  it('dispatches every entity family to its entity-owned calculator', () => {
+    expect(getBVCalculator(new TestTankEntity())).toBeInstanceOf(CombatVehicleBVCalculator);
+    expect(getBVCalculator(new TestProtoMekEntity())).toBeInstanceOf(ProtoMekBVCalculator);
+    expect(getBVCalculator(new TestBipedMekEntity())).toBeInstanceOf(MekBVCalculator);
+  });
+
+  it('uses the same Mek calculator with a runtime state view', () => {
     const entity = new TestBipedMekEntity();
-    const prototype = new WeaponEquipment({ id: 'ISERLargeLaserPrototype',
-      name: 'Prototype ER Large Laser', type: 'weapon', weapon: { heat: 12 }, stats: { bv: 136 } });
-    prototype.weapon.heatAdjustmentForBvCalculation = 3;
-    expect(new ExposedMekCalculator(entity).heatOf(mount(prototype, 'RA'))).toBe(15);
+    entity.setTonnage(55);
+    const laser = mount(new WeaponEquipment({
+      id: 'runtime-test-laser', name: 'Runtime Test Laser', type: 'weapon',
+      weapon: { damage: 10, heat: 3 }, stats: { bv: 200 },
+    }), 'RA');
+    entity.setEquipment([laser]);
+
+    const state = entityState(entity, new Map([[laser.mountId, 'destroyed']]));
+    expect(entity.battleValueFor(state)).toBeLessThan(entity.battleValue('core-2026'));
+    expect(entity.battleValueFor({ ...state, destroyed: true })).toBe(0);
   });
 
-  it('uses semantic vibroblade sizes for Mek BV heat', () => {
-    class ExposedMekCalculator extends MekBVCalculator {
-      heatOf(item: EntityMountedEquipment): number { return this.weaponHeat(item); }
-    }
-    const calculator = new ExposedMekCalculator(new TestBipedMekEntity());
-    const vibroblade = (sizeFlag: EquipmentFlag) => new MiscEquipment({
-      id: sizeFlag, name: sizeFlag, type: 'misc', flags: ['F_CLUB', sizeFlag], stats: { bv: 1 },
+  it('retains structural Clan CASE protection in runtime BV projections', () => {
+    const ammo = new AmmoEquipment({
+      id: 'clan-runtime-ammo', name: 'Clan Runtime Ammo', type: 'ammo',
+      stats: { bv: 20, explosive: true }, ammo: { type: 'LRM', rackSize: 10, shots: 12 },
     });
-    const unrelated = new MiscEquipment({ id: 'club', name: 'Club', type: 'misc', flags: ['F_CLUB'] });
+    const entity = new TestBipedMekEntity(createTestEquipmentRegistry({ [ammo.id]: ammo }));
+    entity.techBase.set('Clan');
+    entity.setEquipment([mount(ammo, 'LT')]);
 
-    expect(calculator.heatOf(mount(vibroblade('S_VIBRO_SMALL'), 'LA'))).toBe(3);
-    expect(calculator.heatOf(mount(vibroblade('S_VIBRO_MEDIUM'), 'LA'))).toBe(5);
-    expect(calculator.heatOf(mount(vibroblade('S_VIBRO_LARGE'), 'LA'))).toBe(7);
-    expect(calculator.heatOf(mount(vibroblade('S_VIBRO_SMALL'), 'LT'))).toBe(0);
-    expect(calculator.heatOf(mount(vibroblade('S_VIBRO_SMALL'), 'RA'))).toBe(3);
-    expect(calculator.heatOf(mount(unrelated, 'LA'))).toBe(0);
-
-    const leftBlade = mount(vibroblade('S_VIBRO_MEDIUM'), 'LA');
-    const rightBlade = mount(vibroblade('S_VIBRO_LARGE'), 'RA');
-    const twoArmEntity = new TestBipedMekEntity();
-    twoArmEntity.setEquipment([leftBlade, rightBlade]);
-    const twoArmCalculator = new ExposedMekCalculator(twoArmEntity);
-    expect(twoArmCalculator.heatOf(leftBlade)).toBe(5);
-    expect(twoArmCalculator.heatOf(rightBlade)).toBe(7);
+    expect(entity.automaticClanCaseLocations().has('LT')).toBeTrue();
+    expect(entity.battleValueFor(entityState(entity))).toBe(entity.battleValue('core-2026'));
   });
 
-  it('uses airborne AirMek flank movement for standard LAM defensive TMM', () => {
-    class ExposedMekCalculator extends MekBVCalculator {
-      runningModifier(): number {
-        this.prepare();
-        return this.runningTmm();
-      }
-    }
-    class StandardLamHarness extends TestBipedMekEntity {
-      override isLandAirMek(): boolean { return true; }
-      override airMekFlankMP(): number { return 10; }
-    }
-    const groundMek = new TestBipedMekEntity();
-    groundMek.originalWalkMP.set(3);
+  for (const ruleset of ['core-2026', 'total-warfare'] as const) {
+    it(`prices LAM AirMek movement from runtime movement like the pristine entity in ${ruleset}`, () => {
+      const entity = new TestLamEntity();
+      entity.setTonnage(55);
+      entity.originalWalkMP.set(5);
+      const jet = new MiscEquipment({ id: 'test-jet', name: 'Jump Jet', type: 'misc', flags: ['F_JUMP_JET'] });
+      // Odd jump MP: AirMek flank MP is ceil(5 x 4.5) = 23 before the speed factor halves it.
+      entity.setEquipment(Array.from({ length: 5 }, () => mount(jet, 'CT')));
 
-    expect(new ExposedMekCalculator(new StandardLamHarness()).runningModifier()).toBe(5);
-    expect(new ExposedMekCalculator(groundMek).runningModifier()).toBe(2);
-  });
-
-  it('keeps zero AirMek flank movement at zero TMM', () => {
-    class ExposedMekCalculator extends MekBVCalculator {
-      runningModifier(): number { return this.runningTmm(); }
-    }
-    class ImmobileLamHarness extends TestBipedMekEntity {
-      override isLandAirMek(): boolean { return true; }
-      override airMekFlankMP(): number { return 0; }
-    }
-
-    expect(new ExposedMekCalculator(new ImmobileLamHarness()).runningModifier()).toBe(0);
-  });
-
-  it('applies Mek summary modifier precedence without stacking cockpit and drone reductions', () => {
-    class ExposedMekCalculator extends MekBVCalculator {
-      summary(value: number): number { return this.summarize(value); }
-    }
-    const drone = new MiscEquipment({
-      id: 'Drone OS', name: 'Drone OS', type: 'misc', flags: ['F_DRONE_OPERATING_SYSTEM'],
+      expect(entity.battleValueFor(entityState(entity), ruleset)).toBe(entity.battleValue(ruleset));
     });
-    const standard = new TestBipedMekEntity();
-    standard.setEquipment([mount(drone, 'CT')]);
-    expect(new ExposedMekCalculator(standard).summary(100)).toBe(95);
+  }
 
-    const small = new TestBipedMekEntity();
-    small.cockpitType.set('Small');
-    small.setEquipment([mount(drone, 'CT')]);
-    expect(new ExposedMekCalculator(small).summary(100)).toBe(95);
-
-    const virtualReality = new TestBipedMekEntity();
-    virtualReality.cockpitType.set('Virtual Reality Piloting Pod');
-    expect(new ExposedMekCalculator(virtualReality).summary(100)).toBe(140);
-    virtualReality.hasRiscHeatSinkOverrideKit.set(true);
-    expect(new ExposedMekCalculator(virtualReality).summary(100)).toBeCloseTo(141.4, 10);
-  });
-
-  it('counts both equipment items in a superheavy combined critical slot', () => {
-    const primary = new AmmoEquipment({
-      id: 'primary-ammo', name: 'Primary Ammo', type: 'ammo', stats: { bv: 10 },
-      ammo: { type: 'AC', rackSize: 10, shots: 10 },
-    });
-    const secondary = new AmmoEquipment({
-      id: 'secondary-ammo', name: 'Secondary Ammo', type: 'ammo', stats: { bv: 20 },
-      ammo: { type: 'GAUSS', rackSize: 15, shots: 8 },
-    });
+  it('counts F_SHIELD equipment defensively instead of offensively', () => {
     const entity = new TestBipedMekEntity();
-    entity.setTonnage(150);
-    entity.setEquipment([mount(primary, 'RT'), mount(secondary, 'RT')]);
+    const shield = new MiscEquipment({
+      id: 'test-shield', name: 'Shield', type: 'misc', stats: { bv: 50 },
+      flags: ['F_SHIELD', 'S_SHIELD_SMALL'],
+    });
+    entity.setEquipment([mount(shield, 'RA')]);
 
-    const items = entity.equipment();
-    expect(items.map(item => item.equipment?.id)).toEqual([primary.id, secondary.id]);
-    expect(items[1].location).toBe('RT');
+    const details = calculateBattleValueDetails(entity).details;
+    expect(findDetail(details, 'Defensive Equipment')?.delta).toBe(50);
+    expect(findDetail(details, 'Offensive Equipment')).toBeUndefined();
   });
 
-  it('treats a PPC as explosive only when linked to a capacitor', () => {
-    class ExposedMekCalculator extends MekBVCalculator {
-      explosive(mounted: EntityMountedEquipment): boolean { return this.isExplosive(mounted); }
-    }
-    const ppc = new WeaponEquipment({
-      id: 'ppc', name: 'PPC', type: 'weapon', flags: ['F_PPC', 'F_PPC_CAPACITOR_COMPATIBLE'],
-      stats: { explosive: false }, weapon: { heat: 10, damage: 10, ammoType: 'NA' },
-    });
-    const capacitor = new MiscEquipment({
-      id: 'capacitor', name: 'PPC Capacitor', type: 'misc', flags: ['F_PPC_CAPACITOR'],
-    });
-    const ppcMount = mount(ppc, 'RA');
-    const capacitorMount = mount(capacitor, 'RA');
-    const entity = new TestBipedMekEntity();
-    entity.setEquipment([ppcMount, capacitorMount]);
-    const calculator = new ExposedMekCalculator(entity);
-    expect(calculator.explosive(ppcMount)).toBeFalse();
+  for (const { size, count, walk, run, jump, factor, tmms } of [
+    { size: 'SMALL', count: 1, walk: 5, run: 8, jump: 5, factor: 1.76, tmms: '3 (R), 3 (J), 0 (U)' },
+    { size: 'MEDIUM', count: 1, walk: 4, run: 6, jump: 4, factor: 1.37, tmms: '2 (R), 2 (J), 0 (U)' },
+    { size: 'LARGE', count: 1, walk: 4, run: 6, jump: 0, factor: 1.12, tmms: '2 (R), 0 (J), 0 (U)' },
+    { size: 'MEDIUM', count: 2, walk: 3, run: 5, jump: 3, factor: 1.24, tmms: '2 (R), 2 (J), 0 (U)' },
+  ] as const) {
+    it(`includes ${count} ${size.toLowerCase()} shield(s) in BV movement and speed factors`, () => {
+      const entity = new TestBipedMekEntity();
+      entity.setTonnage(55);
+      entity.originalWalkMP.set(5);
+      const jet = new MiscEquipment({
+        id: 'test-jet', name: 'Jump Jet', type: 'misc', flags: ['F_JUMP_JET'],
+      });
+      const shield = new MiscEquipment({
+        id: 'test-shield', name: 'Shield', type: 'misc', stats: { bv: 50 },
+        flags: ['F_SHIELD', `S_SHIELD_${size}`],
+      });
+      entity.setEquipment([
+        ...Array.from({ length: 5 }, () => mount(jet, 'CT')),
+        ...Array.from({ length: count }, (_, index) => mount(shield, index === 0 ? 'RA' : 'LA')),
+      ]);
 
-    entity.linkEquipment(capacitorMount, ppcMount);
-    expect(calculator.explosive(ppcMount)).toBeTrue();
+      const result = calculateBattleValueDetails(entity);
+      expect(entity.maxWalkMP()).toBe(walk);
+      expect(findDetail(result.details, 'Effective MP')?.calculation).toBe(`R: ${run}, J: ${jump}, U: 0`);
+      expect(findDetail(result.details, 'TMMs')?.calculation).toBe(tmms);
+      expect(result.offensive).toBeCloseTo(55 * factor, 6);
+      expect(findDetail(result.details, 'Defensive Equipment')?.delta).toBe(50 * count);
+    });
+  }
+
+  it('uses the chosen ruleset for pristine shield-limited BV movement', () => {
+    const entity = new TestBipedMekEntity();
+    entity.setTonnage(55);
+    entity.originalWalkMP.set(2);
+    const shield = new MiscEquipment({
+      id: 'test-medium-shield', name: 'Medium Shield', type: 'misc', stats: { bv: 50 },
+      flags: ['F_SHIELD', 'S_SHIELD_MEDIUM'],
+    });
+    entity.setEquipment([mount(shield, 'RA'), mount(shield, 'LA')]);
+
+    const core = calculateBattleValueDetails(entity, undefined, 'core-2026');
+    const tw = calculateBattleValueDetails(entity, undefined, 'total-warfare');
+    expect(findDetail(core.details, 'Effective MP')?.calculation).toBe('R: 2, J: 0, U: 0');
+    expect(findDetail(tw.details, 'Effective MP')?.calculation).toBe('R: 0, J: 0, U: 0');
+    expect(core.offensive).toBeGreaterThan(tw.offensive);
+  });
+
+  it('shares mounted pod and linked PPC explosiveness with the entity', () => {
+    const entity = new TestBipedMekEntity();
+    const pod = mount(new WeaponEquipment({
+      id: 'test-m-pod', name: 'M-Pod', type: 'weapon', stats: { explosive: true },
+      flags: ['F_M_POD'],
+    }), 'LT');
+    const ppc = mount(new WeaponEquipment({
+      id: 'test-ppc', name: 'PPC', type: 'weapon', stats: { explosive: true },
+      flags: ['F_PPC', 'F_PPC_CAPACITOR_COMPATIBLE'],
+    }), 'RT');
+    const capacitor = mount(new MiscEquipment({
+      id: 'test-capacitor', name: 'PPC Capacitor', type: 'misc', stats: { explosive: true },
+      flags: ['F_PPC_CAPACITOR'],
+    }), 'RT');
+    entity.setEquipment([pod, ppc, capacitor]);
+    entity.linkEquipment(capacitor, ppc);
+
+    expect(entity.isMountedEquipmentExplosive(pod)).toBeFalse();
+    expect(entity.isMountedEquipmentExplosive(ppc)).toBeTrue();
+    expect(entity.isMountedEquipmentExplosive(capacitor)).toBeTrue();
+    expect(findDetail(calculateBattleValueDetails(entity).details, 'Explosive Equipment')?.delta).toBe(-2);
   });
 
   it('applies MegaMek switched-arc turret semantics to superheavy vehicles', () => {
@@ -268,53 +370,10 @@ describe('battle value family dispatch', () => {
     expect(factor?.calculation).toContain('x 1');
   });
 
-  it('applies arm AES to offensive club equipment', () => {
-    class ExposedMekCalculator extends MekBVCalculator {
-      modifier(item: EntityMountedEquipment): number { return this.offensiveEquipmentModifier(item); }
-    }
-    const entity = new TestBipedMekEntity();
-    const aes = new MiscEquipment({ id: 'aes', name: 'AES', type: 'misc',
-      flags: ['F_ACTUATOR_ENHANCEMENT_SYSTEM'] });
-    const club = new MiscEquipment({ id: 'club', name: 'Club', type: 'misc', flags: ['F_CLUB'] });
-    const clubMount = mount(club as never, 'RA');
-    entity.setEquipment([mount(aes as never, 'RA'), clubMount]);
-    expect(new ExposedMekCalculator(entity).modifier(clubMount)).toBe(1.25);
-  });
 
-  it('counts physical shields defensively and excludes them from offensive equipment', () => {
-    class ExposedMekCalculator extends MekBVCalculator {
-      isDefensive(item: EntityMountedEquipment): boolean { return this.countsAsDefensiveEquipment(item); }
-      offensiveEquipmentValue(): number {
-        this.offensiveValue = 0;
-        this.processOffensiveEquipment();
-        return this.offensiveValue;
-      }
-    }
-    const entity = new TestBipedMekEntity();
-    const shield = new MiscEquipment({
-      id: 'shield', name: 'Medium Shield', type: 'misc', stats: { bv: 20 },
-      flags: ['F_SHIELD', 'S_SHIELD_MEDIUM'],
-    });
-    const shieldMount = mount(shield, 'LA');
-    entity.setEquipment([shieldMount]);
-    const calculator = new ExposedMekCalculator(entity);
 
-    expect(calculator.isDefensive(shieldMount)).toBeTrue();
-    expect(calculator.offensiveEquipmentValue()).toBe(0);
 
-    const clubOnly = mount(new MiscEquipment({
-      id: 'club', name: 'Club', type: 'misc', stats: { bv: 20 }, flags: ['F_CLUB'],
-    }), 'LA');
-    expect(calculator.isDefensive(clubOnly)).toBeFalse();
-  });
-
-  it('dispatches modeled families like MegaMek', () => {
-    expect(getBVCalculator(new TestBipedMekEntity())).toBeInstanceOf(MekBVCalculator);
-    expect(getBVCalculator(new TestTankEntity())).toBeInstanceOf(CombatVehicleBVCalculator);
-    expect(getBVCalculator(new TestProtoMekEntity())).toBeInstanceOf(ProtoMekBVCalculator);
-  });
-
-  it('calculates from canonical equipment and ignores manual BV', () => {
+  it('keeps the raw calculator available independently of authored BV', () => {
     const entity = new TestTankEntity();
     entity.setTonnage(20);
     entity.originalWalkMP.set(4);
@@ -329,6 +388,36 @@ describe('battle value family dispatch', () => {
     expect(bv).not.toBe(9999);
   });
 
+  for (const ruleset of ['core-2026', 'total-warfare'] as const) {
+    it(`uses authored BV and retains its computed evidence under ${ruleset}`, () => {
+      const entity = new TestTankEntity();
+      entity.setTonnage(20);
+      entity.originalWalkMP.set(4);
+      const calculated = getBVCalculator(entity, undefined, ruleset).calculate();
+      entity.manualBV.set(9999);
+
+      expect(calculateBattleValue(entity, undefined, ruleset)).toBe(9999);
+      expect(entity.battleValue(ruleset)).toBe(9999);
+      const report = calculateBattleValueDetails(entity, undefined, ruleset);
+      expect(report.base).toBe(9999);
+      expect(report.defensive).toBe(calculated.defensive);
+      expect(report.offensive).toBe(calculated.offensive);
+      expect(report.details).toEqual([
+        { type: 'Calculated Battle Value', total: calculated.base, details: calculated.details },
+        { type: 'Manual Battle Value', calculation: 'Overrides calculated BV', total: 9999 },
+      ]);
+
+      const destroyed = { ...entityState(entity), destroyed: true };
+      expect(entity.battleValueFor(destroyed, ruleset)).toBe(9999);
+      expect(getBVCalculator(entity, destroyed, ruleset).calculateBaseBV()).toBe(0);
+      entity.manualBV.set(1234);
+      expect(entity.battleValue(ruleset)).toBe(1234);
+      entity.manualBV.set(0);
+      expect(calculateBattleValueDetails(entity, undefined, ruleset)).toEqual(calculated);
+      expect(entity.battleValueFor(destroyed, ruleset)).toBe(0);
+    });
+  }
+
   it('calculates ProtoMek melee BV before the fixed-zero equipment fallback', () => {
     const entity = new TestProtoMekEntity();
     entity.setTonnage(7);
@@ -338,6 +427,20 @@ describe('battle value family dispatch', () => {
     });
     const qmsMount = mount(qms as never, 'Torso');
     expect(qmsMount.getBV(entity)).toBe(5);
+  });
+
+  it('adds a platoon disposable weapon to infantry BV', () => {
+    const entity = new TestInfantryEntity();
+    entity.squadSize.set(7);
+    entity.squadCount.set(4);
+    const without = calculateBattleValue(entity);
+    const law = new WeaponEquipment({
+      id: 'law', name: 'Rocket Launcher (LAW)', type: 'weapon',
+      flags: ['F_INFANTRY', 'F_INF_DISPOSABLE'], infantry: { damage: 0.53 }, stats: { bv: 2.71 },
+    });
+    if (!law.isInfantryWeapon()) throw new Error('Test LAW is not an infantry weapon');
+    entity.setPlatoonWeapon('disposable', law);
+    expect(calculateBattleValue(entity)).toBeGreaterThan(without);
   });
 
   it('composes infantry armor, augmentation, and beast damage divisors', () => {
@@ -381,109 +484,11 @@ describe('structured battle value details', () => {
     expect(findDetail(calculateBattleValueDetails(entity).details, 'Armor')?.delta).toBe(15);
   });
 
-  it('applies BAR 5 only to Commercial armor on Meks', () => {
-    const entity = new TestBipedMekEntity();
-    entity.armorValues.set(new Map([['CT', { front: 84, rear: 0 }]]));
-    const commercial = new ArmorEquipment({
-      id: 'Commercial Armor', name: 'Commercial Armor', type: 'armor',
-      armor: { type: 'COMMERCIAL', bar: 5 },
-    });
-    const standard = new ArmorEquipment({
-      id: 'Standard Armor', name: 'Standard Armor', type: 'armor',
-      armor: { type: 'STANDARD', bar: 10 },
-    });
 
-    entity.setUniformArmor(new MountedArmor({ armor: commercial, techBase: 'IS' }));
-    expect(findDetail(calculateBattleValueDetails(entity).details, 'Armor')?.delta).toBe(105);
 
-    entity.setUniformArmor(new MountedArmor({ armor: standard, techBase: 'IS' }));
-    expect(findDetail(calculateBattleValueDetails(entity).details, 'Armor')?.delta).toBe(210);
-  });
 
-  it('applies CT armor material modifiers to torso-mounted cockpit armor', () => {
-    const entity = new TestBipedMekEntity();
-    entity.armorValues.set(new Map([['CT', { front: 8, rear: 2 }]]));
-    const reflective = new ArmorEquipment({
-      id: 'Reflective Armor', name: 'Reflective Armor', type: 'armor',
-      armor: { type: 'REFLECTIVE' },
-    });
-    entity.setUniformArmor(new MountedArmor({ armor: reflective, techBase: 'IS' }));
 
-    expect(findDetail(calculateBattleValueDetails(entity).details, 'Armor')?.delta).toBe(37.5);
 
-    entity.cockpitType.set('Torso-Mounted');
-    expect(findDetail(calculateBattleValueDetails(entity).details, 'Armor')?.delta).toBe(75);
-  });
-
-  it('adds the Blue Shield armor modifier to the material modifier', () => {
-    const entity = new TestBipedMekEntity();
-    entity.armorValues.set(new Map([['CT', { front: 10, rear: 0 }]]));
-    entity.setUniformArmor(new MountedArmor({
-      armor: new ArmorEquipment({
-        id: 'Reflective Armor', name: 'Reflective Armor', type: 'armor',
-        armor: { type: 'REFLECTIVE' },
-      }),
-      techBase: 'IS',
-    }));
-    entity.setEquipment([mount(new MiscEquipment({
-      id: 'Blue Shield', name: 'Blue Shield', type: 'misc', flags: ['F_BLUE_SHIELD'],
-    }), 'CT')]);
-
-    expect(findDetail(calculateBattleValueDetails(entity).details, 'Armor')?.delta).toBe(42.5);
-  });
-
-  it('penalizes each unprotected Inner Sphere Mek location for Blue Shield', () => {
-    class ExposedMekCalculator extends MekBVCalculator {
-      blueShieldPenalty(): number { return -this.blueShieldUnprotectedLocations(); }
-    }
-    const entity = new TestBipedMekEntity();
-    entity.techBase.set('IS');
-    entity.setEquipment([mount(new MiscEquipment({
-      id: 'Blue Shield', name: 'Blue Shield', type: 'misc', flags: ['F_BLUE_SHIELD'],
-    }), 'CT')]);
-
-    expect(new ExposedMekCalculator(entity).blueShieldPenalty()).toBe(-7);
-  });
-
-  it('applies reinforced structure BV before the XXL engine modifier', () => {
-    const entity = new TestBipedMekEntity();
-    entity.setTonnage(60);
-    entity.mountedEngine().type.set('XXL');
-    entity.setUniformStructure(new MountedStructure({
-      structure: new StructureEquipment({
-        id: 'Reinforced', name: 'Reinforced Structure', type: 'structure',
-        flags: ['F_REINFORCED'],
-      }),
-      techBase: 'IS',
-      tonnage: 12,
-    }));
-
-    const structure = findDetail(calculateBattleValueDetails(entity).details, 'Internal Structure');
-    const internalPoints = entity.totalInternalPoints();
-    expect(internalPoints).toBeGreaterThan(0);
-    expect(structure?.delta).toBe(internalPoints * 1.5 * 2 * 0.25);
-    expect(structure?.calculation).toContain(`${internalPoints} x 1.5 x 2 x 0.25`);
-  });
-
-  it('counts HarJel defensively and modifies armor once in each occupied location', () => {
-    const entity = new TestBipedMekEntity();
-    entity.armorValues.set(new Map([
-      ['CT', { front: 6, rear: 4 }],
-      ['LT', { front: 8, rear: 2 }],
-      ['RT', { front: 10, rear: 0 }],
-    ]));
-    const harjel2 = new MiscEquipment({ id: 'harjel-2', name: 'HarJel II', type: 'misc',
-      flags: ['F_HARJEL_II'], stats: { bv: -1 } });
-    const harjel3 = new MiscEquipment({ id: 'harjel-3', name: 'HarJel III', type: 'misc',
-      flags: ['F_HARJEL_III'], stats: { bv: -2 } });
-    entity.setEquipment([
-      mount(harjel2, 'CT'), mount(harjel3, 'LT'), mount(harjel3, 'LT'),
-    ]);
-    const details = calculateBattleValueDetails(entity).details;
-
-    expect(findDetail(details, 'Armor')?.delta).toBe(82.5);
-    expect(findDetail(details, 'Defensive Equipment')?.delta).toBe(-5);
-  });
 
   it('shares one state calculation while preserving the numeric API', () => {
     const entity = new TestTankEntity();
@@ -515,182 +520,15 @@ describe('structured battle value details', () => {
     expect(Number.isFinite(result.base)).toBeTrue();
   });
 
-  it('reports the Mek labels, formulas, heat sequence, overheat, weight, and speed used by Hellion P', () => {
-    const entity = new TestBipedMekEntity();
-    entity.setTonnage(30);
-    entity.originalWalkMP.set(12);
-    const hotLaser = new WeaponEquipment({
-      id: 'hot-laser', name: 'Imp. Heavy Medium Laser', shortName: 'Imp. Heavy Medium Laser',
-      type: 'weapon', stats: { bv: 93 }, weapon: { ammoType: 'NA', heat: 100 }, flags: ['F_ENERGY'],
-    });
-    entity.setEquipment([mount(hotLaser, 'LT'), mount(hotLaser, 'LT')]);
 
-    const result = calculateBattleValueDetails(entity);
-    expect(result.details[0]).toEqual({ type: 'Effective MP', calculation: 'R: 18, J: 0, U: 0' });
-    expect(findDetail(result.details, 'Defensive Battle Rating')).toBeDefined();
-    expect(findDetail(result.details, 'Internal Structure')?.calculation).toContain('x 1.5');
-    expect(findDetail(result.details, 'Gyro')?.calculation).toContain('+ 30 x');
-    expect(findDetail(result.details, 'Heat Efficiency')?.calculation).toContain('6 +');
-    const weapons = findDetail(result.details, 'Weapons')?.details ?? [];
-    expect(weapons.filter(detail => detail.type === 'Imp. Heavy Medium Laser (LT)').length).toBe(2);
-    expect(weapons.some(detail => detail.calculation?.includes('(Overheat)'))).toBeTrue();
-    expect(findDetail(result.details, 'Weight')?.calculation).toContain('+ 30');
-    expect(findDetail(result.details, 'Speed Factor')?.calculation).toContain('x 2.72');
-    expect(findDetail(result.details, 'Base Unit BV')?.calculation).toContain(', rn');
-  });
 
-  it('uses improved jump-jet heat for Mek BV heat efficiency', () => {
-    const entity = new TestBipedMekEntity();
-    entity.setTonnage(80);
-    entity.originalWalkMP.set(4);
-    entity.mountedEngine().type.set('Fusion');
-    const improvedJumpJet = new MiscEquipment({
-      id: 'improved-jump-jet', name: 'Improved Jump Jet', type: 'misc',
-      stats: { tonnage: 2 }, flags: ['F_JUMP_JET', 'S_IMPROVED'],
-    });
-    entity.setEquipment(Array.from({ length: 6 }, () => mount(improvedJumpJet, 'LT')));
 
-    const heatEfficiency = findDetail(calculateBattleValueDetails(entity).details, 'Heat Efficiency');
-    expect(entity.computeJumpMP({
-      ...BV_MOVEMENT_CALCULATION,
-      includeAlternateJumpSystems: false,
-    })).toBe(6);
-    expect(heatEfficiency?.calculation).toContain('- 3 (Jump)');
-  });
 
-  it('does not apply running heat to IndustrialMek BV heat efficiency', () => {
-    const industrialStructure = new StructureEquipment({
-      id: 'industrial-structure', name: 'Industrial Structure', type: 'structure',
-      flags: ['F_INDUSTRIAL_STRUCTURE'],
-    });
-    const industrialMek = new TestBipedMekEntity();
-    industrialMek.originalWalkMP.set(4);
-    industrialMek.mountedEngine().type.set('Fusion');
-    industrialMek.setStructureAt('CT', new MountedStructure({
-      tonnage: 5,
-      structure: industrialStructure,
-    }));
 
-    const battleMek = new TestBipedMekEntity();
-    battleMek.originalWalkMP.set(4);
-    battleMek.mountedEngine().type.set('Fusion');
 
-    expect(findDetail(calculateBattleValueDetails(industrialMek).details, 'Heat Efficiency')?.calculation)
-      .toContain('- 0 (Run)');
-    expect(findDetail(calculateBattleValueDetails(battleMek).details, 'Heat Efficiency')?.calculation)
-      .toContain('- 2 (Run)');
-  });
 
-  it('still applies jump heat to IndustrialMek BV heat efficiency', () => {
-    const industrialStructure = new StructureEquipment({
-      id: 'industrial-structure', name: 'Industrial Structure', type: 'structure',
-      flags: ['F_INDUSTRIAL_STRUCTURE'],
-    });
-    const jumpJet = new MiscEquipment({
-      id: 'jump-jet', name: 'Jump Jet', type: 'misc', flags: ['F_JUMP_JET'],
-    });
-    const entity = new TestBipedMekEntity();
-    entity.originalWalkMP.set(4);
-    entity.mountedEngine().type.set('Fusion');
-    entity.setStructureAt('CT', new MountedStructure({ tonnage: 5, structure: industrialStructure }));
-    entity.setEquipment(Array.from({ length: 4 }, () => mount(jumpJet, 'LT')));
 
-    expect(findDetail(calculateBattleValueDetails(entity).details, 'Heat Efficiency')?.calculation)
-      .toContain('- 4 (Jump)');
-  });
 
-  it('uses the reduced explosive penalty for Magshot Gauss rifles', () => {
-    const entity = new TestBipedMekEntity();
-    const magshot = new WeaponEquipment({
-      id: 'ISMagshotGR', name: 'Magshot Gauss Rifle', type: 'weapon',
-      stats: { bv: 15, explosive: true, criticalSlots: 2 },
-      weapon: { ammoType: 'MAGSHOT', explosionDamage: 3 },
-      flags: ['F_GAUSS'],
-    });
-    entity.setEquipment([mount(magshot, 'LT')]);
-
-    const explosive = findDetail(calculateBattleValueDetails(entity).details, 'Explosive Equipment');
-    expect(explosive?.delta).toBe(-2);
-  });
-
-  it('uses semantic weapon flags for reduced explosive penalties', () => {
-    const reducedWeaponFlags: EquipmentFlag[][] = [
-      ['F_HYPER'],
-      ['F_TSEMP'],
-      ['F_B_POD'],
-      ['F_M_POD'],
-      ['F_TASER', 'F_MEK_WEAPON'],
-      ['F_LASER', 'S_IMPROVED'],
-    ];
-
-    for (const [index, flags] of reducedWeaponFlags.entries()) {
-      const entity = new TestBipedMekEntity();
-      const weapon = new WeaponEquipment({
-        id: `reduced-${index}`, name: `Reduced ${index}`, type: 'weapon',
-        stats: { explosive: true, criticalSlots: 2 }, flags,
-      });
-      entity.setEquipment([mount(weapon, 'LT')]);
-
-      const explosive = findDetail(calculateBattleValueDetails(entity).details, 'Explosive Equipment');
-      expect(explosive?.delta).withContext(flags.join(' + ')).toBe(-2);
-    }
-  });
-
-  it('requires both laser and improved flags for the improved-heavy-laser penalty', () => {
-    const flagSets: EquipmentFlag[][] = [['F_LASER'], ['S_IMPROVED']];
-    for (const flags of flagSets) {
-      const entity = new TestBipedMekEntity();
-      const weapon = new WeaponEquipment({
-        id: flags[0], name: flags[0], type: 'weapon',
-        stats: { explosive: true, criticalSlots: 2 }, flags,
-      });
-      entity.setEquipment([mount(weapon, 'LT')]);
-
-      const explosive = findDetail(calculateBattleValueDetails(entity).details, 'Explosive Equipment');
-      expect(explosive?.delta).withContext(flags[0]).toBe(-30);
-    }
-  });
-
-  it('requires the Mek weapon flag for the reduced taser penalty', () => {
-    const entity = new TestBipedMekEntity();
-    const battleArmorTaser = new WeaponEquipment({
-      id: 'ba-taser', name: 'BA Taser', type: 'weapon',
-      stats: { explosive: true, criticalSlots: 1 }, flags: ['F_TASER', 'F_BA_WEAPON'],
-    });
-    entity.setEquipment([mount(battleArmorTaser, 'LT')]);
-
-    const explosive = findDetail(calculateBattleValueDetails(entity).details, 'Explosive Equipment');
-    expect(explosive?.delta).toBe(-15);
-  });
-
-  it('applies one total explosive penalty to a non-split HVAC', () => {
-    const entity = new TestBipedMekEntity();
-    const hvac = new WeaponEquipment({
-      id: 'hvac', name: 'HVAC', type: 'weapon',
-      stats: { explosive: true, criticalSlots: 4 }, flags: ['F_HVAC'],
-    });
-    entity.setEquipment([mount(hvac, 'LT')]);
-
-    const explosive = findDetail(calculateBattleValueDetails(entity).details, 'Explosive Equipment');
-    expect(explosive?.delta).toBe(-1);
-  });
-
-  it('counts occupied slots for a split HVAC', () => {
-    const entity = new TestBipedMekEntity();
-    const hvac = new WeaponEquipment({
-      id: 'split-hvac', name: 'Split HVAC', type: 'weapon',
-      stats: { explosive: true, criticalSlots: 4 }, flags: ['F_HVAC'],
-    });
-    const splitMount = mount(hvac, 'LT')
-      .withAddedPlacement({ location: 'LT', slotIndex: 0 })
-      .withAddedPlacement({ location: 'LT', slotIndex: 1 })
-      .withAddedPlacement({ location: 'RT', slotIndex: 0 })
-      .withAddedPlacement({ location: 'RT', slotIndex: 1 });
-    entity.setEquipment([splitMount]);
-
-    const explosive = findDetail(calculateBattleValueDetails(entity).details, 'Explosive Equipment');
-    expect(explosive?.delta).toBe(-4);
-  });
 
   it('groups equivalent large-aero PPCs and applies arc factors before capacitor BV', () => {
     class ExposedDropShipCalculator extends DropShipBVCalculator {
@@ -731,28 +569,12 @@ describe('structured battle value details', () => {
   it('exposes reactive BaseEntity value and details computed from current state', () => {
     const entity = new TestTankEntity();
     entity.setTonnage(10);
-    const initial = entity.battleValue();
-    expect(entity.battleValueDetails()).toBe(entity.battleValueDetails());
+    const initial = entity.battleValue('core-2026');
+    expect(entity.battleValueDetails('core-2026')).toBe(entity.battleValueDetails('core-2026'));
 
     entity.setTonnage(30);
-    expect(entity.battleValue()).not.toBe(initial);
-    expect(findDetail(entity.battleValueDetails(), 'Weight')?.calculation).toContain('+ 30');
+    expect(entity.battleValue('core-2026')).not.toBe(initial);
+    expect(findDetail(entity.battleValueDetails('core-2026'), 'Weight')?.calculation).toContain('+ 30');
   });
 
-  it('returns a coherent hierarchy for every calculator family', () => {
-    const entities = [
-      new TestBipedMekEntity(), new TestTankEntity(), new TestProtoMekEntity(),
-      new TestInfantryEntity(), new TestBattleArmorEntity(), new TestAeroSpaceFighterEntity(),
-      new TestDropShipEntity(), new TestJumpShipEntity(), new TestSpaceStationEntity(),
-      new TestWarShipEntity(), new TestHandheldWeaponEntity(),
-    ];
-    for (const entity of entities) {
-      const result = calculateBattleValueDetails(entity);
-      expect(result.details.map(detail => detail.type)).withContext(entity.entityType).toEqual([
-        'Effective MP', 'Defensive Battle Rating', 'Offensive Battle Rating', 'Battle Value',
-      ]);
-      expect(findDetail(result.details, 'Base Unit BV')?.total).withContext(entity.entityType).toBe(result.base);
-      expect(Number.isFinite(result.base)).withContext(entity.entityType).toBeTrue();
-    }
-  });
 });

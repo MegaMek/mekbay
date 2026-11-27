@@ -65,6 +65,7 @@ describe('Alpha Strike generic location mapper', () => {
     expect(scopes(tripod, tripodLeg)).toEqual({ standard: 1, rear: 0, turret: 0 });
     expect(scopes(quadVee, quadVeeLeg)).toEqual({ standard: 1, rear: 0, turret: 1 });
   });
+
 });
 
 function addWeapon(

@@ -2,8 +2,10 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 // Author: Drake
 
+import { PageViewerZoomPanService } from '../page-viewer-zoom-pan.service';
 import { TestBed } from '@angular/core/testing';
 
+import { PageViewerSheetSourceService } from './page-viewer-sheet-source.service';
 import { PageViewerShadowRenderService } from './page-viewer-shadow-render.service';
 
 function createSvg(): SVGSVGElement {
@@ -15,7 +17,15 @@ describe('PageViewerShadowRenderService', () => {
 
     beforeEach(() => {
         TestBed.configureTestingModule({
-            providers: [PageViewerShadowRenderService]
+            providers: [PageViewerZoomPanService,
+                PageViewerShadowRenderService,
+                {
+                    provide: PageViewerSheetSourceService,
+                    useValue: {
+                        load: (unit: { load(): Promise<void> }) => unit.load(),
+                    },
+                },
+            ]
         });
 
         service = TestBed.inject(PageViewerShadowRenderService);
@@ -25,13 +35,15 @@ describe('PageViewerShadowRenderService', () => {
         const wrapper = document.createElement('div');
         wrapper.dataset['shadowKey'] = 'right:2';
         const unitSvg = createSvg();
+        unitSvg.classList.add('mekbay-sheet', 'interactive-sheet');
+        unitSvg.innerHTML = '<g class="interactive" tabindex="0"><rect /></g>';
         const onShadowClick = jasmine.createSpy('onShadowClick');
         const cleanups = service.bindDeclarativeShadowPages({
             wrappers: [wrapper],
             currentCleanups: [],
             descriptors: [{
                 key: 'right:2',
-                unit: { svg: () => unitSvg } as never,
+                unit: { recordSheet: () => unitSvg } as never,
                 unitId: 'u2',
                 unitIndex: 2,
                 direction: 'right',
@@ -50,6 +62,10 @@ describe('PageViewerShadowRenderService', () => {
 
         expect(cleanups.length).toBe(1);
         expect(wrapper.querySelector('svg')).not.toBeNull();
+        expect(wrapper.querySelector('svg')!.classList.contains('interactive-sheet')).toBeFalse();
+        expect(wrapper.querySelector('[tabindex]')).toBeNull();
+        expect(unitSvg.classList.contains('interactive-sheet')).toBeTrue();
+        expect(unitSvg.querySelector('[tabindex]')).not.toBeNull();
 
         wrapper.click();
 
@@ -71,7 +87,7 @@ describe('PageViewerShadowRenderService', () => {
             currentCleanups: [],
             descriptors: [{
                 key: 'right:2',
-                unit: { svg: () => unitSvg } as never,
+                unit: { recordSheet: () => unitSvg } as never,
                 unitId: 'u2',
                 unitIndex: 2,
                 direction: 'right',
@@ -95,7 +111,7 @@ describe('PageViewerShadowRenderService', () => {
             currentCleanups: cleanups,
             descriptors: [{
                 key: 'right:2',
-                unit: { svg: () => unitSvg } as never,
+                unit: { recordSheet: () => unitSvg } as never,
                 unitId: 'u2',
                 unitIndex: 2,
                 direction: 'right',
@@ -153,6 +169,48 @@ describe('PageViewerShadowRenderService', () => {
 
         expect(upsertTransientShadowPage).not.toHaveBeenCalled();
         clickedShadow.remove();
+    });
+
+    it('refreshes in-place source changes and cleans up replaced and removed bindings', async () => {
+        const wrapper = document.createElement('div');
+        wrapper.dataset['shadowKey'] = 'right:1';
+        let svg = createSvg();
+        svg.innerHTML = '<text>Before</text>';
+        const onShadowClick = jasmine.createSpy('onShadowClick');
+        const options: Parameters<PageViewerShadowRenderService['bindDeclarativeShadowPages']>[0] = {
+            wrappers: [wrapper], currentCleanups: [], scale: 1, showFluff: false,
+            descriptors: [{ key: 'right:1', unit: { recordSheet: () => svg } as never,
+                unitId: 'b', unitIndex: 1, direction: 'right', originalLeft: 632, scaledLeft: 632, isDimmed: true }],
+            setPromotedShadowState: () => {}, applyWrapperLayout: () => {},
+            setPageWrapperContentState: () => {}, applyFluffImageVisibilityToSvg: () => {}, onShadowClick,
+        };
+        const refresh = () => options.currentCleanups = service.bindDeclarativeShadowPages(options);
+        refresh();
+        const firstClone = wrapper.firstElementChild;
+        svg.querySelector('text')!.textContent = 'After';
+        refresh(); // Observer records have not been delivered yet.
+        expect(wrapper.firstElementChild).not.toBe(firstClone);
+        expect(wrapper.textContent).toBe('After');
+
+        svg.querySelector('text')!.setAttribute('class', 'damaged');
+        await Promise.resolve();
+        refresh(); // Exercise the delivered-record path too.
+        expect(wrapper.querySelector('text')!.classList.contains('damaged')).toBeTrue();
+        const unchangedClone = wrapper.firstElementChild;
+        refresh();
+        expect(wrapper.firstElementChild).toBe(unchangedClone);
+
+        svg = createSvg();
+        svg.innerHTML = '<text>Replacement</text>';
+        refresh();
+        wrapper.click();
+        expect(onShadowClick).toHaveBeenCalledTimes(1);
+        expect(wrapper.textContent).toBe('Replacement');
+        options.wrappers = [];
+        refresh();
+        wrapper.click();
+        expect(onShadowClick).toHaveBeenCalledTimes(1);
+        expect(options.currentCleanups).toEqual([]);
     });
 
     it('collects existing shadow keys from current shadow wrappers', () => {
