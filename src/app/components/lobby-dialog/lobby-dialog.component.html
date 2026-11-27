@@ -16,65 +16,12 @@
                     <input type="checkbox" class="bt-checkbox" [checked]="lobby.locked" [disabled]="!lobby.isHost" (change)="onLockChange($event)" />
                     <span>Locked</span>
                 </label>
+                <button class="bt-button settings-button" type="button" title="Lobby settings" aria-label="Lobby settings" (click)="openSettings()">
+                    <svg viewBox="0 0 24 24" fill="currentColor" aria-hidden="true">
+                        <path d="M19.14 12.94a7.5 7.5 0 0 0 0-1.88l2.03-1.58a.5.5 0 0 0 .12-.61l-1.92-3.32a.5.5 0 0 0-.59-.22l-2.39.96a7 7 0 0 0-1.62-.94l-.36-2.54a.5.5 0 0 0-.48-.41h-3.84a.5.5 0 0 0-.47.41l-.36 2.54a7 7 0 0 0-1.62.94l-2.39-.96a.5.5 0 0 0-.59.22L2.74 8.87a.5.5 0 0 0 .12.61l2.03 1.58a7.5 7.5 0 0 0 0 1.88l-2.03 1.58a.5.5 0 0 0-.12.61l1.92 3.32a.5.5 0 0 0 .59.22l2.39-.96c.5.38 1.04.7 1.62.94l.36 2.54a.5.5 0 0 0 .47.41h3.84a.5.5 0 0 0 .48-.41l.36-2.54a7 7 0 0 0 1.62-.94l2.39.96a.5.5 0 0 0 .59-.22l1.92-3.32a.5.5 0 0 0-.12-.61l-2.03-1.58ZM12 15.6a3.6 3.6 0 1 1 0-7.2 3.6 3.6 0 0 1 0 7.2Z" />
+                    </svg>
+                </button>
             </div>
-
-            <section class="lobby-settings" aria-label="Lobby game settings">
-                <div class="lobby-setting lobby-ruleset">
-                    <span class="lobby-setting-label">Rules</span>
-                    @if (lobby.isHost) {
-                        <mode-switch
-                            [leftLabel]="rulesetLabels['total-warfare']"
-                            [rightLabel]="rulesetLabels['core-2026']"
-                            ariaLabel="Lobby rules"
-                            switchAriaLabel="Switch lobby rules"
-                            [selectedRight]="lobby.settings.ruleset === 'core-2026'"
-                            [disabled]="lobbyService.switchingRuleset()"
-                            (selectedRightChange)="onRulesetChange($event)"
-                        ></mode-switch>
-                    } @else {
-                        <strong class="lobby-setting-value">{{ rulesetLabels[lobby.settings.ruleset] }}</strong>
-                    }
-                </div>
-                <div class="lobby-setting">
-                    <span class="lobby-setting-label" id="lobby-initiative-order-label">Initiative order</span>
-                    @if (lobby.isHost) {
-                        <select class="bt-select" aria-labelledby="lobby-initiative-order-label" [disabled]="lobby.settings.ruleset === 'core-2026' || lobbyService.switchingRuleset()" (change)="onInitiativeOrderChange($event)">
-                            @for (choice of initiativeOrderChoices; track choice.value) {
-                                <option [value]="choice.value" [selected]="lobby.settings.initiativeOrder === choice.value" [title]="choice.hint">{{ choice.label }}</option>
-                            }
-                        </select>
-                    } @else {
-                        <span class="lobby-setting-value" [class.inactive]="lobby.settings.ruleset === 'core-2026'">{{ initiativeOrderLabel() }}</span>
-                    }
-                </div>
-                <div class="lobby-setting">
-                    <span class="lobby-setting-label" id="lobby-initiative-die-label">Initiative Die</span>
-                    @if (lobby.isHost) {
-                        <select class="bt-select" aria-labelledby="lobby-initiative-die-label" [value]="lobby.settings.initiativeDie" [disabled]="lobbyService.switchingRuleset()" (change)="onInitiativeDieChange($event)">
-                            <option value="false">Disabled</option>
-                            <option value="true">Enabled</option>
-                        </select>
-                    } @else {
-                        <span class="lobby-setting-value">{{ lobby.settings.initiativeDie ? 'Enabled' : 'Disabled' }}</span>
-                    }
-                </div>
-                @if (lobby.settings.ruleset === 'core-2026') {
-                    <p class="lobby-settings-note">Core fixes the order: extra units act first.</p>
-                }
-                <fieldset class="lobby-optional-rules">
-                    <legend class="lobby-setting-label">Optional rules</legend>
-                    @for (rule of optionalRuleChoices; track rule.key) {
-                        @if (!rule.ruleset || rule.ruleset === lobby.settings.ruleset) {
-                            <label class="lobby-optional-rule">
-                                <input class="bt-checkbox" type="checkbox" [checked]="optionalRules()[rule.key]"
-                                    [disabled]="!lobby.isHost || lobbyService.switchingRuleset()"
-                                    (change)="onOptionalRuleChange(rule.key, $event)" />
-                                <span>{{ rule.label }}</span>
-                            </label>
-                        }
-                    }
-                </fieldset>
-            </section>
 
             <div class="op-sides lobby-sides" cdkDropListGroup>
                 <section class="op-side">
