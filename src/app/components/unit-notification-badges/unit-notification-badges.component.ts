@@ -31,21 +31,15 @@ export function projectRuntimePendingNotification(
     const events = snapshot.pendingEvents.filter(event => event.count > 0);
     const count = events.reduce((total, event) => total + event.count, 0);
     if (count === 0) return null;
-    const critical = events.find(event =>
-        event.kind === 'critical-chance' || event.kind === 'critical-hit');
-    const kind: UnitNotificationKind = events.some(event => event.kind === 'fall')
-        ? 'fall'
-        : events.some(event => event.kind === 'unit-check')
-            ? 'unit-check'
-            : critical?.kind ?? 'psr';
     const ordered = [
         ...events.filter(event => event.kind === 'fall'),
         ...events.filter(event => event.kind === 'unit-check'),
         ...events.filter(event => event.kind === 'critical-chance' || event.kind === 'critical-hit'),
+        ...events.filter(event => event.kind === 'crippling'),
         ...events.filter(event => event.kind === 'psr'),
     ];
     return Object.freeze({
-        kind,
+        kind: ordered[0]!.kind,
         count,
         tooltip: Object.freeze(ordered.flatMap(event => event.tooltip)),
     });
@@ -105,6 +99,7 @@ export class UnitNotificationBadgesComponent {
 
 const NOTIFICATION_KIND_LABELS: Readonly<Record<UnitNotificationKind, string>> = {
     fall: 'fall damage',
+    crippling: 'crippling destruction test',
     psr: 'PSR checks',
     'critical-chance': 'critical chance',
     'critical-hit': 'critical hit',

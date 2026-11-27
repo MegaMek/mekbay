@@ -36,6 +36,7 @@ import type { TooltipLine } from '../tooltip/tooltip.component';
 
 export type RuntimeUnitNotificationKind =
     | 'fall'
+    | 'crippling'
     | 'psr'
     | 'critical-chance'
     | 'critical-hit'
@@ -148,26 +149,26 @@ function projectMekNotifications(
     const torsoCheck = phaseState.ruleChecks.get(MEK_TORSO_CRIPPLING_RULE_CHECK_KEY);
     const ruleCheckIsAutomatic = !pilotCanControl
         || snapshot.query.hasCondition('shutdown');
-    const ruleTooltip: readonly TooltipLine[] = torsoCheck?.status === 'pending'
-        && !ruleCheckIsAutomatic
-        ? [Object.freeze({
-            label: 'Crippling destruction',
-            value: movement.kind === 'supported'
-                ? `Target ${movement.pilotingTargetNumber}+`
-                : 'Pending',
-        })]
-        : [];
-    if (checks.length > 0 || ruleTooltip.length > 0) {
+    if (torsoCheck?.status === 'pending' && !ruleCheckIsAutomatic) {
+        pendingEvents.push(Object.freeze({
+            kind: 'crippling',
+            count: 1,
+            tooltip: Object.freeze([Object.freeze({
+                label: 'Crippling destruction',
+                value: movement.kind === 'supported'
+                    ? `Target ${movement.pilotingTargetNumber}+`
+                    : 'Pending',
+            })]),
+        }));
+    }
+    if (checks.length > 0) {
         pendingEvents.push(Object.freeze({
             kind: 'psr',
-            count: checks.length + ruleTooltip.length,
-            tooltip: Object.freeze([
-                ...ruleTooltip,
-                ...checks.map(check => Object.freeze({
-                    label: check.reason,
-                    value: `Target ${check.targetNumber}+`,
-                })),
-            ]),
+            count: checks.length,
+            tooltip: Object.freeze(checks.map(check => Object.freeze({
+                label: check.reason,
+                value: `Target ${check.targetNumber}+`,
+            }))),
         }));
     }
 

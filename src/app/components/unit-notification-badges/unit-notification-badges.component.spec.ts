@@ -227,6 +227,28 @@ describe('direct runtime unit notifications', () => {
         expect(badge.getAttribute('aria-label')).toBe('Resume 2 pending events; next: PSR checks');
         expect(badge.querySelector('text')?.textContent?.trim()).toBe('2!');
     });
+
+    it('shows the crippling test as its own badge ahead of PSR checks', async () => {
+        await TestBed.configureTestingModule({
+            imports: [UnitNotificationBadgesComponent],
+            providers: [
+                provideZonelessChangeDetection(),
+                { provide: Overlay, useValue: {} },
+            ],
+        }).compileComponents();
+        const fixture = TestBed.createComponent(UnitNotificationBadgesComponent);
+        fixture.componentRef.setInput('snapshot', notificationSnapshot([
+            event('psr', 2, 'Piloting Skill Rolls'),
+            event('crippling', 1, 'Crippling destruction'),
+        ]));
+        fixture.detectChanges();
+
+        const badge = fixture.nativeElement.querySelector('.pending-events-warning.crippling-warning');
+        expect(badge).not.toBeNull();
+        expect(badge.getAttribute('aria-label')).toBe('3 pending events; next: crippling destruction test');
+        expect(badge.querySelector('.event-count')?.textContent).toBe('3');
+        expect(fixture.nativeElement.querySelector('.psr-warning')).toBeNull();
+    });
 });
 
 function event(
