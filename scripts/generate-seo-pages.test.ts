@@ -58,7 +58,7 @@ test('every app page has initial HTML; metadata, JSON-LD and visible content agr
         assert.match(html, new RegExp(`name="robots" content="${page.indexable ? 'index' : 'noindex'}, follow"`));
         assert.match(html, /<h1>[^<]+<\/h1>/);
         assert.match(html, /<a href="\/meklab">/);
-        assert.match(html, /<base href="\/">/);
+        assert.match(html, /<base href="\/"\s*\/?>/);
         assert.equal(renderSeoPage(html, page), html, 'Regeneration must not duplicate markup');
     }
 });

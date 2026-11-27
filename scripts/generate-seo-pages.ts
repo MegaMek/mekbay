@@ -31,7 +31,7 @@ export function renderSeoPage(sourceHtml: string, page: SeoPage): string {
         ['name', 'twitter:description', page.description],
     ];
     for (const [attribute, name, content] of tags) {
-        html = replaceRequired(html, new RegExp(`<meta ${attribute}="${name}" content="[^"]*"\\s*\\/?>`),
+        html = replaceRequired(html, new RegExp(`<meta\\s+${attribute}="${name}"\\s+content="[^"]*"\\s*\\/?>`),
             `<meta ${attribute}="${name}" content="${escapeHtml(content)}">`);
     }
     html = html.replace(/<meta name="robots"[^>]*>\s*/g, '');
