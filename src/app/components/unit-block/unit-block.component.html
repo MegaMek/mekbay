@@ -139,11 +139,11 @@ L25.311,132.56z M128.335,129.929l-9.917,2.643l-7.262-7.262l2.649-9.917l9.923-2.6
             @if (unitDisplayName === 'chassisModel' || unitDisplayName === 'both' || !unitAlias) {
               <span class="chassis">{{ chassis }}</span>
               @if (unitDisplayName === 'both' && unitAlias) {
-                <span class="unit-alias thin"> ({{ unitAlias }})</span>
+                &ngsp;<span class="unit-alias thin">({{ unitAlias }})</span>
               }
             }
             @if (unitDisplayName === 'alias') {
-              <div class="unit-alias">{{ unitAlias }}</div>
+              <span class="unit-alias">{{ unitAlias }}</span>
             }
             <edge-badge [value]="crewEdge()" />
             <unit-data-badges [loadIssues]="loadIssues()" [issuesAccepted]="issuesAccepted()" [updateAvailable]="updateAvailable()" />

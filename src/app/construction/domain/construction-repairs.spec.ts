@@ -11,8 +11,8 @@ import type { CBTUnit } from '../../models/runtime/cbt-unit';
 import { prepareConstructionRuntime, type ConstructionRuntimeCommand } from '../../models/runtime/construction-runtime';
 import { createDirectBapRuntimeFixture, createDirectMekRuntimeFixture, createDirectModularArmorRuntimeFixture } from '../../models/runtime/testing/direct-mek-runtime-fixture';
 import {
-    constructionArmorRepairCommands, constructionComponentRepairCommands, constructionHasRepairDamage, constructionInternalRepairCommands, constructionPendingRepairQuote,
-    constructionReconfigurationSPCost, constructionRepairQuote, constructionCanUpdateDesign,
+    constructionArmorRepairCommands, constructionComponentRepairCommands, constructionHasRepairDamage, constructionInternalRepairCommands, constructionNeedsRepair, constructionPendingRepairQuote,
+    constructionReconfigurationSPCost, constructionRepairChanges, constructionRepairQuote, constructionCanUpdateDesign,
 } from './construction-repairs';
 
 const scenario = { id: 'repair-quote-test', ruleset: 'core-2026' as const };
@@ -247,11 +247,35 @@ describe('construction repair campaign quotes', () => {
         expect(await pending(fixture.instance, [...commands, ...repairAll])).toEqual(await pending(fixture.instance, repairAll));
     });
 
+    it('names what each staged step restored: armor and structure by location, equipment by display name', async () => {
+        const fixture = createDirectMekRuntimeFixture();
+        const component = fixture.equipmentComponent('Test AC');
+        const slot = [...fixture.index.slots.values()].find(slot => slot.componentIds.includes(component.id))!;
+        const location = [...fixture.index.locations.values()].find(location => location.code === 'LT')!;
+        const front = [...fixture.index.armorFaces.values()].find(face => face.locationId === location.id && face.face === 'front')!;
+        fixture.instance.dispatch({ type: 'hit-critical', slotId: slot.id, hits: 1, target: 'committed' });
+        fixture.instance.dispatch({ type: 'damage-armor', faceId: front.id, amount: 2, target: 'committed' });
+        fixture.instance.dispatch({ type: 'damage-internal', locationId: location.id, amount: 3, target: 'committed' });
+        const damaged = snapshot(fixture.instance);
+        const label = (code: string) => `<${code}>`;
+        const weapon = await prepareConstructionRuntime(fixture.instance, constructionComponentRepairCommands(damaged, component.id), scenario);
+        expect(constructionRepairChanges(damaged, snapshot(weapon), label))
+            .toEqual([`Repaired ${component.mount.displayName()} (<${component.mount.location}>)`]);
+        const defenses = await prepareConstructionRuntime(weapon, [
+            ...constructionArmorRepairCommands(snapshot(weapon), front.id),
+            ...constructionInternalRepairCommands(snapshot(weapon), location.id),
+        ], scenario);
+        expect(constructionRepairChanges(snapshot(weapon), snapshot(defenses), label))
+            .toEqual(['Repaired 2 armor (<LT>)', 'Repaired 3 structure (<LT>)']);
+    });
+
     it('suppresses pristine and undone repairs using final runtime facts', async () => {
         const { instance: unit, index } = createDirectMekRuntimeFixture();
         expect(await pending(unit, repairAll)).toBeNull();
+        expect(constructionNeedsRepair(snapshot(unit))).toBeFalse();
         const face = [...index.armorFaces.values()].find(face => face.maximumPoints > 0)!;
         unit.dispatch({ type: 'damage-armor', faceId: face.id, amount: 2, target: 'committed' });
+        expect(constructionNeedsRepair(snapshot(unit))).toBeTrue();
         const commands: readonly ConstructionRuntimeCommand[] = [
             { type: 'repair-armor', faceId: face.id, amount: 1, target: 'committed' },
             { type: 'damage-armor', faceId: face.id, amount: 1, target: 'committed' },
@@ -277,6 +301,7 @@ describe('construction repair campaign quotes', () => {
             const quote = await pending(unit, repairAll);
             expect(quote?.spCost).toBe(level === 'Standard' ? 10 : 100);
             expect(constructionHasRepairDamage(snapshot(unit))).toBeFalse();
+            expect(constructionNeedsRepair(snapshot(unit))).toBeTrue();
         }
     });
 

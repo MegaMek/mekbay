@@ -541,6 +541,7 @@ export class AttackResolutionService {
         return [...profiles].map(([targetId, weapons]) => {
             const target = fired.targets.find(candidate => candidate.targetId === targetId)!;
             const defender = this.opfor.resolveOpforTarget(targetId);
+            const building = defender?.member.entity;
             return Object.freeze({
                 targetId,
                 name: defender ? this.unitNames.name(defender.member.entity) : target.name,
@@ -551,7 +552,8 @@ export class AttackResolutionService {
                 delivery: defender ? Object.freeze({ toForce: defender.forceId, toUnit: defender.member.id }) : null,
                 ruleset: fired.ruleset,
                 ...(weapons.some(profile => profile.automaticBuildingHit && profile.physical === 'charge')
-                    ? { buildingChargeHexes: buildingChargeHexes(defender?.member.nonMekRecordSheetSnapshot()?.locations ?? []) } : {}),
+                    ? { buildingChargeHexes: building instanceof StaticEmplacementEntity
+                        ? buildingChargeHexes(defender?.member.nonMekRecordSheetSnapshot()?.locations ?? [], hex => building.displayHex(hex)) : [] } : {}),
                 ...(defender ? {} : { unitType: projectTargetingTarget(target, fired.ruleset).unitType }),
                 profiles: Object.freeze(weapons),
             });

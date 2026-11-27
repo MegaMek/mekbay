@@ -162,25 +162,11 @@ button:focus-visible {
   gap: 5px;
   min-width: 0;
 }
-.unit-title-line {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: baseline;
-  gap: 2px 12px;
-  min-width: 0;
-}
 h1 {
   font-size: 20px;
   font-weight: 700;
   line-height: 1.15;
   overflow-wrap: anywhere;
-}
-.unit-meta {
-  display: inline-flex;
-  flex-wrap: wrap;
-  gap: 2px 10px;
-  color: var(--text-color-secondary);
-  font-size: 0.75rem;
 }
 .hero-condition-controls {
   display: flex;
@@ -583,6 +569,19 @@ weapons-equipment-panel {
 }
 
 /* Armor + structure: pips grouped in fives per location. */
+/* One name column for every line, as wide as the longest location code (a building's 0101/G). */
+.location-list {
+  display: grid;
+  grid-template-columns: minmax(38px, max-content) minmax(0, 1fr);
+}
+
+.location-block,
+.location-line {
+  display: grid;
+  grid-column: 1 / -1;
+  grid-template-columns: subgrid;
+}
+
 .location-block {
   border-bottom: 1px solid var(--tactical-line);
 }
@@ -596,8 +595,6 @@ weapons-equipment-panel {
 }
 
 .location-line {
-  display: grid;
-  grid-template-columns: 31px minmax(0, 1fr);
   align-items: stretch;
   min-height: 25px;
 }
@@ -613,6 +610,7 @@ weapons-equipment-panel {
   align-items: center;
   justify-content: center;
   gap: 1px;
+  padding-inline: 4px;
   border-right: 1px solid var(--tactical-line);
 }
 
@@ -771,7 +769,6 @@ weapons-equipment-panel {
 
 .location-line {
   min-height: 36px;
-  grid-template-columns: 38px minmax(0, 1fr);
 }
 .location-name strong {
   font-size: 0.8rem;

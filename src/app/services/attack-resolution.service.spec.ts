@@ -290,10 +290,10 @@ describe('AttackResolutionService hit locations', () => {
     it('reads the defender-selected building hex and level from a local report', () => {
         const level = 'Level 0 0.0,0.0,0.0';
         const member = { entity: { entityType: 'BuildingEntity' }, nonMekRecordSheetSnapshot: () => ({
-            locations: [{ code: level, locationId: 'struck' }, { code: 'Level 1 0.0,0.0,0.0', locationId: 'upper' }],
+            locations: [{ code: level, sheetCode: '0101/G', locationId: 'struck' }, { code: 'Level 1 0.0,0.0,0.0', sheetCode: '0101/1', locationId: 'upper' }],
         }) } as unknown as CBTForceMember;
         const group = { location: [4, 4] as const, aux: 1, buildingLocation: level };
-        expect(weaponHitLocation(member, 'front', {}, group)).toEqual(jasmine.objectContaining({ locationId: 'struck' }));
+        expect(weaponHitLocation(member, 'front', {}, group)).toEqual(jasmine.objectContaining({ locationId: 'struck', label: '0101/G' }));
         expect(weaponHitLocation(member, 'front', {}, { ...group, buildingLocation: 'missing' })).toBeNull();
     });
 

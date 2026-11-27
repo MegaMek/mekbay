@@ -441,6 +441,118 @@
       </div>
     </div>
     <button
+      type="button"
+      class="bt-button icon-button history-toggle"
+      cdkOverlayOrigin
+      #historyOrigin="cdkOverlayOrigin"
+      [class.active]="historyOpen()"
+      aria-label="Edit history"
+      title="Edit history"
+      aria-haspopup="dialog"
+      aria-controls="construction-history"
+      [attr.aria-expanded]="historyOpen()"
+      (click)="historyOpen.set(!historyOpen())"
+    >
+      <svg
+        width="22"
+        height="22"
+        viewBox="0 0 24 24"
+        fill="none"
+        stroke="currentColor"
+        stroke-width="2"
+        aria-hidden="true"
+        focusable="false"
+      >
+        <path d="M3 12a9 9 0 1 0 3-6.7" />
+        <path d="M3 4v6h6" />
+        <path d="M12 7v5l3 2" />
+      </svg>
+    </button>
+    <!-- Stays open beside the workshop, like the tactical log, so each edit shows up as it is made. -->
+    <ng-template
+      cdkConnectedOverlay
+      [cdkConnectedOverlayOrigin]="historyOrigin"
+      [cdkConnectedOverlayOpen]="historyOpen()"
+      [cdkConnectedOverlayPositions]="historyPositions"
+      [cdkConnectedOverlayPush]="true"
+      [cdkConnectedOverlayViewportMargin]="4"
+      (overlayKeydown)="$event.key === 'Escape' && historyOpen.set(false)"
+      (detach)="historyOpen.set(false)"
+    >
+      <section
+        class="history-panel framed-borders has-shadow"
+        id="construction-history"
+        role="dialog"
+        aria-label="Edit history"
+      >
+        <header class="history-heading">
+          <h3>History</h3>
+          <button
+            type="button"
+            class="history-button"
+            (click)="undo()"
+            [disabled]="busy() || !canUndo()"
+            title="Undo last edit"
+            aria-label="Undo last edit"
+          >
+            <svg
+              viewBox="0 0 24 24"
+              fill="none"
+              stroke="currentColor"
+              stroke-width="2"
+              stroke-linecap="round"
+              stroke-linejoin="round"
+              aria-hidden="true"
+              focusable="false"
+            >
+              <path d="m9 4-5 5 5 5M4 9h10a6 6 0 0 1 0 12h-2" />
+            </svg>
+          </button>
+          <button
+            type="button"
+            class="history-button"
+            (click)="redo()"
+            [disabled]="busy() || !canRedo()"
+            title="Redo last edit"
+            aria-label="Redo last edit"
+          >
+            <svg
+              viewBox="0 0 24 24"
+              fill="none"
+              stroke="currentColor"
+              stroke-width="2"
+              stroke-linecap="round"
+              stroke-linejoin="round"
+              aria-hidden="true"
+              focusable="false"
+            >
+              <path d="m15 4 5 5-5 5M20 9H10a6 6 0 0 0 0 12h2" />
+            </svg>
+          </button>
+          <button
+            type="button"
+            class="close-button"
+            (click)="historyOpen.set(false)"
+            aria-label="Close edit history"
+          ></button>
+        </header>
+        <ol class="history-list">
+          @for (step of historyLog(); track $index) {
+            <li [class.undone]="!step.applied">
+              @for (change of step.changes; track $index) {
+                <span>{{ change }}</span>
+              }
+              @if (step.cost) {
+                <span class="repair-cost">{{ step.cost }}</span>
+              }
+            </li>
+          } @empty {
+            <li class="history-empty">No edits yet.</li>
+          }
+        </ol>
+      </section>
+    </ng-template>
+    <button
       class="bt-button icon-button"
       (click)="onShare()"
       [disabled]="!canShare()"
@@ -816,9 +928,11 @@
             <div class="provenance" [title]="reference.uuid">Based on {{ reference.name }}</div>
           }
           @if (forceMember(); as member) {
-            <div class="force-refit-context">
-              <span>FORCE REFIT</span><span>{{ member.entity.displayName() }}</span>
-            </div>
+            @if (forceRefit()) {
+              <div class="force-refit-context">
+                <span>FORCE REFIT</span><span>{{ member.entity.displayName() }}</span>
+              </div>
+            }
             <label class="design-edit-toggle"
               ><input
                 class="bt-checkbox"
@@ -930,8 +1044,12 @@
           }
         </div>
         <div class="construction-tools">
-          @if (forceMember(); as member) {
-            <button class="bt-button repair-all" (click)="repairAll()" [disabled]="busy() || member.force.readOnly()">
+          @if (needsRepair()) {
+            <button
+              class="bt-button repair-all"
+              (click)="repairAll()"
+              [disabled]="busy() || forceMember()?.force?.readOnly()"
+            >
               REPAIR ALL
             </button>
           }
@@ -2201,49 +2319,13 @@
       </button>
       <button class="bt-button" (click)="exportDesign()">Export</button>
     </div>
-    <div class="footer-status">
-      <button
-        class="history-button"
-        (click)="undo()"
-        [disabled]="busy() || !canUndo()"
-        title="Undo last edit"
-        aria-label="Undo last edit"
-      >
-        <svg
-          viewBox="0 0 24 24"
-          fill="none"
-          stroke="currentColor"
-          stroke-width="2"
-          stroke-linecap="round"
-          stroke-linejoin="round"
-          aria-hidden="true"
-          focusable="false"
-        >
-          <path d="m9 4-5 5 5 5M4 9h10a6 6 0 0 1 0 12h-2" />
-        </svg>
-        <span>Undo</span>
-      </button>
-      <button
-        class="history-button"
-        (click)="redo()"
-        [disabled]="busy() || !canRedo()"
-        title="Redo last edit"
-        aria-label="Redo last edit"
-      >
-        <svg
-          viewBox="0 0 24 24"
-          fill="none"
-          stroke="currentColor"
-          stroke-width="2"
-          stroke-linecap="round"
-          stroke-linejoin="round"
-          aria-hidden="true"
-          focusable="false"
-        >
-          <path d="m15 4 5 5-5 5M20 9H10a6 6 0 0 0 0 12h2" />
-        </svg>
-        <span>Redo</span>
-      </button>
+    <span class="storage-note">{{
+      forceMember()
+        ? 'Applies to
+            this force unit'
+        : 'Saved to your custom unit library'
+    }}</span>
+    <div class="save-actions">
       <button
         class="validation-toggle"
         [class.has-errors]="validationSeverity() === 'error'"
@@ -2251,6 +2333,8 @@
         [class.has-notices]="validationSeverity() === 'info'"
         [class.active]="showValidation()"
         [attr.aria-expanded]="showValidation()"
+        [attr.aria-label]="validationLabel()"
+        [title]="validationLabel()"
         aria-controls="construction-details"
         (click)="toggleDetails('issues', $event)"
       >
@@ -2276,14 +2360,6 @@
         </svg>
         <span>{{ validationLabel() }}</span>
       </button>
-    </div>
-    <span class="storage-note">{{
-      forceMember()
-        ? 'Applies to
-            this force unit'
-        : 'Saved to your custom unit library'
-    }}</span>
-    <div class="save-actions">
       @if (foreignDesign()) {
         <span>Read-only design</span>
         <button class="bt-button active" (click)="cloneToOwn()" [disabled]="busy()">CLONE TO OWN</button>
@@ -2317,8 +2393,6 @@
       [class.mobile]="mobileEquipment()"
       [class]="inspectorEquipment() ? equipmentClass(inspectorEquipment()!) : 'structural'"
       [style.left.px]="mobileEquipment() ? null : inspectorPosition().x"
-      [style.top.px]="mobileEquipment() ? null : inspectorPosition().y"
-      [style.--inspector-top]="inspectorPosition().y + 'px'"
       role="dialog"
       [attr.aria-modal]="mobileEquipment() ? true : null"
       aria-label="Component inspector"
@@ -2389,9 +2463,6 @@
             [ngTemplateOutlet]="equipmentInspectorDetails"
             [ngTemplateOutletContext]="{ equipment: eq, mount }"
           />
-          @if (mountCondition(mount.mountId); as condition) {
-            <div class="mount-condition">{{ condition }} in the loaded force</div>
-          }
           @if (spread) {
             <section class="spread-allocation" aria-label="Critical slot allocation">
               <div class="spread-heading">
@@ -2890,10 +2961,6 @@
           <button class="bt-button" (click)="repairSelected()" [disabled]="busy() || forceMember()!.force.readOnly()">
             Repair component
           </button>
-          <small
-            >Repairs apply when you save. A destroyed location must also be repaired before the component can
-            operate.</small
-          >
         </div>
       }
     </section>

@@ -42,9 +42,15 @@ import {
 } from '@angular/cdk/drag-drop';
 import { CdkTrapFocus } from '@angular/cdk/a11y';
 import { CdkConnectedOverlay, CdkOverlayOrigin, type ConnectedPosition } from '@angular/cdk/overlay';
-import { MultiSelectDropdownComponent, type DropdownOption } from '../components/multi-select-dropdown/multi-select-dropdown.component';
+import {
+  MultiSelectDropdownComponent,
+  type DropdownOption,
+} from '../components/multi-select-dropdown/multi-select-dropdown.component';
 import { RangeSliderComponent } from '../components/range-slider/range-slider.component';
-import { MultilineDropdownComponent, type MultilineDropdownOption } from '../components/multiline-dropdown/multiline-dropdown.component';
+import {
+  MultilineDropdownComponent,
+  type MultilineDropdownOption,
+} from '../components/multiline-dropdown/multiline-dropdown.component';
 import { WEAPON_TYPE_DISPLAY_NAMES, WEAPON_TYPES, type WeaponType } from '../models/weapon-types.model';
 import { CdkVirtualScrollViewport, ScrollingModule } from '@angular/cdk/scrolling';
 import { BaseEntity } from '../models/entity/base-entity';
@@ -92,7 +98,10 @@ import {
 import { gameRulesFor } from '../models/rules/game-rules';
 import { formatWeaponDamage } from '../utils/weapon-damage.util';
 import { constructionEngineTechnology } from './domain/construction-technology-rules';
-import { battleArmorPropulsionMount, syncBattleArmorPropulsionEquipment } from './domain/construction-infantry-ba-rules';
+import {
+  battleArmorPropulsionMount,
+  syncBattleArmorPropulsionEquipment,
+} from './domain/construction-infantry-ba-rules';
 import { ToastService } from '../services/toast.service';
 import { shareUrlWithClipboardFallback } from '../utils/clipboard.util';
 import { StatBarSpecsPipe } from '../pipes/stat-bar-specs.pipe';
@@ -102,6 +111,7 @@ import { InspectorInteraction } from '../components/floating-comp-info/inspector
 import { UnitSummaryBuilder } from '../utils/unit-summary-builder';
 import { asUnitUuid, CUSTOM_UNIT_PROVIDER_ID } from '../services/unit-catalog/unit-catalog.types';
 import { constructionLocationLayout } from './domain/construction-location-layout';
+import { describeConstructionChange } from './domain/construction-history-log';
 import { caseEquipmentKind } from '../models/case-equipment.model';
 import { constructionArmorTechRating, constructionMaterialMessages } from './domain/construction-material-rules';
 import {
@@ -169,7 +179,9 @@ import {
   constructionComponentRepairCommands,
   constructionHasRepairDamage,
   constructionInternalRepairCommands,
+  constructionNeedsRepair,
   constructionPendingRepairQuote,
+  constructionRepairChanges,
   constructionReconfigurationSPCost,
   constructionRepairQuote,
   type ConstructionRepairQuote,
@@ -192,7 +204,12 @@ import {
 } from '../components/set-bombs-dialog/set-bombs.dialog.component';
 import { bombAmmo, carriedBombs } from '../models/aerospace-bomb.model';
 import { reconcileConstructionEquipmentRelationships } from './domain/construction-relationships';
-import { constructionSystemComponents, constructionSystemSlotKeys, packConstructionMekLocations, reconcileConstructionSystemSlots } from './domain/construction-system-rules';
+import {
+  constructionSystemComponents,
+  constructionSystemSlotKeys,
+  packConstructionMekLocations,
+  reconcileConstructionSystemSlots,
+} from './domain/construction-system-rules';
 import {
   CONSTRUCTION_UNIT_TYPES,
   createConstructionEntity,
@@ -242,6 +259,8 @@ interface ConstructionHistoryEntry {
   readonly source: string;
   readonly unallocated: readonly EntityMountedEquipment[];
   readonly unallocatedWeaponQuirks: ReturnType<BaseEntity['weaponQuirks']>;
+  /** Every mount, for naming what an edit installed, removed or moved. */
+  readonly equipment: readonly EntityMountedEquipment[];
   readonly origins: ConstructionMountOrigins;
   readonly runtime: ConstructionRuntimePreview | null;
   readonly artwork: UnitArtwork | null;
@@ -394,7 +413,7 @@ export class UnitConstructionComponent {
   /** Each family with a fresh design of it, so the picker shows the icon that design starts with. */
   readonly unitTypes = computed(() =>
     untracked(() =>
-      CONSTRUCTION_UNIT_TYPES.map(type => ({ ...type, design: createConstructionEntity(type.id, this.registry) })),
+      CONSTRUCTION_UNIT_TYPES.map((type) => ({ ...type, design: createConstructionEntity(type.id, this.registry) })),
     ),
   );
   readonly entity = signal<BaseEntity>(createConstructionEntity('Biped', this.registry));
@@ -618,8 +637,13 @@ export class UnitConstructionComponent {
                 placements = mount.placements;
               }
             }
-            if (!issue && placements && entity instanceof MekEntity && target?.location === location.id
-              && shareSlotIndex === undefined) {
+            if (
+              !issue &&
+              placements &&
+              entity instanceof MekEntity &&
+              target?.location === location.id &&
+              shareSlotIndex === undefined
+            ) {
               insertion = planConstructionEquipmentInsertion(
                 entity,
                 eq,
@@ -823,6 +847,8 @@ export class UnitConstructionComponent {
   readonly forceMember = signal<CBTForceMember | null>(null);
   readonly editDesign = signal(false);
   readonly designEditing = computed(() => !this.foreignDesign() && (!this.forceMember() || this.editDesign()));
+  /** A force unit still on its catalog design is not a refit. */
+  readonly forceRefit = computed(() => !!this.savedUuid() || this.foreignDesign() || this.designChanged());
   readonly omniReconfiguration = computed(
     () => !!this.forceMember() && supportsConstructionReconfiguration(this.entity()),
   );
@@ -859,12 +885,17 @@ export class UnitConstructionComponent {
     return isRequiredConstructionEquipment(this.entity(), mount);
   }
   private mountInSlot(mount: EntityMountedEquipment): boolean {
-    return this.locations().some((location) => location.slots.some((slot) =>
-      slot.mount?.mountId === mount.mountId || slot.sharedMount?.mountId === mount.mountId));
+    return this.locations().some((location) =>
+      location.slots.some(
+        (slot) => slot.mount?.mountId === mount.mountId || slot.sharedMount?.mountId === mount.mountId,
+      ),
+    );
   }
   /** A placed mount that needs no slot is drawn in no slot grid, yet it is placed: MegaMekLab lists it nowhere as unallocated. */
   private mountSlotless(mount: EntityMountedEquipment): boolean {
-    return mount.allocation.kind === 'location' && mount.getNumCriticalSlots(this.entity()) === 0 && !this.mountInSlot(mount);
+    return (
+      mount.allocation.kind === 'location' && mount.getNumCriticalSlots(this.entity()) === 0 && !this.mountInSlot(mount)
+    );
   }
   isMountUnallocated(mount: EntityMountedEquipment): boolean {
     return mount.allocation.kind !== 'engine' && !this.mountInSlot(mount) && !this.mountSlotless(mount);
@@ -963,13 +994,18 @@ export class UnitConstructionComponent {
   readonly repairSnapshot = computed(() => {
     return this.runtimePreview()?.snapshot ?? this.repairSourceSnapshot();
   });
-  readonly pendingRepairQuote = computed(() => {
-    const source = this.repairSourceSnapshot(),
-      preview = this.runtimePreview();
+  readonly needsRepair = computed(() => {
+    const source = this.repairSnapshot();
+    return !!source && constructionNeedsRepair(source);
+  });
+  readonly pendingRepairQuote = computed(() => this.repairQuote(this.runtimePreview()));
+  /** Price of everything staged up to `preview`, against the force unit as loaded. */
+  private repairQuote(preview: ConstructionRuntimePreview | null): ConstructionRepairQuote | null {
+    const source = this.repairSourceSnapshot();
     return source && preview?.changed
       ? constructionPendingRepairQuote(source, preview.snapshot, preview.changes.commands)
       : null;
-  });
+  }
   readonly pendingSupportPoints = computed(() => {
     const quote = this.pendingRepairQuote(),
       reconfiguration = this.pendingOmniReconfiguration();
@@ -1053,7 +1089,6 @@ export class UnitConstructionComponent {
           hotLoaded: selection.hotLoaded,
         },
       ]);
-      this.status.set('Ammo loadout ready to save.');
     } catch (error) {
       this.reportError(error);
     } finally {
@@ -1096,7 +1131,6 @@ export class UnitConstructionComponent {
       const loads = await firstValueFrom(ref.closed);
       if (!loads) return;
       await this.stageRuntime([{ type: 'configure-bombs', loads }]);
-      this.status.set('Bomb loadout ready to save.');
     } catch (error) {
       this.reportError(error);
     } finally {
@@ -1141,7 +1175,6 @@ export class UnitConstructionComponent {
     this.busy.set(true);
     try {
       await this.stageRuntime(commands);
-      this.status.set(`${locationCode} ${face === 'internal' ? 'structure' : face + ' armor'} repair ready to save.`);
     } catch (error) {
       this.reportError(error);
     } finally {
@@ -1156,7 +1189,6 @@ export class UnitConstructionComponent {
     this.busy.set(true);
     try {
       await this.stageRuntime(constructionComponentRepairCommands(source, component.id));
-      this.status.set('Component repair ready to save. Damage to its location can still prevent operation.');
     } catch (error) {
       this.reportError(error);
     } finally {
@@ -1177,7 +1209,6 @@ export class UnitConstructionComponent {
       );
       if (!confirmed) return;
       await this.stageRuntime([{ type: 'repair-all' }]);
-      this.status.set('Repairs ready to save.');
     } catch (error) {
       this.reportError(error);
     } finally {
@@ -1194,6 +1225,54 @@ export class UnitConstructionComponent {
   readonly canRedo = computed(() => {
     this.historyVersion();
     return this.canRestoreHistory(this.redoStack.at(-1));
+  });
+  readonly historyOpen = signal(false);
+  readonly historyPositions: ConnectedPosition[] = [
+    { originX: 'end', originY: 'bottom', overlayX: 'end', overlayY: 'top', offsetY: 4 },
+  ];
+  /**
+   * Every recorded edit, newest first, described from the snapshots on either side; undone ones can be redone. A step
+   * that staged repairs also carries what they add to the repair bill.
+   */
+  readonly historyLog = computed(() => {
+    this.historyVersion();
+    if (!this.historyOpen()) return [];
+    const entity = this.entity();
+    const unit = this.repairSourceSnapshot();
+    const label = (id: string) => this.locationLabel(id);
+    const current = {
+      source: encodeNativeEntity(entity),
+      equipment: entity.equipment(),
+      runtime: this.runtimePreview(),
+      artwork: this.effectiveArtwork(),
+    };
+    const snapshots = [...this.undoStack, current, ...[...this.redoStack].reverse()];
+    return snapshots
+      .slice(1)
+      .map((after, index) => {
+        const before = snapshots[index];
+        const staged = unit !== null && before.runtime !== after.runtime;
+        const changes = [
+          ...describeConstructionChange(before, after, label),
+          ...(staged
+            ? constructionRepairChanges(before.runtime?.snapshot ?? unit, after.runtime?.snapshot ?? unit, label)
+            : []),
+        ];
+        const [was, now] = staged ? [this.repairQuote(before.runtime), this.repairQuote(after.runtime)] : [];
+        const price = (field: 'cost' | 'spCost') =>
+          was?.[field] === null || now?.[field] === null ? null : (now?.[field] ?? 0) - (was?.[field] ?? 0);
+        const bill = { cost: price('cost'), spCost: price('spCost'), basis: '', spBasis: '' };
+        return {
+          applied: index < this.undoStack.length,
+          changes: !changes.length
+            ? ['Adjusted']
+            : changes.length > 6
+              ? [...changes.slice(0, 5), `+ ${changes.length - 5} more`]
+              : changes,
+          cost: staged && (was || now) ? `${this.repairPrice(bill)} · ${this.repairSPPrice(bill)}` : '',
+        };
+      })
+      .reverse();
   });
 
   readonly categories: readonly { id: WarehouseCategory; label: string; icon?: string }[] = [
@@ -1216,11 +1295,14 @@ export class UnitConstructionComponent {
 
   readonly locations = computed(() => {
     const entity = this.entity();
-    const donorIssues = entity instanceof MekEntity && entity.hasHybridStructure()
-      ? this.validation().messages.filter(issue => issue.severity === 'error' && issue.location && issue.code.startsWith('FRANKEN_'))
-      : [];
+    const donorIssues =
+      entity instanceof MekEntity && entity.hasHybridStructure()
+        ? this.validation().messages.filter(
+            (issue) => issue.severity === 'error' && issue.location && issue.code.startsWith('FRANKEN_'),
+          )
+        : [];
     const locations = getConstructionLocations(entity).map((location) => ({
-      donorIssue: donorIssues.find(issue => issue.location === location.id)?.message,
+      donorIssue: donorIssues.find((issue) => issue.location === location.id)?.message,
       ...location,
       rows: this.slotRows(location.slots),
     }));
@@ -1292,23 +1374,26 @@ export class UnitConstructionComponent {
                   ['case-ii', 'CASE II'],
                 ] as const
               )
-              .filter(
-                ([value]) =>
-                  value === 'none' ||
-                  installed.includes(value) ||
-                  (value === 'case' && supportsAutomatic) ||
-                  locationCandidates.some((equipment) => caseEquipmentKind(equipment) === value),
-              )
-              .map(([value, label]) => {
-                const needsEquipment = value !== 'none' && !(value === 'case' && supportsAutomatic);
-                const eligible = needsEquipment
-                  ? candidates.filter((equipment) => caseEquipmentKind(equipment) === value
-                      && planConstructionCaseInstallation(entity, equipment, location.id, protection[0]) !== null)
-                  : [];
-                const equipment =
-                  eligible.find((candidate) => candidate.techBase === entity.techBase()) ?? eligible[0];
-                return { value, label, equipment, disabled: needsEquipment && !equipment };
-              })
+                .filter(
+                  ([value]) =>
+                    value === 'none' ||
+                    installed.includes(value) ||
+                    (value === 'case' && supportsAutomatic) ||
+                    locationCandidates.some((equipment) => caseEquipmentKind(equipment) === value),
+                )
+                .map(([value, label]) => {
+                  const needsEquipment = value !== 'none' && !(value === 'case' && supportsAutomatic);
+                  const eligible = needsEquipment
+                    ? candidates.filter(
+                        (equipment) =>
+                          caseEquipmentKind(equipment) === value &&
+                          planConstructionCaseInstallation(entity, equipment, location.id, protection[0]) !== null,
+                      )
+                    : [];
+                  const equipment =
+                    eligible.find((candidate) => candidate.techBase === entity.techBase()) ?? eligible[0];
+                  return { value, label, equipment, disabled: needsEquipment && !equipment };
+                })
             : [];
         return [
           location.id,
@@ -1522,8 +1607,14 @@ export class UnitConstructionComponent {
   readonly validation = computed(() => {
     const entity = this.entity();
     const result = validateConstruction(entity);
-    const source = entity.loadIssues().map((issue): EntityValidationMessage =>
-      ({ severity: issue.severity, category: 'general', code: issue.code, message: issue.message }));
+    const source = entity
+      .loadIssues()
+      .map((issue): EntityValidationMessage => ({
+        severity: issue.severity,
+        category: 'general',
+        code: issue.code,
+        message: issue.message,
+      }));
     return source.length ? { ...result, messages: [...result.messages, ...source] } : result;
   });
   readonly errors = computed(() => this.validation().messages.filter((message) => message.severity === 'error'));
@@ -1655,12 +1746,7 @@ export class UnitConstructionComponent {
     const eq = this.inspectorEquipment();
     return eq ? equipmentTypeLabel(this.equipmentClass(eq), eq) : 'Structural';
   });
-  readonly inspectorToHitModifier = computed(() =>
-    equipmentToHitModifier(
-      this.inspectorEquipment(),
-      this.gameRules(),
-    ),
-  );
+  readonly inspectorToHitModifier = computed(() => equipmentToHitModifier(this.inspectorEquipment(), this.gameRules()));
   readonly inspectorHeat = computed(() => equipmentHeat(this.inspectorEquipment()));
   readonly inspectorTechnology = computed(() => {
     const eq = this.inspectorEquipment(),
@@ -1807,6 +1893,22 @@ export class UnitConstructionComponent {
         if (frame !== null) cancelAnimationFrame(frame);
       });
     });
+    afterRenderEffect((onCleanup) => {
+      const panel = this.inspectorPanel()?.nativeElement;
+      if (!panel || this.mobileEquipment()) return;
+      const anchorTop = this.inspectorPosition().y;
+      // Starts level with its anchor and moves up as far as its real height needs to stay on screen.
+      const place = () => {
+        panel.style.top = `${Math.max(12, Math.min(anchorTop, window.innerHeight - panel.offsetHeight - 12))}px`;
+      };
+      place();
+      const observer = new ResizeObserver(place);
+      observer.observe(panel);
+      onCleanup(() => {
+        observer.disconnect();
+        panel.style.top = '';
+      });
+    });
     effect((onCleanup) => {
       const viewport = this.equipmentViewport();
       if (!viewport) return;
@@ -1848,21 +1950,30 @@ export class UnitConstructionComponent {
   readonly warehouseRanges = signal<Partial<Record<WarehouseRangeId, readonly [number, number]>>>({});
   readonly warehouseWeaponTypeOptions = computed((): readonly DropdownOption[] => {
     const present = new Set(this.warehouseBaseEquipment().flatMap(equipmentWeaponTypes));
-    return WEAPON_TYPES.filter((type) => present.has(type) || this.warehouseWeaponTypes().includes(type))
-      .map((type) => ({ name: type, displayName: WEAPON_TYPE_DISPLAY_NAMES[type] }));
+    return WEAPON_TYPES.filter((type) => present.has(type) || this.warehouseWeaponTypes().includes(type)).map(
+      (type) => ({ name: type, displayName: WEAPON_TYPE_DISPLAY_NAMES[type] }),
+    );
   });
   /** Slider extents over the rows the panel narrows; computed only while the panel is open. */
   readonly warehouseRangeBounds = computed(() => {
     if (!this.equipmentFiltersOpen()) return new Map<WarehouseRangeId, readonly [number, number]>();
     const base = this.warehouseBaseEquipment();
-    return new Map(this.warehouseRangeFilters.flatMap((filter) => {
-      const values = base.map((eq) => this.warehouseValue(eq, filter.id)).filter((value): value is number => value !== null);
-      return values.length === 0 ? [] : [[filter.id, [Math.min(...values), Math.max(...values)] as const] as const];
-    }));
+    return new Map(
+      this.warehouseRangeFilters.flatMap((filter) => {
+        const values = base
+          .map((eq) => this.warehouseValue(eq, filter.id))
+          .filter((value): value is number => value !== null);
+        return values.length === 0 ? [] : [[filter.id, [Math.min(...values), Math.max(...values)] as const] as const];
+      }),
+    );
   });
-  readonly warehouseFilterCount = computed(() =>
-    Number(this.filterByLocation()) + Number(this.warehouseTechBases().length > 0)
-      + Number(this.warehouseWeaponTypes().length > 0) + Object.keys(this.warehouseRanges()).length);
+  readonly warehouseFilterCount = computed(
+    () =>
+      Number(this.filterByLocation()) +
+      Number(this.warehouseTechBases().length > 0) +
+      Number(this.warehouseWeaponTypes().length > 0) +
+      Object.keys(this.warehouseRanges()).length,
+  );
   setWarehouseRange(id: WarehouseRangeId, value: readonly [number, number]): void {
     const bounds = this.warehouseRangeBounds().get(id);
     this.warehouseRanges.update((ranges) => {
@@ -1899,9 +2010,7 @@ export class UnitConstructionComponent {
         return typeof bv === 'number' ? bv : null;
       }
       case 'damage':
-        return eq instanceof WeaponEquipment
-          ? Math.max(0, ...this.warehouseWeaponDamage(eq).values) || null
-          : null;
+        return eq instanceof WeaponEquipment ? Math.max(0, ...this.warehouseWeaponDamage(eq).values) || null : null;
       case 'range':
         return eq instanceof WeaponEquipment
           ? eq.ranges[this.optionsService.options().CBTOptionalRules.extremeRange ? 3 : 2] || null
@@ -2141,19 +2250,26 @@ export class UnitConstructionComponent {
     const base = fields.find((field) => field.id === 'techBase');
     const mixed = fields.find((field) => field.id === 'mixedTech');
     if (!base) return [];
-    return [false, true].flatMap((mixedTech) => (mixedTech && !mixed ? [] : (['IS', 'Clan'] as const).map((value) => {
-      const name = value === 'IS' ? 'Inner Sphere' : 'Clan';
-      return {
-        value: `${value}${mixedTech ? ':mixed' : ''}`,
-        label: mixedTech ? `Mixed (${name})` : name,
-        disabled: !!base.options?.find((option) => option.value === value)?.disabled
-          || (mixedTech && !!mixed?.disabled && !mixed.get()),
-      };
-    })));
+    return [false, true].flatMap((mixedTech) =>
+      mixedTech && !mixed
+        ? []
+        : (['IS', 'Clan'] as const).map((value) => {
+            const name = value === 'IS' ? 'Inner Sphere' : 'Clan';
+            return {
+              value: `${value}${mixedTech ? ':mixed' : ''}`,
+              label: mixedTech ? `Mixed (${name})` : name,
+              disabled:
+                !!base.options?.find((option) => option.value === value)?.disabled ||
+                (mixedTech && !!mixed?.disabled && !mixed.get()),
+            };
+          }),
+    );
   });
-  readonly techBaseLabel = computed(() =>
-    this.techBaseOptions().find((option) => option.value === this.techBaseChoice())?.label
-      ?? (this.entity().techBase() === 'IS' ? 'Inner Sphere' : this.entity().techBase()));
+  readonly techBaseLabel = computed(
+    () =>
+      this.techBaseOptions().find((option) => option.value === this.techBaseChoice())?.label ??
+      (this.entity().techBase() === 'IS' ? 'Inner Sphere' : this.entity().techBase()),
+  );
   setTechBaseChoice(choice: string): void {
     const fields = this.fields();
     const base = fields.find((field) => field.id === 'techBase');
@@ -2167,12 +2283,14 @@ export class UnitConstructionComponent {
   }
   readonly tonnageField = computed(() => this.fields().find((field) => field.id === 'tonnage') ?? null);
   /** Tonnage choices for chassis with a fixed list; other chassis type their tonnage. */
-  readonly tonnageOptions = computed((): readonly MultilineDropdownOption[] | null =>
-    this.tonnageField()?.options?.map((option) => ({
-      value: String(option.value),
-      label: option.label,
-      disabled: option.disabled,
-    })) ?? null);
+  readonly tonnageOptions = computed(
+    (): readonly MultilineDropdownOption[] | null =>
+      this.tonnageField()?.options?.map((option) => ({
+        value: String(option.value),
+        label: option.label,
+        disabled: option.disabled,
+      })) ?? null,
+  );
   setOemYear(value: number | null): void {
     this.oemYearExpanded.set(true);
     this.change(() => this.oemYearField().set(value ?? ''));
@@ -2256,7 +2374,9 @@ export class UnitConstructionComponent {
     const state = this.locationCase().get(location);
     const option = state?.options.find((option) => option.value === value);
     if (!(entity instanceof MekEntity) || !state || !option || option.disabled || state.selection === value) return;
-    this.change(() => setConstructionCase(entity, location, option.equipment, state.supportsAutomatic && value === 'none'));
+    this.change(() =>
+      setConstructionCase(entity, location, option.equipment, state.supportsAutomatic && value === 'none'),
+    );
   }
   setStructure(id: string, location?: string, tonnage?: number): void {
     if (id === 'hybrid' && !location) {
@@ -2336,12 +2456,8 @@ export class UnitConstructionComponent {
   private positionInstalledInspector(anchor: HTMLElement): void {
     const rect = anchor.getBoundingClientRect();
     const width = 340;
-    const height = this.selectedSpread() ? 800 : 480;
     const x = rect.right + width + 20 <= window.innerWidth ? rect.right + 8 : rect.left - width - 8;
-    this.inspectorPosition.set({
-      x: Math.max(12, Math.min(window.innerWidth - width - 12, x)),
-      y: Math.max(12, Math.min(window.innerHeight - height, rect.top)),
-    });
+    this.inspectorPosition.set({ x: Math.max(12, Math.min(window.innerWidth - width - 12, x)), y: rect.top });
     this.equipmentDrawerOpen.set(false);
   }
   closeInstalledInspector(): void {
@@ -2419,8 +2535,9 @@ export class UnitConstructionComponent {
             ? ['cockpit', 'fullHeadEjection']
             : [];
     // The RISC kit appears only where it is available, or while installed so it can be removed.
-    return this.fields().filter((field) => ids.includes(field.id)
-      && !(field.id === 'riscHeatSinkOverride' && field.disabled));
+    return this.fields().filter(
+      (field) => ids.includes(field.id) && !(field.id === 'riscHeatSinkOverride' && field.disabled),
+    );
   });
   readonly selectedSystemSlots = computed(() => {
     const selected = this.selectedSystem();
@@ -2437,7 +2554,9 @@ export class UnitConstructionComponent {
       : [];
   });
   /** Component armor covers every slot of the selected system (TO:AUE p. 95); imports may arrive partly armored. */
-  readonly selectedSystemArmoredSlots = computed(() => this.selectedSystemSlots().filter((slot) => slot.armored).length);
+  readonly selectedSystemArmoredSlots = computed(
+    () => this.selectedSystemSlots().filter((slot) => slot.armored).length,
+  );
   componentArmorIssue(component: EntityMountedEquipment | MekSystemType): string | null {
     return constructionComponentArmorIssue(this.entity(), component)?.message ?? null;
   }
@@ -2457,8 +2576,9 @@ export class UnitConstructionComponent {
     if (armored && (slot?.type !== 'system' || this.componentArmorIssue(slot.systemType))) return;
     // Component armor covers every slot of the component (TO:AUE p. 95).
     const key = `${location}:${index}`;
-    const component = [...constructionSystemComponents(constructionSystemSlotKeys(entity)).values()]
-      .find((keys) => keys.includes(key)) ?? [key];
+    const component = [...constructionSystemComponents(constructionSystemSlotKeys(entity)).values()].find((keys) =>
+      keys.includes(key),
+    ) ?? [key];
     this.change(() =>
       entity.armoredSystemSlots.update((previous) => {
         const next = new Set(previous);
@@ -2614,20 +2734,32 @@ export class UnitConstructionComponent {
         : undefined;
     const shareSlotIndex = location ? this.shareSlotAt(location, element) : undefined;
     const target = this.dragTarget();
-    if (location !== target?.location || beforeMountId !== target?.beforeMountId || shareSlotIndex !== target?.shareSlotIndex)
-      this.dragTarget.set(location ? { location, beforeMountId, ...(shareSlotIndex === undefined ? {} : { shareSlotIndex }) } : null);
+    if (
+      location !== target?.location ||
+      beforeMountId !== target?.beforeMountId ||
+      shareSlotIndex !== target?.shareSlotIndex
+    )
+      this.dragTarget.set(
+        location ? { location, beforeMountId, ...(shareSlotIndex === undefined ? {} : { shareSlotIndex }) } : null,
+      );
   }
   /** The superheavy slot under the pointer whose single load the dragged load can join. */
   private shareSlotAt(location: string, element: Element | null): number | undefined {
-    const entity = this.entity(), drag = this.dragging();
+    const entity = this.entity(),
+      drag = this.dragging();
     const partnerId = element?.closest('[data-mount-id]')?.getAttribute('data-mount-id');
     if (!(entity instanceof MekEntity) || !drag || !partnerId || partnerId === drag.mountId) return undefined;
-    const slotIndex = entity.equipment().find((mount) => mount.mountId === partnerId)
+    const slotIndex = entity
+      .equipment()
+      .find((mount) => mount.mountId === partnerId)
       ?.placements?.find((placement) => placement.location === location)?.slotIndex;
     const mount = entity.equipment().find((item) => item.mountId === drag.mountId);
     const equipment = mount?.equipment ?? this.registry.findEquipment(drag.equipmentId);
-    return slotIndex !== undefined && equipment
-      && constructionSharedMekSlots(entity, equipment, location, mount).includes(slotIndex) ? slotIndex : undefined;
+    return slotIndex !== undefined &&
+      equipment &&
+      constructionSharedMekSlots(entity, equipment, location, mount).includes(slotIndex)
+      ? slotIndex
+      : undefined;
   }
   dragLabel(): string {
     return this.registry.findEquipment(this.dragging()?.equipmentId ?? '')?.name ?? '';
@@ -2725,7 +2857,8 @@ export class UnitConstructionComponent {
     )
       return;
     const entity = this.entity();
-    const shareSlotIndex = this.dragTarget()?.location === destination.location ? this.dragTarget()?.shareSlotIndex : undefined;
+    const shareSlotIndex =
+      this.dragTarget()?.location === destination.location ? this.dragTarget()?.shareSlotIndex : undefined;
     this.change(() => {
       let placed: EntityMountedEquipment;
       if (shareSlotIndex !== undefined) {
@@ -2960,7 +3093,7 @@ export class UnitConstructionComponent {
     const unallocatedWeaponQuirks = entity
       .weaponQuirks()
       .filter((entry) => weaponQuirkMount(entity, entry)?.allocation.kind === 'unallocated');
-    const draft = { source, unallocated, unallocatedWeaponQuirks };
+    const draft = { source, unallocated, unallocatedWeaponQuirks, equipment: entity.equipment() };
     if (!this.forceMember()) return { ...draft, origins: new Map(), runtime, artwork };
     const detached = this.parseHistoryEntity(draft);
     return {
@@ -2984,7 +3117,8 @@ export class UnitConstructionComponent {
     if (entity instanceof MekEntity) entity.initializeParsedHeatSinkMounts(heatSinkCount);
     // A snapshot's structure rows include this session's allocations; the donor rows stay those of the opened design.
     const current = this.entity();
-    if (entity instanceof MekEntity && current instanceof MekEntity) entity.loadedStructureRows.set(current.loadedStructureRows());
+    if (entity instanceof MekEntity && current instanceof MekEntity)
+      entity.loadedStructureRows.set(current.loadedStructureRows());
     ensureConstructionMaterialEquipment(entity);
     return entity;
   }
@@ -3157,7 +3291,6 @@ export class UnitConstructionComponent {
       this.savePending.set(false);
       this.draftUuid = undefined;
       await this.data.refreshCustomUnits();
-      this.status.set('Custom unit deleted. Other devices will update when connected.');
     } catch (error) {
       this.reportError(error);
     } finally {
@@ -3173,7 +3306,6 @@ export class UnitConstructionComponent {
     this.savedUuid.set(undefined);
     this.foreignDesign.set(false);
     this.newDesign.set(true);
-    this.status.set('Your own copy is ready. Save Refit to keep it.');
   }
 
   async save(copy = false): Promise<void> {
@@ -3259,17 +3391,6 @@ export class UnitConstructionComponent {
         this.markClean();
       } else if (savedVersion === this.historyVersion()) this.markClean();
       this.newDesign.set(false);
-      this.status.set(
-        !saveDesign && !runtime && saveArtwork
-          ? 'Fluff image saved on this device.'
-          : member
-            ? saveDesign
-              ? 'Refit saved and applied to this force unit.'
-              : 'Runtime changes saved to this force unit.'
-            : this.errors().length
-              ? 'Draft saved. Resolve the construction issues before fielding this unit.'
-              : 'Custom unit saved and added to search.',
-      );
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error);
       this.reportError(

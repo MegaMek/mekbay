@@ -60,16 +60,16 @@ export class IncomingAttackDialogComponent {
     protected readonly arcLabel = ATTACK_ARC_LABELS[this.data.event.arc];
     protected readonly defenses = signal<readonly DefenseAssignment[]>([]);
     protected readonly buildingLocations = this.data.member.entity.entityType === 'BuildingEntity'
-        ? this.data.member.nonMekRecordSheetSnapshot()?.locations.map(row => row.code) ?? [] : [];
+        ? this.data.member.nonMekRecordSheetSnapshot()?.locations ?? [] : [];
     protected readonly creditedFloor = (() => {
         const weapons = this.data.event.weapons;
         if (!weapons.every(w => w.cfHit) && !weapons.some(w => w.physical === 'charge' && w.automaticBuildingHit)) return undefined;
         const groups = weapons.flatMap(weapon => weapon.groups);
         const location = groups[0]?.buildingLocation;
-        return location && this.buildingLocations.includes(location) && groups.every(group => group.buildingLocation === location)
+        return location && this.buildingLocations.some(row => row.code === location) && groups.every(group => group.buildingLocation === location)
             ? location : undefined;
     })();
-    protected readonly buildingLocation = signal(this.creditedFloor ?? (this.buildingLocations.length === 1 ? this.buildingLocations[0] : ''));
+    protected readonly buildingLocation = signal(this.creditedFloor ?? (this.buildingLocations.length === 1 ? this.buildingLocations[0].code : ''));
     private readonly reportedWeapons = computed(() => this.data.event.weapons.map(resolved => {
         return this.buildingLocation() ? { ...resolved, groups: resolved.groups.map(group => ({ ...group, buildingLocation: this.buildingLocation() })) } : resolved;
     }));

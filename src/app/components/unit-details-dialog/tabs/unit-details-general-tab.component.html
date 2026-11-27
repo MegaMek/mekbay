@@ -46,8 +46,11 @@
           <ul class="unit-load-issues-list allow-select">
             @for (issue of unit().loadIssues; track $index) {
               <li>
-                <strong>{{ issue.severity === 'error' ? 'Error' : 'Warning' }}:</strong>
-                @if (issue.count > 1) { {{ issue.count }}× }{{ issue.message }}
+                <strong>{{ issue.severity === 'error' ? 'Error' : 'Warning' }}: </strong>
+                @if (issue.count > 1) {
+                  {{ issue.count }}×
+                }
+                {{ issue.message }}
               </li>
             }
           </ul>
@@ -154,46 +157,101 @@
 <ng-template #specPanels>
   <sheet-panel class="spec-group basic allow-select" heading="Basic Info">
     <dl>
-      <div class="pair wide"><dt>Type</dt><dd>{{ unit().type }}@if (unit().subtype != unit().type) {<span> · {{ unit().subtype }}</span>}</dd></div>
-      <div class="pair"><dt>Class</dt><dd>{{ unit().weightClass }}</dd></div>
-      <div class="pair"><dt>Tonnage</dt><dd>{{ formatThousands(unit().tons) }} t</dd></div>
+      <div class="pair wide">
+        <dt>Type</dt>
+        <dd>
+          {{ unit().type }}
+          @if (unit().subtype != unit().type) {
+            <span> · {{ unit().subtype }}</span>
+          }
+        </dd>
+      </div>
+      <div class="pair">
+        <dt>Class</dt>
+        <dd>{{ unit().weightClass }}</dd>
+      </div>
+      <div class="pair">
+        <dt>Tonnage</dt>
+        <dd>{{ formatThousands(unit().tons) }} t</dd>
+      </div>
       @if (unit().role && unit().role != 'None') {
-        <div class="pair"><dt>Role</dt><dd>{{ unit().role }}</dd></div>
+        <div class="pair">
+          <dt>Role</dt>
+          <dd>{{ unit().role }}</dd>
+        </div>
       }
       @if (unit().moveType && unit().moveType != 'None') {
-        <div class="pair"><dt>Motive</dt><dd>{{ unit().moveType }}</dd></div>
+        <div class="pair">
+          <dt>Motive</dt>
+          <dd>{{ unit().moveType }}</dd>
+        </div>
       }
       @if (unit().walk || unit().run || unit().jump || unit().umu) {
-        <div class="pair"><dt>Movement</dt><dd>{{ movementText() }}</dd></div>
+        <div class="pair">
+          <dt>Movement</dt>
+          <dd>{{ movementText() }}</dd>
+        </div>
       }
       @if (unit().engine) {
-        <div class="pair"><dt>Engine</dt><dd>@if (unit().engineRating) {<span>{{ unit().engineRating }} </span>}{{ unit().engine }}</dd></div>
+        <div class="pair">
+          <dt>Engine</dt>
+          <dd>
+            @if (unit().engineRating) {
+              <span>{{ unit().engineRating }} </span>
+            }
+            {{ unit().engine }}
+          </dd>
+        </div>
       }
       @if (unit().armorType) {
-        <div class="pair"><dt>Armor</dt><dd>{{ formatArmorType(unit().armorType) }}</dd></div>
+        <div class="pair">
+          <dt>Armor</dt>
+          <dd>{{ formatArmorType(unit().armorType) }}</dd>
+        </div>
       }
       @if (unit().structureType) {
-        <div class="pair"><dt>Structure</dt><dd>{{ formatStructureType(unit().structureType) }}</dd></div>
+        <div class="pair">
+          <dt>Structure</dt>
+          <dd>{{ formatStructureType(unit().structureType) }}</dd>
+        </div>
       }
       @if (unit().c3 && unit().c3 != 'None') {
-        <div class="pair"><dt>Network</dt><dd>{{ unit().c3 }}</dd></div>
+        <div class="pair">
+          <dt>Network</dt>
+          <dd>{{ unit().c3 }}</dd>
+        </div>
       }
     </dl>
   </sheet-panel>
   <sheet-panel class="spec-group allow-select" heading="Origin">
     <dl>
-      <div class="pair"><dt>Tech</dt><dd>{{ unit()._techBaseDisplay }}</dd></div>
-      <div class="pair"><dt>Rating</dt><dd>{{ unit().techRating }}</dd></div>
-      <div class="pair"><dt>Rules</dt><dd>{{ unit().level }}</dd></div>
+      <div class="pair">
+        <dt>Tech</dt>
+        <dd>{{ unit()._techBaseDisplay }}</dd>
+      </div>
+      <div class="pair">
+        <dt>Rating</dt>
+        <dd>{{ unit().techRating }}</dd>
+      </div>
+      <div class="pair">
+        <dt>Rules</dt>
+        <dd>{{ unit().level }}</dd>
+      </div>
       @if (unit().year) {
-        <div class="pair"><dt>Intro</dt><dd>
-          {{ unit().year }}
-          @if (unit()._era?.img) {
-            <img [src]="unit()._era?.img" class="era-icon" title="{{ unit()._era?.name }}" />
-          }
-        </dd></div>
+        <div class="pair">
+          <dt>Intro</dt>
+          <dd>
+            {{ unit().year }}
+            @if (unit()._era?.img) {
+              <img [src]="unit()._era?.img" class="era-icon" title="{{ unit()._era?.name }}" />
+            }
+          </dd>
+        </div>
       }
-      <div class="pair"><dt>Cost</dt><dd>{{ formatThousands(unit().cost) }}</dd></div>
+      <div class="pair">
+        <dt>Cost</dt>
+        <dd>{{ formatThousands(unit().cost) }}</dd>
+      </div>
     </dl>
   </sheet-panel>
 </ng-template>
@@ -228,7 +286,12 @@
     <!-- Weapon Type Summary Bar -->
     <div class="type-summary-bar">
       @for (type of typeSummary(); track type.code) {
-        <div class="type-summary-rect" [class.zero]="type.count === 0" [style.border-color]="type.color" [title]="type.name">
+        <div
+          class="type-summary-rect"
+          [class.zero]="type.count === 0"
+          [style.border-color]="type.color"
+          [title]="type.name"
+        >
           <div [style.background-color]="type.color" class="icon">
             <img class="type-icon" [src]="type.img" />
           </div>

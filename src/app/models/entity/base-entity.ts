@@ -1186,13 +1186,18 @@ export abstract class BaseEntity implements EntityTechnology {
     return location === 'None' ? '' : location;
   }
 
+  /** The code a location carries on the record sheet and in play: the export label unless the sheet prints another. */
+  sheetLocationCode(location: string): string {
+    return this.componentLocationLabel(location);
+  }
+
   /** Canonical damage topology consumed by the sparse runtime and record sheet. */
   damageLocations(): readonly EntityDamageLocation[] {
     const structure = this.structureValues();
     const armor = this.armorValues();
     return this.locationOrder.map((code) => ({
       code,
-      sheetCode: this.componentLocationLabel(code),
+      sheetCode: this.sheetLocationCode(code),
       internalPoints: structure.get(code) ?? 0,
       armor: armor.get(code) ?? locationArmor(0),
     }));

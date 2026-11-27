@@ -32,3 +32,13 @@
     width: 100%;
     margin: 0 auto;
 }
+
+/* Auto margins center a page smaller than the viewport and collapse once it overflows. */
+.svgl-container.fit-page {
+    display: flex;
+}
+
+.svgl-container.fit-page .svgl-content {
+    flex: none;
+    margin: auto;
+}

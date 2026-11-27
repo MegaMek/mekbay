@@ -224,20 +224,16 @@ commander-icon {
         font-weight: bold;
     }
 
+    // Inline flow: the badges follow the last word of a wrapped name.
     .unit-name-line {
-        display: flex;
-        flex-wrap: wrap;
         min-width: 0;
-        align-items: center;
-        gap: 4px;
         line-height: 1.2;
+        overflow-wrap: anywhere;
 
-        .unit-alias,
-        .chassis {
-            flex: 0 1 auto;
-            max-width: 100%;
-            min-width: 0;
-            overflow-wrap: anywhere;
+        edge-badge,
+        unit-notification-badges {
+            margin-left: 4px;
+            vertical-align: middle;
         }
     }
 
@@ -266,7 +262,10 @@ commander-icon {
         }
     }
 
+    // The pilot name moves below the chassis as a whole.
     .unit-alias.thin {
+        display: inline-block;
+        max-width: 100%;
         font-size: 0.9em;
         font-weight: normal;
     }

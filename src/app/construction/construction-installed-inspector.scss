@@ -16,7 +16,7 @@
   z-index: 40;
   width: 340px;
   max-width: calc(100vw - 24px);
-  max-height: min(75dvh, 700px, calc(100dvh - var(--inspector-top, 12px) - 12px));
+  max-height: min(700px, calc(100dvh - 24px));
   overflow: auto;
   box-sizing: border-box;
   margin: 0;
@@ -164,7 +164,7 @@
   }
 
   &:has(.spread-allocation) {
-    max-height: min(90dvh, 800px, calc(100dvh - var(--inspector-top, 12px) - 12px));
+    max-height: min(800px, calc(100dvh - 24px));
   }
 
   .spread-heading,
@@ -464,6 +464,7 @@
   padding: 12px;
   margin-bottom: 12px;
   border: 1px solid var(--bt-yellow);
+  background: var(--bt-yellow-background);
 
   small {
     color: var(--text-color-secondary);

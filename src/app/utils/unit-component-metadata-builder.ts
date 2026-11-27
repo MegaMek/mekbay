@@ -603,7 +603,7 @@ function locationAbbreviation(entity: BaseEntity, location: string): string {
   if (entity instanceof BattleArmorEntity && location === 'Squad' && entity.techBase() === 'Clan') {
     return 'Point';
   }
-  return entity.componentLocationLabel(location);
+  return entity.sheetLocationCode(location);
 }
 
 function criticals(

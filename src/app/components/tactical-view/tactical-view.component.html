@@ -40,16 +40,7 @@
             <div class="unit-identity">
                 <unit-icon class="unit-icon" [unit]="activeMember.entity" [size]="40" />
                 <div class="unit-title-block">
-                    <div class="unit-title-line">
-                        <h1>{{ unitNames.name(activeMember.entity) }}</h1>
-                        <span class="unit-meta">
-                            @if (mekSnapshot(); as mek) {
-                            <span>{{ mek.identity.massTons }} t</span><span>{{ mek.identity.techBase }}</span><span>{{ mek.identity.form }}</span><span>BV {{ mek.battleValue.adjusted ?? mek.battleValue.current ?? '—' }}</span>
-                            } @else if (nonMekSnapshot(); as entity) {
-                            <span>{{ entity.tonnage }} t</span><span>{{ entity.techBase }}</span><span>{{ entity.subtype || entity.unitType }}</span><span>BV {{ entity.currentBattleValue }}</span>
-                            }
-                        </span>
-                    </div>
+                    <h1>{{ unitNames.name(activeMember.entity) }}</h1>
                     @if (passiveConditionStatuses().length > 0 || visibleConditionControls().length > 0) {
                     <div class="hero-condition-controls" role="group" aria-label="Unit conditions">
                         @for (status of passiveConditionStatuses(); track status.key) {

@@ -195,7 +195,6 @@ export class TooltipDirective {
 
     const overlayRef = this.overlay.create({
       positionStrategy: position,
-      scrollStrategy: this.overlay.scrollStrategies.reposition(),
       hasBackdrop: false,
       panelClass: 'tooltip-panel',
     });
@@ -206,6 +205,7 @@ export class TooltipDirective {
     compRef.setInput('content', tooltipContent);
     compRef.setInput('type', this.tooltipType());
     compRef.setInput('lockProgressDuration', lockOnHover ? MOUSE_LOCK_DELAY : 0);
+    compRef.instance.closed.subscribe(this.hideImmediate);
 
     this.isVisible = true;
     this.isMouseLocked = false;
@@ -213,6 +213,10 @@ export class TooltipDirective {
       this.lockTimeout = setTimeout(() => {
         this.lockTimeout = null;
         this.isMouseLocked = true;
+        // The close button widens the tooltip; render it before fitting the overlay again.
+        compRef.setInput('locked', true);
+        compRef.changeDetectorRef.detectChanges();
+        overlayRef.updatePosition();
       }, MOUSE_LOCK_DELAY);
     }
 
@@ -223,11 +227,19 @@ export class TooltipDirective {
         this.hideImmediate();
       }
     };
+    // Scroll does not bubble; capture it from whichever container moves the host.
+    const onDocumentScroll = (sEv: Event) => {
+      if ((sEv.target as Node).contains(this.host.nativeElement)) {
+        this.hideImmediate();
+      }
+    };
     document.addEventListener('pointerdown', onDocumentPointerDown, { passive: true });
+    document.addEventListener('scroll', onDocumentScroll, { capture: true, passive: true });
 
     // cleanup when overlay detaches
     const cleanup = () => {
       document.removeEventListener('pointerdown', onDocumentPointerDown);
+      document.removeEventListener('scroll', onDocumentScroll, { capture: true });
     };
     overlayRef.detachments().pipe(take(1), takeUntilDestroyed(this.destroyRef)).subscribe(cleanup);
   }

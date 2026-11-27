@@ -72,7 +72,7 @@ export function weaponHitLocation(
 ): AttackHitLocation | null {
     if (group.buildingLocation && member.entity.entityType === 'BuildingEntity') {
         const struck = member.nonMekRecordSheetSnapshot()?.locations.find(row => row.code === group.buildingLocation);
-        return struck ? { kind: 'non-mek', label: struck.code, locationId: struck.locationId, arc, effects: [] } : null;
+        return struck ? { kind: 'non-mek', label: struck.sheetCode, locationId: struck.locationId, arc, effects: [] } : null;
     }
     if (group.trooperLocation !== undefined) {
         const trooper = member.nonMekRecordSheetSnapshot()?.locations.find(row => row.code === group.trooperLocation);

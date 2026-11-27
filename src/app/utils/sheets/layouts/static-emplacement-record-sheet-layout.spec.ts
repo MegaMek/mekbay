@@ -281,10 +281,10 @@ Unresolved Searchlight
         expect(svg.textContent).toContain('Gun Emplacement');
         expect(svg.textContent).toContain('STRUCTURE RECORD SHEET');
         expect(svg.textContent).toContain('0101/G');
-        expect(svg.getElementById('textArmor_Level 0 0.0,0.0,0.0')?.textContent).toBe('( 150 )');
-        expect(svg.getElementById('textIS_Level 0 0.0,0.0,0.0')?.textContent).toBe('( 150 )');
+        expect(svg.getElementById('textArmor_0101/G')?.textContent).toBe('( 150 )');
+        expect(svg.getElementById('textIS_0101/G')?.textContent).toBe('( 150 )');
         expect(svg.querySelectorAll('.pip.armor, .pip.structure').length).toBe(0);
-        expect(svg.querySelector('.unitLocation.structure')?.getAttribute('data-loc')).toBe('Level 0 0.0,0.0,0.0');
+        expect(svg.querySelector('.unitLocation.structure')?.getAttribute('data-loc')).toBe('0101/G');
         expect(svg.querySelector('[data-mekbay-paperdoll-view], .vehicle-paperdoll, .mek-paperdolls, image, #crewName0')).toBeNull();
     });
 
@@ -363,9 +363,9 @@ Unresolved Searchlight
                 ?.getAttribute('data-building-hex')).toBe(labels[index]));
         }
         expect(svg.querySelector(`[data-mekbay-component-ids="${gun.mountId}"] .location`)?.textContent).toBe('0302/2');
-        expect(svg.getElementById(`textArmor_${ground}`)?.textContent).toBe('( 91 )');
-        expect(svg.getElementById(`textIS_${ground}`)?.textContent).toBe('( 100 )');
-        expect(svg.getElementById(`textArmor_${upper}`)).toBeNull();
+        expect(svg.getElementById('textArmor_0302/G')?.textContent).toBe('( 91 )');
+        expect(svg.getElementById('textIS_0302/G')?.textContent).toBe('( 100 )');
+        expect(svg.getElementById('textArmor_0302/2')).toBeNull();
         expect(svg.querySelectorAll('[data-mekbay-protection-value]').length).toBe(14);
         expect(entity.coordinates()).toEqual(hexes);
         expect(gun.location).toBe(upper);
@@ -521,8 +521,8 @@ Unresolved Searchlight
         const entity = parseBuilding();
         const svg = await RecordSheetSvgGenerator.generate(entity, { ruleset: 'total-warfare' });
 
-        expect(svg.getElementById('textArmor_Level 0 0.0,0.0,0.0')?.textContent).toBe('—');
-        expect(svg.getElementById('textIS_Level 0 0.0,0.0,0.0')?.textContent).toBe('—');
+        expect(svg.getElementById('textArmor_0101/G')?.textContent).toBe('—');
+        expect(svg.getElementById('textIS_0101/G')?.textContent).toBe('—');
         expect(svg.querySelectorAll('.pip.armor, .pip.structure, .unitLocation').length).toBe(0);
         const rows = [...svg.querySelectorAll('.inventoryEntry')];
         expect(rows.length).toBe(2);
@@ -558,8 +558,8 @@ Unresolved Searchlight
         const entity = parseBuilding('<armor>\n0\n</armor>\n<cf>\n0\n</cf>');
         const svg = await RecordSheetSvgGenerator.generate(entity, { ruleset: 'total-warfare' });
 
-        expect(svg.getElementById('textArmor_Level 0 0.0,0.0,0.0')?.textContent).toBe('( 0 )');
-        expect(svg.getElementById('textIS_Level 0 0.0,0.0,0.0')?.textContent).toBe('( 0 )');
+        expect(svg.getElementById('textArmor_0101/G')?.textContent).toBe('( 0 )');
+        expect(svg.getElementById('textIS_0101/G')?.textContent).toBe('( 0 )');
         expect(svg.textContent).not.toContain('not specified');
         expect(svg.querySelectorAll('.pip.armor, .pip.structure, .unitLocation').length).toBe(0);
     });

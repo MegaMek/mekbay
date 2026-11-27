@@ -325,12 +325,6 @@
   .workspace-tabs > button:first-child {
     padding-right: 12px;
   }
-  .workspace-tabs .history-button {
-    padding-inline: 6px;
-  }
-  .history-button span {
-    display: none;
-  }
   .workspace-tabs {
     flex-wrap: wrap;
     height: auto;
@@ -388,13 +382,9 @@
     display: none;
   }
   .design-summary {
-    grid-template-columns: minmax(0, 1fr) minmax(110px, 0.6fr);
     margin: 10px 12px;
     padding: 10px;
-    gap: 8px 16px;
-  }
-  .design-identity {
-    min-width: 0;
+    gap: 8px;
   }
   .design-chassis {
     font-size: 20px;
@@ -411,18 +401,8 @@
   .save-state {
     display: none;
   }
-  .mass-summary {
-    display: flex;
-    flex-direction: column;
-    align-items: stretch;
-    justify-content: center;
-    gap: 3px;
-  }
   .mass-summary .eyebrow {
     font-size: 8px;
-  }
-  .mass-summary > .muted {
-    text-align: left;
   }
   .mass-value {
     font-size: 23px;
@@ -435,9 +415,6 @@
   }
   .provenance span {
     display: none;
-  }
-  .summary-stats {
-    grid-column: 1 / -1;
   }
   .warehouse.equipment-drawer {
     position: fixed;
@@ -638,8 +615,9 @@
   .validation-panel {
     max-height: 180px;
   }
+  // Fills its row once the save actions wrap; alone it shares the row with the checks button.
   .save-button {
-    width: 100%;
+    flex-grow: 1;
   }
 }
 

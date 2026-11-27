@@ -83,7 +83,7 @@ h2 {
 }
 .workshop-header {
   display: grid;
-  grid-template-columns: 28px minmax(0, 1fr) auto 36px 36px;
+  grid-template-columns: 28px minmax(0, 1fr) auto 36px 36px 36px;
   align-items: center;
   gap: 12px;
   flex-shrink: 0;
@@ -234,64 +234,108 @@ h2 {
 .construction-tools button {
   font-size: 11px;
 }
-.footer-status {
-  display: flex;
-  gap: 5px;
-  align-items: center;
-  margin-left: auto;
-}
-.footer-status button {
-  background: none;
-  border: 0;
-}
-.footer-status svg {
-  width: 20px;
-  height: 20px;
-  flex-shrink: 0;
-}
-.footer-status .validation-toggle {
+.workshop-footer .validation-toggle {
   display: inline-flex;
   align-items: center;
+  justify-content: center;
   gap: 2px;
   min-height: 32px;
-  margin-left: 4px;
   padding: 5px 10px;
   border: 1px solid var(--success);
+  background: none;
   color: var(--success);
   font-weight: 700;
   text-transform: uppercase;
   white-space: nowrap;
 }
-.footer-status .validation-toggle.has-errors {
+.workshop-footer .validation-toggle svg {
+  width: 20px;
+  height: 20px;
+  flex-shrink: 0;
+}
+.workshop-footer .validation-toggle.has-errors {
   color: #fff;
   background: red;
   border-color: #e45a63;
 }
-.footer-status .validation-toggle.has-warnings {
+.workshop-footer .validation-toggle.has-warnings {
   color: black;
   background: orange;
   border-color: black;
 }
-.footer-status .validation-toggle.has-notices {
+.workshop-footer .validation-toggle.has-notices {
   color: #a8d6ff;
   background: #20364b;
   border-color: #a8d6ff;
 }
-.footer-status .validation-toggle.has-errors:hover,
-.footer-status .validation-toggle.has-errors.active {
+.workshop-footer .validation-toggle.has-errors:hover,
+.workshop-footer .validation-toggle.has-errors.active {
   background: rgb(211, 0, 0);
   border-color: #ff929a;
 }
-.footer-status .history-button {
+// Edit history beside its header button: undo, redo and every recorded step.
+.history-panel {
+  box-sizing: border-box;
+  display: flex;
+  flex-direction: column;
+  width: 380px;
+  max-width: calc(100vw - 8px);
+  max-height: min(70dvh, 560px);
+  background-color: #222;
+  color: #fff;
+}
+.history-heading {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  padding: 6px 6px 6px 12px;
+  border-bottom: 1px solid var(--line);
+}
+.history-heading h3 {
+  flex: 1;
+  margin: 0;
+  font-size: 0.9rem;
+  text-transform: uppercase;
+  letter-spacing: 0.4px;
+}
+.history-heading .history-button {
   display: grid;
   place-items: center;
-  width: 32px;
-  height: 32px;
-  flex-shrink: 0;
-  padding: 6px;
+  width: 36px;
+  height: 36px;
+  padding: 0;
+  border: 0;
+  background: none;
 }
-.footer-status .history-button span {
-  display: none;
+.history-heading .history-button svg {
+  width: 20px;
+  height: 20px;
+}
+.history-list {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  overflow-y: auto;
+}
+.history-list li {
+  display: grid;
+  gap: 2px;
+  padding: 7px 12px;
+  border-bottom: 1px solid #ffffff14;
+  font-size: 12px;
+  overflow-wrap: anywhere;
+}
+// The newest edit still applied is the one Undo reverts.
+.history-list li:not(.undone, .history-empty):first-child,
+.history-list li.undone + li:not(.undone) {
+  box-shadow: inset 3px 0 var(--bt-yellow);
+}
+.history-list li.undone,
+.history-list li.history-empty {
+  color: var(--text-color-secondary);
+}
+.history-list li.undone {
+  opacity: 0.55;
 }
 .workshop-footer {
   flex-wrap: wrap;
@@ -307,19 +351,20 @@ h2 {
     --header-padding: 7px;
     padding: var(--header-padding) 12px;
     gap: 6px;
-    grid-template-columns: 32px 28px minmax(0, 1fr) 36px 36px;
+    grid-template-columns: 36px minmax(0, 1fr) 36px 36px 36px;
   }
-  .equipment-toggle {
-    grid-column: 1;
+  // The tabs take the second row; everything else fills the first in document order.
+  .workshop-header > * {
     grid-row: 1;
   }
   .workshop-icon {
-    grid-column: 2;
-    grid-row: 1;
+    display: none;
+  }
+  .equipment-toggle {
+    width: 36px;
+    height: 36px;
   }
   .construction-value {
-    grid-column: 3;
-    grid-row: 1;
     min-width: 0;
   }
   .cost-line {
@@ -327,14 +372,7 @@ h2 {
     flex-wrap: wrap;
     justify-content: flex-end;
   }
-  .workshop-header .icon-button {
-    grid-column: 4;
-    grid-row: 1;
-  }
-  .workshop-header .icon-button:last-child {
-    grid-column: 5;
-  }
-  .workspace-navigation {
+  .workshop-header .workspace-navigation {
     grid-column: 1 / -1;
     grid-row: 2;
     margin-top: 0;
@@ -346,17 +384,14 @@ h2 {
 }
 @media (max-width: 600px) {
   .workshop-header {
-    grid-template-columns: 32px 20px minmax(0, 1fr) 24px 24px;
+    grid-template-columns: 32px minmax(0, 1fr) 32px 32px 32px;
     gap: 5px;
     padding: 7px;
   }
-  .workshop-icon {
-    width: 20px;
-    height: 20px;
-  }
-  .workshop-header .icon-button {
-    width: 24px;
-    height: 28px;
+  .workshop-header .icon-button,
+  .equipment-toggle {
+    width: 32px;
+    height: 32px;
   }
   .workshop-header .workspace-tabs > button {
     font-size: 12px;
@@ -379,13 +414,15 @@ h2 {
   .workshop-footer .file-actions button {
     padding: 5px;
   }
-  .footer-status {
-    width: 100%;
-    order: -1;
-    margin-left: 0;
+  // Icon only, sized and framed like the save button beside it.
+  .workshop-footer .validation-toggle {
+    width: 32px;
+    height: 32px;
+    padding: 0;
+    border-width: 2px;
 
-    .validation-toggle {
-      margin-left: auto;
+    span {
+      display: none;
     }
   }
   .workshop-footer .save-actions {
@@ -700,14 +737,6 @@ h2 {
 }
 .tab-spacer {
   flex: 1;
-}
-.workspace-tabs .history-button {
-  font-size: 17px;
-  padding: 0 10px;
-}
-.history-button span {
-  font-size: 11px;
-  letter-spacing: 0;
 }
 .workspace-tabs .validation-toggle {
   color: var(--success);

@@ -64,7 +64,8 @@ describe('AttackResolutionDialogComponent floating criticals', () => {
             const floors = [{ code: 'Level 0 0.0,0.0,0.0', previewRemainingInternal: 39 },
                 { code: 'Level 1 0.0,0.0,0.0', previewRemainingInternal: 32 },
                 { code: 'Level 0 1.0,0.0,-1.0', previewRemainingInternal: 21 }];
-            const hexes = buildingChargeHexes(floors.slice(0, count === 2 ? 3 : 2 * count));
+            const hexes = buildingChargeHexes(floors.slice(0, count === 2 ? 3 : 2 * count), hex => `${hex.q + 1}`.padStart(2, '0') + '01');
+            expect(hexes.map(hex => hex.label)).toEqual(['0101', '0201'].slice(0, count));
             const { dialog, result } = createAttackDialog([{ ...INSULATED_LASER, physical: 'charge', automaticBuildingHit: true,
                 targetNumber: 2, groupSize: 5, damagePerHit: 10 }], 'total-warfare', false, null, { buildingChargeHexes: hexes });
             expect(dialog['awaitingHex']()).toBe(count === 2);

@@ -3,13 +3,15 @@
 import { hasMekRuntime, hasNonMekRuntime, type CBTUnitSnapshot } from '../../models/cbt-unit-snapshot';
 import { CrewMember } from '../../models/crew-member.model';
 import type { BaseEntity } from '../../models/entity/base-entity';
-import type { ArmorFaceId, ComponentId, LocationId } from '../../models/entity/entity-identifiers';
+import type { ArmorFaceId, ComponentId, LocationId, SystemDamageTrackId } from '../../models/entity/entity-identifiers';
 import { isVehicleEntity } from '../../models/entity/utils/entity-type-guards';
-import { AmmoEquipment, WeaponEquipment } from '../../models/equipment.model';
+import { AmmoEquipment, formatEquipmentName, WeaponEquipment } from '../../models/equipment.model';
 import type { ConstructionRuntimeCommand } from '../../models/runtime/construction-runtime';
 import { componentAutocannonHit } from '../../models/runtime/component-state-change';
 import { entityAmmoLoadout, mekAmmoLoadout } from '../../models/runtime/mek-ammo';
+import type { CBTRuntimeComponent } from '../../models/runtime/cbt-unit-runtime';
 import type { CBTUnitCommand } from '../../models/runtime/unit-command';
+import { mountLocationLabel } from './construction-history-log';
 
 export interface ConstructionRepairQuote {
     readonly cost: number | null;
@@ -107,6 +109,50 @@ export function constructionPendingRepairQuote(
             ?? 'Campaign Operations, p. 144 · spot critical repairs; armor and ammunition reloads free', ...sp };
 }
 
+/** What one staged step restored, read off the unit before and after it: named item and location per line. */
+export function constructionRepairChanges(
+    before: CBTUnitSnapshot, after: CBTUnitSnapshot, locationLabel: (code: string) => string,
+): string[] {
+    const lines: string[] = [];
+    const location = (id: LocationId) => locationLabel(before.index.locations.get(id)?.code ?? '');
+    for (const face of before.index.armorFaces.values()) {
+        const points = after.query.remainingArmor(face.id, 'preview') - before.query.remainingArmor(face.id, 'preview');
+        if (points > 0) lines.push(`Repaired ${points} armor (${location(face.locationId)}${face.face === 'rear' ? ' rear' : ''})`);
+    }
+    for (const entry of before.index.locations.values()) {
+        const points = after.query.remainingInternal(entry.id, 'preview') - before.query.remainingInternal(entry.id, 'preview');
+        if (points > 0) lines.push(`Repaired ${points} structure (${locationLabel(entry.code)})`);
+    }
+    const systems = hasMekRuntime(before) ? before.index.components : null;
+    for (const component of before.index.components.values()) {
+        const system = systems?.get(component.id);
+        const where = component.mount ? mountLocationLabel(component.mount, locationLabel)
+            : system?.kind === 'system' ? [...new Set(system.placements.map(placement => location(placement.locationId)))].join(', ') : '';
+        if (componentImproved(before, after, component.id)) {
+            lines.push(`Repaired ${component.mount?.displayName() ?? (system?.kind === 'system' ? system.systemType : 'system')}${where && ` (${where})`}`);
+        }
+        const ammo = ammoLoadout(after, component)?.equipment;
+        if (!ammo) continue;
+        const shots = before.query.remainingAmmo(component.id), loaded = after.query.remainingAmmo(component.id);
+        if (shots !== loaded || ammo.id !== before.query.ammoEquipment(component.id)?.id) {
+            lines.push(`Loaded ${formatEquipmentName(ammo)} (${where}): ${shots} → ${loaded} shots`);
+        }
+    }
+    if (hasNonMekRuntime(before) && hasNonMekRuntime(after)) {
+        const hits = (source: typeof before, id: SystemDamageTrackId) =>
+            (source.state.damageTracks.get(id)?.hits ?? 0) + (source.state.pendingCombat.damageTrackHits.get(id)?.hitDelta ?? 0);
+        for (const track of before.index.damageTracks.values()) {
+            if (hits(before, track.id) > hits(after, track.id)) {
+                lines.push(`Repaired ${track.system.replaceAll('-', ' ')}${track.scope ? ` (${locationLabel(track.scope)})` : ''}`);
+            }
+        }
+    }
+    const wounds = [...before.index.crewPositions.keys()].reduce((sum, id) =>
+        sum + Math.max(0, before.query.crewState(id).wounds - after.query.crewState(id).wounds), 0);
+    if (wounds) lines.push(`Healed ${wounds} crew wound${wounds === 1 ? '' : 's'}`);
+    return lines;
+}
+
 /** Physical damage only: ammunition use and crew injuries do not change the Omni chassis. */
 export function constructionHasRepairDamage(source: CBTUnitSnapshot): boolean {
     return destroyedInPreview(source) || hasInternalDamage(source)
@@ -123,6 +169,11 @@ export function constructionCanUpdateDesign(source: CBTUnitSnapshot): boolean {
         && [...source.index.locations.values()].every(location => source.query.remainingInternal(location.id) >= location.internalPoints)
         && [...source.state.crew.values()].every(crew => CrewMember.from(crew).isPristine())
         && !source.query.hasPendingCombat();
+}
+
+/** Repair All also reloads ammunition, which never blocks a design update. */
+export function constructionNeedsRepair(source: CBTUnitSnapshot): boolean {
+    return !constructionCanUpdateDesign(source) || rearmingSP(source) !== 0;
 }
 
 /** Hot Spots: Draconis Reach, pp. 32–33. Repair modifiers do not apply to reconfiguration. */
@@ -209,17 +260,20 @@ function crewHealingSP(source: CBTUnitSnapshot, preview?: CBTUnitSnapshot): numb
     }, 0);
 }
 
+/** The ammunition a component carries in `unit`, or nothing when it is not an ammunition source. */
+function ammoLoadout(unit: CBTUnitSnapshot, component: CBTRuntimeComponent) {
+    if (!component.mount) return undefined;
+    const override = unit.state.ammo.get(component.id)?.munitionOverride;
+    return hasMekRuntime(unit) ? mekAmmoLoadout(unit.entity, unit.index, component.id, unit.ruleset, override)
+        : entityAmmoLoadout(unit.entity, component.mount, unit.ruleset, override);
+}
+
 /** Each replenished bin is charged at its full capacity, even if only one round was used. */
 function rearmingSP(source: CBTUnitSnapshot, preview?: CBTUnitSnapshot): number | null {
     let cost = 0;
     for (const component of source.index.components.values()) {
-        if (!component.mount) continue;
-        const destination = preview ?? source;
-        const override = preview?.state.ammo.get(component.id)?.munitionOverride;
-        const loadout = hasMekRuntime(destination)
-            ? mekAmmoLoadout(destination.entity, destination.index, component.id, destination.ruleset, override)
-            : entityAmmoLoadout(destination.entity, component.mount, destination.ruleset, override);
-        if (!loadout) continue;
+        const loadout = ammoLoadout(preview ?? source, component);
+        if (!component.mount || !loadout) continue;
         const oldAmmo = source.query.ammoEquipment(component.id);
         const oldRemaining = source.query.remainingAmmo(component.id);
         const newRemaining = preview?.query.remainingAmmo(component.id) ?? loadout.capacity;

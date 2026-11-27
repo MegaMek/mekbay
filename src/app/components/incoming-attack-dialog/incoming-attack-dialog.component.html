@@ -34,7 +34,7 @@
             <label>Building hex and level struck
                 <select [value]="buildingLocation()" (change)="buildingLocation.set($any($event.target).value)">
                     <option value="">Select location</option>
-                    @for (code of buildingLocations; track code) { <option [value]="code">{{ code }}</option> }
+                    @for (row of buildingLocations; track row.code) { <option [value]="row.code">{{ row.sheetCode }}</option> }
                 </select>
             </label>
         }

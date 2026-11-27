@@ -605,7 +605,8 @@ export class UnitDetailsGeneralTabComponent {
                 if (!showFilteredComponents && !this.isWeaponModeMiscComponent(component)) continue;
             };
 
-            if (options.splitMultiLocation && component.l && component.l.includes('/')) {
+            // A building location is one hex/level label (0101/G), not a list of locations.
+            if (options.splitMultiLocation && this.unit().type !== 'Building' && component.l && component.l.includes('/')) {
                 const locs = component.l.split('/').map(s => s.trim()).filter(Boolean);
                 for (const loc of locs) {
                     expanded.push({

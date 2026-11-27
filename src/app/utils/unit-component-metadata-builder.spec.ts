@@ -15,6 +15,8 @@ import {
   TestWarShipEntity as WarShipEntity,
 } from '../models/entity/testing/test-entities';
 import { createTestEquipmentRegistry } from '../models/entity/testing/test-equipment-registry';
+import { StaticEmplacementEntity } from '../models/entity/entities/misc/static-emplacement-entity';
+import { buildingLocationName } from '../models/entity/types/building';
 import { EntityMountedEquipment } from '../models/entity/types/equipment';
 import { buildUnitComponentMetadata } from './unit-component-metadata-builder';
 import { EquipmentFlag } from '../models/equipment-flags.type';
@@ -46,6 +48,15 @@ describe('buildUnitComponentMetadata', () => {
     }
     expect(current.find(component => component.id === 'ammo' && component.destroyed)?.q2).toBe(15);
     expect(buildUnitComponentMetadata(entity)).toEqual(pristine);
+  });
+
+  it('labels building locations by map hex and level, as the record sheet does', () => {
+    const entity = new StaticEmplacementEntity(createTestEquipmentRegistry({}));
+    entity.height.set(2);
+    const laser = weapon('laser', { damage: 5, ranges: [3, 6, 9, 12], flags: ['F_ENERGY'] });
+    entity.setEquipment([mount(laser, buildingLocationName({ q: 0, r: 0 }, 0)), mount(laser, buildingLocationName({ q: 0, r: 0 }, 1))]);
+    expect(buildUnitComponentMetadata(entity).filter(component => component.id === 'laser').map(component => component.l))
+      .toEqual(['0101/G', '0101/1']);
   });
 
   it('groups current ammunition by type and custom status without changing the catalog loadout', () => {

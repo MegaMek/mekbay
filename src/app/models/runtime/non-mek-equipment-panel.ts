@@ -424,7 +424,7 @@ function projectComponent(
         const location = [...index.locations.values()].find(candidate => candidate.code === code);
         return Object.freeze({
             locationId: location?.id ?? asLocationId(`location:${code}`),
-            code: entity.componentLocationLabel(code),
+            code: entity.sheetLocationCode(code),
             status: previewStatus,
             exposed: location?.armorFaceIds.some(faceId => {
                 const face = index.armorFaces.get(faceId);

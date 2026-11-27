@@ -210,7 +210,7 @@ export function projectNonMekRecordSheet(
             code: location.code,
             sheetCode: entity.entityType === 'BattleArmor'
                 ? location.code.replace('Trooper ', 'T')
-                : entity.componentLocationLabel(location.code),
+                : entity.sheetLocationCode(location.code),
             ...(entity.entityType === 'BattleArmor' ? { combinedPips: true } : {}),
             ...(entity.entityType === 'Infantry' ? { soldierPips: true } : {}),
             maximumInternal: location.internalPoints,

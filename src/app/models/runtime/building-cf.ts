@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 
 import type { CBTNonMekUnitSnapshot } from '../cbt-unit-snapshot';
-import { parseBuildingLocation } from '../entity/types/building';
+import { parseBuildingLocation, type BuildingHex } from '../entity/types/building';
 
 export interface BuildingChargeHex {
     readonly location: string;
@@ -10,13 +10,14 @@ export interface BuildingChargeHex {
     readonly cf: number;
 }
 
-/** TW p. 148. A charge strikes one hex, whose floors all share its current CF (p. 166). */
-export function buildingChargeHexes(locations: readonly Readonly<{ code: string; previewRemainingInternal: number }>[]): BuildingChargeHex[] {
+/** TW p. 148. A charge strikes one hex, whose floors all share its current CF (p. 166). Hexes are labelled as on the sheet. */
+export function buildingChargeHexes(locations: readonly Readonly<{ code: string; previewRemainingInternal: number }>[],
+    hexLabel: (hex: BuildingHex) => string): BuildingChargeHex[] {
     const hexes = new Map<string, BuildingChargeHex>();
     for (const row of locations) {
         const entry = parseBuildingLocation(row.code);
         if (!entry) continue;
-        const label = `${entry.hex.q}, ${entry.hex.r}`;
+        const label = hexLabel(entry.hex);
         const previous = hexes.get(label);
         hexes.set(label, { label, location: previous?.location ?? row.code,
             cf: Math.min(previous?.cf ?? Infinity, row.previewRemainingInternal) });

@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 // Author: Drake
 
-import { ChangeDetectionStrategy, Component, computed, input } from '@angular/core';
+import { ChangeDetectionStrategy, Component, computed, input, output } from '@angular/core';
 
 export interface TooltipLine {
     label?: string;
@@ -25,7 +25,7 @@ export type TooltipContent = string | readonly TooltipLine[];
 @Component({
     selector: 'tooltip',
     changeDetection: ChangeDetectionStrategy.OnPush,
-    host: { class: 'tooltip' },
+    host: { class: 'tooltip', '[class.locked]': 'locked()' },
     template: `
         <div class="tooltip-content framed-borders has-shadow" [class.error]="type() === 'error'">
             @if (isString()) {
@@ -50,6 +50,9 @@ export type TooltipContent = string | readonly TooltipLine[];
                 }
             }
         </div>
+        @if (locked()) {
+            <button type="button" class="close-button tooltip-close" aria-label="Close tooltip" (click)="closed.emit()"></button>
+        }
         @if (lockProgressDuration() > 0) {
             <div class="tooltip-lock-progress" [style.animation-duration.ms]="lockProgressDuration()" aria-hidden="true"></div>
         }
@@ -62,6 +65,24 @@ export type TooltipContent = string | readonly TooltipLine[];
             background-color: var(--background-color-menu);
             max-width: min(500px, calc(100vw - 24px));
             max-height: calc(100dvh - 24px);
+        }
+        /* A locked tooltip grows by the close button's column, so its text keeps the same wrap. */
+        :host(.locked) {
+            max-width: min(524px, calc(100vw - 24px));
+        }
+        :host(.locked) .tooltip-content {
+            padding-right: 32px;
+        }
+        .close-button.tooltip-close {
+            position: absolute;
+            top: 4px;
+            right: 4px;
+            width: 24px;
+            height: 24px;
+        }
+        .close-button.tooltip-close::before {
+            width: 14px;
+            height: 14px;
         }
         .tooltip-content {
             color: #fff;
@@ -159,6 +180,8 @@ export class TooltipComponent {
     readonly content = input<TooltipContent>('');
     readonly type = input<TooltipType>('info');
     readonly lockProgressDuration = input(0);
+    readonly locked = input(false);
+    readonly closed = output<void>();
 
     readonly htmlContent = computed(() => {
         const content = this.content();

@@ -170,6 +170,46 @@ describe('TooltipDirective', () => {
         }
     });
 
+    it('offers a close button only once a mouse tooltip is locked', () => {
+        jasmine.clock().install();
+        try {
+            const fixture = TestBed.createComponent(TestHostComponent);
+            fixture.detectChanges();
+
+            const child = fixture.nativeElement.querySelector('.child') as HTMLElement;
+            dispatchPointerOver(child);
+            jasmine.clock().tick(0);
+            TestBed.tick();
+            expect(overlayContainerElement.querySelector('.close-button')).toBeNull();
+
+            jasmine.clock().tick(2000);
+            const close = overlayContainerElement.querySelector('.close-button') as HTMLElement | null;
+            expect(close).not.toBeNull();
+
+            close!.click();
+            expect(getTooltipTexts()).toEqual([]);
+        } finally {
+            jasmine.clock().uninstall();
+        }
+    });
+
+    it('closes when a container of the host scrolls, not when the tooltip itself scrolls', async () => {
+        const fixture = TestBed.createComponent(TestHostComponent);
+        fixture.detectChanges();
+
+        const element = fixture.nativeElement as HTMLElement;
+        const child = element.querySelector('.child') as HTMLElement;
+        dispatchPointerOver(child);
+        await flushTooltipTasks(fixture);
+
+        overlayContainerElement.querySelector('.tooltip-content')!.dispatchEvent(new Event('scroll'));
+        element.querySelector('.mode-label')!.dispatchEvent(new Event('scroll'));
+        expect(getTooltipTexts()).toEqual(['Child tooltip']);
+
+        element.dispatchEvent(new Event('scroll'));
+        expect(getTooltipTexts()).toEqual([]);
+    });
+
     it('applies the error frame class when tooltipType is error', async () => {
         const fixture = TestBed.createComponent(TestHostComponent);
         fixture.detectChanges();

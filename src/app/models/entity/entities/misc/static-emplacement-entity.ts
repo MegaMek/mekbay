@@ -177,6 +177,11 @@ export class StaticEmplacementEntity extends BaseEntity {
       : location;
   }
 
+  /** The sheet prints map hex and level (0101/G); the export label stays MegaMek's cube-coordinate name. */
+  override sheetLocationCode(location: string): string {
+    return this.displayLocation(location, true);
+  }
+
   readonly limits = computed(() => this.constructionLimits(this.buildingType() ?? 2, this.buildingClass() ?? 0));
   readonly capacityPerHex = computed(() => {
     if (this.hasNoInterior()) return 0;
