@@ -3,6 +3,7 @@
 // Author: Drake
 
 import { ChangeDetectionStrategy, Component, DestroyRef, inject, computed, input, signal, effect, ElementRef, viewChildren } from '@angular/core';
+import { RouterLink } from '@angular/router';
 import { type Subscription, firstValueFrom } from 'rxjs';
 import { LayoutService } from '../../services/layout.service';
 import { OptionsDialogComponent } from '../options-dialog/options-dialog.component';
@@ -42,7 +43,7 @@ import { hasMekRuntime } from '../../models/cbt-unit-snapshot';
 @Component({
     selector: 'sidebar-footer',
     changeDetection: ChangeDetectionStrategy.OnPush,
-    imports: [CdkMenuModule, FactionImgPipe],
+    imports: [CdkMenuModule, FactionImgPipe, RouterLink],
     templateUrl: './sidebar-footer.component.html',
     styleUrl: './sidebar-footer.component.scss',
 })
