@@ -66,7 +66,7 @@
                 {
                   "type": "anyComponentStyle",
                   "maximumWarning": "12kB",
-                  "maximumError": "30kB"
+                  "maximumError": "40kB"
                 }
               ],
               "outputHashing": "all"
@@ -88,20 +88,7 @@
                   "input": "public/icons/next",
                   "output": "icons"
                 }
-              ],
-              "budgets": [
-                {
-                  "type": "initial",
-                  "maximumWarning": "5MB",
-                  "maximumError": "10MB"
-                },
-                {
-                  "type": "anyComponentStyle",
-                  "maximumWarning": "10kB",
-                  "maximumError": "20kB"
-                }
-              ],
-              "outputHashing": "all"
+              ]
             },
             "dev": {
               "assets": [

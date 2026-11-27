@@ -14,7 +14,7 @@
     "build": "npm run prerun && ng build --configuration=production",
     "postbuild": "tsx scripts/generate-seo-pages.ts",
     "test:seo": "node --import tsx --test scripts/generate-seo-pages.test.ts",
-    "build:next": "npm run prerun && ng build --configuration=next",
+    "build:next": "npm run prerun && ng build --configuration=production,next",
     "postbuild:next": "npm run postbuild",
     "build:dev": "npm run prerun && ng build --configuration=production,dev",
     "postbuild:dev": "npm run postbuild",
