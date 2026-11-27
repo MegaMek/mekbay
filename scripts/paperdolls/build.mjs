@@ -13,8 +13,8 @@
 // location outlines sampled by masks.mjs and trimmed by them, so every shape follows the drawn border
 // at an even distance. The converted files no longer contain the rows; they are
 // read from the last commit that had them (ROWS_COMMIT), or from scripts/paperdolls/sources where the
-// artwork was edited since (ProtoMeks: labels outside the figure, larger head, internal structure in
-// an enclosed sub-area of each location).
+// artwork was edited since (ProtoMeks: the outlines of the current MegaMekLab templates, internal
+// structure in an enclosed sub-area of each location).
 // The capital-ship grids (jumpship, warship, spacestation) and the damage-transfer images are left alone.
 import { execFileSync } from 'node:child_process';
 import { createRequire } from 'node:module';
@@ -198,6 +198,15 @@ function locationMaximum(file, type, location) {
   return null;
 }
 
+/**
+ * Pips per rail. Five everywhere, but a ProtoMek location that never holds more than six (the armor of
+ * the main gun and of an arm) takes two rows of three: they fill it evenly at full size, where five
+ * and one would not.
+ */
+function railGroup(file, target) {
+  return file.startsWith('protomek-') && target === 6 ? 3 : 5;
+}
+
 /** A location that never fills its second rail (a Mek head's nine): that rail holds exactly the rest, centred. */
 function trimToTarget(result, target, pitch) {
   let filled = 0;
@@ -229,6 +238,7 @@ function chooseRails(file, location, pitch, outer, symmetric = false) {
   const head = /^(biped|quad|quadvee|tripod)-/.test(file) && location.type === 'armor' && location.location === 'HD';
   // Two rails that never both fill sit level, the short one centred on the five, which already interlocks them.
   const single = target < 10;
+  const group = railGroup(file, target);
   const cache = new Map();
   const attempt = (level, scale) => {
     const key = `${level}:${scale}`;
@@ -238,7 +248,8 @@ function chooseRails(file, location, pitch, outer, symmetric = false) {
       const halves = symmetric && location.areas?.length === 2;
       // ProtoMeks have little room: their rails fill in reading order rather than a lane apart.
       const sequence = file.startsWith('protomek-');
-      const options = { ...metrics, outer, target, symmetric, halves, sequence, stagger: !single, rails: Math.ceil(target / 5) };
+      const options = { ...metrics, outer, target, symmetric, halves, sequence, stagger: !single,
+        ...(group < 5 && { group }), rails: Math.ceil(target / group) };
       let result = generateRails(location.regions[level], head ? { ...options, mode: 'H' } : options);
       if (head && result.capacity < target) result = generateRails(location.regions[level], options);
       // Where no group of five fits, one shorter rail serves the counts it holds.
@@ -249,7 +260,7 @@ function chooseRails(file, location, pitch, outer, symmetric = false) {
         const rails = result.rails.filter((rail) => (held += rail.capacity) <= 4);
         result = { ...result, rails, capacity: rails.reduce((sum, rail) => sum + rail.capacity, 0) };
       }
-      if (single && target > 5 && result.full && result.rails.length === 1) {
+      if (single && group === 5 && target > 5 && result.full && result.rails.length === 1) {
         // The second rail only ever holds the rest: it is laid out on its own, beside the five.
         const region = location.regions[level], [five] = result.rails, clear = metrics.columnPitch - 1e-6;
         const beside = { bounds: region.bounds,
@@ -446,6 +457,7 @@ function stretchRows(file, entries, mask) {
       row.sort((a, b) => a.x0 - b.x0);
       // A gap inside a row closes only if nothing is drawn in it.
       for (let index = 0; index + 1 < row.length; index++) {
+        if (row[index].fixed === 'x1') continue;
         let clear = true;
         for (let x = row[index].x1 + step / 2; x < row[index + 1].x0 && clear; x += step) clear = freeColumn(x, row[index]);
         if (clear) row[index].x1 = row[index + 1].x0;
@@ -470,8 +482,8 @@ function stretchRows(file, entries, mask) {
       }
       // Every end runs on to the outline while the whole row height stays free.
       for (const rect of kept) {
-        while (freeColumn(rect.x0 - step / 2, rect)) rect.x0 = round(rect.x0 - step);
-        while (freeColumn(rect.x1 + step / 2, rect)) rect.x1 = round(rect.x1 + step);
+        while (rect.fixed !== 'x0' && freeColumn(rect.x0 - step / 2, rect)) rect.x0 = round(rect.x0 - step);
+        while (rect.fixed !== 'x1' && freeColumn(rect.x1 + step / 2, rect)) rect.x1 = round(rect.x1 + step);
       }
       rects.push(...kept);
     }
@@ -619,8 +631,11 @@ function collectLocations(file, document, mask) {
       const matrix = multiply(ancestorMatrix(rect, profile.parent), parseTransform(rect.attribs.transform));
       const x = Number(rect.attribs.x), y = Number(rect.attribs.y), w = Number(rect.attribs.width), h = Number(rect.attribs.height);
       const spans = [[x, x + w]];
-      if (rect.attribs['data-gap']) {
-        const [left, right] = rect.attribs['data-gap'].split(',').map(Number);
+      // data-split is a gap that stays open: a location bridged across the axis (the hips of a ProtoMek's
+      // legs) keeps one pip area per side, though nothing is drawn between them.
+      const split = rect.attribs['data-split'];
+      if (rect.attribs['data-gap'] ?? split) {
+        const [left, right] = (rect.attribs['data-gap'] ?? split).split(',').map(Number);
         spans.splice(0, 1, [x, left], [right, x + w]);
       }
       // Rows of a rotated group are merged in the group's own axes, then rotated as one outline.
@@ -631,7 +646,12 @@ function collectLocations(file, document, mask) {
         if (to - from <= 1e-6) continue;
         const [ax, ay] = rotated ? [from, y] : applyMatrix(matrix, [from, y]);
         const [bx, by] = rotated ? [to, y + h] : applyMatrix(matrix, [to, y + h]);
-        entry.frames.get(frame).rects.push({ x0: Math.min(ax, bx), x1: Math.max(ax, bx), y0: Math.min(ay, by), y1: Math.max(ay, by) });
+        // The end of a stretch on a split stays where it was authored.
+        const inner = from === x ? bx : ax;
+        entry.frames.get(frame).rects.push({
+          x0: Math.min(ax, bx), x1: Math.max(ax, bx), y0: Math.min(ay, by), y1: Math.max(ay, by),
+          ...(split && { fixed: inner === Math.min(ax, bx) ? 'x0' : 'x1' }),
+        });
         entry.nominal += Math.floor((to - from) / h + 1e-6);
       }
       entry.heights.push(h);

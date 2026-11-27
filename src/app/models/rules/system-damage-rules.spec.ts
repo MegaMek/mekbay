@@ -11,7 +11,7 @@ TestProtoMekEntity,TestTankEntity
 import { buildNonMekRuntimeIndex } from '../runtime/non-mek-runtime-index';
 import { compareSystemDamageScopes,systemDamageControls,systemDamageStageCaption } from '../runtime/system-damage-presentation';
 import { mekGyroDestructionHits,mekSystemDamageDisplayCapacities } from './mek-system-damage-rules';
-import { protoMekCriticalReferences } from './protomek-critical-rules';
+import { protoMekCriticalReferences, protoMekNearMissReference } from './protomek-critical-rules';
 import { systemDamageDefinitions,systemDamageId,type SystemDamageKind } from './system-damage-rules';
 
 describe('semantic system damage targets', () => {
@@ -72,6 +72,10 @@ describe('semantic system damage targets', () => {
         const biped = systemDamageDefinitions(entity);
         expect(biped.filter(track => track.system === 'left-arm').length).toBe(2);
         expect(biped.some(track => track.system === 'main-gun')).toBeFalse();
+        // Without a main gun its roll strikes the torso, and 3 and 11 miss (TW p. 185).
+        expect(protoMekCriticalReferences(entity).map(row => row.system)).not.toContain('main-gun');
+        expect(protoMekCriticalReferences(entity).find(row => row.system === 'torso')?.rolls).toEqual([2, 6, 7, 8]);
+        expect(protoMekNearMissReference(entity)).toEqual({ rolls: [3, 11], location: 'Near Miss' });
         entity.isQuad.set(true);
         entity.hasMainGun.set(true);
         const systems = systemDamageDefinitions(entity).map(track => track.system);
@@ -79,6 +83,7 @@ describe('semantic system damage targets', () => {
         expect(systems).not.toContain('right-arm');
         expect(systems).toContain('main-gun');
         expect(protoMekCriticalReferences(entity).find(row => row.system === 'legs')?.rolls).toEqual([4, 5, 9, 10]);
+        expect(protoMekCriticalReferences(entity).find(row => row.system === 'torso')?.rolls).toEqual([6, 7, 8]);
     });
 
     it('does not author independent system damage for Meks, infantry, or battle armor', () => {

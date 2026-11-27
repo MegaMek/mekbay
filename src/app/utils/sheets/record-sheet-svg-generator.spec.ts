@@ -249,6 +249,10 @@ describe('RecordSheetSvgGenerator', () => {
         expect(svg.querySelectorAll('.protomek-paperdoll .pip.structure').length).toBe(16);
         expect(svg.querySelector('[data-protomek-main-gun]')).toBeNull();
         expect(svg.querySelector('.pip[data-loc="MG"]')).toBeNull();
+        // No main gun row: its roll is the torso's, and the near miss closes the table.
+        expect(svg.textContent).not.toContain('Main Gun');
+        expect(svg.textContent).toContain('2,6,7,8');
+        expect(svg.querySelector('#near_miss_label')?.textContent).toBe('Near Miss');
     });
 
     it('renders an ultraheavy glider ProtoMek with structure and its wing damage reference', async () => {
@@ -272,6 +276,7 @@ describe('RecordSheetSvgGenerator', () => {
         expect(svg.querySelectorAll('.protomek-paperdoll .pip.structure').length).toBe(34);
         expect(svg.querySelector('[data-protomek-main-gun]')).toBeNull();
         expect(svg.querySelector('#wings_hit_label')?.textContent).toBe('Wings');
+        expect(svg.querySelector('#near_miss_label')).toBeNull();
         expect(svg.querySelector('#wings_hit_text')?.textContent).toBe('-1 Cruise MP (Each Hit)');
         expect(svg.textContent).toContain('1/2 Cruise MP');
         expect(svg.textContent).not.toContain('1/2 Jump MP');

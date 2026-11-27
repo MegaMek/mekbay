@@ -156,9 +156,10 @@ export class PipShapeProfileGenerator {
         const contains = this.createFillTester(geometry);
 
         const rows: PipShapeSpan[] = [];
-        // A shape shorter than a row is read in two bands: a single one over a dome or a wedge would
-        // keep only its narrowest width.
-        const bandHeight = bounds.height < rowHeight ? bounds.height / 2 : rowHeight;
+        // A shape too short for a second band is read in two halves: a single band over a dome or a
+        // wedge would keep only its narrowest width.
+        const single = bounds.height < rowHeight * Math.min(1, ROW_STEP_RATIO) + MIN_PIP_SHAPE_SIZE;
+        const bandHeight = single ? bounds.height / 2 : rowHeight;
         const rowStep = Math.min(bandHeight, bandHeight * ROW_STEP_RATIO);
         const right = bounds.x + bounds.width;
         const bottom = bounds.y + bounds.height;

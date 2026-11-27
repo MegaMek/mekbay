@@ -317,7 +317,7 @@
       </g>
       <path data-fill="structure" data-location="RR" d="M 125.4 225.75 L 126.2 226.3 L 126.75 227.2 L 126.78 231.8 L 126.29 232.8 L 125.4 233.46 L 41 233.46 L 40.2 232.9 L 39.65 232 L 39.62 227.4 L 40.11 226.4 L 41 225.75 Z" style="fill: none; stroke: rgb(0, 0, 255); stroke-width: 1.13; stroke-dasharray: 2.26;"/>
       <g data-rail="structure" data-location="RR">
-        <path d="M 46.2 229.6 L 80.2 229.6" style="fill: none; stroke: rgb(0, 255, 0); stroke-width: 1.13; stroke-linecap: round; stroke-dasharray: 2.26;" data-rail-capacity="5" data-rail-index="1"/>
+        <path d="M 80.2 229.6 L 46.2 229.6" style="fill: none; stroke: rgb(0, 255, 0); stroke-width: 1.13; stroke-linecap: round; stroke-dasharray: 2.26;" data-rail-capacity="5" data-rail-index="1"/>
         <path d="M 86.15 229.6 L 120.15 229.6" style="fill: none; stroke: rgb(0, 255, 0); stroke-width: 1.13; stroke-linecap: round; stroke-dasharray: 2.26;" data-rail-capacity="5" data-rail-index="2"/>
       </g>
     </g>

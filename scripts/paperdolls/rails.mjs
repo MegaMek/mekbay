@@ -71,6 +71,7 @@ export function regionFromLoops(loops) {
  *                margin: minimum distance of a pip centre from the region's edge;
  *                outer: 'min' | 'max' side of the first, unshifted rail of a band;
  *                target: the most pips the location is expected to hold;
+ *                group: pips per rail, five unless the location is laid out in smaller groups;
  *                rails: the number of rails that takes; more that fit are thinned out evenly;
  *                stagger: false keeps neighbouring rails level; mode: 'V' | 'H' | undefined (auto);
  *                symmetric: the location straddles the paperdoll's axis and must mirror itself;
@@ -97,7 +98,7 @@ function layout(region, options, swapped) {
   const { pitch, columnPitch, margin } = options;
   const { bounds } = region;
   // A location that never holds five pips gets rails of its own largest count, so they sit centred.
-  const group = Math.max(2, Math.min(5, options.target ?? 5));
+  const group = options.group ?? Math.max(2, Math.min(5, options.target ?? 5));
   const stagger = options.stagger === false ? 0 : 0.5;
   const staggerLines = stagger * LINES_PER_PITCH;
   const lineStep = pitch / LINES_PER_PITCH;
@@ -355,7 +356,9 @@ function layout(region, options, swapped) {
       groups: source.groups.map((entry) => ({ ...entry, pips: entry.pips.map(([u, v]) => [u, 2 * axis - v]) })) });
     const mirrorLine = (item) => lineCount - 1 - (item.count - 1) * LINES_PER_PITCH - item.line;
     bands = bands.map((item) => {
-      const partner = bands.find((other) => Math.abs(middle(other) - (2 * centreLine - middle(item))) <= 2);
+      // A band at the far edge has no room for its shifted rails and sits half a pitch off its partner's image.
+      const partner = bands.find((other) => other !== item
+        && Math.abs(middle(other) - (2 * centreLine - middle(item))) <= staggerLines + 2);
       if (partner) return before(item) ? reflect(item, partner) : item;
       // Two areas whose unshifted rails mirror each other: a shifted rail fits in one, which is the pattern for both.
       const other = options.halves && bands.find((candidate) => candidate !== item && Math.abs(candidate.line - mirrorLine(item)) <= 2);

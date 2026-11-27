@@ -13,13 +13,19 @@ export interface ProtoMekCriticalReference {
     readonly effects: readonly Readonly<{ text: string; detail?: string }>[];
 }
 
-export const PROTOMEK_GLIDER_WING_CRITICAL_REFERENCE = Object.freeze({
-    rolls: Object.freeze([3, 11]),
-    location: 'Wings',
-    effect: '-1 Cruise MP (Each Hit)',
-});
+/** Rolls 3 and 11 miss a ProtoMek (TW p. 185); on a glider they strike its wings instead (IO:AE p. 93). */
+export function protoMekNearMissReference(entity: ProtoMekEntity): Readonly<{
+    rolls: readonly number[]; location: string; effect?: string;
+}> {
+    return entity.isGlider()
+        ? { rolls: [3, 11], location: 'Wings', effect: '-1 Cruise MP (Each Hit)' }
+        : { rolls: [3, 11], location: 'Near Miss' };
+}
 
-/** Hit locations and system consequences, independent of record-sheet geometry. */
+/**
+ * Hit locations and system consequences, independent of record-sheet geometry. Without a main gun its
+ * roll strikes the torso (TW p. 185).
+ */
 export function protoMekCriticalReferences(entity: ProtoMekEntity): readonly ProtoMekCriticalReference[] {
     const supported = new Set(systemDamageDefinitions(entity).map(track => track.system));
     const rows: readonly ProtoMekCriticalReference[] = [
@@ -30,7 +36,7 @@ export function protoMekCriticalReferences(entity: ProtoMekEntity): readonly Pro
         { system: 'legs', location: 'Legs', rolls: entity.isQuad() ? [4, 5, 9, 10] : [5, 9], effects: [
             { text: '-1 Walk MP' }, { text: '1/2 Walk MP' }, { text: 'No Move' },
         ] },
-        { system: 'torso', location: 'Torso', rolls: [6, 7, 8], effects: [
+        { system: 'torso', location: 'Torso', rolls: supported.has('main-gun') ? [6, 7, 8] : [2, 6, 7, 8], effects: [
             { text: entity.isGlider() ? '-1 Cruise MP' : '-1 Jump MP*' },
             { text: entity.isGlider() ? '1/2 Cruise MP' : '1/2 Jump MP*' },
             { text: 'Proto', detail: 'Destroyed' },
@@ -42,8 +48,7 @@ export function protoMekCriticalReferences(entity: ProtoMekEntity): readonly Pro
             { text: '+1 to Hit' }, { text: '+2 to Hit', detail: 'No Long Range Shots' },
         ] },
     ];
-    return rows.filter(row => row.system === 'main-gun' || supported.has(row.system))
-        .map(row => supported.has(row.system) ? row : { ...row, effects: [] });
+    return rows.filter(row => supported.has(row.system));
 }
 
 /** Boxes shaded on the record sheet. Crossing any of them in one attack wounds the pilot (TW p. 185). */

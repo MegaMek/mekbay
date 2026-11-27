@@ -10,7 +10,7 @@ import { type ProtoMekEntity } from '../../../models/entity/entities/protomek/pr
 import { isProtoMekEntity } from '../../../models/entity/utils/entity-type-guards';
 import { intrinsicActionBaseDamageText } from '../../../models/entity/utils/mek-intrinsic-actions';
 import { isJumpJetEquipment } from '../../../models/jump-equipment.model';
-import { PROTOMEK_GLIDER_WING_CRITICAL_REFERENCE,protoMekCriticalReferences,protoMekTorsoCriticalResults } from '../../../models/rules/protomek-critical-rules';
+import { protoMekCriticalReferences,protoMekNearMissReference,protoMekTorsoCriticalResults } from '../../../models/rules/protomek-critical-rules';
 import { nonMekFliesAtElevation } from '../../../models/runtime/non-mek-airborne-state';
 import { systemDamageControls } from '../../../models/runtime/system-damage-presentation';
 import { clusterTableForEntity } from '../../record-sheet-reference-table';
@@ -477,33 +477,44 @@ function drawCompactProtoMekCriticals(
         size: font(6.2), weight: 700, anchor,
     }));
 
-    const baselines = entity.isQuad()
-        ? { 'main-gun': 34.113, legs: 45.575, torso: 57.038, head: 68.501 }
-        : entity.isGlider()
-            ? { 'main-gun': 31.247, 'right-arm': 48.441, legs: 57.038, torso: 65.635, 'left-arm': 74.232, head: 82.829 }
-            : { 'main-gun': 32.029, 'right-arm': 41.407, legs: 50.786, torso: 60.164, 'left-arm': 69.543, head: 78.921 };
-    if (entity.isGlider()) {
-        const wings = PROTOMEK_GLIDER_WING_CRITICAL_REFERENCE;
-        addText(group, wings.rolls.join(','), x(13.88), y(39.844), {
-            size: font(5.7), weight: 700, anchor: 'middle',
-        });
-        addText(group, wings.location, x(24.76), y(39.844), {
-            size: font(5.7), weight: 700,
-        }).id = 'wings_hit_label';
-        addText(group, wings.effect, x(57.4), y(39.844), {
+    // The rows run down from the first baseline: a second line (a long roll list, an effect's detail)
+    // sits 7 below the first, and the gap to the next row closes up when the table would run into the note.
+    const { first, gap, last } = entity.isQuad()
+        ? { first: 34.113, gap: 11.463, last: 86.964 }
+        : { first: 31.247, gap: 8.597, last: 89.829 };
+    const nearMiss = protoMekNearMissReference(entity);
+    const references = protoMekCriticalReferences(entity).map(row => {
+        const rolls = row.rolls.join(',');
+        const middle = Math.ceil(row.rolls.length / 2);
+        return {
+            ...row,
+            rolls: rolls.length > 7 ? [row.rolls.slice(0, middle).join(','), row.rolls.slice(middle).join(',')] : [rolls],
+        };
+    });
+    const lineCounts = references.map(row => Math.max(row.rolls.length, row.system === 'torso' ? 1
+        : row.effects.some(effect => effect.detail) ? 2 : 1));
+    // The wings of a glider follow the main gun; a near miss, which marks nothing, closes the table.
+    const nearMissIndex = entity.isGlider() ? references.findIndex(row => row.system !== 'main-gun') : references.length;
+    lineCounts.splice(nearMissIndex, 0, 1);
+    const extraLines = lineCounts.reduce((sum, lines) => sum + lines - 1, 0);
+    const rowGap = Math.min(gap, (last - first - extraLines * 7) / (lineCounts.length - 1));
+    const baselineOf = (index: number): number => lineCounts.slice(0, index)
+        .reduce((baseline, lines) => baseline + (lines - 1) * 7 + rowGap, first);
+    const nearMissBaseline = baselineOf(nearMissIndex);
+    addText(group, nearMiss.rolls.join(','), x(13.88), y(nearMissBaseline), {
+        size: font(5.7), weight: 700, anchor: 'middle',
+    });
+    addText(group, nearMiss.location, x(24.76), y(nearMissBaseline), {
+        size: font(5.7), weight: 700,
+    }).id = entity.isGlider() ? 'wings_hit_label' : 'near_miss_label';
+    if (nearMiss.effect) {
+        addText(group, nearMiss.effect, x(57.4), y(nearMissBaseline), {
             size: font(5.7), weight: 700,
         }).id = 'wings_hit_text';
     }
-    // A roll list too long for one line takes a second line, pushing the following rows down.
-    let rollShift = 0;
-    const rows = protoMekCriticalReferences(entity).map(row => {
-        const rolls = row.rolls.length > 3
-            ? [row.rolls.slice(0, 2).join(','), row.rolls.slice(2).join(',')]
-            : [row.rolls.join(',')];
-        const baseline = baselines[row.system as keyof typeof baselines]! + rollShift;
-        rollShift += (rolls.length - 1) * 7;
-        return { ...row, rolls, baseline };
-    }).map(row => ({
+    const rows = references.map((row, index) => ({
+        ...row, baseline: baselineOf(index < nearMissIndex ? index : index + 1),
+    })).map(row => ({
         ...row,
         effects: row.effects.map((effect, index) => {
             // "Proto Destroyed" sits raised and tight, clear of the left arm row's effect running beneath it.
@@ -615,8 +626,7 @@ async function drawCompactProtoMekDiagram(
                     ...paperdollPipOptions(pipLayout, 3, 0.62),
                     strokeWidth: 0.5,
                 },
-                // Internal structure pips share the armor's size; their grey fill and drawn sub-area tell them apart.
-                structurePipOptions: { fill: '#c7c7c7' },
+                // Internal structure pips look like the armor's; the grey sub-area they sit in tells them apart.
             },
         );
         if (!entity.hasMainGun()) {
