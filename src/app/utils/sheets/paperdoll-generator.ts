@@ -1500,14 +1500,25 @@ export class PaperdollGenerator {
     const pipOptions = this.getPlaceholderPipOptions(group.type, options);
     const assignedRails: Array<{ rail: RailDefinition; capacity: number; count: number }> = [];
     let remaining = count;
-    for (const rail of rails) {
-      if (remaining <= 0) {
-        break;
+    // Rails that share an index (the two legs of one location) fill together, a pip each in turn.
+    for (let start = 0; start < rails.length && remaining > 0; ) {
+      let end = start + 1;
+      while (end < rails.length && rails[start].index !== undefined && rails[end].index === rails[start].index) {
+        end++;
       }
-      const capacity = rail.capacity ?? defaultCapacity;
-      const railCount = Math.min(remaining, capacity);
-      assignedRails.push({ rail, capacity, count: railCount });
-      remaining -= railCount;
+      const tied = rails
+        .slice(start, end)
+        .map((rail) => ({ rail, capacity: rail.capacity ?? defaultCapacity, count: 0 }));
+      while (remaining > 0 && tied.some((item) => item.count < item.capacity)) {
+        for (const item of tied) {
+          if (remaining > 0 && item.count < item.capacity) {
+            item.count++;
+            remaining--;
+          }
+        }
+      }
+      assignedRails.push(...tied.filter((item) => item.count > 0));
+      start = end;
     }
     if (remaining > 0) {
       return false;

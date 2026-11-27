@@ -9,6 +9,7 @@ import type { BaseEntity } from '../../../models/entity/base-entity';
 import { type ProtoMekEntity } from '../../../models/entity/entities/protomek/protomek-entity';
 import { isProtoMekEntity } from '../../../models/entity/utils/entity-type-guards';
 import { intrinsicActionBaseDamageText } from '../../../models/entity/utils/mek-intrinsic-actions';
+import { isElectronicInterfaceEquipment } from '../../../models/battle-armor-equipment.model';
 import { isJumpJetEquipment } from '../../../models/jump-equipment.model';
 import { protoMekCriticalReferences,protoMekNearMissReference,protoMekTorsoCriticalResults } from '../../../models/rules/protomek-critical-rules';
 import { nonMekFliesAtElevation } from '../../../models/runtime/non-mek-airborne-state';
@@ -275,6 +276,8 @@ function drawCompactProtoMekInventoryRows(
         if (weaponComponentIds.has(mount.mountId)
             || mount.getAmmoShots() !== undefined
             || isJumpJetEquipment(equipment)
+            // Every ProtoMek is piloted through the interface: it is part of the unit, not a listed item.
+            || isElectronicInterfaceEquipment(equipment)
             || equipment.type === 'armor'
             || equipment.hasFlag('INTERNAL_REPRESENTATION')) return;
         const location = compactLocationLabel(mount.getOccupiedLocations().join('/') || mount.location || '—');

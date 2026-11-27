@@ -201,10 +201,34 @@ function locationMaximum(file, type, location) {
 /**
  * Pips per rail. Five everywhere, but a ProtoMek location that never holds more than six (the armor of
  * the main gun and of an arm) takes two rows of three: they fill it evenly at full size, where five
- * and one would not.
+ * and one would not. A ProtoMek's legs that never fill two fives (a biped's leg structure) share
+ * their count between one rail on each leg.
  */
-function railGroup(file, target) {
+function railGroup(file, target, legs) {
+  if (legs && target > 5 && target < 10) return Math.ceil(target / 2);
   return file.startsWith('protomek-') && target === 6 ? 3 : 5;
+}
+
+/**
+ * A ProtoMek's two legs fill together: mirrored rails share an index and run the same way from the
+ * axis, so the sheet deals their pips out in turn.
+ */
+function pairRails(rails, axis, tolerance) {
+  const middle = (rail) => [(rail.from[0] + rail.to[0]) / 2, (rail.from[1] + rail.to[1]) / 2];
+  let next = 0;
+  for (const rail of rails) {
+    if (rail.index !== undefined) continue;
+    rail.index = ++next;
+    const [x, y] = middle(rail);
+    const partner = rails.find((other) => other.index === undefined
+      && Math.hypot(middle(other)[0] - (2 * axis - x), middle(other)[1] - y) <= tolerance);
+    if (!partner) continue;
+    partner.index = rail.index;
+    if (Math.abs(partner.from[0] - (2 * axis - rail.from[0])) > tolerance) {
+      [partner.from, partner.to] = [partner.to, partner.from];
+      partner.pips = partner.pips.slice().reverse();
+    }
+  }
 }
 
 /** A location that never fills its second rail (a Mek head's nine): that rail holds exactly the rest, centred. */
@@ -238,14 +262,18 @@ function chooseRails(file, location, pitch, outer, symmetric = false) {
   const head = /^(biped|quad|quadvee|tripod)-/.test(file) && location.type === 'armor' && location.location === 'HD';
   // Two rails that never both fill sit level, the short one centred on the five, which already interlocks them.
   const single = target < 10;
-  const group = railGroup(file, target);
+  // Two separate areas on the axis (ProtoMek legs: a structure sub-area per side) mirror each other.
+  const halves = symmetric && location.areas?.length === 2;
+  // A ProtoMek's two legs are one location and fill side by side. Elsewhere a full five on one side
+  // comes first.
+  const legs = halves && file.startsWith('protomek-');
+  const axis = (location.regions[0].bounds.x0 + location.regions[0].bounds.x1) / 2;
+  const group = railGroup(file, target, legs);
   const cache = new Map();
   const attempt = (level, scale) => {
     const key = `${level}:${scale}`;
     if (!cache.has(key)) {
       const metrics = pipMetrics(file, location.type, pitch * scale);
-      // Two separate areas on the axis (ProtoMek legs: a structure sub-area per side) mirror each other.
-      const halves = symmetric && location.areas?.length === 2;
       // ProtoMeks have little room: their rails fill in reading order rather than a lane apart.
       const sequence = file.startsWith('protomek-');
       const options = { ...metrics, outer, target, symmetric, halves, sequence, stagger: !single,
@@ -272,6 +300,7 @@ function chooseRails(file, location, pitch, outer, symmetric = false) {
         if (short) result = { ...result, rails: [five, short], capacity: 5 + short.capacity };
       }
       if (single && target >= 5 && result.full) trimToTarget(result, target, metrics.pitch);
+      if (legs) pairRails(result.rails, axis, metrics.pitch / 2);
       cache.set(key, { scale, level, metrics, result });
     }
     return cache.get(key);
@@ -370,7 +399,7 @@ function railMarkup(location, type, rails, indent, digits, strokeWidth, set = 1)
   if (rails.length === 0) return '';
   const style = `fill: none; stroke: rgb(0, 255, 0); stroke-width: ${strokeWidth}; stroke-linecap: round; stroke-dasharray: ${round(strokeWidth * 2, 2)};`;
   const lines = rails.map((rail, index) =>
-    `${indent}  <path d="M ${round(rail.from[0], digits)} ${round(rail.from[1], digits)} L ${round(rail.to[0], digits)} ${round(rail.to[1], digits)}" style="${style}" data-rail-capacity="${rail.capacity}" data-rail-index="${index + 1}"/>`);
+    `${indent}  <path d="M ${round(rail.from[0], digits)} ${round(rail.from[1], digits)} L ${round(rail.to[0], digits)} ${round(rail.to[1], digits)}" style="${style}" data-rail-capacity="${rail.capacity}" data-rail-index="${rail.index ?? index + 1}"/>`);
   return `${indent}<g data-rail="${type}" data-location="${location}"${set > 1 ? ` data-rail-set="${set}"` : ''}>\n${lines.join('\n')}\n${indent}</g>`;
 }
 

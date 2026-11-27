@@ -529,6 +529,31 @@ describe('MekPaperdollGenerator', () => {
         expect(await pipsPerRail(8)).toEqual([5, 3]);
     });
 
+    it('fills rails that share an index together', async () => {
+        const source = encodeURIComponent(`
+            <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 20">
+                <g id="paperdoll-art-armor">
+                    <g data-rail="armor" data-location="CT">
+                        <path data-rail-index="1" data-rail-capacity="5" d="M 0 4 L 20 4" />
+                        <path data-rail-index="1" data-rail-capacity="5" d="M 60 4 L 80 4" />
+                        <path data-rail-index="2" data-rail-capacity="5" d="M 0 16 L 20 16" />
+                    </g>
+                </g>
+            </svg>
+        `);
+        const pipsPerRail = async (count: number) => {
+            const layer = await MekPaperdollGenerator.createArmorPaperdoll(100, 20, { CT: count }, {
+                assetUrl: `data:image/svg+xml,${source}`,
+                pipLayout: 'rail',
+            });
+            return Array.from(layer.querySelectorAll('[data-layout="rail"]'), (zone) => zone.querySelectorAll('circle').length);
+        };
+
+        expect(await pipsPerRail(6)).toEqual([3, 3]);
+        expect(await pipsPerRail(7)).toEqual([4, 3]);
+        expect(await pipsPerRail(12)).toEqual([5, 5, 2]);
+    });
+
     it('shows generated fill rows as outlined placeholders when requested', async () => {
         const source = encodeURIComponent(`
             <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 60">

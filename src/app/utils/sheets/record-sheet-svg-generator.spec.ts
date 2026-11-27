@@ -223,8 +223,12 @@ describe('RecordSheetSvgGenerator', () => {
         for (const [location, value] of Object.entries({
             Head: 3, Torso: 7, 'Right Arm': 2, 'Left Arm': 2, Legs: 4, 'Main Gun': 3,
         })) entity.setArmorValue(location, 'front', value);
+        addTestEquipmentWithFlags(entity, 'F_EI_INTERFACE', { location: 'Body' });
 
         const svg = await RecordSheetSvgGenerator.generate(entity, { ruleset: 'total-warfare', format: 'compact' });
+
+        // The built-in Enhanced Imaging Interface is not an inventory row.
+        expect(svg.textContent).not.toContain('F_EI_INTERFACE');
 
         expect(svg.querySelectorAll('.protomek-paperdoll .pip.armor').length).toBe(21);
         expect(svg.querySelectorAll('.protomek-paperdoll .pip.structure').length).toBe(12);
