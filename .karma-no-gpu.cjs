@@ -55,6 +55,8 @@ module.exports = function configureNoGpuChrome(config) {
         plugins: ['karma-*', mekBayKarmaPlugin],
         beforeMiddleware: ['mekbay-escaped-sprite-assets'],
         reporters: ['mekbay-summary'],
+        // Bind loopback only, so a port another local app holds on 127.0.0.1 is seen as taken.
+        listenAddress: '127.0.0.1',
         colors: false,
         browserConsoleLogOptions: {
             terminal: false,
