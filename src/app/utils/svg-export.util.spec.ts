@@ -79,6 +79,11 @@ describe('SvgExportUtil', () => {
         spyOn(window, 'fetch').and.callFake(() => Promise.resolve(new Response(new Uint8Array([1, 2, 3]), { status: 200 })));
     }
 
+    /** Answers by blob type, not call order: a late object-URL call left over from another spec cannot shift the URLs. */
+    function mockSvgAndPngObjectUrls(): void {
+        spyOn(URL, 'createObjectURL').and.callFake(source => (source as Blob).type === 'image/png' ? 'blob:png' : 'blob:svg');
+    }
+
     function mockCanvasPng(): void {
         spyOn(CanvasRenderingContext2D.prototype, 'drawImage').and.stub();
         spyOn(HTMLCanvasElement.prototype, 'toBlob').and.callFake(function (this: HTMLCanvasElement, callback: BlobCallback) {
@@ -253,7 +258,7 @@ describe('SvgExportUtil', () => {
 
     it('downloads rendered SVGs as a 3x PNG', async () => {
         mockFontFetch();
-        spyOn(URL, 'createObjectURL').and.returnValues('blob:svg', 'blob:png');
+        mockSvgAndPngObjectUrls();
         const revokeObjectUrl = spyOn(URL, 'revokeObjectURL').and.stub();
         const click = spyOn(HTMLAnchorElement.prototype, 'click').and.stub();
         spyOn(CanvasRenderingContext2D.prototype, 'drawImage').and.stub();
@@ -276,7 +281,7 @@ describe('SvgExportUtil', () => {
 
     it('opens rendered SVGs as a 3x PNG in a new tab', async () => {
         mockFontFetch();
-        spyOn(URL, 'createObjectURL').and.returnValues('blob:svg', 'blob:png');
+        mockSvgAndPngObjectUrls();
         const revokeObjectUrl = spyOn(URL, 'revokeObjectURL').and.stub();
         const opened = { opener: window, location: { href: '' }, closed: false, close: jasmine.createSpy('close') } as unknown as Window;
         const open = spyOn(window, 'open').and.returnValue(opened);
