@@ -277,6 +277,36 @@ describe('construction editor document lifecycle', () => {
     expect(editor.dirty()).toBeTrue();
   });
 
+  it('renames chassis, Clan name and model as one undo step, and keeps the names when dismissed', async () => {
+    await editor.openUnit({ uuid: coreUuid, origin: 'megamek', name: 'Hunchback HBK-4G' } as UnitSummary);
+    const createDialog = jasmine.createSpy('createDialog').and.returnValue({ closed: of(undefined) });
+    Object.assign(TestBed.inject(DialogsService), { createDialog });
+    const event = { currentTarget: document.createElement('button') } as unknown as Event;
+    await editor.renameUnit(event);
+    expect(createDialog.calls.mostRecent().args[1].data).toEqual([
+      { id: 'chassis', label: 'Chassis', value: 'Hunchback' },
+      { id: 'clanName', label: 'Clan name', value: '' },
+      { id: 'model', label: 'Model/Variant', value: 'HBK-4G' },
+    ]);
+    expect(editor.dirty()).toBeFalse();
+    createDialog.and.returnValue({
+      closed: of([{ value: 'Quasimodo' }, { value: 'Bell Ringer' }, { value: 'QSM-1' }]),
+    });
+    await editor.renameUnit(event);
+    const entity = editor.entity();
+    expect([entity.chassis(), entity.clanName(), entity.model()]).toEqual(['Quasimodo', 'Bell Ringer', 'QSM-1']);
+    editor.undo();
+    expect(editor.entity().chassis()).toBe('Hunchback');
+    expect(editor.entity().model()).toBe('HBK-4G');
+  });
+
+  it('sets the rules level from the header dropdown, whose values are text', async () => {
+    await editor.openUnit({ uuid: coreUuid, origin: 'megamek', name: 'Hunchback HBK-4G' } as UnitSummary);
+    editor.setField(editor.rulesLevelField(), '4');
+    expect(editor.entity().rulesLevel()).toBe(4);
+    expect(editor.rulesLevelLabel()).toBe('Experimental');
+  });
+
   it('shows only native refit references and confirms unlinking before changing the draft', async () => {
     await editor.openUnit({ uuid: customUuid, origin: 'user', originalUnitUuid: coreUuid } as UnitSummary);
     expect(editor.refitReference()).toBeNull();

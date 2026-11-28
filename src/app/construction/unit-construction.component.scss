@@ -521,16 +521,53 @@ h2 {
   overflow-wrap: anywhere;
   line-height: 1.15;
 }
+// The name opens the rename dialog; the padding hangs outside the text column so the name stays aligned with it.
+.design-rename {
+  display: block;
+  box-sizing: content-box;
+  width: 100%;
+  margin: -4px -6px 0;
+  padding: 4px 6px;
+  border: 0;
+  background: none;
+  line-height: inherit;
+  text-align: left;
+  overflow-wrap: anywhere;
+
+  &:disabled {
+    opacity: 1;
+  }
+  // The unit icon's corner brackets, shown only while the name is the target.
+  &:is(:hover, :focus-visible):enabled {
+    --corner: linear-gradient(#666, #666);
+    background:
+      var(--corner) top left / 12px 2px,
+      var(--corner) top left / 2px 12px,
+      var(--corner) top right / 12px 2px,
+      var(--corner) top right / 2px 12px,
+      var(--corner) bottom left / 12px 2px,
+      var(--corner) bottom left / 2px 12px,
+      var(--corner) bottom right / 12px 2px,
+      var(--corner) bottom right / 2px 12px;
+    background-repeat: no-repeat;
+  }
+}
 .design-model {
+  display: block;
   font-size: 16px;
   color: var(--text-color-secondary);
 }
 .design-chassis {
+  display: block;
   font-size: 23px;
   font-weight: 650;
   color: var(--text-color);
 }
 .design-tech {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 0 12px;
   margin-top: 3px;
   font-size: 11px;
   color: var(--text-color-secondary);

@@ -159,6 +159,10 @@ import { encodeNativeEntity, nativeEntityFormat } from '../models/entity/write-e
 import { ConstructionExtrasComponent } from './components/construction-extras.component';
 import { ConstructionFluffComponent } from './components/construction-fluff.component';
 import { ConstructionQuirksComponent } from './components/construction-quirks.component';
+import {
+  ConstructionRenameDialogComponent,
+  type ConstructionRenameField,
+} from './components/construction-rename-dialog.component';
 import { ConstructionSummaryComponent } from './components/construction-summary.component';
 import { unitQuirkApplies } from '../models/entity/utils/unit-quirks';
 import { applyBmmQuirks, applyBmmWeaponQuirks } from './domain/construction-bmm-quirks';
@@ -2281,16 +2285,24 @@ export class UnitConstructionComponent {
       mixed?.set(flag === 'mixed');
     }, this.canEditField(base));
   }
-  readonly tonnageField = computed(() => this.fields().find((field) => field.id === 'tonnage') ?? null);
-  /** Tonnage choices for chassis with a fixed list; other chassis type their tonnage. */
-  readonly tonnageOptions = computed(
-    (): readonly MultilineDropdownOption[] | null =>
-      this.tonnageField()?.options?.map((option) => ({
+  /** A select field's choices for an inline dropdown; null for a field without a fixed list. */
+  private inlineOptions(field: ConstructionField | null): readonly MultilineDropdownOption[] | null {
+    return (
+      field?.options?.map((option) => ({
         value: String(option.value),
         label: option.label,
         disabled: option.disabled,
-      })) ?? null,
+      })) ?? null
+    );
+  }
+  readonly rulesLevelField = computed(() => this.fields().find((field) => field.id === 'rulesLevel')!);
+  readonly rulesLevelOptions = computed(() => this.inlineOptions(this.rulesLevelField()) ?? []);
+  readonly rulesLevelLabel = computed(
+    () => this.rulesLevelOptions().find((option) => option.value === String(this.rulesLevelField().get()))?.label ?? '',
   );
+  readonly tonnageField = computed(() => this.fields().find((field) => field.id === 'tonnage') ?? null);
+  /** Tonnage choices for chassis with a fixed list; other chassis type their tonnage. */
+  readonly tonnageOptions = computed(() => this.inlineOptions(this.tonnageField()));
   setOemYear(value: number | null): void {
     this.oemYearExpanded.set(true);
     this.change(() => this.oemYearField().set(value ?? ''));
@@ -2311,6 +2323,29 @@ export class UnitConstructionComponent {
     );
     if (this.destroyRef.destroyed) return;
     if (result !== undefined && this.entity() === entity) this.change(() => entity.iconPath.set(result ?? ''));
+    trigger.focus();
+  }
+  /** Chassis, Clan name and model edited together; the Clan name exists only on units that have the field. */
+  async renameUnit(event: Event): Promise<void> {
+    if (!this.designEditing() || this.busy()) return;
+    const trigger = event.currentTarget as HTMLButtonElement;
+    const entity = this.entity();
+    const fields = ['chassis', 'clanName', 'model'].flatMap(
+      (id) => this.fields().find((field) => field.id === id) ?? [],
+    );
+    const result = await firstValueFrom(
+      this.dialogs.createDialog<readonly ConstructionRenameField[]>(ConstructionRenameDialogComponent, {
+        data: fields.map((field): ConstructionRenameField => ({
+          id: field.id,
+          label: field.label,
+          value: String(field.get()),
+        })),
+        autoFocus: 'first-tabbable',
+      }).closed,
+    );
+    if (this.destroyRef.destroyed) return;
+    if (result && this.entity() === entity)
+      this.change(() => result.forEach((renamed, index) => fields[index].set(renamed.value)));
     trigger.focus();
   }
   async unlinkRefitSource(): Promise<void> {

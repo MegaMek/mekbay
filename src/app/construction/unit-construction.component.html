@@ -905,21 +905,45 @@
               <unit-icon [unit]="entity()" [width]="64" [height]="56" />
             </button>
             <div class="design-name-text">
-              <div class="design-model">{{ entity().model() }}</div>
-              <div class="design-chassis">{{ unitNames.chassis(entity()) }}</div>
+              <button
+                type="button"
+                class="design-rename"
+                [disabled]="!designEditing()"
+                aria-label="Rename unit"
+                aria-haspopup="dialog"
+                [title]="designEditing() ? 'Rename unit' : ''"
+                (click)="renameUnit($event)"
+              >
+                <span class="design-model">{{ entity().model() }}</span>
+                <span class="design-chassis">{{ unitNames.chassis(entity()) }}</span>
+              </button>
               <div class="design-tech">
-                Tech:
-                @if (designEditing() && techBaseOptions().length > 1) {
+                <span>
+                  Tech:
+                  @if (designEditing() && techBaseOptions().length > 1) {
+                    <multiline-dropdown
+                      appearance="inline"
+                      label="Tech base"
+                      [expandPanelToContent]="true"
+                      [options]="techBaseOptions()"
+                      [value]="techBaseChoice()"
+                      (valueChange)="setTechBaseChoice($event)"
+                    />
+                  } @else {
+                    {{ techBaseLabel() }}
+                  }
+                </span>
+                @if (canEditField(rulesLevelField())) {
                   <multiline-dropdown
                     appearance="inline"
-                    label="Tech base"
+                    label="Rules level"
                     [expandPanelToContent]="true"
-                    [options]="techBaseOptions()"
-                    [value]="techBaseChoice()"
-                    (valueChange)="setTechBaseChoice($event)"
+                    [options]="rulesLevelOptions()"
+                    [value]="'' + rulesLevelField().get()"
+                    (valueChange)="setField(rulesLevelField(), $event)"
                   />
                 } @else {
-                  {{ techBaseLabel() }}
+                  <span>{{ rulesLevelLabel() }}</span>
                 }
               </div>
             </div>
